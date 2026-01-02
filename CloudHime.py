@@ -1,28 +1,41 @@
+# ==========================================
+# 🌟 雲朵翻譯姬 - 螢幕 OCR 即時翻譯工具 (｀・ω・´)ゞ
+# ==========================================
+# 這個程式使用 PaddleOCR 和 Google Translator 來實現螢幕文字的即時辨識與翻譯
+# 支援日文辨識，翻譯成繁體中文，並以半透明氣泡顯示在螢幕上
+# 具有深色/淺色模式切換，自動掃描定時器，以及友好的使用者介面
+# 開發日期: 2026年1月2日 🚀
+# ==========================================
+
 import os
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
 
 import sys
-import ctypes 
+import ctypes
 import numpy as np
 import cv2
 import mss
-import paddle 
+import paddle
 from deep_translator import GoogleTranslator
 from paddleocr import PaddleOCR
-from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout, 
+from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup)
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QObject
 from PySide6.QtGui import QCursor, QFontMetrics
 
 # ==========================================
-# 🧠 OCR + 翻譯 Worker (邏輯保持不變)
+# 🤖 OCR 與翻譯工作執行緒類別
+# ==========================================
+# 負責處理螢幕截圖、OCR 文字辨識、Google 翻譯等耗時操作
+# 使用多執行緒避免阻塞主 UI 介面，確保流暢的使用體驗
+# 支援 GPU 加速，提升辨識速度和準確度
 # ==========================================
 class OCRWorker(QObject):
     finished = Signal(list)
     status_msg = Signal(str)
-    screenshot_taken = Signal() 
+    screenshot_taken = Signal()
     hide_ui = Signal()
     show_ui = Signal()
 
@@ -30,7 +43,7 @@ class OCRWorker(QObject):
         super().__init__()
         print("🚀 初始化 OCR 引擎中... (2026 Cloud Edition)")
         self.ocr = None
-        
+
         try:
             paddle.device.set_device("gpu")
             self.ocr = PaddleOCR(use_textline_orientation=False, lang=lang, use_gpu=True, show_log=False)
@@ -50,7 +63,19 @@ class OCRWorker(QObject):
         self.last_results = []
 
     def run_scan_once(self):
-        self.hide_ui.emit()  # 隱藏UI避免掃描到自己
+        """
+        🎯 執行一次完整的螢幕掃描流程
+        步驟：
+        1. 隱藏 UI 避免干擾截圖 📸
+        2. 截取螢幕畫面並轉換格式
+        3. 使用 PaddleOCR 辨識文字 🔍
+        4. 過濾低信心度的文字
+        5. 合併相鄰的文字行 📝
+        6. 檢查是否與上次相同（避免重複翻譯）
+        7. 使用 Google Translator 翻譯成繁體中文 🌏
+        8. 發送結果信號更新覆蓋層 UI
+        """
+        self.hide_ui.emit()
         self.status_msg.emit("⚡ 截圖中...")
         
         try:
@@ -65,7 +90,7 @@ class OCRWorker(QObject):
             self.finished.emit([])
             self.last_combined_text = ""
             self.last_results = []
-            self.show_ui.emit()  # 顯示UI
+            self.show_ui.emit()
             return
 
         self.status_msg.emit("🔍 辨識中...")
@@ -76,7 +101,7 @@ class OCRWorker(QObject):
             self.finished.emit([])
             self.last_combined_text = ""
             self.last_results = []
-            self.show_ui.emit()  # 顯示UI
+            self.show_ui.emit()
             return
 
         if not result or not result[0]:
@@ -87,7 +112,7 @@ class OCRWorker(QObject):
                 self.last_results = []
             else:
                 self.finished.emit([]) 
-            self.show_ui.emit()  # 顯示UI
+            self.show_ui.emit()
             return
 
         raw_items = []
@@ -100,7 +125,7 @@ class OCRWorker(QObject):
             w, h = int(box[2][0]-box[0][0]), int(box[2][1]-box[0][1])
             raw_items.append({'text': text, 'x': x, 'y': y, 'w': w, 'h': h})
 
-        self.show_ui.emit()  # 辨識完成後立即恢復UI
+        self.show_ui.emit()
 
         if not raw_items:
             self.finished.emit([])
@@ -147,9 +172,22 @@ class OCRWorker(QObject):
             self.finished.emit(fallback)
 
 # ==========================================
-# 📐 合併算法
+# 🔗 水平文字行合併函數
+# ==========================================
+# 將 OCR 辨識出的單個文字方塊合併成完整的句子或段落
+# 根據垂直位置和水平距離判斷是否屬於同一行文字
+# 這樣可以避免將一個句子拆分成多個翻譯單元
 # ==========================================
 def merge_horizontal_lines(items):
+    """
+    📐 合併水平方向相鄰的文字項目
+    演算法：
+    1. 按 Y 座標排序文字項目
+    2. 將垂直距離小的項目分組為行
+    3. 在每行內按 X 座標排序
+    4. 根據水平距離合併相鄰項目
+    5. 返回合併後的文字方塊列表
+    """
     if not items:
         return []
     items.sort(key=lambda k: k['y'])
@@ -184,7 +222,7 @@ def merge_horizontal_lines(items):
             while next_idx < len(line):
                 candidate = line[next_idx]
                 dist_x = candidate['x'] - x_max
-                if dist_x < (base['h'] * 2.0): 
+                if dist_x < (base['h'] * 2.0):
                     text_acc += " " + candidate['text']
                     x_max = candidate['x'] + candidate['w']
                     y_max = max(y_max, candidate['y'] + candidate['h'])
@@ -201,10 +239,22 @@ def merge_horizontal_lines(items):
     return merged_results
 
 # ==========================================
-# ☁️ 雲朵氣泡 (支援深色模式)
+# ☁️ 翻譯氣泡元件類別
+# ==========================================
+# 負責顯示翻譯後的文字氣泡，支援深色和淺色模式
+# 自動調整字體大小以適應文字長度和氣泡尺寸
+# 使用半透明背景，不阻擋底層內容
 # ==========================================
 class TransBubble(QLabel):
     def __init__(self, parent, text, x, y, w, h, is_dark_mode=False):
+        """
+        🌟 初始化翻譯氣泡
+        參數：
+        - parent: 父元件（通常是 OverlayWindow）
+        - text: 要顯示的翻譯文字
+        - x, y, w, h: 氣泡位置和尺寸
+        - is_dark_mode: 是否使用深色模式
+        """
         super().__init__(parent)
         self.setText(text)
         final_x = x - 1
@@ -212,7 +262,7 @@ class TransBubble(QLabel):
         final_w = w + 2
         final_h = h + 2
 
-        self.set_theme(is_dark_mode) # 設定初始顏色
+        self.set_theme(is_dark_mode)
 
         self.setAlignment(Qt.AlignCenter)
         self.setWordWrap(True)
@@ -229,9 +279,11 @@ class TransBubble(QLabel):
         self.show()
 
     def set_theme(self, is_dark):
-        """根據模式設定氣泡顏色"""
+        """
+        🎨 設定氣泡顏色主題
+        根據深色/淺色模式調整背景色、文字色和邊框
+        """
         if is_dark:
-            # 深色模式：深灰底、白字、深灰邊框
             self.setStyleSheet("""
                 background-color: rgba(35, 35, 35, 255);
                 color: #FFFFFF;
@@ -241,7 +293,6 @@ class TransBubble(QLabel):
                 border: 1px solid #555555;
             """)
         else:
-            # 淺色模式：白底、黑字、淺灰邊框
             self.setStyleSheet("""
                 background-color: rgba(255, 255, 255, 255);
                 color: #000000;
@@ -252,6 +303,10 @@ class TransBubble(QLabel):
             """)
 
     def fit_text_strictly(self, text, w, h):
+        """
+        📏 動態調整字體大小
+        確保文字完全適應氣泡尺寸，優先使用較大字體
+        """
         font = self.font()
         font.setFamily("Microsoft JhengHei")
         font.setBold(True)
@@ -266,6 +321,11 @@ class TransBubble(QLabel):
 
 class OverlayWindow(QWidget):
     def __init__(self):
+        """
+        🌫️ 初始化覆蓋視窗
+        設定全螢幕、無邊框、透明背景等屬性
+        啟動幽靈模式計時器
+        """
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -273,7 +333,7 @@ class OverlayWindow(QWidget):
         screen = QApplication.primaryScreen().geometry()
         self.setGeometry(0, 0, screen.width(), screen.height())
         self.bubbles = []
-        self.is_dark_mode = False # 記錄當前狀態
+        self.is_dark_mode = False
 
         try:
             hwnd = self.winId()
@@ -286,26 +346,41 @@ class OverlayWindow(QWidget):
         self.timer.start(50)
 
     def set_theme_mode(self, is_dark):
+        """
+        🎭 設定主題模式
+        更新所有現存氣泡的顏色主題
+        """
         self.is_dark_mode = is_dark
-        # 更新所有現存氣泡
         for b in self.bubbles:
             b.set_theme(is_dark)
 
     def update_bubbles(self, results):
+        """
+        🔄 更新翻譯氣泡
+        清除舊氣泡，根據新結果創建新氣泡
+        """
         self.clear_all()
         for text, x, y, w, h in results:
-            # 傳入當前的顏色設定
             bubble = TransBubble(self, text, x, y, w, h, self.is_dark_mode)
             self.bubbles.append(bubble)
         
         self.setVisible(True)
 
     def clear_all(self):
+        """
+        🗑️ 清除所有氣泡
+        釋放記憶體，避免元件洩漏
+        """
         for b in self.bubbles:
             b.deleteLater()
         self.bubbles = []
 
     def ghost_mode_check(self):
+        """
+        👻 幽靈模式檢查
+        每50毫秒檢查一次滑鼠位置
+        如果滑鼠接近氣泡，自動隱藏氣泡
+        """
         if not self.isVisible():
             return
 
@@ -315,37 +390,36 @@ class OverlayWindow(QWidget):
             rect = bubble.geometry().adjusted(-20, -20, 20, 20)
             bubble.setVisible(not rect.contains(local_pos))
 
-# ==========================================
-# 🎮 UI 控制器 (新增深色模式開關)
-# ==========================================
 class Controller(QWidget):
     request_scan = Signal()
 
     def __init__(self, overlay):
+        """
+        🎯 初始化主控制介面
+        建立所有 UI 元件、佈局、信號連接
+        啟動 OCR 工作執行緒
+        """
         super().__init__()
         self.overlay = overlay
-        self.is_dark_mode = False  # 預設淺色
+        self.is_dark_mode = False
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 150)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(10, 10, 10, 10) # 讓陰影或邊緣有一點空間
-        
-        # 主框架
+        layout.setContentsMargins(10, 10, 10, 10)
+
         self.frame = QFrame()
-        # self.update_frame_style() # 初始化樣式 移除，因為widgets還沒創建
 
         inner_layout = QVBoxLayout(self.frame)
         
-        # 1. 標題列
         title_bar = QHBoxLayout()
         self.lbl_title = QLabel("☁️雲朵翻譯姬")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         title_bar.addWidget(self.lbl_title)
         
-        title_bar.addStretch() # 把按鈕推到右邊
+        title_bar.addStretch()
 
         self.btn_close_x = QPushButton("✕")
         self.btn_close_x.setFixedSize(24,24)
@@ -356,27 +430,22 @@ class Controller(QWidget):
         
         inner_layout.addLayout(title_bar)
 
-        # 2. 狀態列與燈泡按鈕 (修改這裡)
         status_row = QHBoxLayout()
         
-        # 狀態文字框
         self.lbl_status = QLabel("等待指令 (｀・ω・´)")
         self.lbl_status.setAlignment(Qt.AlignCenter)
-        # 樣式會由 update_frame_style 統一管理，這裡先設定基本的
         self.lbl_status.setFixedHeight(30) 
         
-        # 燈泡按鈕 (放在狀態列右邊，即 X 下方)
         self.btn_theme = QPushButton("💡")
         self.btn_theme.setFixedSize(30, 30)
         self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
         
-        status_row.addWidget(self.lbl_status) # 左邊佔大部分
-        status_row.addWidget(self.btn_theme)  # 右邊一小顆
+        status_row.addWidget(self.lbl_status)
+        status_row.addWidget(self.btn_theme)
         
         inner_layout.addLayout(status_row)
 
-        # 3. 時間按鈕
         btn_layout = QHBoxLayout()
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
@@ -390,7 +459,6 @@ class Controller(QWidget):
         btn_layout.addWidget(self.btn_60)
         inner_layout.addLayout(btn_layout)
 
-        # 4. 停止按鈕
         self.btn_stop = QPushButton("⏹ 停止")
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.clicked.connect(self.stop_scan)
@@ -399,7 +467,6 @@ class Controller(QWidget):
         layout.addWidget(self.frame)
         self.setLayout(layout)
 
-        # 應用一次完整的樣式
         self.update_frame_style()
 
         self.ocr_thread = QThread()
@@ -419,6 +486,13 @@ class Controller(QWidget):
         self.old_pos = None
 
     def create_time_btn(self, text, interval):
+        """
+        ⏰ 創建定時掃描按鈕
+        參數：
+        - text: 按鈕顯示文字（如 "10秒"）
+        - interval: 定時間隔（毫秒）
+        返回：配置好的 QPushButton 實例
+        """
         btn = QPushButton(text)
         btn.setCheckable(True)
         btn.setCursor(Qt.PointingHandCursor)
@@ -427,15 +501,21 @@ class Controller(QWidget):
         return btn
 
     def toggle_theme(self):
-        """切換深色/淺色模式"""
+        """
+        🌙 切換深色/淺色主題模式
+        更新控制介面和覆蓋層的顏色配置
+        """
         self.is_dark_mode = not self.is_dark_mode
-        self.update_frame_style() # 更新 Controller UI
-        self.overlay.set_theme_mode(self.is_dark_mode) # 更新 Overlay UI
+        self.update_frame_style()
+        self.overlay.set_theme_mode(self.is_dark_mode)
 
     def update_frame_style(self):
-        """根據 is_dark_mode 更新所有 CSS"""
+        """
+        🎨 動態更新介面樣式
+        根據當前主題模式設定所有 UI 元件的顏色和樣式
+        包含背景色、文字色、按鈕樣式等
+        """
         if self.is_dark_mode:
-            # === 深色模式 ===
             bg_color = "rgba(45, 45, 45, 240)"
             border_color = "#555555"
             text_color = "#E0E0E0"
@@ -443,13 +523,12 @@ class Controller(QWidget):
             status_border = "#555"
             btn_bg = "#424242"
             btn_hover = "#505050"
-            btn_checked = "#00ACC1" # 深青色
-            stop_bg = "#D32F2F"     # 深紅色
+            btn_checked = "#00ACC1"
+            stop_bg = "#D32F2F"
             stop_hover = "#E57373"
             bulb_bg = "transparent"
-            bulb_color = "#FFEB3B"  # 燈泡亮黃色
+            bulb_color = "#FFEB3B"
         else:
-            # === 淺色模式 ===
             bg_color = "rgba(240, 248, 255, 230)"
             border_color = "#87CEEB"
             text_color = "#444444"
@@ -461,9 +540,8 @@ class Controller(QWidget):
             stop_bg = "#FFB6C1"
             stop_hover = "#FF69B4"
             bulb_bg = "transparent"
-            bulb_color = "#555"     # 燈泡灰色
+            bulb_color = "#555"
 
-        # 1. 主框架
         self.frame.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_color};
@@ -472,10 +550,8 @@ class Controller(QWidget):
             }}
         """)
         
-        # 2. 標題與文字
         self.lbl_title.setStyleSheet(f"color: {text_color}; font-weight: bold; background: transparent; border: none;")
         
-        # 3. 狀態列 (有邊框的那個)
         self.lbl_status.setStyleSheet(f"""
             color: {text_color}; 
             background-color: {status_bg}; 
@@ -483,7 +559,6 @@ class Controller(QWidget):
             border-radius: 4px;
         """)
 
-        # 4. 燈泡按鈕
         self.btn_theme.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bulb_bg}; 
@@ -497,7 +572,6 @@ class Controller(QWidget):
             }}
         """)
 
-        # 5. 時間按鈕 (一般樣式)
         common_btn_style = f"""
             QPushButton {{
                 background-color: {btn_bg}; 
@@ -519,7 +593,6 @@ class Controller(QWidget):
         self.btn_30.setStyleSheet(common_btn_style)
         self.btn_60.setStyleSheet(common_btn_style)
 
-        # 6. 停止按鈕
         self.btn_stop.setStyleSheet(f"""
             QPushButton {{
                 background-color: {stop_bg}; 
@@ -532,6 +605,10 @@ class Controller(QWidget):
         """)
 
     def start_timer(self, interval, btn):
+        """
+        ⏱️ 啟動自動掃描定時器
+        設定定時間隔並立即觸發第一次掃描
+        """
         if self.auto_timer.isActive() and self.auto_timer.interval() == interval:
             return
 
@@ -543,33 +620,61 @@ class Controller(QWidget):
         self.trigger_scan_sequence()
 
     def stop_scan(self):
+        """
+        🛑 停止自動掃描
+        取消定時器，重置按鈕狀態，清除氣泡
+        """
         self.auto_timer.stop()
         self.btn_group.setExclusive(False)
         for btn in self.btn_group.buttons():
             btn.setChecked(False)
         self.btn_group.setExclusive(True)
         self.lbl_status.setText("⏸ 已暫停")
-        self.overlay.clear_all() 
+        self.overlay.clear_all()
 
     def update_status(self, msg):
+        """
+        📢 更新狀態顯示
+        在狀態標籤中顯示當前操作狀態
+        """
         self.lbl_status.setText(msg)
 
     def hide_ui_for_scan(self):
+        """
+        🙈 掃描前隱藏 UI
+        避免 UI 被截圖辨識到
+        """
         self.overlay.setVisible(False)
         self.setVisible(False)
 
     def show_ui_after_scan(self):
+        """
+        👀 掃描後顯示 UI
+        恢復使用者介面可見性
+        """
         self.overlay.setVisible(True)
         self.setVisible(True)
 
     def trigger_scan_sequence(self):
+        """
+        🚀 觸發掃描序列
+        隱藏 UI，稍後發送信號開始掃描
+        """
         self.overlay.setVisible(False)
         QTimer.singleShot(50, self._emit_scan_signal)
 
     def _emit_scan_signal(self):
+        """
+        📡 發送掃描信號
+        通知工作執行緒開始 OCR 處理
+        """
         self.request_scan.emit()
 
     def close_app(self):
+        """
+        👋 關閉應用程式
+        停止所有定時器和執行緒，清理資源
+        """
         self.auto_timer.stop()
         self.ocr_thread.quit()
         self.ocr_thread.wait()
@@ -578,17 +683,36 @@ class Controller(QWidget):
         QApplication.instance().quit()
 
     def mousePressEvent(self, event):
+        """
+        🖱️ 滑鼠按下事件
+        記錄拖曳起始位置
+        """
         if event.button() == Qt.LeftButton:
             self.old_pos = event.globalPosition().toPoint()
+
     def mouseMoveEvent(self, event):
+        """
+        🖱️ 滑鼠移動事件
+        實現視窗拖曳功能
+        """
         if self.old_pos:
             delta = event.globalPosition().toPoint() - self.old_pos
             self.move(self.x()+delta.x(), self.y()+delta.y())
             self.old_pos = event.globalPosition().toPoint()
+
     def mouseReleaseEvent(self, event):
+        """
+        🖱️ 滑鼠釋放事件
+        重置拖曳狀態
+        """
         self.old_pos = None
 
 if __name__ == "__main__":
+    """
+    🚀 應用程式入口點
+    建立 Qt 應用程式實例，初始化覆蓋視窗和控制介面
+    啟動事件循環
+    """
     app = QApplication(sys.argv)
     overlay = OverlayWindow()
     overlay.show()
