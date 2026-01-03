@@ -4,7 +4,7 @@
 # 核心引擎: Windows Media OCR (WinRT)
 # 版本特性: 
 # 1. Windows 原生 OCR (速度快、免依賴)
-# 2. 防 Ban 機制：隨機掃描間隔 (Survival Mode)
+# 2. 防 Ban 機制：隨機掃描間隔 + 倒數計時顯示
 # 3. 立即掃描冷卻機制
 # ==========================================
 
@@ -12,7 +12,7 @@ import os
 import sys
 import asyncio
 import ctypes
-import random  # 引入隨機模組，生存率 UP!
+import random
 import numpy as np
 import cv2
 import mss
@@ -72,9 +72,6 @@ class OCRWorker(QObject):
             print(f"❌ 初始化失敗: {e}")
 
     async def _run_ocr_async(self, img_np):
-        """
-        執行 OCR (包含您的修正)
-        """
         try:
             # 1. OpenCV (Numpy) -> Bytes
             success, encoded_image = cv2.imencode('.png', img_np)
@@ -86,10 +83,7 @@ class OCRWorker(QObject):
             # 2. Bytes -> IRandomAccessStream
             stream = InMemoryRandomAccessStream()
             writer = DataWriter(stream.get_output_stream_at(0))
-            
-            # [您的修正] 直接寫入 bytes，無需轉 list
             writer.write_bytes(bytes_data)
-            
             await writer.store_async()
             await writer.flush_async()
             
@@ -146,7 +140,6 @@ class OCRWorker(QObject):
             if not words or not line_text.strip():
                 continue
 
-            # 計算該行的包圍框
             x_min = min([w.bounding_rect.x for w in words])
             y_min = min([w.bounding_rect.y for w in words])
             x_max = max([w.bounding_rect.x + w.bounding_rect.width for w in words])
@@ -163,7 +156,6 @@ class OCRWorker(QObject):
             self.finished.emit([])
             return
 
-        # 合併與翻譯邏輯
         merged_items = merge_horizontal_lines(raw_items)
         current_combined_text = "".join([item['text'] for item in merged_items])
 
@@ -324,7 +316,7 @@ class OverlayWindow(QWidget):
             b.setVisible(not b.geometry().adjusted(-20,-20,20,20).contains(pos))
 
 # ==========================================
-# 🎮 控制器介面 (已升級功能)
+# 🎮 控制器介面 (倒數計時升級版)
 # ==========================================
 class Controller(QWidget):
     request_scan = Signal()
@@ -333,14 +325,14 @@ class Controller(QWidget):
         super().__init__()
         self.overlay = overlay
         self.is_dark_mode = False
-        self.current_auto_interval = 0 # 0 表示未開啟自動
+        self.current_auto_interval = 0 
+        self.countdown_seconds = 0
         
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 150)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-        # UI Setup
         self.frame = QFrame()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -348,9 +340,8 @@ class Controller(QWidget):
         
         inner_layout = QVBoxLayout(self.frame)
         
-        # 標題列
         title_bar = QHBoxLayout()
-        self.lbl_title = QLabel("☁️雲朵翻譯姬 (Survival Mode)")
+        self.lbl_title = QLabel("☁️雲朵翻譯姬")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         
         self.btn_close = QPushButton("✕")
@@ -364,7 +355,6 @@ class Controller(QWidget):
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
-        # 狀態列
         status_row = QHBoxLayout()
         self.lbl_status = QLabel("準備就緒 (｀・ω・´)")
         self.lbl_status.setAlignment(Qt.AlignCenter)
@@ -379,26 +369,20 @@ class Controller(QWidget):
         status_row.addWidget(self.btn_theme)
         inner_layout.addLayout(status_row)
 
-        # 按鈕群組
         btn_layout = QHBoxLayout()
-        
-        # 1. 立即掃描按鈕 (單次，有冷卻)
         self.btn_now = QPushButton("⚡ 立即")
         self.btn_now.setCursor(Qt.PointingHandCursor)
         self.btn_now.clicked.connect(self.on_immediate_click)
         
-        # 自動掃描按鈕群組 (互斥)
         self.auto_group = QButtonGroup(self)
         self.auto_group.setExclusive(True)
         
-        # 2. 隨機 30s 按鈕
         self.btn_30 = QPushButton("🎲 30s~")
         self.btn_30.setCheckable(True)
         self.btn_30.setCursor(Qt.PointingHandCursor)
         self.btn_30.clicked.connect(lambda: self.start_auto_scan(30000))
         self.auto_group.addButton(self.btn_30)
 
-        # 3. 隨機 60s 按鈕
         self.btn_60 = QPushButton("⭐ 60s~")
         self.btn_60.setCheckable(True)
         self.btn_60.setCursor(Qt.PointingHandCursor)
@@ -410,7 +394,6 @@ class Controller(QWidget):
         btn_layout.addWidget(self.btn_60)
         inner_layout.addLayout(btn_layout)
 
-        # 停止按鈕
         self.btn_stop = QPushButton("⏹ 停止自動")
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.clicked.connect(self.stop_scan)
@@ -418,88 +401,110 @@ class Controller(QWidget):
 
         self.update_frame_style()
 
-        # 初始化執行緒
         self.ocr_thread = QThread()
         self.worker = OCRWorker()
         self.worker.moveToThread(self.ocr_thread)
         self.request_scan.connect(self.worker.run_scan_once)
-        self.worker.finished.connect(self.overlay.update_bubbles)
+        
+        # [修改] 將 worker 完成信號連接到控制器，而不是直接連到覆蓋層
+        # 這樣控制器可以處理接續的倒數邏輯
+        self.worker.finished.connect(self.on_scan_complete)
+        
         self.worker.status_msg.connect(self.update_status)
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
         self.ocr_thread.start()
 
-        # 計時器 (不使用固定 interval，而是動態 singleShot)
+        # 觸發掃描的計時器
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
-        self.auto_timer.timeout.connect(self.on_auto_timeout)
+        self.auto_timer.timeout.connect(self.trigger_scan_sequence)
         
-        # 立即掃描冷卻計時器
+        # UI 顯示用倒數計時器 (每秒觸發)
+        self.display_timer = QTimer(self)
+        self.display_timer.setInterval(1000)
+        self.display_timer.timeout.connect(self.update_countdown_label)
+        
         self.cooldown_timer = QTimer(self)
         self.cooldown_timer.setSingleShot(True)
         self.cooldown_timer.timeout.connect(self.reset_immediate_btn)
 
         self.old_pos = None
 
-    # --- 功能邏輯 ---
-
     def on_immediate_click(self):
-        """⚡ 處理立即掃描：單次執行 + 10秒冷卻"""
         if self.cooldown_timer.isActive():
             return
+        
+        # 如果正在倒數，先暫停倒數顯示，避免跳動
+        self.display_timer.stop()
         
         self.lbl_status.setText("⚡ 立即掃描中...")
         self.trigger_scan_sequence()
         
-        # 進入冷卻
         self.btn_now.setEnabled(False)
         self.btn_now.setText("⏳ 冷卻")
-        self.cooldown_timer.start(10000) # 10秒
+        self.cooldown_timer.start(10000)
 
     def reset_immediate_btn(self):
-        """冷卻結束，恢復按鈕"""
         self.btn_now.setEnabled(True)
         self.btn_now.setText("⚡ 立即")
 
     def start_auto_scan(self, base_interval):
-        """🎲 啟動隨機自動掃描"""
-        # 如果已經是同一個模式，不需重啟 (或可視為重置)
+        # 按下按鈕時，立即排程第一次（顯示倒數）
         self.current_auto_interval = base_interval
         self.schedule_next_scan()
 
     def schedule_next_scan(self):
-        """計算下一次隨機時間並排程"""
+        """計算時間並開始倒數"""
         if self.current_auto_interval == 0:
             return
 
-        # 隨機演算法：
-        # 30s -> 25~40s
-        # 60s -> 50~80s
         if self.current_auto_interval == 30000:
             random_delay = random.randint(25000, 40000)
-        else: # 60000
+        else:
             random_delay = random.randint(50000, 80000)
             
-        seconds = random_delay // 1000
-        self.lbl_status.setText(f"🎲 下次掃描: {seconds}秒後")
-        
+        # 設定實際觸發時間
         self.auto_timer.start(random_delay)
-
-    def on_auto_timeout(self):
-        """時間到，執行掃描並排程下一次"""
-        if self.current_auto_interval == 0:
-            return
         
-        self.trigger_scan_sequence()
-        # 掃描發出後，立刻排程下一次 (保持循環)
-        self.schedule_next_scan()
+        # 設定 UI 倒數變數
+        self.countdown_seconds = random_delay // 1000
+        
+        # 立即更新一次標籤，並啟動每秒更新
+        self.update_countdown_label()
+        self.display_timer.start()
+
+    def update_countdown_label(self):
+        """每秒更新 UI 文字"""
+        if self.current_auto_interval == 0: 
+            self.display_timer.stop()
+            return
+            
+        self.lbl_status.setText(f"⏳ 下次掃描: {self.countdown_seconds}s")
+        self.countdown_seconds -= 1
+        
+        # 如果倒數小於0，停止顯示更新 (等待 auto_timer 觸發掃描)
+        if self.countdown_seconds < 0:
+            self.display_timer.stop()
+
+    def on_scan_complete(self, results):
+        """掃描工作結束後呼叫此函式"""
+        # 1. 更新氣泡
+        self.overlay.update_bubbles(results)
+        
+        # 2. 如果在自動模式，且沒有被停止，則排程下一次
+        # 這裡實現了「掃描完 -> 顯示完成 -> 開始倒數」的流暢體驗
+        if self.current_auto_interval > 0:
+            # 讓 "✅ 完成" 顯示一瞬間 (例如 0.5秒) 再開始倒數，或者直接開始
+            # 這裡直接開始排程，使用者會看到 "✅ 完成" 一閃而過變成倒數
+            # 這是最反應靈敏的做法
+            self.schedule_next_scan()
 
     def stop_scan(self):
-        """🛑 停止所有自動任務"""
         self.current_auto_interval = 0
         self.auto_timer.stop()
+        self.display_timer.stop()
         
-        # 取消按鈕選取
         self.auto_group.setExclusive(False)
         self.btn_30.setChecked(False)
         self.btn_60.setChecked(False)
@@ -509,6 +514,8 @@ class Controller(QWidget):
         self.overlay.clear_all()
 
     def trigger_scan_sequence(self):
+        # 掃描開始時，停止倒數計時器的顯示更新，以免覆蓋 "截圖中" 等狀態
+        self.display_timer.stop()
         self.overlay.setVisible(False)
         QTimer.singleShot(50, self._emit_scan_signal)
 
@@ -516,9 +523,10 @@ class Controller(QWidget):
         self.request_scan.emit()
 
     def update_status(self, msg):
-        # 只有在不是倒數計時的時候才覆蓋訊息
-        if "下次掃描" not in self.lbl_status.text() or msg in ["⚡ 截圖中...", "🔍 辨識中...", "🌏 翻譯中...", "✅ 完成"]:
-             self.lbl_status.setText(msg)
+        # 如果正在倒數中 (display_timer 執行中)，不要讓普通訊息覆蓋倒數
+        if self.display_timer.isActive() and "完成" not in msg:
+            return
+        self.lbl_status.setText(msg)
 
     def hide_ui_for_scan(self):
         self.overlay.setVisible(False)
@@ -527,8 +535,6 @@ class Controller(QWidget):
     def show_ui_after_scan(self):
         self.overlay.setVisible(True)
         self.setVisible(True)
-
-    # --- UI 外觀與操作 ---
 
     def toggle_theme(self):
         self.is_dark_mode = not self.is_dark_mode
@@ -551,7 +557,6 @@ class Controller(QWidget):
         self.lbl_title.setStyleSheet(f"color: {text}; font-weight: bold; background: transparent; border: none;")
         self.lbl_status.setStyleSheet(f"color: {text}; background-color: {status_bg}; border: 1px solid {status_bd}; border-radius: 4px;")
         
-        # 立即按鈕樣式 (特殊色)
         now_btn_style = f"""
             QPushButton {{ background-color: {btn_bg}; color: {btn_fg}; border-radius: 8px; padding: 8px; font-weight: bold; border: 2px solid {border}; }}
             QPushButton:hover {{ background-color: {btn_hover}; }}
@@ -559,7 +564,6 @@ class Controller(QWidget):
         """
         self.btn_now.setStyleSheet(now_btn_style)
 
-        # 自動按鈕樣式
         auto_btn_style = f"""
             QPushButton {{ background-color: {btn_bg}; color: {btn_fg}; border-radius: 8px; padding: 8px; font-weight: bold; border: none; }}
             QPushButton:hover:!checked {{ background-color: {btn_hover}; }}
@@ -573,6 +577,7 @@ class Controller(QWidget):
 
     def close_app(self):
         self.auto_timer.stop()
+        self.display_timer.stop()
         self.cooldown_timer.stop()
         self.ocr_thread.quit()
         self.ocr_thread.wait()
