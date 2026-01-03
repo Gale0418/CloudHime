@@ -82,5 +82,6 @@
 
 > 第一次啟動時，終端機可能會顯示 `[Argos] 下載模型中...`，這是為了下載備用的離線翻譯模型，請給它一點時間。
 
+### 0. \_(:3 」∠ )\_ 或是右邊Release下載exe檔案...
 ---
 (｀・ω・´)ゞ Enjoy your slightly-broken-but-readable translations!
