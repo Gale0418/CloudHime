@@ -1,0 +1,7 @@
+PySide6
+winsdk
+mss
+opencv-python
+numpy
+deep-translator
+argostranslate

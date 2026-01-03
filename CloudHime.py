@@ -2,10 +2,11 @@
 # 🌟 雲朵翻譯姬 - 螢幕 OCR 即時翻譯工具 (｀・ω・´)ゞ
 # ==========================================
 # 核心引擎: Windows Media OCR (WinRT)
+# 翻譯引擎: Google Translate (主) + Argos Translate (備援)
 # 版本特性: 
 # 1. Windows 原生 OCR (速度快、免依賴)
 # 2. 防 Ban 機制：隨機掃描間隔 + 倒數計時顯示
-# 3. 立即掃描冷卻機制
+# 3. 雙引擎翻譯：Google 掛掉自動切換離線版 Argos
 # ==========================================
 
 import os
@@ -13,6 +14,7 @@ import sys
 import asyncio
 import ctypes
 import random
+import threading
 import numpy as np
 import cv2
 import mss
@@ -23,7 +25,18 @@ from winsdk.windows.globalization import Language
 from winsdk.windows.graphics.imaging import BitmapDecoder
 from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
 
+# 翻譯套件
 from deep_translator import GoogleTranslator
+
+# Argos Translate (離線備援)
+try:
+    import argostranslate.package
+    import argostranslate.translate
+    ARGOS_AVAILABLE = True
+except ImportError:
+    ARGOS_AVAILABLE = False
+    print("⚠️ 未安裝 argostranslate，將無離線備援功能。 (pip install argostranslate)")
+
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup)
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QObject
@@ -35,7 +48,7 @@ os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
 
 # ==========================================
-# 🤖 OCR 與翻譯工作執行緒 (WinRT 版)
+# 🤖 OCR 與翻譯工作執行緒 (WinRT + 雙翻譯版)
 # ==========================================
 class OCRWorker(QObject):
     finished = Signal(list)
@@ -52,7 +65,12 @@ class OCRWorker(QObject):
         self.last_combined_text = ""
         self.last_results = []
         
+        # 初始化 Windows OCR
         self.init_windows_ocr()
+        
+        # 初始化 Argos (在背景執行，避免卡住啟動)
+        if ARGOS_AVAILABLE:
+            threading.Thread(target=self.init_argos_models, daemon=True).start()
 
     def init_windows_ocr(self):
         try:
@@ -67,27 +85,62 @@ class OCRWorker(QObject):
                 print("✅ Windows OCR 引擎啟動成功")
             else:
                 print("❌ 無法建立 OCR 引擎")
-
         except Exception as e:
             print(f"❌ 初始化失敗: {e}")
 
+    def init_argos_models(self):
+        """
+        檢查並下載 Argos Translate 所需的日翻中模型
+        通常路徑是: Japanese -> English -> Chinese
+        """
+        print("📥 [Argos] 正在檢查離線翻譯模型...")
+        try:
+            argostranslate.package.update_package_index()
+            available_packages = argostranslate.package.get_available_packages()
+            installed_packages = argostranslate.package.get_installed_packages()
+            
+            # 需要安裝的語言代碼配對
+            # 由於 Argos 通常沒有直接 JA->ZH，需要 JA->EN 和 EN->ZH
+            needed_pairs = [('ja', 'en'), ('en', 'zh')]
+            
+            for from_code, to_code in needed_pairs:
+                is_installed = any(
+                    p.from_code == from_code and p.to_code == to_code 
+                    for p in installed_packages
+                )
+                
+                if not is_installed:
+                    print(f"📥 [Argos] 下載模型中: {from_code} -> {to_code} ...")
+                    package_to_install = next(
+                        filter(
+                            lambda x: x.from_code == from_code and x.to_code == to_code,
+                            available_packages
+                        ), None
+                    )
+                    if package_to_install:
+                        package_to_install.install()
+                        print(f"✅ [Argos] 安裝完成: {from_code} -> {to_code}")
+                    else:
+                        print(f"⚠️ [Argos] 找不到模型: {from_code} -> {to_code}")
+            
+            print("✅ [Argos] 離線翻譯系統準備就緒")
+            
+        except Exception as e:
+            print(f"⚠️ [Argos] 模型初始化失敗 (網路問題?): {e}")
+
     async def _run_ocr_async(self, img_np):
         try:
-            # 1. OpenCV (Numpy) -> Bytes
             success, encoded_image = cv2.imencode('.png', img_np)
             if not success:
                 return None
             
             bytes_data = encoded_image.tobytes()
-
-            # 2. Bytes -> IRandomAccessStream
             stream = InMemoryRandomAccessStream()
             writer = DataWriter(stream.get_output_stream_at(0))
             writer.write_bytes(bytes_data)
             await writer.store_async()
             await writer.flush_async()
             
-            # 3. Decode & Recognize
             decoder = await BitmapDecoder.create_async(stream)
             software_bitmap = await decoder.get_software_bitmap_async()
             result = await self.engine.recognize_async(software_bitmap)
@@ -138,7 +191,7 @@ class OCRWorker(QObject):
             line_text = line.text
             words = line.words
             if not words or not line_text.strip():
-                continue
+                 continue
 
             x_min = min([w.bounding_rect.x for w in words])
             y_min = min([w.bounding_rect.y for w in words])
@@ -147,7 +200,6 @@ class OCRWorker(QObject):
             
             w = x_max - x_min
             h = y_max - y_min
-
             raw_items.append({'text': line_text, 'x': int(x_min), 'y': int(y_min), 'w': int(w), 'h': int(h)})
 
         self.show_ui.emit()
@@ -167,31 +219,46 @@ class OCRWorker(QObject):
         self.last_combined_text = current_combined_text
         self.status_msg.emit("🌏 翻譯中...")
 
+        # ==========================================
+        # 🛡️ 雙重翻譯機制 (Google -> Argos)
+        # ==========================================
         final_results = []
         try:
             source_texts = [item['text'] for item in merged_items]
             combined_source = "\n".join(source_texts)
+            
+            # 1️⃣ 嘗試 Google 翻譯
             translated_combined = self.translator.translate(combined_source)
-            translated_list = translated_combined.split("\n")
-
-            if len(translated_list) != len(merged_items):
-                for item in merged_items:
-                    final_results.append((item['text'], item['x'], item['y'], item['w'], item['h']))
-            else:
-                for i, t_text in enumerate(translated_list):
-                    item = merged_items[i]
-                    final_results.append((t_text.strip(), item['x'], item['y'], item['w'], item['h']))
-
-            self.last_results = final_results
-            self.status_msg.emit("✅ 完成")
-            self.finished.emit(final_results)
-
+            
         except Exception as e:
-            print(f"翻譯失敗: {e}")
-            self.status_msg.emit("⚠️ 翻譯失敗")
-            fallback = [(item['text'], item['x'], item['y'], item['w'], item['h']) for item in merged_items]
-            self.last_results = fallback
-            self.finished.emit(fallback)
+            print(f"⚠️ Google 翻譯失敗 ({e})，切換至 Argos...")
+            self.status_msg.emit("⚠️ 切換離線翻譯...")
+            
+            # 2️⃣ 備援：Argos Translate
+            if ARGOS_AVAILABLE:
+                try:
+                    # Argos 通常使用 'ja' -> 'zh' (自動透過英文轉接)
+                    # 注意: Argos 的 'zh' 通常是簡體中文
+                    translated_combined = argostranslate.translate.translate(combined_source, 'ja', 'zh')
+                except Exception as e_argos:
+                    print(f"❌ Argos 翻譯也失敗: {e_argos}")
+                    translated_combined = combined_source # 放棄治療，顯示原文
+            else:
+                translated_combined = combined_source # 未安裝 Argos
+
+        # 處理翻譯結果對齊
+        translated_list = translated_combined.split("\n")
+        if len(translated_list) != len(merged_items):
+            for item in merged_items:
+                final_results.append((item['text'], item['x'], item['y'], item['w'], item['h']))
+        else:
+            for i, t_text in enumerate(translated_list):
+                item = merged_items[i]
+                final_results.append((t_text.strip(), item['x'], item['y'], item['w'], item['h']))
+
+        self.last_results = final_results
+        self.status_msg.emit("✅ 完成")
+        self.finished.emit(final_results)
 
     def handle_empty(self):
         if self.last_combined_text != "":
@@ -316,7 +383,7 @@ class OverlayWindow(QWidget):
             b.setVisible(not b.geometry().adjusted(-20,-20,20,20).contains(pos))
 
 # ==========================================
-# 🎮 控制器介面 (倒數計時升級版)
+# 🎮 控制器介面
 # ==========================================
 class Controller(QWidget):
     request_scan = Signal()
@@ -341,7 +408,7 @@ class Controller(QWidget):
         inner_layout = QVBoxLayout(self.frame)
         
         title_bar = QHBoxLayout()
-        self.lbl_title = QLabel("☁️雲朵翻譯姬")
+        self.lbl_title = QLabel("☁️雲朵翻譯姬 (Ultimate)")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         
         self.btn_close = QPushButton("✕")
@@ -405,22 +472,16 @@ class Controller(QWidget):
         self.worker = OCRWorker()
         self.worker.moveToThread(self.ocr_thread)
         self.request_scan.connect(self.worker.run_scan_once)
-        
-        # [修改] 將 worker 完成信號連接到控制器，而不是直接連到覆蓋層
-        # 這樣控制器可以處理接續的倒數邏輯
         self.worker.finished.connect(self.on_scan_complete)
-        
         self.worker.status_msg.connect(self.update_status)
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
         self.ocr_thread.start()
 
-        # 觸發掃描的計時器
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
         self.auto_timer.timeout.connect(self.trigger_scan_sequence)
         
-        # UI 顯示用倒數計時器 (每秒觸發)
         self.display_timer = QTimer(self)
         self.display_timer.setInterval(1000)
         self.display_timer.timeout.connect(self.update_countdown_label)
@@ -434,13 +495,9 @@ class Controller(QWidget):
     def on_immediate_click(self):
         if self.cooldown_timer.isActive():
             return
-        
-        # 如果正在倒數，先暫停倒數顯示，避免跳動
         self.display_timer.stop()
-        
         self.lbl_status.setText("⚡ 立即掃描中...")
         self.trigger_scan_sequence()
-        
         self.btn_now.setEnabled(False)
         self.btn_now.setText("⏳ 冷卻")
         self.cooldown_timer.start(10000)
@@ -450,71 +507,48 @@ class Controller(QWidget):
         self.btn_now.setText("⚡ 立即")
 
     def start_auto_scan(self, base_interval):
-        # 按下按鈕時，立即排程第一次（顯示倒數）
         self.current_auto_interval = base_interval
         self.schedule_next_scan()
 
     def schedule_next_scan(self):
-        """計算時間並開始倒數"""
         if self.current_auto_interval == 0:
             return
-
         if self.current_auto_interval == 30000:
             random_delay = random.randint(25000, 40000)
         else:
             random_delay = random.randint(50000, 80000)
             
-        # 設定實際觸發時間
         self.auto_timer.start(random_delay)
-        
-        # 設定 UI 倒數變數
         self.countdown_seconds = random_delay // 1000
-        
-        # 立即更新一次標籤，並啟動每秒更新
         self.update_countdown_label()
         self.display_timer.start()
 
     def update_countdown_label(self):
-        """每秒更新 UI 文字"""
         if self.current_auto_interval == 0: 
             self.display_timer.stop()
             return
-            
         self.lbl_status.setText(f"⏳ 下次掃描: {self.countdown_seconds}s")
         self.countdown_seconds -= 1
-        
-        # 如果倒數小於0，停止顯示更新 (等待 auto_timer 觸發掃描)
         if self.countdown_seconds < 0:
             self.display_timer.stop()
 
     def on_scan_complete(self, results):
-        """掃描工作結束後呼叫此函式"""
-        # 1. 更新氣泡
         self.overlay.update_bubbles(results)
-        
-        # 2. 如果在自動模式，且沒有被停止，則排程下一次
-        # 這裡實現了「掃描完 -> 顯示完成 -> 開始倒數」的流暢體驗
         if self.current_auto_interval > 0:
-            # 讓 "✅ 完成" 顯示一瞬間 (例如 0.5秒) 再開始倒數，或者直接開始
-            # 這裡直接開始排程，使用者會看到 "✅ 完成" 一閃而過變成倒數
-            # 這是最反應靈敏的做法
             self.schedule_next_scan()
 
     def stop_scan(self):
         self.current_auto_interval = 0
         self.auto_timer.stop()
         self.display_timer.stop()
-        
         self.auto_group.setExclusive(False)
         self.btn_30.setChecked(False)
         self.btn_60.setChecked(False)
         self.auto_group.setExclusive(True)
-        
         self.lbl_status.setText("⏸ 自動已停止")
         self.overlay.clear_all()
 
     def trigger_scan_sequence(self):
-        # 掃描開始時，停止倒數計時器的顯示更新，以免覆蓋 "截圖中" 等狀態
         self.display_timer.stop()
         self.overlay.setVisible(False)
         QTimer.singleShot(50, self._emit_scan_signal)
@@ -523,7 +557,6 @@ class Controller(QWidget):
         self.request_scan.emit()
 
     def update_status(self, msg):
-        # 如果正在倒數中 (display_timer 執行中)，不要讓普通訊息覆蓋倒數
         if self.display_timer.isActive() and "完成" not in msg:
             return
         self.lbl_status.setText(msg)
