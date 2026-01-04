@@ -111,7 +111,8 @@ class OCRWorker(QObject):
                 is_installed = any(p.from_code == from_code and p.to_code == to_code for p in installed_packages)
                 if not is_installed:
                     pkg = next(filter(lambda x: x.from_code == from_code and x.to_code == to_code, available_packages), None)
-                    if pkg: pkg.install()
+                    if pkg:
+                        pkg.install()
             print("✅ [Argos] 離線翻譯系統準備就緒")
         except Exception:
             pass
@@ -119,7 +120,8 @@ class OCRWorker(QObject):
     async def _run_ocr_async(self, img_np):
         try:
             success, encoded_image = cv2.imencode('.png', img_np)
-            if not success: return None
+            if not success:
+                return None
             
             stream = InMemoryRandomAccessStream()
             writer = DataWriter(stream.get_output_stream_at(0))
@@ -177,7 +179,8 @@ class OCRWorker(QObject):
         for line in ocr_result.lines:
             line_text = line.text
             words = line.words
-            if not words or not line_text.strip(): continue
+            if not words or not line_text.strip():
+                continue
 
             x_min = min([w.bounding_rect.x for w in words])
             y_min = min([w.bounding_rect.y for w in words])
@@ -245,7 +248,7 @@ class OCRWorker(QObject):
                         try:
                             simplified = argostranslate.translate.translate(combined_source, 'ja', 'zh')
                             translated_combined = self.convert_to_trad(simplified)
-                        except:
+                        except Exception:
                             translated_combined = combined_source
                     else:
                         translated_combined = combined_source
@@ -286,7 +289,8 @@ class OCRWorker(QObject):
         self.show_ui.emit()
 
 def merge_horizontal_lines(items):
-    if not items: return []
+    if not items:
+        return []
     items.sort(key=lambda k: k['y'])
     lines = []
     current_line = [items[0]]
@@ -367,15 +371,18 @@ class OverlayWindow(QWidget):
         self.setGeometry(0, 0, screen.width(), screen.height())
         self.bubbles = []
         self.is_dark = False
-        try: ctypes.windll.user32.SetWindowDisplayAffinity(int(self.winId()), 0x00000011)
-        except: pass
+        try:
+            ctypes.windll.user32.SetWindowDisplayAffinity(int(self.winId()), 0x00000011)
+        except Exception:
+            pass
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.ghost_mode)
         self.timer.start(50)
 
     def set_theme_mode(self, is_dark):
         self.is_dark = is_dark
-        for b in self.bubbles: b.set_theme(is_dark)
+        for b in self.bubbles:
+            b.set_theme(is_dark)
 
     def update_bubbles(self, results):
         self.clear_all()
@@ -384,11 +391,13 @@ class OverlayWindow(QWidget):
         self.setVisible(True)
 
     def clear_all(self):
-        for b in self.bubbles: b.deleteLater()
+        for b in self.bubbles:
+            b.deleteLater()
         self.bubbles = []
 
     def ghost_mode(self):
-        if not self.isVisible(): return
+        if not self.isVisible():
+            return
         pos = self.mapFromGlobal(QCursor.pos())
         for b in self.bubbles:
             b.setVisible(not b.geometry().adjusted(-20,-20,20,20).contains(pos))
@@ -515,7 +524,8 @@ class Controller(QWidget):
         self.old_pos = None
 
     def on_immediate_click(self):
-        if self.cooldown_timer.isActive(): return
+        if self.cooldown_timer.isActive():
+            return
         
         # [關鍵] 設定強制 Google 旗標
         self.worker.temp_bypass_argos = True
@@ -547,7 +557,8 @@ class Controller(QWidget):
         self.schedule_next_scan()
 
     def schedule_next_scan(self):
-        if self.current_auto_interval == 0: return
+        if self.current_auto_interval == 0:
+            return
 
         if self.current_auto_interval == 5000:
             delay = 5000
@@ -661,7 +672,7 @@ class Controller(QWidget):
         """
         self.btn_rapid.setStyleSheet(rapid_btn_style)
 
-        self.btn_stop.setStyleSheet(f"QPushButton {{ background-color: #D32F2F; color: white; border-radius: 10px; padding: 5px; border: none; }} QPushButton:hover {{ background-color: #E57373; }}")
+        self.btn_stop.setStyleSheet("QPushButton {{ background-color: #D32F2F; color: white; border-radius: 10px; padding: 5px; border: none; }} QPushButton:hover {{ background-color: #E57373; }}")
         self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: {bulb_bg}; color: {bulb_fg}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: rgba(128,128,128,0.2); border-radius: 15px; }}")
 
     def close_app(self):
@@ -675,7 +686,8 @@ class Controller(QWidget):
         QApplication.instance().quit()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton: self.old_pos = event.globalPosition().toPoint()
+        if event.button() == Qt.LeftButton:
+            self.old_pos = event.globalPosition().toPoint()
     def mouseMoveEvent(self, event):
         if self.old_pos:
             delta = event.globalPosition().toPoint() - self.old_pos
