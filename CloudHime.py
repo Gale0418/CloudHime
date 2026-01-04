@@ -2,11 +2,11 @@
 # 🌟 雲朵翻譯姬 - 螢幕 OCR 即時翻譯工具 (｀・ω・´)ゞ
 # ==========================================
 # 核心引擎: Windows Media OCR (WinRT)
-# 翻譯引擎: Google Translate (主) + Argos Translate (備援)
+# 翻譯引擎: Google (主) + Argos (備援/急速)
 # 版本特性: 
-# 1. Windows 原生 OCR (速度快、免依賴)
-# 2. 防 Ban 機制：隨機掃描間隔 + 倒數計時顯示
-# 3. 雙引擎翻譯：Google 掛掉自動切換離線版 Argos
+# 1. 智慧快取系統 (Google 覆蓋 Argos)
+# 2. 絕對命令：立即掃描無視急速模式，強制 Google
+# 3. 雙引擎故障轉移
 # ==========================================
 
 import os
@@ -28,27 +28,34 @@ from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWrite
 # 翻譯套件
 from deep_translator import GoogleTranslator
 
-# Argos Translate (離線備援)
+# 繁簡轉換
+try:
+    from opencc import OpenCC
+    OPENCC_AVAILABLE = True
+except ImportError:
+    OPENCC_AVAILABLE = False
+    print("⚠️ 未安裝 opencc，Argos 翻譯將維持簡體。")
+
+# Argos Translate
 try:
     import argostranslate.package
     import argostranslate.translate
     ARGOS_AVAILABLE = True
 except ImportError:
     ARGOS_AVAILABLE = False
-    print("⚠️ 未安裝 argostranslate，將無離線備援功能。 (pip install argostranslate)")
+    print("⚠️ 未安裝 argostranslate，將無離線功能。")
 
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup)
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QObject
 from PySide6.QtGui import QCursor, QFontMetrics
 
-# 設定 Qt 高解析度縮放
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
 
 # ==========================================
-# 🤖 OCR 與翻譯工作執行緒 (WinRT + 雙翻譯版)
+# 🤖 OCR 與翻譯工作執行緒
 # ==========================================
 class OCRWorker(QObject):
     finished = Signal(list)
@@ -65,10 +72,19 @@ class OCRWorker(QObject):
         self.last_combined_text = ""
         self.last_results = []
         
-        # 初始化 Windows OCR
+        # 翻譯快取
+        self.translation_cache = {}
+        self.force_argos_mode = False
+        
+        # [新增] 暫時無視 Argos 模式 (給立即掃描用)
+        self.temp_bypass_argos = False
+        
+        self.cc = None
+        if OPENCC_AVAILABLE:
+            self.cc = OpenCC('s2t')
+        
         self.init_windows_ocr()
         
-        # 初始化 Argos (在背景執行，避免卡住啟動)
         if ARGOS_AVAILABLE:
             threading.Thread(target=self.init_argos_models, daemon=True).start()
 
@@ -76,78 +92,51 @@ class OCRWorker(QObject):
         try:
             lang = Language("ja-JP")
             if not OcrEngine.is_language_supported(lang):
-                print("⚠️ 警告: 系統未偵測到日文 OCR 支援。請在 Windows 設定中安裝日文語言包。")
                 self.engine = OcrEngine.try_create_from_user_profile_languages()
             else:
                 self.engine = OcrEngine.try_create_from_language(lang)
-            
             if self.engine:
                 print("✅ Windows OCR 引擎啟動成功")
-            else:
-                print("❌ 無法建立 OCR 引擎")
         except Exception as e:
             print(f"❌ 初始化失敗: {e}")
 
     def init_argos_models(self):
-        """
-        檢查並下載 Argos Translate 所需的日翻中模型
-        通常路徑是: Japanese -> English -> Chinese
-        """
-        print("📥 [Argos] 正在檢查離線翻譯模型...")
         try:
             argostranslate.package.update_package_index()
             available_packages = argostranslate.package.get_available_packages()
             installed_packages = argostranslate.package.get_installed_packages()
             
-            # 需要安裝的語言代碼配對
-            # 由於 Argos 通常沒有直接 JA->ZH，需要 JA->EN 和 EN->ZH
             needed_pairs = [('ja', 'en'), ('en', 'zh')]
-            
             for from_code, to_code in needed_pairs:
-                is_installed = any(
-                    p.from_code == from_code and p.to_code == to_code 
-                    for p in installed_packages
-                )
-                
+                is_installed = any(p.from_code == from_code and p.to_code == to_code for p in installed_packages)
                 if not is_installed:
-                    print(f"📥 [Argos] 下載模型中: {from_code} -> {to_code} ...")
-                    package_to_install = next(
-                        filter(
-                            lambda x: x.from_code == from_code and x.to_code == to_code,
-                            available_packages
-                        ), None
-                    )
-                    if package_to_install:
-                        package_to_install.install()
-                        print(f"✅ [Argos] 安裝完成: {from_code} -> {to_code}")
-                    else:
-                        print(f"⚠️ [Argos] 找不到模型: {from_code} -> {to_code}")
-            
+                    pkg = next(filter(lambda x: x.from_code == from_code and x.to_code == to_code, available_packages), None)
+                    if pkg: pkg.install()
             print("✅ [Argos] 離線翻譯系統準備就緒")
-            
-        except Exception as e:
-            print(f"⚠️ [Argos] 模型初始化失敗 (網路問題?): {e}")
+        except Exception:
+            pass
 
     async def _run_ocr_async(self, img_np):
         try:
             success, encoded_image = cv2.imencode('.png', img_np)
-            if not success:
-                return None
+            if not success: return None
             
-            bytes_data = encoded_image.tobytes()
             stream = InMemoryRandomAccessStream()
             writer = DataWriter(stream.get_output_stream_at(0))
-            writer.write_bytes(bytes_data)
+            writer.write_bytes(encoded_image.tobytes())
             await writer.store_async()
             await writer.flush_async()
             
             decoder = await BitmapDecoder.create_async(stream)
             software_bitmap = await decoder.get_software_bitmap_async()
-            result = await self.engine.recognize_async(software_bitmap)
-            return result
-        except Exception as e:
-            print(f"OCR Async Error: {e}")
+            return await self.engine.recognize_async(software_bitmap)
+        except Exception:
             return None
+
+    def convert_to_trad(self, text):
+        if self.cc:
+            return self.cc.convert(text)
+        return text
 
     def run_scan_once(self):
         if not self.engine:
@@ -165,8 +154,7 @@ class OCRWorker(QObject):
                 screenshot = sct.grab(monitor)
                 img = np.array(screenshot)
                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-        except Exception as e:
-            self.status_msg.emit(f"❌ 截圖錯誤: {e}")
+        except Exception:
             self.finished.emit([])
             self.show_ui.emit()
             return
@@ -175,8 +163,7 @@ class OCRWorker(QObject):
         
         try:
             ocr_result = asyncio.run(self._run_ocr_async(img))
-        except Exception as e:
-            print(f"Windows OCR Error: {e}")
+        except Exception:
             self.status_msg.emit("❌ 辨識錯誤")
             self.finished.emit([])
             self.show_ui.emit()
@@ -190,17 +177,14 @@ class OCRWorker(QObject):
         for line in ocr_result.lines:
             line_text = line.text
             words = line.words
-            if not words or not line_text.strip():
-                 continue
+            if not words or not line_text.strip(): continue
 
             x_min = min([w.bounding_rect.x for w in words])
             y_min = min([w.bounding_rect.y for w in words])
             x_max = max([w.bounding_rect.x + w.bounding_rect.width for w in words])
             y_max = max([w.bounding_rect.y + w.bounding_rect.height for w in words])
             
-            w = x_max - x_min
-            h = y_max - y_min
-            raw_items.append({'text': line_text, 'x': int(x_min), 'y': int(y_min), 'w': int(w), 'h': int(h)})
+            raw_items.append({'text': line_text, 'x': int(x_min), 'y': int(y_min), 'w': int(x_max-x_min), 'h': int(y_max-y_min)})
 
         self.show_ui.emit()
 
@@ -211,54 +195,87 @@ class OCRWorker(QObject):
         merged_items = merge_horizontal_lines(raw_items)
         current_combined_text = "".join([item['text'] for item in merged_items])
 
+        # 靜止檢測
         if current_combined_text == self.last_combined_text:
             self.status_msg.emit("♻️ 畫面靜止")
             self.finished.emit(self.last_results) 
             return
 
         self.last_combined_text = current_combined_text
-        self.status_msg.emit("🌏 翻譯中...")
-
-        # ==========================================
-        # 🛡️ 雙重翻譯機制 (Google -> Argos)
-        # ==========================================
+        
         final_results = []
+        if len(self.translation_cache) > 1000:
+            self.translation_cache.clear()
+
         try:
-            source_texts = [item['text'] for item in merged_items]
-            combined_source = "\n".join(source_texts)
-            
-            # 1️⃣ 嘗試 Google 翻譯
-            translated_combined = self.translator.translate(combined_source)
-            
-        except Exception as e:
-            print(f"⚠️ Google 翻譯失敗 ({e})，切換至 Argos...")
-            self.status_msg.emit("⚠️ 切換離線翻譯...")
-            
-            # 2️⃣ 備援：Argos Translate
-            if ARGOS_AVAILABLE:
-                try:
-                    # Argos 通常使用 'ja' -> 'zh' (自動透過英文轉接)
-                    # 注意: Argos 的 'zh' 通常是簡體中文
-                    translated_combined = argostranslate.translate.translate(combined_source, 'ja', 'zh')
-                except Exception as e_argos:
-                    print(f"❌ Argos 翻譯也失敗: {e_argos}")
-                    translated_combined = combined_source # 放棄治療，顯示原文
+            # 判斷是否使用 Argos 模式
+            # 條件：開啟急速模式 且 沒有被暫時繞過 (Bypass)
+            use_argos = self.force_argos_mode and not self.temp_bypass_argos and ARGOS_AVAILABLE
+
+            if use_argos:
+                # === Argos 急速模式 ===
+                total_items = len(merged_items)
+                for i, item in enumerate(merged_items):
+                    src_text = item['text']
+                    
+                    if src_text in self.translation_cache:
+                        trans_text = self.translation_cache[src_text]
+                    else:
+                        self.status_msg.emit(f"🚀 Argos {i+1}/{total_items}")
+                        try:
+                            simplified_text = argostranslate.translate.translate(src_text, 'ja', 'zh')
+                            trans_text = self.convert_to_trad(simplified_text)
+                            self.translation_cache[src_text] = trans_text
+                        except Exception:
+                            trans_text = src_text
+                    
+                    final_results.append((trans_text.strip(), item['x'], item['y'], item['w'], item['h']))
+
             else:
-                translated_combined = combined_source # 未安裝 Argos
+                # === Google 模式 (或當 Argos 不可用時) ===
+                self.status_msg.emit("🌏 Google 翻譯中...")
+                source_texts = [item['text'] for item in merged_items]
+                combined_source = "\n".join(source_texts)
+                
+                try:
+                    translated_combined = self.translator.translate(combined_source)
+                except Exception:
+                    print("Google 失敗，嘗試 Argos 救援")
+                    if ARGOS_AVAILABLE:
+                        try:
+                            simplified = argostranslate.translate.translate(combined_source, 'ja', 'zh')
+                            translated_combined = self.convert_to_trad(simplified)
+                        except:
+                            translated_combined = combined_source
+                    else:
+                        translated_combined = combined_source
+                
+                translated_list = translated_combined.split("\n")
+                if len(translated_list) != len(merged_items):
+                    for item in merged_items:
+                        final_results.append((item['text'], item['x'], item['y'], item['w'], item['h']))
+                else:
+                    for i, t_text in enumerate(translated_list):
+                        item = merged_items[i]
+                        trans_text = t_text.strip()
+                        # [關鍵] Google 的結果會強制更新/覆蓋快取
+                        self.translation_cache[item['text']] = trans_text
+                        final_results.append((trans_text, item['x'], item['y'], item['w'], item['h']))
 
-        # 處理翻譯結果對齊
-        translated_list = translated_combined.split("\n")
-        if len(translated_list) != len(merged_items):
-            for item in merged_items:
-                final_results.append((item['text'], item['x'], item['y'], item['w'], item['h']))
-        else:
-            for i, t_text in enumerate(translated_list):
-                item = merged_items[i]
-                final_results.append((t_text.strip(), item['x'], item['y'], item['w'], item['h']))
+            # 重置 Bypass 旗標，確保下次如果還在急速模式，會切回 Argos
+            self.temp_bypass_argos = False
 
-        self.last_results = final_results
-        self.status_msg.emit("✅ 完成")
-        self.finished.emit(final_results)
+            self.last_results = final_results
+            self.status_msg.emit("✅ 完成")
+            self.finished.emit(final_results)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            self.status_msg.emit("⚠️ 翻譯失敗")
+            self.temp_bypass_argos = False # 確保重置
+            fallback = [(item['text'], item['x'], item['y'], item['w'], item['h']) for item in merged_items]
+            self.last_results = fallback
+            self.finished.emit(fallback)
 
     def handle_empty(self):
         if self.last_combined_text != "":
@@ -269,8 +286,7 @@ class OCRWorker(QObject):
         self.show_ui.emit()
 
 def merge_horizontal_lines(items):
-    if not items:
-        return []
+    if not items: return []
     items.sort(key=lambda k: k['y'])
     lines = []
     current_line = [items[0]]
@@ -351,18 +367,15 @@ class OverlayWindow(QWidget):
         self.setGeometry(0, 0, screen.width(), screen.height())
         self.bubbles = []
         self.is_dark = False
-        try:
-            ctypes.windll.user32.SetWindowDisplayAffinity(int(self.winId()), 0x00000011)
-        except Exception:
-            pass
+        try: ctypes.windll.user32.SetWindowDisplayAffinity(int(self.winId()), 0x00000011)
+        except: pass
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.ghost_mode)
         self.timer.start(50)
 
     def set_theme_mode(self, is_dark):
         self.is_dark = is_dark
-        for b in self.bubbles:
-            b.set_theme(is_dark)
+        for b in self.bubbles: b.set_theme(is_dark)
 
     def update_bubbles(self, results):
         self.clear_all()
@@ -371,13 +384,11 @@ class OverlayWindow(QWidget):
         self.setVisible(True)
 
     def clear_all(self):
-        for b in self.bubbles:
-            b.deleteLater()
+        for b in self.bubbles: b.deleteLater()
         self.bubbles = []
 
     def ghost_mode(self):
-        if not self.isVisible():
-            return
+        if not self.isVisible(): return
         pos = self.mapFromGlobal(QCursor.pos())
         for b in self.bubbles:
             b.setVisible(not b.geometry().adjusted(-20,-20,20,20).contains(pos))
@@ -408,7 +419,7 @@ class Controller(QWidget):
         inner_layout = QVBoxLayout(self.frame)
         
         title_bar = QHBoxLayout()
-        self.lbl_title = QLabel("☁️雲朵翻譯姬 (Ultimate)")
+        self.lbl_title = QLabel("☁️雲朵翻譯姬 (Complete)")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         
         self.btn_close = QPushButton("✕")
@@ -461,10 +472,21 @@ class Controller(QWidget):
         btn_layout.addWidget(self.btn_60)
         inner_layout.addLayout(btn_layout)
 
-        self.btn_stop = QPushButton("⏹ 停止自動")
+        stop_layout = QHBoxLayout()
+        
+        self.btn_rapid = QPushButton("🔥 急速 (Argos)")
+        self.btn_rapid.setCheckable(True)
+        self.btn_rapid.setCursor(Qt.PointingHandCursor)
+        self.btn_rapid.clicked.connect(self.start_rapid_scan)
+        self.auto_group.addButton(self.btn_rapid)
+        
+        self.btn_stop = QPushButton("⏹ 停止")
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.clicked.connect(self.stop_scan)
-        inner_layout.addWidget(self.btn_stop)
+        
+        stop_layout.addWidget(self.btn_rapid)
+        stop_layout.addWidget(self.btn_stop)
+        inner_layout.addLayout(stop_layout)
 
         self.update_frame_style()
 
@@ -493,8 +515,11 @@ class Controller(QWidget):
         self.old_pos = None
 
     def on_immediate_click(self):
-        if self.cooldown_timer.isActive():
-            return
+        if self.cooldown_timer.isActive(): return
+        
+        # [關鍵] 設定強制 Google 旗標
+        self.worker.temp_bypass_argos = True
+        
         self.display_timer.stop()
         self.lbl_status.setText("⚡ 立即掃描中...")
         self.trigger_scan_sequence()
@@ -507,19 +532,32 @@ class Controller(QWidget):
         self.btn_now.setText("⚡ 立即")
 
     def start_auto_scan(self, base_interval):
+        self.worker.force_argos_mode = False
         self.current_auto_interval = base_interval
         self.schedule_next_scan()
 
-    def schedule_next_scan(self):
-        if self.current_auto_interval == 0:
+    def start_rapid_scan(self):
+        if not ARGOS_AVAILABLE:
+            self.lbl_status.setText("⚠️ 無 Argos 套件")
+            self.btn_rapid.setChecked(False)
             return
-        if self.current_auto_interval == 30000:
-            random_delay = random.randint(25000, 40000)
-        else:
-            random_delay = random.randint(50000, 80000)
             
-        self.auto_timer.start(random_delay)
-        self.countdown_seconds = random_delay // 1000
+        self.worker.force_argos_mode = True
+        self.current_auto_interval = 5000
+        self.schedule_next_scan()
+
+    def schedule_next_scan(self):
+        if self.current_auto_interval == 0: return
+
+        if self.current_auto_interval == 5000:
+            delay = 5000
+        elif self.current_auto_interval == 30000:
+            delay = random.randint(25000, 40000)
+        else:
+            delay = random.randint(50000, 80000)
+            
+        self.auto_timer.start(delay)
+        self.countdown_seconds = delay // 1000
         self.update_countdown_label()
         self.display_timer.start()
 
@@ -527,7 +565,9 @@ class Controller(QWidget):
         if self.current_auto_interval == 0: 
             self.display_timer.stop()
             return
-        self.lbl_status.setText(f"⏳ 下次掃描: {self.countdown_seconds}s")
+        
+        prefix = "🚀 急速" if self.current_auto_interval == 5000 else "⏳ 隨機"
+        self.lbl_status.setText(f"{prefix}倒數: {self.countdown_seconds}s")
         self.countdown_seconds -= 1
         if self.countdown_seconds < 0:
             self.display_timer.stop()
@@ -538,13 +578,17 @@ class Controller(QWidget):
             self.schedule_next_scan()
 
     def stop_scan(self):
+        self.worker.force_argos_mode = False
         self.current_auto_interval = 0
         self.auto_timer.stop()
         self.display_timer.stop()
+        
         self.auto_group.setExclusive(False)
         self.btn_30.setChecked(False)
         self.btn_60.setChecked(False)
+        self.btn_rapid.setChecked(False)
         self.auto_group.setExclusive(True)
+        
         self.lbl_status.setText("⏸ 自動已停止")
         self.overlay.clear_all()
 
@@ -557,6 +601,9 @@ class Controller(QWidget):
         self.request_scan.emit()
 
     def update_status(self, msg):
+        if "Argos" in msg:
+            self.lbl_status.setText(msg)
+            return
         if self.display_timer.isActive() and "完成" not in msg:
             return
         self.lbl_status.setText(msg)
@@ -580,11 +627,13 @@ class Controller(QWidget):
             status_bg, status_bd = "#3A3A3A", "#555"
             btn_fg, btn_hover, btn_chk = "#E0E0E0", "#505050", "#00ACC1"
             bulb_bg, bulb_fg = "transparent", "#FFEB3B"
+            rapid_bg, rapid_hover = "#E65100", "#EF6C00"
         else:
             bg, border, text, btn_bg = "rgba(240,248,255,230)", "#87CEEB", "#444", "#E0F7FA"
             status_bg, status_bd = "white", "#87CEEB"
             btn_fg, btn_hover, btn_chk = "#444", "#B2EBF2", "#4FC3F7"
             bulb_bg, bulb_fg = "transparent", "#555"
+            rapid_bg, rapid_hover = "#FF9800", "#FFB74D"
 
         self.frame.setStyleSheet(f"QFrame {{ background-color: {bg}; border-radius: 15px; border: 2px solid {border}; }}")
         self.lbl_title.setStyleSheet(f"color: {text}; font-weight: bold; background: transparent; border: none;")
@@ -604,8 +653,15 @@ class Controller(QWidget):
         """
         self.btn_30.setStyleSheet(auto_btn_style)
         self.btn_60.setStyleSheet(auto_btn_style)
+        
+        rapid_btn_style = f"""
+            QPushButton {{ background-color: {rapid_bg}; color: white; border-radius: 8px; padding: 8px; font-weight: bold; border: none; }}
+            QPushButton:hover:!checked {{ background-color: {rapid_hover}; }}
+            QPushButton:checked {{ background-color: {btn_chk}; border: 2px solid {rapid_bg}; }}
+        """
+        self.btn_rapid.setStyleSheet(rapid_btn_style)
 
-        self.btn_stop.setStyleSheet("QPushButton {{ background-color: #D32F2F; color: white; border-radius: 10px; padding: 5px; border: none; }} QPushButton:hover {{ background-color: #E57373; }}")
+        self.btn_stop.setStyleSheet(f"QPushButton {{ background-color: #D32F2F; color: white; border-radius: 10px; padding: 5px; border: none; }} QPushButton:hover {{ background-color: #E57373; }}")
         self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: {bulb_bg}; color: {bulb_fg}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: rgba(128,128,128,0.2); border-radius: 15px; }}")
 
     def close_app(self):
@@ -619,8 +675,7 @@ class Controller(QWidget):
         QApplication.instance().quit()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.old_pos = event.globalPosition().toPoint()
+        if event.button() == Qt.LeftButton: self.old_pos = event.globalPosition().toPoint()
     def mouseMoveEvent(self, event):
         if self.old_pos:
             delta = event.globalPosition().toPoint() - self.old_pos
