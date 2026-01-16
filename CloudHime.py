@@ -94,8 +94,7 @@ class OCRWorker(QObject):
         self.force_argos_mode = False
         self.temp_bypass_argos = False
         
-        # ✨ 新增：二值化閥值 (預設 170)
-        self.binary_threshold = 170 
+        self.binary_threshold = 100 
         
         self.cc = None
         if OPENCC_AVAILABLE:
@@ -183,12 +182,7 @@ class OCRWorker(QObject):
         img_scaled = cv2.resize(img, (int(w * SCALE_FACTOR), int(h * SCALE_FACTOR)), interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
         
-        # 使用動態閥值 (從 slider 來的數值)
-        # 如果背景是透明黑/深色，文字是白色 -> 這裡二值化後文字變白(255)，背景變黑(0)
         _, binary = cv2.threshold(gray, self.binary_threshold, 255, cv2.THRESH_BINARY)
-        
-        # 反轉顏色：變成「白底黑字」 (因為 OCR 喜歡讀文件)
-        # 如果原本是「黑底白字」，這步是必要的！
         img_final = cv2.bitwise_not(binary)
         
         img_for_ocr = cv2.cvtColor(img_final, cv2.COLOR_GRAY2BGR)
@@ -444,7 +438,7 @@ class Controller(QWidget):
         self.countdown_seconds = 0
         
         self.setWindowTitle("雲朵翻譯姬")
-        self.resize(320, 180) # ✨ 稍微調高一點高度以容納滑桿
+        self.resize(320, 180) 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
@@ -470,14 +464,13 @@ class Controller(QWidget):
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
-        # ✨ 新增：靈魂滑桿區域
         slider_layout = QHBoxLayout()
-        self.lbl_thresh = QLabel("閥值: 170")
+        self.lbl_thresh = QLabel("閥值: 100")
         self.lbl_thresh.setStyleSheet("font-size: 10px; color: #666;")
         
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(50, 240) # 設定範圍
-        self.slider.setValue(170)     # 預設值
+        self.slider.setRange(50, 240) 
+        self.slider.setValue(100)     
         self.slider.valueChanged.connect(self.update_threshold)
         
         slider_layout.addWidget(QLabel("🌑"))
@@ -569,7 +562,6 @@ class Controller(QWidget):
 
     def update_threshold(self, val):
         self.lbl_thresh.setText(f"閥值: {val}")
-        # 直接更新 Worker 的變數 (雖然有點暴力，但在這個簡單架構下是安全的)
         self.worker.binary_threshold = val
 
     def setup_global_hotkey(self):
