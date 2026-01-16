@@ -1,9 +1,9 @@
 # ==========================================
-# 🌟 雲朵翻譯姬 - 螢幕 OCR 即時翻譯工具 (｀・ω・´)ゞ
+# 🌟 雲朵翻譯姬 v2.2 - 螢幕 OCR 即時翻譯工具 (雲朵縮小版) (｀・ω・´)ゞ
 # ==========================================
-# 核心引擎: Windows Media OCR (WinRT) (3x放大 + 二值化 + 靈魂滑桿)
+# 核心引擎: Windows Media OCR (WinRT)
 # 翻譯引擎: Google (主) + Argos (備援)
-# 特性: 全域快捷鍵 + 動態閥值調整 + 垃圾過濾
+# 架構優化: 移除托盤，新增縮小按鈕，優化視窗狀態記憶
 # ==========================================
 
 import os
@@ -16,7 +16,9 @@ import re
 import numpy as np
 import cv2
 import mss
-import keyboard
+
+# Windows API 相關
+import win32con 
 
 # Windows Runtime API
 from winsdk.windows.media.ocr import OcrEngine
@@ -46,22 +48,72 @@ except ImportError:
 
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup, 
-                               QSlider) # ✨ 新增 QSlider
-from PySide6.QtCore import Qt, QTimer, Signal, QThread, QObject
-from PySide6.QtGui import QCursor, QFontMetrics
+                               QSlider)
+from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
+                            QAbstractNativeEventFilter)
+from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont
 
+# 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
 
 # ==========================================
-# 🧹 垃圾過濾工具函式
+# 🛡️ 核心：Windows 原生熱鍵過濾器
+# ==========================================
+class GlobalHotKeyFilter(QAbstractNativeEventFilter):
+    def __init__(self, callback):
+        super().__init__()
+        self.callback = callback
+        self.hotkey_id = 101  # 自定義 ID
+        self.is_registered = False
+
+    def register_hotkey(self, hwnd):
+        if self.is_registered:
+            return
+        
+        # 使用 0xC0 代表 `~` 鍵
+        VK_OEM_3 = 0xC0 
+        
+        # MOD_NOREPEAT (0x4000) 防止長按連發
+        success = ctypes.windll.user32.RegisterHotKey(
+            int(hwnd), 
+            self.hotkey_id, 
+            0x4000, # 無修飾鍵
+            VK_OEM_3 
+        )
+        
+        if success:
+            print(f"✅ 原生快捷鍵 [~] 註冊成功 (HWND: {hwnd})")
+            self.is_registered = True
+        else:
+            err = ctypes.GetLastError()
+            print(f"❌ 快捷鍵註冊失敗 (Error: {err})，可能被其他程式佔用。")
+
+    def unregister_hotkey(self, hwnd):
+        if self.is_registered:
+            ctypes.windll.user32.UnregisterHotKey(int(hwnd), self.hotkey_id)
+            self.is_registered = False
+            print("🛑 快捷鍵已解除註冊")
+
+    def nativeEventFilter(self, eventType, message):
+        # 攔截 Windows 系統消息
+        if eventType == b"windows_generic_MSG":
+            msg = ctypes.wintypes.MSG.from_address(message.__int__())
+            if msg.message == win32con.WM_HOTKEY:
+                if msg.wParam == self.hotkey_id:
+                    self.callback() # 觸發回呼
+                    return True, 0
+        return False, 0
+
+# ==========================================
+# 🧹 工具函式
 # ==========================================
 def is_valid_content(text):
     if not text:
         return False
     text = text.strip()
-    if len(text) == 0: 
+    if len(text) == 0:
         return False
     if re.match(r'^[-_=.,|/\\:;~^]+$', text):
         return False
@@ -72,36 +124,70 @@ def is_valid_content(text):
         return False
     return True
 
+def merge_horizontal_lines(items):
+    if not items:
+        return []
+    items.sort(key=lambda k: k['y'])
+    lines = []
+    current_line = [items[0]]
+    for i in range(1, len(items)):
+        curr = items[i]
+        prev = current_line[-1]
+        prev_cy = prev['y'] + prev['h'] / 2
+        curr_cy = curr['y'] + curr['h'] / 2
+        if abs(prev_cy - curr_cy) < (min(prev['h'], curr['h']) * 0.5):
+            current_line.append(curr)
+        else:
+            lines.append(current_line)
+            current_line = [curr]
+    lines.append(current_line)
+    merged = []
+    for line in lines:
+        line.sort(key=lambda k: k['x'])
+        idx = 0
+        while idx < len(line):
+            base = line[idx]
+            text = base['text']
+            x1, y1 = base['x'], base['y']
+            x2, y2 = base['x']+base['w'], base['y']+base['h']
+            next_idx = idx + 1
+            while next_idx < len(line):
+                cand = line[next_idx]
+                if cand['x'] - x2 < (base['h'] * 2.0):
+                    text += " " + cand['text']
+                    x2 = cand['x'] + cand['w']
+                    y2 = max(y2, cand['y'] + cand['h'])
+                    y1 = min(y1, cand['y'])
+                    next_idx += 1
+                else:
+                    break
+            merged.append({'text': text, 'x': x1, 'y': y1, 'w': x2-x1, 'h': y2-y1})
+            idx = next_idx
+    return merged
+
 # ==========================================
 # 🤖 OCR 與翻譯工作執行緒
 # ==========================================
 class OCRWorker(QObject):
     finished = Signal(list)
     status_msg = Signal(str)
-    screenshot_taken = Signal()
     hide_ui = Signal()
     show_ui = Signal()
 
     def __init__(self):
         super().__init__()
-        print("🚀 初始化 Windows 原生 OCR 引擎...")
+        print("🚀 初始化 OCR 引擎...")
         self.engine = None
         self.translator = GoogleTranslator(source='auto', target='zh-TW')
         self.last_combined_text = ""
         self.last_results = []
-        
         self.translation_cache = {}
         self.force_argos_mode = False
         self.temp_bypass_argos = False
-        
         self.binary_threshold = 100 
-        
-        self.cc = None
-        if OPENCC_AVAILABLE:
-            self.cc = OpenCC('s2t')
+        self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         
         self.init_windows_ocr()
-        
         if ARGOS_AVAILABLE:
             threading.Thread(target=self.init_argos_models, daemon=True).start()
 
@@ -150,9 +236,7 @@ class OCRWorker(QObject):
             return None
 
     def convert_to_trad(self, text):
-        if self.cc:
-            return self.cc.convert(text)
-        return text
+        return self.cc.convert(text) if self.cc else text
 
     def run_scan_once(self):
         if not self.engine:
@@ -162,7 +246,6 @@ class OCRWorker(QObject):
             return
 
         self.hide_ui.emit()
-        
         try:
             with mss.mss() as sct:
                 monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
@@ -176,17 +259,13 @@ class OCRWorker(QObject):
 
         self.status_msg.emit(f"🔍 辨識中 (閥值:{self.binary_threshold})...")
         
-        # === ✨ 影像增強魔法 ✨ ===
         SCALE_FACTOR = 3.0
         h, w = img.shape[:2]
         img_scaled = cv2.resize(img, (int(w * SCALE_FACTOR), int(h * SCALE_FACTOR)), interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
-        
         _, binary = cv2.threshold(gray, self.binary_threshold, 255, cv2.THRESH_BINARY)
         img_final = cv2.bitwise_not(binary)
-        
         img_for_ocr = cv2.cvtColor(img_final, cv2.COLOR_GRAY2BGR)
-        # ==========================
 
         try:
             ocr_result = asyncio.run(self._run_ocr_async(img_for_ocr))
@@ -206,7 +285,6 @@ class OCRWorker(QObject):
             words = line.words
             if not words or not line_text.strip():
                 continue
-
             x_min = min([w.bounding_rect.x for w in words])
             y_min = min([w.bounding_rect.y for w in words])
             x_max = max([w.bounding_rect.x + w.bounding_rect.width for w in words])
@@ -216,7 +294,6 @@ class OCRWorker(QObject):
             real_y = int(y_min / SCALE_FACTOR)
             real_w = int((x_max - x_min) / SCALE_FACTOR)
             real_h = int((y_max - y_min) / SCALE_FACTOR)
-            
             raw_items.append({'text': line_text, 'x': real_x, 'y': real_y, 'w': real_w, 'h': real_h})
 
         self.show_ui.emit()
@@ -241,22 +318,19 @@ class OCRWorker(QObject):
             return
 
         self.last_combined_text = current_combined_text
-        
         final_results = []
         if len(self.translation_cache) > 1000:
             self.translation_cache.clear()
 
         try:
             use_argos = self.force_argos_mode and not self.temp_bypass_argos and ARGOS_AVAILABLE
-
             if use_argos:
-                total_items = len(merged_items)
                 for i, item in enumerate(merged_items):
                     src_text = item['text']
                     if src_text in self.translation_cache:
                         trans_text = self.translation_cache[src_text]
                     else:
-                        self.status_msg.emit(f"🚀 Argos {i+1}/{total_items}")
+                        self.status_msg.emit(f"🚀 Argos {i+1}/{len(merged_items)}")
                         try:
                             simplified_text = argostranslate.translate.translate(src_text, 'ja', 'zh')
                             trans_text = self.convert_to_trad(simplified_text)
@@ -268,18 +342,10 @@ class OCRWorker(QObject):
                 self.status_msg.emit("🌏 Google...")
                 source_texts = [item['text'] for item in merged_items]
                 combined_source = "\n".join(source_texts)
-                
                 try:
                     translated_combined = self.translator.translate(combined_source)
                 except Exception:
-                    if ARGOS_AVAILABLE:
-                        try:
-                            simplified = argostranslate.translate.translate(combined_source, 'ja', 'zh')
-                            translated_combined = self.convert_to_trad(simplified)
-                        except Exception:
-                            translated_combined = combined_source
-                    else:
-                        translated_combined = combined_source
+                    translated_combined = combined_source
                 
                 translated_list = translated_combined.split("\n")
                 if len(translated_list) != len(merged_items):
@@ -287,10 +353,9 @@ class OCRWorker(QObject):
                         final_results.append((item['text'], item['x'], item['y'], item['w'], item['h']))
                 else:
                     for i, t_text in enumerate(translated_list):
-                        item = merged_items[i]
                         trans_text = t_text.strip()
-                        self.translation_cache[item['text']] = trans_text
-                        final_results.append((trans_text, item['x'], item['y'], item['w'], item['h']))
+                        self.translation_cache[merged_items[i]['text']] = trans_text
+                        final_results.append((trans_text, merged_items[i]['x'], merged_items[i]['y'], merged_items[i]['w'], merged_items[i]['h']))
 
             self.temp_bypass_argos = False
             self.last_results = final_results
@@ -313,47 +378,9 @@ class OCRWorker(QObject):
         self.finished.emit([])
         self.show_ui.emit()
 
-def merge_horizontal_lines(items):
-    if not items:
-        return []
-    items.sort(key=lambda k: k['y'])
-    lines = []
-    current_line = [items[0]]
-    for i in range(1, len(items)):
-        curr = items[i]
-        prev = current_line[-1]
-        prev_cy = prev['y'] + prev['h'] / 2
-        curr_cy = curr['y'] + curr['h'] / 2
-        if abs(prev_cy - curr_cy) < (min(prev['h'], curr['h']) * 0.5):
-            current_line.append(curr)
-        else:
-            lines.append(current_line)
-            current_line = [curr]
-    lines.append(current_line)
-    merged = []
-    for line in lines:
-        line.sort(key=lambda k: k['x'])
-        idx = 0
-        while idx < len(line):
-            base = line[idx]
-            text = base['text']
-            x1, y1 = base['x'], base['y']
-            x2, y2 = base['x']+base['w'], base['y']+base['h']
-            next_idx = idx + 1
-            while next_idx < len(line):
-                cand = line[next_idx]
-                if cand['x'] - x2 < (base['h'] * 2.0):
-                    text += " " + cand['text']
-                    x2 = cand['x'] + cand['w']
-                    y2 = max(y2, cand['y'] + cand['h'])
-                    y1 = min(y1, cand['y'])
-                    next_idx += 1
-                else:
-                    break
-            merged.append({'text': text, 'x': x1, 'y': y1, 'w': x2-x1, 'h': y2-y1})
-            idx = next_idx
-    return merged
-
+# ==========================================
+# 💬 氣泡與覆蓋層
+# ==========================================
 class TransBubble(QLabel):
     def __init__(self, parent, text, x, y, w, h, is_dark_mode=False):
         super().__init__(parent)
@@ -427,6 +454,9 @@ class OverlayWindow(QWidget):
         for b in self.bubbles:
             b.setVisible(not b.geometry().adjusted(-20,-20,20,20).contains(pos))
 
+# ==========================================
+# 🎮 控制面板 (v2.2 縮小按鈕版)
+# ==========================================
 class Controller(QWidget):
     request_scan = Signal()
 
@@ -437,22 +467,65 @@ class Controller(QWidget):
         self.current_auto_interval = 0 
         self.countdown_seconds = 0
         
+        # 狀態變數：紀錄掃描前是否為縮小狀態
+        self.was_minimized = False
+        
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 180) 
+        # 注意：不使用 Qt.Tool，這樣才能在工作列顯示圖示並正常縮小
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        # 設定雲朵圖示 (動態生成)
+        self.set_cloud_icon()
 
+        self.setup_ui()
+        self.setup_worker()
+        
+        # 原生熱鍵
+        self.hotkey_filter = GlobalHotKeyFilter(self.on_hotkey_pressed)
+        QApplication.instance().installNativeEventFilter(self.hotkey_filter)
+        QTimer.singleShot(500, self.enable_hotkey)
+
+        self.old_pos = None
+
+    def set_cloud_icon(self):
+        # 動態繪製 ☁️ Icon
+        size = 64
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        # 設定 Emoji 字體，如果系統沒有 Segoe UI Emoji 可能會回退到其他字體
+        font = QFont("Segoe UI Emoji", int(size * 0.7))
+        font.setStyleStrategy(QFont.PreferAntialias)
+        painter.setFont(font)
+        painter.setPen(QColor("#FFFFFF")) # 白色雲
+        # 加一點陰影效果讓它在淺色背景也能看見
+        painter.setPen(QColor("#00BFFF")) 
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, "☁️")
+        painter.end()
+        self.setWindowIcon(QIcon(pixmap))
+
+    def setup_ui(self):
         self.frame = QFrame()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.addWidget(self.frame)
-        
         inner_layout = QVBoxLayout(self.frame)
         
+        # 標題欄
         title_bar = QHBoxLayout()
-        self.lbl_title = QLabel("☁️雲朵翻譯姬 (Slider)")
+        self.lbl_title = QLabel("☁️雲朵翻譯姬 v2.2")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         
+        # 縮小按鈕
+        self.btn_min = QPushButton("－")
+        self.btn_min.setFixedSize(24,24)
+        self.btn_min.setCursor(Qt.PointingHandCursor)
+        self.btn_min.clicked.connect(self.showMinimized)
+        self.btn_min.setStyleSheet("background:transparent; color:#888; border:none; font-weight:900;")
+        
+        # 關閉按鈕
         self.btn_close = QPushButton("✕")
         self.btn_close.setFixedSize(24,24)
         self.btn_close.setCursor(Qt.PointingHandCursor)
@@ -461,58 +534,54 @@ class Controller(QWidget):
         
         title_bar.addWidget(self.lbl_title)
         title_bar.addStretch()
+        title_bar.addWidget(self.btn_min) # 新增縮小按鈕
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
+        # 閥值滑桿
         slider_layout = QHBoxLayout()
         self.lbl_thresh = QLabel("閥值: 100")
         self.lbl_thresh.setStyleSheet("font-size: 10px; color: #666;")
-        
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(50, 240) 
         self.slider.setValue(100)     
         self.slider.valueChanged.connect(self.update_threshold)
-        
         slider_layout.addWidget(QLabel("🌑"))
         slider_layout.addWidget(self.slider)
         slider_layout.addWidget(QLabel("🌕"))
         slider_layout.addWidget(self.lbl_thresh)
         inner_layout.addLayout(slider_layout)
 
+        # 狀態欄
         status_row = QHBoxLayout()
         self.lbl_status = QLabel("準備就緒 (｀・ω・´)")
         self.lbl_status.setAlignment(Qt.AlignCenter)
         self.lbl_status.setFixedHeight(30)
-        
         self.btn_theme = QPushButton("💡")
         self.btn_theme.setFixedSize(30, 30)
         self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
-        
         status_row.addWidget(self.lbl_status)
         status_row.addWidget(self.btn_theme)
         inner_layout.addLayout(status_row)
 
+        # 按鈕區
         btn_layout = QHBoxLayout()
         self.btn_now = QPushButton("⚡ 立即 (~)")
         self.btn_now.setCursor(Qt.PointingHandCursor)
         self.btn_now.clicked.connect(self.on_immediate_click)
-        
         self.auto_group = QButtonGroup(self)
         self.auto_group.setExclusive(True)
-        
         self.btn_30 = QPushButton("🎲 30s~")
         self.btn_30.setCheckable(True)
         self.btn_30.setCursor(Qt.PointingHandCursor)
         self.btn_30.clicked.connect(lambda: self.start_auto_scan(30000))
         self.auto_group.addButton(self.btn_30)
-
         self.btn_60 = QPushButton("⭐ 60s~")
         self.btn_60.setCheckable(True)
         self.btn_60.setCursor(Qt.PointingHandCursor)
         self.btn_60.clicked.connect(lambda: self.start_auto_scan(60000))
         self.auto_group.addButton(self.btn_60)
-        
         btn_layout.addWidget(self.btn_now)
         btn_layout.addWidget(self.btn_30)
         btn_layout.addWidget(self.btn_60)
@@ -524,27 +593,29 @@ class Controller(QWidget):
         self.btn_rapid.setCursor(Qt.PointingHandCursor)
         self.btn_rapid.clicked.connect(self.start_rapid_scan)
         self.auto_group.addButton(self.btn_rapid)
-        
         self.btn_stop = QPushButton("⏹ 停止")
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.clicked.connect(self.stop_scan)
-        
         stop_layout.addWidget(self.btn_rapid)
         stop_layout.addWidget(self.btn_stop)
         inner_layout.addLayout(stop_layout)
 
         self.update_frame_style()
 
+    def setup_worker(self):
         self.ocr_thread = QThread()
         self.worker = OCRWorker()
         self.worker.moveToThread(self.ocr_thread)
         self.request_scan.connect(self.worker.run_scan_once)
         self.worker.finished.connect(self.on_scan_complete)
         self.worker.status_msg.connect(self.update_status)
+        
+        # 連接新的隱藏/顯示邏輯
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
+        
         self.ocr_thread.start()
-
+        
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
         self.auto_timer.timeout.connect(self.trigger_scan_sequence)
@@ -557,20 +628,12 @@ class Controller(QWidget):
         self.cooldown_timer.setSingleShot(True)
         self.cooldown_timer.timeout.connect(self.reset_immediate_btn)
 
-        self.old_pos = None
-        self.setup_global_hotkey()
+    def enable_hotkey(self):
+        self.hotkey_filter.register_hotkey(self.winId())
 
     def update_threshold(self, val):
         self.lbl_thresh.setText(f"閥值: {val}")
         self.worker.binary_threshold = val
-
-    def setup_global_hotkey(self):
-        HOTKEY = '`'
-        try:
-            keyboard.add_hotkey(HOTKEY, self.on_hotkey_pressed)
-            print(f"✅ 全域快捷鍵已啟動: 按下 [{HOTKEY}] 鍵觸發 (請務必以管理員身分執行！)")
-        except Exception as e:
-            print(f"❌ 快捷鍵註冊失敗: {e}")
 
     def on_hotkey_pressed(self):
         QTimer.singleShot(0, self.on_immediate_click)
@@ -579,7 +642,6 @@ class Controller(QWidget):
         if self.cooldown_timer.isActive():
             print("❄️ 冷卻中...請稍後")
             return
-        
         self.worker.temp_bypass_argos = True
         self.display_timer.stop()
         self.lbl_status.setText("⚡ 立即掃描中...")
@@ -664,13 +726,27 @@ class Controller(QWidget):
             return
         self.lbl_status.setText(msg)
 
+    # 🌟 關鍵邏輯：隱藏 UI 時，紀錄當前是否為縮小狀態
     def hide_ui_for_scan(self):
         self.overlay.setVisible(False)
-        self.setVisible(False)
+        
+        if self.isMinimized():
+            self.was_minimized = True
+            # 已經縮小了就不用 hide() 了，不然會亂掉
+        else:
+            self.was_minimized = False
+            self.setVisible(False) # 一般狀態下隱藏視窗以免擋住截圖
 
+    # 🌟 關鍵邏輯：顯示 UI 時，如果原本是縮小的，就繼續縮小
     def show_ui_after_scan(self):
         self.overlay.setVisible(True)
-        self.setVisible(True)
+        
+        if not self.was_minimized:
+            self.setVisible(True)
+            self.showNormal() # 恢復正常顯示
+        else:
+            # 如果原本是縮小的，這裡什麼都不做，它自然會保持縮小
+            pass
 
     def toggle_theme(self):
         self.is_dark_mode = not self.is_dark_mode
@@ -694,8 +770,6 @@ class Controller(QWidget):
         self.frame.setStyleSheet(f"QFrame {{ background-color: {bg}; border-radius: 15px; border: 2px solid {border}; }}")
         self.lbl_title.setStyleSheet(f"color: {text}; font-weight: bold; background: transparent; border: none;")
         self.lbl_status.setStyleSheet(f"color: {text}; background-color: {status_bg}; border: 1px solid {status_bd}; border-radius: 4px;")
-        
-        # 滑桿樣式
         self.lbl_thresh.setStyleSheet(f"color: {text}; font-size: 10px;")
 
         now_btn_style = f"""
@@ -724,7 +798,8 @@ class Controller(QWidget):
         self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: {bulb_bg}; color: {bulb_fg}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: rgba(128,128,128,0.2); border-radius: 15px; }}")
 
     def close_app(self):
-        keyboard.unhook_all()
+        if hasattr(self, 'hotkey_filter'):
+            self.hotkey_filter.unregister_hotkey(self.winId())
         self.auto_timer.stop()
         self.display_timer.stop()
         self.cooldown_timer.stop()
@@ -746,6 +821,7 @@ class Controller(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    
     overlay = OverlayWindow()
     overlay.show()
     ctrl = Controller(overlay)
