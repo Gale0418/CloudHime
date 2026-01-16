@@ -53,7 +53,6 @@ from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject,
                             QAbstractNativeEventFilter)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont
 
-# 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
@@ -72,14 +71,12 @@ class GlobalHotKeyFilter(QAbstractNativeEventFilter):
         if self.is_registered:
             return
         
-        # 使用 0xC0 代表 `~` 鍵
         VK_OEM_3 = 0xC0 
         
-        # MOD_NOREPEAT (0x4000) 防止長按連發
         success = ctypes.windll.user32.RegisterHotKey(
             int(hwnd), 
             self.hotkey_id, 
-            0x4000, # 無修飾鍵
+            0x4000, 
             VK_OEM_3 
         )
         
@@ -97,12 +94,11 @@ class GlobalHotKeyFilter(QAbstractNativeEventFilter):
             print("🛑 快捷鍵已解除註冊")
 
     def nativeEventFilter(self, eventType, message):
-        # 攔截 Windows 系統消息
         if eventType == b"windows_generic_MSG":
             msg = ctypes.wintypes.MSG.from_address(message.__int__())
             if msg.message == win32con.WM_HOTKEY:
                 if msg.wParam == self.hotkey_id:
-                    self.callback() # 觸發回呼
+                    self.callback() 
                     return True, 0
         return False, 0
 
@@ -467,16 +463,13 @@ class Controller(QWidget):
         self.current_auto_interval = 0 
         self.countdown_seconds = 0
         
-        # 狀態變數：紀錄掃描前是否為縮小狀態
         self.was_minimized = False
         
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 180) 
-        # 注意：不使用 Qt.Tool，這樣才能在工作列顯示圖示並正常縮小
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
-        # 設定雲朵圖示 (動態生成)
         self.set_cloud_icon()
 
         self.setup_ui()
@@ -495,12 +488,10 @@ class Controller(QWidget):
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
-        # 設定 Emoji 字體，如果系統沒有 Segoe UI Emoji 可能會回退到其他字體
         font = QFont("Segoe UI Emoji", int(size * 0.7))
         font.setStyleStrategy(QFont.PreferAntialias)
         painter.setFont(font)
-        painter.setPen(QColor("#FFFFFF")) # 白色雲
-        # 加一點陰影效果讓它在淺色背景也能看見
+        painter.setPen(QColor("#FFFFFF"))
         painter.setPen(QColor("#00BFFF")) 
         painter.drawText(pixmap.rect(), Qt.AlignCenter, "☁️")
         painter.end()
@@ -534,7 +525,7 @@ class Controller(QWidget):
         
         title_bar.addWidget(self.lbl_title)
         title_bar.addStretch()
-        title_bar.addWidget(self.btn_min) # 新增縮小按鈕
+        title_bar.addWidget(self.btn_min) 
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
@@ -610,7 +601,6 @@ class Controller(QWidget):
         self.worker.finished.connect(self.on_scan_complete)
         self.worker.status_msg.connect(self.update_status)
         
-        # 連接新的隱藏/顯示邏輯
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
         
@@ -726,24 +716,20 @@ class Controller(QWidget):
             return
         self.lbl_status.setText(msg)
 
-    # 🌟 關鍵邏輯：隱藏 UI 時，紀錄當前是否為縮小狀態
     def hide_ui_for_scan(self):
         self.overlay.setVisible(False)
         
         if self.isMinimized():
             self.was_minimized = True
-            # 已經縮小了就不用 hide() 了，不然會亂掉
         else:
             self.was_minimized = False
-            self.setVisible(False) # 一般狀態下隱藏視窗以免擋住截圖
-
-    # 🌟 關鍵邏輯：顯示 UI 時，如果原本是縮小的，就繼續縮小
+            self.setVisible(False) 
     def show_ui_after_scan(self):
         self.overlay.setVisible(True)
         
         if not self.was_minimized:
             self.setVisible(True)
-            self.showNormal() # 恢復正常顯示
+            self.showNormal() 
         else:
             # 如果原本是縮小的，這裡什麼都不做，它自然會保持縮小
             pass
