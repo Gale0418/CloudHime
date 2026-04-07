@@ -1,7 +1,9 @@
 PySide6
-winsdk
+winrt-Windows.Globalization
+winrt-Windows.Graphics.Imaging
+winrt-Windows.Media.Ocr
+winrt-Windows.Storage.Streams
 mss
 opencv-python
 numpy
 deep-translator
-argostranslate
