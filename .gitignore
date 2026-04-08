@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+cloudhime_settings.json
+_live_screen_test.png
+build/
+dist/
+*.spec
