@@ -49,11 +49,13 @@ except ImportError:
     print("⚠️ 未安裝 opencc。")
 
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
-                               QPushButton, QFrame, QHBoxLayout, QButtonGroup, 
+                               QPushButton, QFrame, QHBoxLayout, QButtonGroup,
                                QSlider, QLineEdit, QCheckBox, QComboBox,
-                               QSpinBox)
+                               QSpinBox, QSizePolicy, QSplitter, QScrollArea,
+                               QGraphicsOpacityEffect,
+                               QGridLayout)
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
-                            QAbstractNativeEventFilter) # 刪除了 QEvent
+                            QAbstractNativeEventFilter, QEvent)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
@@ -80,7 +82,17 @@ NOISE_ONLY_PATTERN = re.compile(r'^[-_=.,|/\\:;~^]+$')
 HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
-SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "cloudhime_settings.json")
+LEGACY_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "cloudhime_settings.json")
+def get_user_settings_file():
+    appdata_root = os.getenv("APPDATA") or os.path.expanduser("~")
+    settings_dir = os.path.join(appdata_root, "CloudHime")
+    try:
+        os.makedirs(settings_dir, exist_ok=True)
+    except Exception:
+        pass
+    return os.path.join(settings_dir, "cloudhime_settings.json")
+
+SETTINGS_FILE = get_user_settings_file()
 MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
@@ -2255,9 +2267,11 @@ class RegionSelectionFrame(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        alpha = int(255 * max(0, min(100, self.frame_opacity)) / 100.0)
         border_color = QColor("#55C7F3") if self.is_dark else QColor("#4FC3F7")
         fill_color = QColor(85, 199, 243) if self.is_dark else QColor(79, 195, 247)
-        fill_color.setAlpha(int(255 * max(0, min(100, self.frame_opacity)) / 100.0))
+        border_color.setAlpha(alpha)
+        fill_color.setAlpha(alpha)
         inner = QRect(self.margin, self.margin, self.width() - self.margin * 2, self.height() - self.margin * 2)
         painter.fillRect(inner, fill_color)
         pen = QPen(border_color, 3)
@@ -2482,22 +2496,22 @@ class SettingsWindow(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.old_pos = None
-        self.resize(720, 520)
-
+        self.resize(800, 1000)
+        self.setMinimumSize(800, 1000)
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(12, 12, 12, 12)
+        root_layout.setContentsMargins(14, 14, 14, 14)
 
         self.frame = QFrame()
         root_layout.addWidget(self.frame)
 
         layout = QVBoxLayout(self.frame)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
 
         self.header_panel = QFrame()
         header_layout = QVBoxLayout(self.header_panel)
-        header_layout.setContentsMargins(14, 14, 14, 14)
-        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(16, 16, 16, 16)
+        header_layout.setSpacing(10)
 
         header_row = QHBoxLayout()
         header_text_layout = QVBoxLayout()
@@ -2529,35 +2543,46 @@ class SettingsWindow(QWidget):
 
         self.card_translate = QFrame()
         translate_layout = QVBoxLayout(self.card_translate)
-        translate_layout.setContentsMargins(14, 14, 14, 14)
-        translate_layout.setSpacing(10)
+        translate_layout.setContentsMargins(16, 16, 16, 16)
+        translate_layout.setSpacing(12)
         self.lbl_translate = QLabel("翻譯")
         self.lbl_translate.setStyleSheet("font-weight: bold;")
-        self.lbl_translate_hint = QLabel("Google 可以直接用，AI 模式才需要 API Key 和模型")
+        self.lbl_translate_hint = QLabel("Google 免設定；AI 模式才需要 API Key 與模型")
         self.lbl_translate_hint.setWordWrap(True)
         translate_layout.addWidget(self.lbl_translate)
         translate_layout.addWidget(self.lbl_translate_hint)
 
         self.lbl_translate_summary = QLabel("目前：Google 翻譯")
+        self.lbl_translate_summary.setWordWrap(True)
         translate_layout.addWidget(self.lbl_translate_summary)
 
         mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
         self.lbl_translate_mode = QLabel("翻譯模式")
         mode_row.addWidget(self.lbl_translate_mode)
         mode_row.addStretch()
-        self.cmb_translate_mode = QComboBox()
-        self.cmb_translate_mode.addItem("Google 翻譯", False)
-        self.cmb_translate_mode.addItem("Gemma AI 翻譯", True)
-        self.cmb_translate_mode.currentIndexChanged.connect(self.on_translate_mode_changed)
-        mode_row.addWidget(self.cmb_translate_mode)
+        self.translate_mode_group = QButtonGroup(self)
+        self.translate_mode_group.setExclusive(True)
+        self.btn_translate_google = QPushButton("Google 翻譯")
+        self.btn_translate_google.setCheckable(True)
+        self.btn_translate_google.setCursor(Qt.PointingHandCursor)
+        self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
+        self.translate_mode_group.addButton(self.btn_translate_google)
+        mode_row.addWidget(self.btn_translate_google)
+        self.btn_translate_ai = QPushButton("Gemma AI 翻譯")
+        self.btn_translate_ai.setCheckable(True)
+        self.btn_translate_ai.setCursor(Qt.PointingHandCursor)
+        self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
+        self.translate_mode_group.addButton(self.btn_translate_ai)
+        mode_row.addWidget(self.btn_translate_ai)
         translate_layout.addLayout(mode_row)
 
         self.advanced_translate_frame = QFrame()
         advanced_translate_layout = QVBoxLayout(self.advanced_translate_frame)
-        advanced_translate_layout.setContentsMargins(12, 12, 12, 12)
-        advanced_translate_layout.setSpacing(8)
+        advanced_translate_layout.setContentsMargins(14, 14, 14, 14)
+        advanced_translate_layout.setSpacing(10)
         self.lbl_advanced_translate = QLabel("進階翻譯設定")
-        self.lbl_advanced_hint = QLabel("AI 模式才會用到這些設定")
+        self.lbl_advanced_hint = QLabel("只有 AI 模式會用到這些欄位")
         self.lbl_advanced_hint.setWordWrap(True)
         advanced_translate_layout.addWidget(self.lbl_advanced_translate)
         advanced_translate_layout.addWidget(self.lbl_advanced_hint)
@@ -2586,22 +2611,22 @@ class SettingsWindow(QWidget):
 
         self.card_ocr = QFrame()
         ocr_layout = QVBoxLayout(self.card_ocr)
-        ocr_layout.setContentsMargins(12, 12, 12, 12)
-        ocr_layout.setSpacing(8)
+        ocr_layout.setContentsMargins(16, 16, 16, 16)
+        ocr_layout.setSpacing(10)
         self.lbl_ocr = QLabel("OCR")
         self.lbl_ocr.setStyleSheet("font-weight: bold;")
-        self.lbl_ocr_hint = QLabel("自動閥值與字元清理都會影響辨識品質")
+        self.lbl_ocr_hint = QLabel("閥值與字元清理會直接影響辨識品質")
         self.lbl_ocr_hint.setWordWrap(True)
         ocr_layout.addWidget(self.lbl_ocr)
         ocr_layout.addWidget(self.lbl_ocr_hint)
 
         self.auto_scan_panel = QFrame()
         auto_scan_layout = QVBoxLayout(self.auto_scan_panel)
-        auto_scan_layout.setContentsMargins(12, 12, 12, 12)
-        auto_scan_layout.setSpacing(8)
+        auto_scan_layout.setContentsMargins(14, 14, 14, 14)
+        auto_scan_layout.setSpacing(10)
         self.lbl_auto_scan = QLabel("10 秒按鈕")
         self.lbl_auto_scan.setStyleSheet("font-weight: bold;")
-        self.lbl_auto_scan_hint = QLabel("中心秒數和偏移百分比可以自己調，按鈕上面的數字也會跟著變")
+        self.lbl_auto_scan_hint = QLabel("中心秒數與偏移幅度會同步到主畫面")
         self.lbl_auto_scan_hint.setWordWrap(True)
         auto_scan_layout.addWidget(self.lbl_auto_scan)
         auto_scan_layout.addWidget(self.lbl_auto_scan_hint)
@@ -2628,18 +2653,18 @@ class SettingsWindow(QWidget):
         jitter_row.addWidget(self.spin_random_scan_jitter)
         auto_scan_layout.addLayout(jitter_row)
 
-        self.lbl_random_scan_summary = QLabel("目前：🎲 10s~ · 約 8 ~ 12 秒")
+        self.lbl_random_scan_summary = QLabel("目前：10s 附近 · 約 8 ~ 12 秒")
         self.lbl_random_scan_summary.setWordWrap(True)
         auto_scan_layout.addWidget(self.lbl_random_scan_summary)
         ocr_layout.addWidget(self.auto_scan_panel)
 
         self.card_region_render = QFrame()
         region_render_layout = QVBoxLayout(self.card_region_render)
-        region_render_layout.setContentsMargins(12, 12, 12, 12)
-        region_render_layout.setSpacing(8)
+        region_render_layout.setContentsMargins(16, 16, 16, 16)
+        region_render_layout.setSpacing(10)
         self.lbl_region_render = QLabel("框選顯示")
         self.lbl_region_render.setStyleSheet("font-weight: bold;")
-        self.lbl_region_render_hint = QLabel("氣泡是可愛版，浮雕是貼邊版，框選時可直接切換")
+        self.lbl_region_render_hint = QLabel("氣泡保留原本樣式，浮雕會貼近原文")
         self.lbl_region_render_hint.setWordWrap(True)
         region_render_layout.addWidget(self.lbl_region_render)
         region_render_layout.addWidget(self.lbl_region_render_hint)
@@ -2661,11 +2686,11 @@ class SettingsWindow(QWidget):
 
         self.card_relief = QFrame()
         relief_layout = QVBoxLayout(self.card_relief)
-        relief_layout.setContentsMargins(12, 12, 12, 12)
-        relief_layout.setSpacing(8)
+        relief_layout.setContentsMargins(16, 16, 16, 16)
+        relief_layout.setSpacing(10)
         self.lbl_relief = QLabel("浮雕細節")
         self.lbl_relief.setStyleSheet("font-weight: bold;")
-        self.lbl_relief_hint = QLabel("浮雕模式才會用到，位移 0 會跟氣泡模式同位置，透明度是選區框本體")
+        self.lbl_relief_hint = QLabel("只在浮雕模式啟用，位移 0 會對齊原位")
         self.lbl_relief_hint.setWordWrap(True)
         relief_layout.addWidget(self.lbl_relief)
         relief_layout.addWidget(self.lbl_relief_hint)
@@ -2724,8 +2749,8 @@ class SettingsWindow(QWidget):
 
         self.card_appearance = QFrame()
         appearance_layout = QVBoxLayout(self.card_appearance)
-        appearance_layout.setContentsMargins(12, 12, 12, 12)
-        appearance_layout.setSpacing(8)
+        appearance_layout.setContentsMargins(16, 16, 16, 16)
+        appearance_layout.setSpacing(10)
         self.lbl_appearance = QLabel("外觀")
         self.lbl_appearance.setStyleSheet("font-weight: bold;")
         self.chk_dark_mode = QCheckBox("深色模式")
@@ -2734,35 +2759,56 @@ class SettingsWindow(QWidget):
         appearance_layout.addWidget(self.chk_dark_mode)
 
         content_row = QHBoxLayout()
-        content_row.setSpacing(10)
+        content_row.setSpacing(14)
 
-        left_col = QVBoxLayout()
-        left_col.setSpacing(10)
+        left_panel = QWidget()
+        left_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        left_col = QVBoxLayout(left_panel)
+        left_col.setSpacing(12)
         left_col.addWidget(self.card_ocr)
         left_col.addWidget(self.card_region_render)
         left_col.addWidget(self.card_relief)
         left_col.addStretch()
 
-        right_col = QVBoxLayout()
-        right_col.setSpacing(10)
+        right_panel = QWidget()
+        right_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        right_col = QVBoxLayout(right_panel)
+        right_col.setSpacing(12)
         right_col.addWidget(self.card_translate)
         right_col.addWidget(self.card_appearance)
         right_col.addStretch()
 
-        content_row.addLayout(left_col, 1)
-        content_row.addLayout(right_col, 1)
+        self.settings_splitter = QSplitter(Qt.Horizontal)
+        self.settings_splitter.setChildrenCollapsible(False)
+        self.settings_splitter.setHandleWidth(8)
+        self.settings_splitter.addWidget(left_panel)
+        self.settings_splitter.addWidget(right_panel)
+        self.settings_splitter.setStretchFactor(0, 1)
+        self.settings_splitter.setStretchFactor(1, 1)
+        self.settings_splitter.setSizes([2, 1])
+        content_row.addWidget(self.settings_splitter)
         layout.addLayout(content_row)
         layout.addStretch()
+        self.left_panel = left_panel
+        self.right_panel = right_panel
+        self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
 
-    def on_translate_mode_changed(self, index):
-        use_ai = bool(self.cmb_translate_mode.itemData(index))
+    def on_translate_mode_clicked(self, use_ai):
+        self.set_translate_mode(use_ai)
         self.controller.btn_ai_mode.setChecked(use_ai)
         self.controller.toggle_ai_translation(use_ai)
-        self.set_translate_advanced_visible(use_ai)
-        self.update_translate_summary()
+        if use_ai and not self.controller.worker.google_api_key.strip():
+            self.set_translate_mode(True)
+            self.update_translate_summary()
+        else:
+            self.sync_from_controller()
 
     def on_api_key_text_changed(self, text):
         self.controller.on_api_key_changed(text)
+        if text.strip() and self.btn_translate_ai.isChecked() and not self.controller.btn_ai_mode.isChecked():
+            self.controller.btn_ai_mode.setChecked(True)
+            self.controller.toggle_ai_translation(True)
         self.update_translate_summary()
 
     def on_ai_model_changed(self, index):
@@ -2771,6 +2817,19 @@ class SettingsWindow(QWidget):
 
     def on_auto_switch_toggled(self, checked):
         self.controller.set_gemma_auto_switch_mode(checked)
+        self.update_translate_summary()
+
+    def set_translate_mode(self, use_ai):
+        self.btn_translate_google.blockSignals(True)
+        self.btn_translate_ai.blockSignals(True)
+        self.btn_translate_google.setChecked(not use_ai)
+        self.btn_translate_ai.setChecked(use_ai)
+        self.btn_translate_google.blockSignals(False)
+        self.btn_translate_ai.blockSignals(False)
+        self.set_translate_advanced_visible(True)
+        self.update_key_state(use_ai)
+        if use_ai and not self.input_api_key.text().strip():
+            self.input_api_key.setFocus()
         self.update_translate_summary()
 
     def on_random_scan_settings_changed(self, *_):
@@ -2795,6 +2854,8 @@ class SettingsWindow(QWidget):
 
     def set_translate_advanced_visible(self, visible):
         self.advanced_translate_frame.setVisible(visible)
+        self.adjustSize()
+        QTimer.singleShot(0, self._lock_settings_columns)
 
     def update_random_scan_summary(self):
         center = max(1, int(self.spin_random_scan_center.value()))
@@ -2802,16 +2863,17 @@ class SettingsWindow(QWidget):
         spread = max(0, int(round(center * jitter / 100.0)))
         low = max(1, center - spread)
         high = max(low, center + spread)
-        self.lbl_random_scan_summary.setText(f"目前：🎲 {center}s~ · 約 {low} ~ {high} 秒")
+        self.lbl_random_scan_summary.setText(f"狀態：{center}s 附近 · 約 {low} ~ {high} 秒")
 
     def update_region_render_summary(self):
         mode = self.cmb_region_render_mode.itemData(self.cmb_region_render_mode.currentIndex())
         if mode == REGION_RENDER_RELIEF:
-            self.lbl_region_render_summary.setText("目前：浮雕功能 · 文字會貼在原文附近")
+            self.lbl_region_render_summary.setText("狀態：浮雕功能 · 文字貼近原文")
             self.card_relief.setVisible(True)
         else:
-            self.lbl_region_render_summary.setText("目前：氣泡功能 · 保留原本可愛泡泡")
+            self.lbl_region_render_summary.setText("狀態：氣泡功能 · 保留原本泡泡")
             self.card_relief.setVisible(False)
+        self.adjustSize()
 
     def update_relief_summary(self):
         side = self.cmb_relief_side.itemText(self.cmb_relief_side.currentIndex())
@@ -2820,17 +2882,16 @@ class SettingsWindow(QWidget):
         opacity = int(self.slider_relief_opacity.value())
         self.lbl_relief_gap_value.setText(f"{gap_px} px")
         self.lbl_relief_opacity_value.setText(f"{opacity}%")
-        self.lbl_relief_summary.setText(f"目前：{side} · {font_pt} pt · 位移 {gap_px}px · 選區框透明度 {opacity}%")
+        self.lbl_relief_summary.setText(f"狀態：{side} · {font_pt} pt · {gap_px}px · {opacity}%")
 
     def update_translate_summary(self):
-        use_ai = bool(self.cmb_translate_mode.itemData(self.cmb_translate_mode.currentIndex()))
+        use_ai = self.btn_translate_ai.isChecked()
         model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
         if use_ai:
-            key_state = "已輸入 API KEY" if self.input_api_key.text().strip() else "尚未輸入 API KEY"
             auto_state = "自動切換 ON" if self.chk_auto_switch.isChecked() else "自動切換 OFF"
-            self.lbl_translate_summary.setText(f"目前：AI 翻譯 · {model_name} · {auto_state} · {key_state}")
+            self.lbl_translate_summary.setText(f"狀態：AI 翻譯 · {model_name} · {auto_state}")
         else:
-            self.lbl_translate_summary.setText("目前：Google 翻譯 · 免 API KEY")
+            self.lbl_translate_summary.setText("狀態：Google 翻譯 · 免 API KEY")
 
     def sync_from_controller(self):
         self.chk_dark_mode.blockSignals(True)
@@ -2879,14 +2940,41 @@ class SettingsWindow(QWidget):
         self.chk_auto_switch.setChecked(self.controller.worker.gemma_auto_switch_enabled)
         self.chk_auto_switch.blockSignals(False)
 
-        self.cmb_translate_mode.blockSignals(True)
-        self.cmb_translate_mode.setCurrentIndex(1 if self.controller.btn_ai_mode.isChecked() else 0)
-        self.cmb_translate_mode.blockSignals(False)
+        self.btn_translate_google.blockSignals(True)
+        self.btn_translate_ai.blockSignals(True)
+        self.btn_translate_google.setChecked(not self.controller.btn_ai_mode.isChecked())
+        self.btn_translate_ai.setChecked(self.controller.btn_ai_mode.isChecked())
+        self.btn_translate_google.blockSignals(False)
+        self.btn_translate_ai.blockSignals(False)
         self.set_translate_advanced_visible(self.controller.btn_ai_mode.isChecked())
         self.update_translate_summary()
         self.update_random_scan_summary()
         self.update_region_render_summary()
         self.update_relief_summary()
+        QTimer.singleShot(0, self._lock_settings_columns)
+
+    def _lock_settings_columns(self):
+        if not hasattr(self, "settings_splitter"):
+            return
+        total_width = self.settings_splitter.width()
+        if total_width <= 0:
+            return
+        handle_width = self.settings_splitter.handleWidth()
+        available_width = max(0, total_width - handle_width)
+        left_width = int(available_width * 0.60)
+        right_width = available_width - left_width
+        if hasattr(self, "left_panel") and hasattr(self, "right_panel"):
+            self.left_panel.setMinimumWidth(left_width)
+            self.left_panel.setMaximumWidth(left_width)
+            self.right_panel.setMinimumWidth(right_width)
+            self.right_panel.setMaximumWidth(right_width)
+        self.settings_splitter.blockSignals(True)
+        self.settings_splitter.setSizes([left_width, right_width])
+        self.settings_splitter.blockSignals(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._lock_settings_columns()
 
     def update_theme(self, is_dark):
         if is_dark:
@@ -2941,7 +3029,7 @@ class SettingsWindow(QWidget):
         self.lbl_region_render.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
         self.lbl_region_render_hint.setStyleSheet(f"color: {subtext};")
         self.lbl_region_render_mode.setStyleSheet(f"color: {text};")
-        self.lbl_region_render_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 4px 10px;")
+        self.lbl_region_render_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
         self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
         self.lbl_relief_hint.setStyleSheet(f"color: {subtext};")
         self.lbl_relief_side.setStyleSheet(f"color: {text};")
@@ -2949,14 +3037,15 @@ class SettingsWindow(QWidget):
         self.lbl_relief_gap.setStyleSheet(f"color: {text};")
         self.lbl_relief_opacity.setStyleSheet(f"color: {text};")
         self.lbl_relief_gap_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
-        self.lbl_relief_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 4px 10px;")
+        self.lbl_relief_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
         self.lbl_relief_opacity_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
         self.lbl_translate.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
         self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {accent};")
         self.lbl_advanced_hint.setStyleSheet(f"color: {subtext};")
         self.lbl_ocr_hint.setStyleSheet(f"color: {subtext};")
         self.lbl_translate_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_translate_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 4px 10px;")
+        self.lbl_random_scan_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
+        self.lbl_translate_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
         self.btn_close.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {subtext}; border: none; font-size: 14px; font-weight: bold; }}"
             f"QPushButton:hover {{ background-color: {accent_soft}; color: {text}; border-radius: 14px; }}"
@@ -2978,6 +3067,615 @@ class SettingsWindow(QWidget):
         self.old_pos = None
         super().mouseReleaseEvent(event)
 
+class SettingsWindowRevamp(QWidget):
+    def __init__(self, controller):
+        super().__init__()
+        self.controller = controller
+        self.setWindowTitle("設定頁面")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.old_pos = None
+        self._drag_origin = None
+        self._ai_requested = False
+        self.setFixedSize(800, 1000)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(0)
+
+        self.frame = QFrame()
+        root.addWidget(self.frame)
+        main = QVBoxLayout(self.frame)
+        main.setContentsMargins(18, 18, 18, 18)
+        main.setSpacing(14)
+
+        self.header_panel = QFrame()
+        header = QVBoxLayout(self.header_panel)
+        header.setContentsMargins(18, 16, 18, 16)
+        header.setSpacing(10)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+        title_box = QVBoxLayout()
+        title_box.setSpacing(4)
+        self.lbl_title = QLabel("設定頁面")
+        self.lbl_subtitle = QLabel("把常用設定分成固定五塊，少一點伸縮，多一點直接")
+        self.lbl_title.setStyleSheet("font-size: 19px; font-weight: 800; background: transparent; border: none;")
+        self.lbl_subtitle.setStyleSheet("font-size: 11px; background: transparent; border: none;")
+        title_box.addWidget(self.lbl_title)
+        title_box.addWidget(self.lbl_subtitle)
+        top_row.addLayout(title_box)
+        top_row.addStretch()
+        self.btn_close = QPushButton("✕")
+        self.btn_close.setFixedSize(30, 30)
+        self.btn_close.setCursor(Qt.PointingHandCursor)
+        self.btn_close.clicked.connect(self.hide)
+        top_row.addWidget(self.btn_close)
+        header.addLayout(top_row)
+
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(8)
+        self.lbl_autosave = QLabel("自動儲存中")
+        self.lbl_sync_state = QLabel("即時同步")
+        chip_row.addWidget(self.lbl_autosave)
+        chip_row.addWidget(self.lbl_sync_state)
+        chip_row.addStretch()
+        self.cmb_theme_mode_chip = QComboBox()
+        self.cmb_theme_mode_chip.addItem("淺色模式", "light")
+        self.cmb_theme_mode_chip.addItem("深色模式", "dark")
+        self.cmb_theme_mode_chip.setCursor(Qt.PointingHandCursor)
+        self.cmb_theme_mode_chip.setFixedWidth(112)
+        self.cmb_theme_mode_chip.currentIndexChanged.connect(self.on_theme_mode_changed)
+        chip_row.addWidget(self.cmb_theme_mode_chip)
+        header.addLayout(chip_row)
+        main.addWidget(self.header_panel)
+
+        self.card_translate = QFrame()
+        translate = QVBoxLayout(self.card_translate)
+        translate.setContentsMargins(18, 18, 18, 18)
+        translate.setSpacing(12)
+        self.lbl_translate = QLabel("翻譯")
+        self.lbl_translate_hint = QLabel("Google 免設定；AI 模式請看右側 KEY 區塊")
+        self.lbl_translate_hint.setWordWrap(True)
+        self.lbl_translate_summary = QLabel("狀態：Google 翻譯中")
+        self.lbl_translate_summary.setWordWrap(True)
+        translate.addWidget(self.lbl_translate)
+        translate.addWidget(self.lbl_translate_hint)
+        translate.addWidget(self.lbl_translate_summary)
+
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
+        self.lbl_translate_mode = QLabel("翻譯模式")
+        mode_row.addWidget(self.lbl_translate_mode)
+        mode_row.addStretch()
+        self.translate_mode_group = QButtonGroup(self)
+        self.translate_mode_group.setExclusive(True)
+        self.btn_translate_google = QPushButton("Google 翻譯")
+        self.btn_translate_google.setCheckable(True)
+        self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
+        self.translate_mode_group.addButton(self.btn_translate_google)
+        mode_row.addWidget(self.btn_translate_google)
+        self.btn_translate_ai = QPushButton("Gemma AI 翻譯")
+        self.btn_translate_ai.setCheckable(True)
+        self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
+        self.translate_mode_group.addButton(self.btn_translate_ai)
+        mode_row.addWidget(self.btn_translate_ai)
+        translate.addLayout(mode_row)
+
+        self.advanced_translate_frame = QFrame()
+        adv = QVBoxLayout(self.advanced_translate_frame)
+        adv.setContentsMargins(14, 14, 14, 14)
+        adv.setSpacing(10)
+        self.lbl_api_key = QLabel("Google API KEY")
+        adv.addWidget(self.lbl_api_key)
+        self.input_api_key = QLineEdit()
+        self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        self.input_api_key.setPlaceholderText("輸入 Google API KEY")
+        self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
+        adv.addWidget(self.input_api_key)
+        self.lbl_ai_model = QLabel("AI 模型")
+        adv.addWidget(self.lbl_ai_model)
+        self.cmb_ai_model = QComboBox()
+        for label, model_name in SUPPORTED_AI_MODELS:
+            self.cmb_ai_model.addItem(label, model_name)
+        self.cmb_ai_model.currentIndexChanged.connect(self.on_ai_model_changed)
+        adv.addWidget(self.cmb_ai_model)
+        self.chk_auto_switch = QCheckBox("自動切換")
+        self.chk_auto_switch.toggled.connect(self.on_auto_switch_toggled)
+        adv.addWidget(self.chk_auto_switch)
+        self.card_key = QFrame()
+        key_layout = QVBoxLayout(self.card_key)
+        key_layout.setContentsMargins(18, 18, 18, 18)
+        key_layout.setSpacing(12)
+        self.lbl_advanced_translate = QLabel("KEY")
+        self.lbl_advanced_hint = QLabel("輸入 Google API KEY，AI 模式才會用到")
+        self.lbl_advanced_hint.setWordWrap(True)
+        key_layout.addWidget(self.lbl_advanced_translate)
+        key_layout.addWidget(self.lbl_advanced_hint)
+        key_layout.addWidget(self.advanced_translate_frame)
+
+        self.card_ocr = QFrame()
+        ocr = QVBoxLayout(self.card_ocr)
+        ocr.setContentsMargins(18, 18, 18, 18)
+        ocr.setSpacing(12)
+        self.lbl_ocr = QLabel("掃描")
+        self.lbl_ocr_hint = QLabel("中心秒數與偏移幅度會直接影響觸發節奏")
+        self.lbl_ocr_hint.setWordWrap(True)
+        ocr.addWidget(self.lbl_ocr)
+        ocr.addWidget(self.lbl_ocr_hint)
+
+        self.auto_scan_panel = QFrame()
+        auto_scan = QVBoxLayout(self.auto_scan_panel)
+        auto_scan.setContentsMargins(14, 14, 14, 14)
+        auto_scan.setSpacing(10)
+        self.lbl_auto_scan = QLabel("掃描設定")
+        self.lbl_auto_scan_hint = QLabel("中心秒數與偏移幅度會同步到主畫面")
+        self.lbl_auto_scan_hint.setWordWrap(True)
+        auto_scan.addWidget(self.lbl_auto_scan)
+        auto_scan.addWidget(self.lbl_auto_scan_hint)
+        center_row = QHBoxLayout()
+        center_row.setSpacing(8)
+        self.lbl_random_scan_center = QLabel("中心秒數")
+        center_row.addWidget(self.lbl_random_scan_center)
+        center_row.addStretch()
+        self.spin_random_scan_center = QSpinBox()
+        self.spin_random_scan_center.setRange(3, 300)
+        self.spin_random_scan_center.setSuffix(" 秒")
+        self.spin_random_scan_center.valueChanged.connect(self.on_random_scan_settings_changed)
+        center_row.addWidget(self.spin_random_scan_center)
+        auto_scan.addLayout(center_row)
+        jitter_row = QHBoxLayout()
+        jitter_row.setSpacing(8)
+        self.lbl_random_scan_jitter = QLabel("偏移幅度")
+        jitter_row.addWidget(self.lbl_random_scan_jitter)
+        jitter_row.addStretch()
+        self.spin_random_scan_jitter = QSpinBox()
+        self.spin_random_scan_jitter.setRange(0, 100)
+        self.spin_random_scan_jitter.setSuffix(" %")
+        self.spin_random_scan_jitter.valueChanged.connect(self.on_random_scan_settings_changed)
+        jitter_row.addWidget(self.spin_random_scan_jitter)
+        auto_scan.addLayout(jitter_row)
+        self.lbl_random_scan_summary = QLabel("狀態：10s 附近 · 約 8 ~ 12 秒")
+        self.lbl_random_scan_summary.setWordWrap(True)
+        auto_scan.addWidget(self.lbl_random_scan_summary)
+        ocr.addWidget(self.auto_scan_panel)
+
+        self.card_region_render = QFrame()
+        render = QVBoxLayout(self.card_region_render)
+        render.setContentsMargins(18, 18, 18, 18)
+        render.setSpacing(12)
+        self.lbl_region_render = QLabel("模式")
+        self.lbl_region_render_hint = QLabel("氣泡保留原本樣式，浮雕會貼近原文")
+        self.lbl_region_render_hint.setWordWrap(True)
+        render.addWidget(self.lbl_region_render)
+        render.addWidget(self.lbl_region_render_hint)
+        render_row = QHBoxLayout()
+        render_row.setSpacing(8)
+        self.lbl_region_render_mode = QLabel("顯示方式")
+        render_row.addWidget(self.lbl_region_render_mode)
+        render_row.addStretch()
+        self.cmb_region_render_mode = QComboBox()
+        self.cmb_region_render_mode.addItem("氣泡功能", REGION_RENDER_BUBBLE)
+        self.cmb_region_render_mode.addItem("浮雕功能", REGION_RENDER_RELIEF)
+        self.cmb_region_render_mode.currentIndexChanged.connect(self.on_region_render_mode_changed)
+        render_row.addWidget(self.cmb_region_render_mode)
+        render.addLayout(render_row)
+        self.lbl_region_render_summary = QLabel("狀態：氣泡功能")
+        self.lbl_region_render_summary.setWordWrap(True)
+        render.addWidget(self.lbl_region_render_summary)
+
+        self.card_relief = QFrame()
+        relief = QVBoxLayout(self.card_relief)
+        relief.setContentsMargins(18, 18, 18, 18)
+        relief.setSpacing(12)
+        self.lbl_relief = QLabel("浮雕細節")
+        self.lbl_relief_hint = QLabel("只在浮雕模式啟用，位移 0 會對齊原位")
+        self.lbl_relief_hint.setWordWrap(True)
+        relief.addWidget(self.lbl_relief)
+        relief.addWidget(self.lbl_relief_hint)
+        side_row = QHBoxLayout()
+        side_row.setSpacing(8)
+        self.lbl_relief_side = QLabel("文字方向")
+        side_row.addWidget(self.lbl_relief_side)
+        side_row.addStretch()
+        self.cmb_relief_side = QComboBox()
+        for label, value in RELIEF_SIDE_OPTIONS:
+            self.cmb_relief_side.addItem(label, value)
+        self.cmb_relief_side.currentIndexChanged.connect(self.on_relief_setting_changed)
+        side_row.addWidget(self.cmb_relief_side)
+        relief.addLayout(side_row)
+        font_row = QHBoxLayout()
+        font_row.setSpacing(8)
+        self.lbl_relief_font = QLabel("文字大小")
+        font_row.addWidget(self.lbl_relief_font)
+        font_row.addStretch()
+        self.spin_relief_font = QSpinBox()
+        self.spin_relief_font.setRange(8, 48)
+        self.spin_relief_font.setSuffix(" pt")
+        self.spin_relief_font.valueChanged.connect(self.on_relief_setting_changed)
+        font_row.addWidget(self.spin_relief_font)
+        relief.addLayout(font_row)
+        gap_row = QHBoxLayout()
+        gap_row.setSpacing(8)
+        self.lbl_relief_gap = QLabel("浮雕位移")
+        gap_row.addWidget(self.lbl_relief_gap)
+        self.slider_relief_gap = QSlider(Qt.Horizontal)
+        self.slider_relief_gap.setRange(0, RELIEF_MAX_GAP_PX)
+        self.slider_relief_gap.valueChanged.connect(self.on_relief_setting_changed)
+        gap_row.addWidget(self.slider_relief_gap)
+        self.lbl_relief_gap_value = QLabel("10 px")
+        self.lbl_relief_gap_value.setFixedWidth(58)
+        self.lbl_relief_gap_value.setAlignment(Qt.AlignCenter)
+        gap_row.addWidget(self.lbl_relief_gap_value)
+        relief.addLayout(gap_row)
+        opacity_row = QHBoxLayout()
+        opacity_row.setSpacing(8)
+        self.lbl_relief_opacity = QLabel("選區框透明度")
+        opacity_row.addWidget(self.lbl_relief_opacity)
+        self.slider_relief_opacity = QSlider(Qt.Horizontal)
+        self.slider_relief_opacity.setRange(0, 100)
+        self.slider_relief_opacity.valueChanged.connect(self.on_relief_setting_changed)
+        opacity_row.addWidget(self.slider_relief_opacity)
+        self.lbl_relief_opacity_value = QLabel("40%")
+        self.lbl_relief_opacity_value.setFixedWidth(46)
+        self.lbl_relief_opacity_value.setAlignment(Qt.AlignCenter)
+        opacity_row.addWidget(self.lbl_relief_opacity_value)
+        relief.addLayout(opacity_row)
+        self.lbl_relief_summary = QLabel("狀態：自動 · 18 pt · 選區框透明度 40%")
+        self.lbl_relief_summary.setWordWrap(True)
+        relief.addWidget(self.lbl_relief_summary)
+        body = QWidget()
+        body_grid = QGridLayout(body)
+        body_grid.setContentsMargins(0, 0, 0, 0)
+        body_grid.setHorizontalSpacing(14)
+        body_grid.setVerticalSpacing(14)
+        body_grid.setColumnStretch(0, 1)
+        body_grid.setColumnStretch(1, 1)
+        body_grid.addWidget(self.card_translate, 0, 0, 1, 2)
+        body_grid.addWidget(self.card_key, 1, 0)
+        body_grid.addWidget(self.card_ocr, 1, 1)
+        body_grid.addWidget(self.card_region_render, 2, 0)
+        body_grid.addWidget(self.card_relief, 2, 1)
+        main.addWidget(body)
+
+        self._drag_widgets = [
+            self,
+            self.frame,
+            self.header_panel,
+            body,
+            self.card_translate,
+            self.card_key,
+            self.card_ocr,
+            self.auto_scan_panel,
+            self.card_region_render,
+            self.card_relief,
+        ]
+        for widget in self._drag_widgets:
+            widget.installEventFilter(self)
+
+        self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+
+    def on_translate_mode_clicked(self, use_ai):
+        self.set_translate_mode(use_ai)
+        has_key = bool(self.controller.worker.google_api_key.strip())
+        if use_ai:
+            if has_key:
+                self._ai_requested = True
+                self.controller.btn_ai_mode.setChecked(True)
+                self.controller.toggle_ai_translation(True)
+            else:
+                self._ai_requested = True
+                self.controller.btn_ai_mode.blockSignals(True)
+                self.controller.btn_ai_mode.setChecked(False)
+                self.controller.btn_ai_mode.blockSignals(False)
+                self.update_key_state(True)
+                self.input_api_key.setFocus()
+        else:
+            self._ai_requested = False
+            self.controller.btn_ai_mode.setChecked(False)
+            self.controller.toggle_ai_translation(False)
+
+    def on_api_key_text_changed(self, text):
+        self.controller.on_api_key_changed(text)
+        if text.strip() and self.btn_translate_ai.isChecked() and not self.controller.btn_ai_mode.isChecked():
+            self.controller.btn_ai_mode.setChecked(True)
+            self.controller.toggle_ai_translation(True)
+        self.update_translate_summary()
+
+    def on_ai_model_changed(self, index):
+        self.controller.on_ai_model_changed(index)
+        self.update_translate_summary()
+
+    def on_auto_switch_toggled(self, checked):
+        self.controller.set_gemma_auto_switch_mode(checked)
+        self.update_translate_summary()
+
+    def set_translate_mode(self, use_ai):
+        self.btn_translate_google.blockSignals(True)
+        self.btn_translate_ai.blockSignals(True)
+        self.btn_translate_google.setChecked(not use_ai)
+        self.btn_translate_ai.setChecked(use_ai)
+        self.btn_translate_google.blockSignals(False)
+        self.btn_translate_ai.blockSignals(False)
+        self.set_translate_advanced_visible(use_ai)
+        self.update_key_state(use_ai or self._ai_requested)
+        if use_ai and not self.input_api_key.text().strip():
+            self.input_api_key.setFocus()
+        self.update_translate_summary()
+
+    def on_random_scan_settings_changed(self, *_):
+        self.controller.on_random_scan_settings_changed(self.spin_random_scan_center.value(), self.spin_random_scan_jitter.value())
+        self.update_random_scan_summary()
+
+    def on_region_render_mode_changed(self, index):
+        self.controller.on_region_render_mode_changed(self.cmb_region_render_mode.itemData(index))
+        self.update_region_render_summary()
+
+    def on_relief_setting_changed(self, *_):
+        self.controller.on_region_relief_settings_changed(
+            self.cmb_relief_side.itemData(self.cmb_relief_side.currentIndex()),
+            self.spin_relief_font.value(),
+            self.slider_relief_gap.value(),
+            self.slider_relief_opacity.value(),
+        )
+        self.update_relief_summary()
+
+    def on_theme_mode_changed(self, index):
+        combo = self.sender()
+        if combo is None or not hasattr(combo, "itemData"):
+            return
+        theme_mode = combo.itemData(index)
+        if not theme_mode:
+            return
+        self.controller.set_theme_mode(theme_mode)
+
+    def eventFilter(self, obj, event):
+        if obj in getattr(self, "_drag_widgets", ()):
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                local_pos = event.position().toPoint()
+                child = obj.childAt(local_pos) if hasattr(obj, "childAt") else None
+                interactive_types = (QPushButton, QLineEdit, QComboBox, QCheckBox, QSpinBox)
+                while child is not None:
+                    if isinstance(child, interactive_types):
+                        return super().eventFilter(obj, event)
+                    child = child.parentWidget()
+                self._drag_origin = event.globalPosition().toPoint()
+                event.accept()
+                return True
+            if event.type() == QEvent.MouseMove and self._drag_origin is not None and event.buttons() & Qt.LeftButton:
+                delta = event.globalPosition().toPoint() - self._drag_origin
+                self.move(self.x() + delta.x(), self.y() + delta.y())
+                self._drag_origin = event.globalPosition().toPoint()
+                event.accept()
+                return True
+            if event.type() == QEvent.MouseButtonRelease and self._drag_origin is not None:
+                self._drag_origin = None
+                event.accept()
+                return True
+        return super().eventFilter(obj, event)
+
+    def set_translate_advanced_visible(self, visible):
+        self.advanced_translate_frame.setVisible(True)
+
+    def update_random_scan_summary(self):
+        center = max(1, int(self.spin_random_scan_center.value()))
+        jitter = max(0, int(self.spin_random_scan_jitter.value()))
+        spread = max(0, int(round(center * jitter / 100.0)))
+        low = max(1, center - spread)
+        high = max(low, center + spread)
+        self.lbl_random_scan_summary.setText(f"目前：{center}s 附近 · 約 {low} ~ {high} 秒")
+
+    def update_region_render_summary(self):
+        mode = self.cmb_region_render_mode.itemData(self.cmb_region_render_mode.currentIndex())
+        if mode == REGION_RENDER_RELIEF:
+            self.lbl_region_render_summary.setText("目前：浮雕功能 · 文字貼近原文")
+            self.update_relief_state(True)
+        else:
+            self.lbl_region_render_summary.setText("目前：氣泡功能 · 保留原本泡泡")
+            self.update_relief_state(False)
+
+    def update_relief_summary(self):
+        side = self.cmb_relief_side.itemText(self.cmb_relief_side.currentIndex())
+        font_pt = int(self.spin_relief_font.value())
+        gap_px = int(self.slider_relief_gap.value())
+        opacity = int(self.slider_relief_opacity.value())
+        self.lbl_relief_gap_value.setText(f"{gap_px} px")
+        self.lbl_relief_opacity_value.setText(f"{opacity}%")
+        self.lbl_relief_summary.setText(f"目前：{side} · {font_pt} pt · {gap_px}px · {opacity}%")
+
+    def update_translate_summary(self):
+        use_ai = self.btn_translate_ai.isChecked()
+        model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
+        if use_ai:
+            auto_state = "自動切換 ON" if self.chk_auto_switch.isChecked() else "自動切換 OFF"
+            self.lbl_translate_summary.setText(f"目前：AI 翻譯 · {model_name} · {auto_state}")
+        else:
+            self.lbl_translate_summary.setText("目前：Google 翻譯 · 免 API KEY")
+
+    def update_key_state(self, enabled):
+        self.card_key.setEnabled(enabled)
+        self.input_api_key.setEnabled(enabled)
+        self.cmb_ai_model.setEnabled(enabled)
+        self.chk_auto_switch.setEnabled(enabled)
+        effect = None
+        if not enabled:
+            effect = QGraphicsOpacityEffect(self.card_key)
+            effect.setOpacity(0.45)
+        self.card_key.setGraphicsEffect(effect)
+
+    def update_relief_state(self, enabled):
+        self.card_relief.setEnabled(enabled)
+        self.cmb_relief_side.setEnabled(enabled)
+        self.spin_relief_font.setEnabled(enabled)
+        self.slider_relief_gap.setEnabled(enabled)
+        self.slider_relief_opacity.setEnabled(enabled)
+        effect = None
+        if not enabled:
+            effect = QGraphicsOpacityEffect(self.card_relief)
+            effect.setOpacity(0.45)
+        self.card_relief.setGraphicsEffect(effect)
+
+    def sync_from_controller(self):
+        ai_requested = self.controller.btn_ai_mode.isChecked()
+        if not ai_requested:
+            self._ai_requested = False
+        theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
+        self.spin_random_scan_center.blockSignals(True)
+        self.spin_random_scan_center.setValue(self.controller.random_scan_center_seconds)
+        self.spin_random_scan_center.blockSignals(False)
+        self.spin_random_scan_jitter.blockSignals(True)
+        self.spin_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
+        self.spin_random_scan_jitter.blockSignals(False)
+        self.cmb_region_render_mode.blockSignals(True)
+        self.cmb_region_render_mode.setCurrentIndex(1 if self.controller.region_render_mode == REGION_RENDER_RELIEF else 0)
+        self.cmb_region_render_mode.blockSignals(False)
+        self.cmb_relief_side.blockSignals(True)
+        self.cmb_relief_side.setCurrentIndex(max(0, self.cmb_relief_side.findData(self.controller.region_relief_side)))
+        self.cmb_relief_side.blockSignals(False)
+        self.spin_relief_font.blockSignals(True)
+        self.spin_relief_font.setValue(self.controller.region_relief_font_pt)
+        self.spin_relief_font.blockSignals(False)
+        self.slider_relief_gap.blockSignals(True)
+        self.slider_relief_gap.setValue(self.controller.region_relief_gap_px)
+        self.slider_relief_gap.blockSignals(False)
+        self.slider_relief_opacity.blockSignals(True)
+        self.slider_relief_opacity.setValue(self.controller.region_frame_opacity)
+        self.slider_relief_opacity.blockSignals(False)
+        self.input_api_key.blockSignals(True)
+        self.input_api_key.setText(self.controller.worker.google_api_key)
+        self.input_api_key.blockSignals(False)
+        self.cmb_ai_model.blockSignals(True)
+        self.cmb_ai_model.setCurrentIndex(self.controller.cmb_ai_model.currentIndex())
+        self.cmb_ai_model.blockSignals(False)
+        self.chk_auto_switch.blockSignals(True)
+        self.chk_auto_switch.setChecked(self.controller.worker.gemma_auto_switch_enabled)
+        self.chk_auto_switch.blockSignals(False)
+        self.btn_translate_google.blockSignals(True)
+        self.btn_translate_ai.blockSignals(True)
+        self.btn_translate_google.setChecked(not ai_requested)
+        self.btn_translate_ai.setChecked(ai_requested)
+        self.btn_translate_google.blockSignals(False)
+        self.btn_translate_ai.blockSignals(False)
+        self.set_translate_advanced_visible(True)
+        self.update_key_state(ai_requested or self._ai_requested)
+        self._sync_theme_mode(theme_mode)
+        self.update_translate_summary()
+        self.update_random_scan_summary()
+        self.update_region_render_summary()
+        self.update_relief_summary()
+
+    def _sync_theme_mode(self, theme_mode):
+        theme_mode = str(theme_mode or "light")
+        for combo in (getattr(self, "cmb_theme_mode_chip", None),):
+            if combo is None:
+                continue
+            combo.blockSignals(True)
+            index = combo.findData(theme_mode)
+            if index < 0:
+                index = 0
+            combo.setCurrentIndex(index)
+            combo.blockSignals(False)
+
+    def update_theme(self, is_dark):
+        if is_dark:
+            bg = "rgba(26, 31, 36, 245)"
+            card_bg = "rgba(44, 51, 60, 228)"
+            text = "#EAF7FF"
+            subtext = "#B7CCD9"
+            border = "#5B6B78"
+            accent = "#55C7F3"
+            accent_soft = "rgba(85, 199, 243, 0.18)"
+            input_bg = "#2F3942"
+        else:
+            bg = "rgba(240, 248, 255, 238)"
+            card_bg = "rgba(255, 255, 255, 232)"
+            text = "#39566B"
+            subtext = "#6C8A9D"
+            border = "#9DDCF2"
+            accent = "#4FC3F7"
+            accent_soft = "rgba(79, 195, 247, 0.16)"
+            input_bg = "#FFFFFF"
+        self.setStyleSheet(
+            f"QWidget {{ color: {text}; }}"
+            f"QFrame {{ border: none; }}"
+            f"QScrollArea {{ border: none; background: transparent; }}"
+            f"QLineEdit, QComboBox, QSpinBox {{ background-color: {input_bg}; color: {text}; border: 1px solid {border}; border-radius: 10px; padding: 7px 10px; selection-background-color: {accent}; }}"
+            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 2px solid {accent}; }}"
+            f"QComboBox::drop-down {{ border: none; width: 22px; }}"
+            f"QComboBox::down-arrow {{ image: none; }}"
+            f"QSpinBox::up-button, QSpinBox::down-button {{ width: 16px; border: none; background: transparent; }}"
+            f"QCheckBox {{ color: {text}; spacing: 8px; }}"
+            f"QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 9px; border: 1px solid {border}; background: {input_bg}; }}"
+            f"QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}"
+            f"QSlider::groove:horizontal {{ height: 8px; border-radius: 4px; background: {accent_soft}; }}"
+            f"QSlider::handle:horizontal {{ width: 18px; margin: -5px 0; border-radius: 9px; background: {accent}; border: 2px solid white; }}"
+            f"QPushButton {{ padding: 7px 12px; border-radius: 10px; border: 1px solid {border}; background: {card_bg}; color: {text}; }}"
+            f"QPushButton:hover {{ border-color: {accent}; }}"
+            f"QPushButton:checked {{ background: {accent_soft}; border-color: {accent}; }}"
+        )
+        self.frame.setStyleSheet(f"QFrame {{ background-color: {bg}; border: 2px solid {border}; border-radius: 22px; }}")
+        header_style = f"QFrame {{ background-color: {accent_soft}; border: 1px solid {border}; border-radius: 18px; }}"
+        subtle_card_style = f"QFrame {{ background-color: {card_bg}; border: 1px solid {border}; border-radius: 18px; }}"
+        primary_card_style = f"QFrame {{ background-color: {card_bg}; border: 1.5px solid {accent}; border-radius: 18px; }}"
+        self.header_panel.setStyleSheet(header_style)
+        self.card_translate.setStyleSheet(primary_card_style)
+        self.card_key.setStyleSheet(subtle_card_style)
+        self.card_ocr.setStyleSheet(subtle_card_style)
+        self.card_region_render.setStyleSheet(subtle_card_style)
+        self.card_relief.setStyleSheet(subtle_card_style)
+        self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.lbl_title.setStyleSheet(f"font-size: 19px; font-weight: 800; color: {text}; background: transparent; border: none;")
+        self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {subtext}; background: transparent; border: none;")
+        self.lbl_autosave.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self.lbl_sync_state.setStyleSheet(f"color: {subtext}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self.lbl_translate.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
+        self.lbl_translate_hint.setStyleSheet(f"color: {subtext};")
+        self.lbl_translate_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_translate_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {accent};")
+        self.lbl_advanced_hint.setStyleSheet(f"color: {subtext};")
+        self.lbl_api_key.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_ai_model.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.chk_auto_switch.setStyleSheet(f"color: {text}; padding-top: 2px;")
+        self.lbl_ocr.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
+        self.lbl_ocr_hint.setStyleSheet(f"color: {subtext};")
+        self.lbl_auto_scan.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {accent};")
+        self.lbl_auto_scan_hint.setStyleSheet(f"color: {subtext};")
+        self.lbl_random_scan_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self.lbl_random_scan_center.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_region_render.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
+        self.lbl_region_render_hint.setStyleSheet(f"color: {subtext};")
+        self.lbl_region_render_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_region_render_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self.lbl_relief.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
+        self.lbl_relief_hint.setStyleSheet(f"color: {subtext};")
+        self.lbl_relief_side.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_relief_font.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_relief_gap.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_relief_opacity.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
+        self.lbl_relief_gap_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief_opacity_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self._sync_theme_mode("dark" if is_dark else "light")
+        self.update_key_state(self.btn_translate_ai.isChecked() or self._ai_requested)
+        self.update_relief_state(self.cmb_region_render_mode.currentData() == REGION_RENDER_RELIEF)
+        self.btn_close.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; color: {subtext}; border: none; font-size: 14px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {accent_soft}; color: {text}; border-radius: 15px; }}"
+        )
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+
 # ==========================================
 # 設定與同步
 # ==========================================
@@ -2994,6 +3692,7 @@ class Controller(QWidget):
         self.region_frame.region_changed.connect(self.on_region_frame_changed)
         self.settings_window = None
         self.is_dark_mode = False
+        self.theme_mode = "light"
         self.current_auto_interval = 0 
         self.countdown_seconds = 0
         self.random_scan_center_seconds = 10
@@ -3195,6 +3894,7 @@ class Controller(QWidget):
             "gemma_model": self.worker.gemma_model,
             "use_gemma_translation": self.worker.use_gemma_translation,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
+            "google_api_key": self.worker.google_api_key,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
             "region_render_mode": self.region_render_mode,
@@ -3206,6 +3906,7 @@ class Controller(QWidget):
             "scan_mode": self.scan_mode,
             "selected_region": list(self.selected_region) if self.selected_region else None,
             "is_dark_mode": self.is_dark_mode,
+            "theme_mode": self.theme_mode,
             "binary_threshold": int(self.worker.binary_threshold),
         }
 
@@ -3218,11 +3919,16 @@ class Controller(QWidget):
             print(f"[Settings] save failed: {exc}")
 
     def load_settings(self):
-        try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as fp:
-                self.settings_data = json.load(fp)
-        except Exception as exc:
-            print(f"[Settings] load failed: {exc}")
+        loaded_from_path = None
+        for settings_path in (SETTINGS_FILE, LEGACY_SETTINGS_FILE):
+            try:
+                with open(settings_path, "r", encoding="utf-8") as fp:
+                    self.settings_data = json.load(fp)
+                loaded_from_path = settings_path
+                break
+            except Exception:
+                continue
+        if loaded_from_path is None:
             self.settings_data = {}
 
         settings = self.settings_data if isinstance(self.settings_data, dict) else {}
@@ -3265,7 +3971,10 @@ class Controller(QWidget):
         self.cmb_ai_model.blockSignals(False)
         self.on_ai_model_changed(model_index)
 
-        self.set_theme_mode(bool(settings.get("is_dark_mode", False)))
+        saved_theme_mode = str(settings.get("theme_mode", "") or "").strip()
+        if saved_theme_mode not in {"light", "dark"}:
+            saved_theme_mode = "dark" if bool(settings.get("is_dark_mode", False)) else "light"
+        self.set_theme_mode(saved_theme_mode)
         self.region_frame.set_theme_mode(self.is_dark_mode)
         self.region_frame.set_frame_opacity(self.region_frame_opacity)
 
@@ -3276,6 +3985,9 @@ class Controller(QWidget):
                 self.worker.set_scan_region(self.selected_region)
             except Exception:
                 self.selected_region = None
+
+        if loaded_from_path == LEGACY_SETTINGS_FILE or not os.path.exists(SETTINGS_FILE):
+            self.save_settings()
 
         saved_scan_mode = settings.get("scan_mode", SCAN_MODE_FULLSCREEN)
         if saved_scan_mode == SCAN_MODE_REGION and self.selected_region:
@@ -3425,9 +4137,7 @@ class Controller(QWidget):
             self.btn_ai_mode.setChecked(False)
             self.worker.set_gemma_enabled(False)
             if self.settings_window is not None:
-                self.settings_window.cmb_translate_mode.blockSignals(True)
-                self.settings_window.cmb_translate_mode.setCurrentIndex(0)
-                self.settings_window.cmb_translate_mode.blockSignals(False)
+                self.settings_window.set_translate_mode(False)
         if self.settings_window is not None and self.settings_window.input_api_key.text() != text:
             self.settings_window.input_api_key.blockSignals(True)
             self.settings_window.input_api_key.setText(text)
@@ -3449,17 +4159,11 @@ class Controller(QWidget):
             self.lbl_status.setText("請先輸入 Google API KEY")
             self.btn_ai_mode.setChecked(False)
             self.worker.set_gemma_enabled(False)
-            if self.settings_window is not None:
-                self.settings_window.cmb_translate_mode.blockSignals(True)
-                self.settings_window.cmb_translate_mode.setCurrentIndex(0)
-                self.settings_window.cmb_translate_mode.blockSignals(False)
             self.schedule_save_settings()
             return
         self.worker.set_gemma_enabled(checked)
         if self.settings_window is not None:
-            self.settings_window.cmb_translate_mode.blockSignals(True)
-            self.settings_window.cmb_translate_mode.setCurrentIndex(1 if checked else 0)
-            self.settings_window.cmb_translate_mode.blockSignals(False)
+            self.settings_window.set_translate_mode(checked)
         if checked:
             self.lbl_status.setText(f"AI模型: {self.cmb_ai_model.currentText()}")
         self.schedule_save_settings()
@@ -3545,9 +4249,10 @@ class Controller(QWidget):
 
     def toggle_settings_window(self):
         if self.settings_window is None:
-            self.settings_window = SettingsWindow(self)
+            self.settings_window = SettingsWindowRevamp(self)
         self.settings_window.sync_from_controller()
         self.settings_window.update_theme(self.is_dark_mode)
+        self.settings_window.resize(800, 1000)
         if self.settings_window.isVisible():
             self.settings_window.hide()
         else:
@@ -3720,12 +4425,16 @@ class Controller(QWidget):
             self.showNormal() 
 
     def toggle_theme(self):
-        self.is_dark_mode = not self.is_dark_mode
-        self.update_frame_style()
-        self.overlay.set_theme_mode(self.is_dark_mode)
+        self.set_theme_mode("dark" if not self.is_dark_mode else "light")
 
-    def set_theme_mode(self, is_dark):
-        self.is_dark_mode = bool(is_dark)
+    def set_theme_mode(self, theme_mode):
+        if isinstance(theme_mode, bool):
+            theme_mode = "dark" if theme_mode else "light"
+        theme_mode = str(theme_mode or "light").strip().lower()
+        if theme_mode not in {"light", "dark"}:
+            theme_mode = "light"
+        self.theme_mode = theme_mode
+        self.is_dark_mode = theme_mode == "dark"
         self.update_frame_style()
         self.overlay.set_theme_mode(self.is_dark_mode)
         self.region_frame.set_theme_mode(self.is_dark_mode)
