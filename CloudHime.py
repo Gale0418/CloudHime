@@ -358,6 +358,18 @@ class OCRWorker(QObject):
         except Exception:
             self.translation_registry = None
 
+    def _get_translation_provider(self, provider_name):
+        registry = self.translation_registry
+        if registry is None:
+            return None
+        try:
+            provider = registry.get(provider_name)
+        except Exception:
+            return None
+        if provider is None or not provider.available():
+            return None
+        return provider
+
     def _recognize_with_backends(self, img_np):
         if not self.ocr_backends:
             return None
@@ -589,6 +601,12 @@ class OCRWorker(QObject):
         return "", ""
 
     def translate_text_google(self, text):
+        provider = self._get_translation_provider("google")
+        if provider is not None:
+            normalized_text = normalize_ocr_text(text)
+            if not normalized_text:
+                return ""
+            return provider.translate(normalized_text).text
         return translation_tools.translate_text_google(
             text,
             self.translators,
@@ -597,9 +615,25 @@ class OCRWorker(QObject):
         )
 
     def translate_text_google_with_provider(self, text):
+        provider = self._get_translation_provider("google")
+        if provider is not None:
+            normalized_text = normalize_ocr_text(text)
+            if not normalized_text:
+                return "", provider.name
+            result = provider.translate(normalized_text)
+            return result.text, result.provider
         return self.translate_text_google(text), "google"
 
     def translate_text_google_batch(self, source_texts):
+        provider = self._get_translation_provider("google")
+        if provider is not None:
+            normalized_texts = [normalize_ocr_text(text) for text in source_texts]
+            if not normalized_texts or any(not text for text in normalized_texts):
+                return []
+            results = provider.translate_batch(normalized_texts)
+            if len(results) != len(normalized_texts):
+                return []
+            return [item.text for item in results]
         return translation_tools.translate_text_google_batch(
             source_texts,
             self.translators,
