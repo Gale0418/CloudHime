@@ -675,6 +675,15 @@ class OCRWorker(QObject):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
             return ""
+        provider = self._get_translation_provider("gemma")
+        if provider is not None:
+            result = provider.translate(normalized_text)
+            provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
+            if provider_model and provider_model != self.gemma_model:
+                old_model = self.gemma_model
+                self.gemma_model = provider_model
+                self.gemma_model_changed.emit(old_model, provider_model)
+            return result.text
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
@@ -723,6 +732,23 @@ class OCRWorker(QObject):
     def translate_multimodal_gemma(self, image_parts, source_texts):
         if not source_texts:
             return ""
+        provider = self._get_translation_provider("gemma")
+        if provider is not None:
+            results = provider.translate_multimodal(
+                source_texts,
+                image_parts,
+                target_lang=TARGET_LANG,
+            )
+            if results:
+                provider_model = self.normalize_gemma_model(results[0].model or self.gemma_model)
+                if provider_model and provider_model != self.gemma_model:
+                    old_model = self.gemma_model
+                    self.gemma_model = provider_model
+                    self.gemma_model_changed.emit(old_model, provider_model)
+                raw_text = results[0].raw_text or "\n".join(item.text for item in results)
+                if raw_text:
+                    return raw_text
+            raise ValueError("empty_gemma_multimodal_response")
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         if not image_parts:
@@ -772,7 +798,8 @@ class OCRWorker(QObject):
         return translated
 
     def translate_text_gemma_with_provider(self, text):
-        return self.translate_text_gemma(text), self.get_current_ai_provider()
+        translated = self.translate_text_gemma(text)
+        return translated, self.get_current_ai_provider()
 
     def translate_text_preferred(self, text):
         normalized_text = normalize_ocr_text(text)
