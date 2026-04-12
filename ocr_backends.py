@@ -206,7 +206,7 @@ class TesseractBackend(OCRBackend):
         image = _ensure_bgr(image)
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         try:
-            data = self._pytesseract.image_to_data(rgb, output_type=self._output_type.DICT, lang="jpn+eng")
+            data = self._pytesseract.image_to_data(rgb, output_type=self._output_type.DICT, lang="chi_tra+jpn+eng")
         except Exception as exc:
             return OCRResult(self.name, (), error=str(exc))
         lines: list[OCRLine] = []
@@ -244,17 +244,19 @@ class EasyOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available and self._get_reader() is not None
+        return self._available
 
     def _get_reader(self):
         if self._reader is not None:
             return self._reader
         if not self._available:
             return None
-        try:
-            self._reader = self._easyocr.Reader(["ja", "en", "ch_sim", "ko"], gpu=False, verbose=False)
-        except Exception:
-            self._reader = None
+        for langs in (["ch_tra", "en"], ["ja", "en"], ["ch_sim", "en"]):
+            try:
+                self._reader = self._easyocr.Reader(langs, gpu=False, verbose=False)
+                break
+            except Exception:
+                self._reader = None
         return self._reader
 
     def recognize(self, image: np.ndarray) -> OCRResult:
@@ -301,18 +303,25 @@ class PaddleOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available and self._get_ocr() is not None
+        return self._available
 
     def _get_ocr(self):
         if self._ocr is not None:
             return self._ocr
         if not self._available:
             return None
-        try:
-            self._ocr = self._PaddleOCR(use_angle_cls=True, lang="japan", show_log=False)
-        except Exception:
+        attempts = (
+            {"use_textline_orientation": True, "lang": "en"},
+            {"use_textline_orientation": True, "lang": "japan"},
+            {"use_textline_orientation": True, "lang": "ch"},
+            {"use_angle_cls": True, "lang": "en"},
+            {"use_angle_cls": True, "lang": "japan"},
+            {"use_angle_cls": True, "lang": "ch"},
+        )
+        for kwargs in attempts:
             try:
-                self._ocr = self._PaddleOCR(use_angle_cls=True, lang="ch", show_log=False)
+                self._ocr = self._PaddleOCR(**kwargs)
+                break
             except Exception:
                 self._ocr = None
         return self._ocr
@@ -323,12 +332,43 @@ class PaddleOCRBackend(OCRBackend):
             return OCRResult(self.name, ())
         image = _ensure_bgr(image)
         try:
-            items = ocr.ocr(image, cls=True)
+            try:
+                items = ocr.predict(image)
+            except Exception:
+                items = ocr.ocr(image)
         except Exception as exc:
             return OCRResult(self.name, (), error=str(exc))
         lines: list[OCRLine] = []
-        flat_items = items[0] if items and isinstance(items[0], list) and items and items and len(items) == 1 and items[0] and isinstance(items[0][0], list) else items
-        for item in flat_items or []:
+        for item in items or []:
+            if isinstance(item, dict):
+                rec_texts = list(item.get("rec_texts") or [])
+                rec_scores = list(item.get("rec_scores") or [])
+                rec_polys = list(item.get("rec_polys") or [])
+                rec_boxes = list(item.get("rec_boxes") or [])
+                for idx, raw_text in enumerate(rec_texts):
+                    text = str(raw_text).strip()
+                    if not text:
+                        continue
+                    confidence = None
+                    if idx < len(rec_scores):
+                        try:
+                            confidence = float(rec_scores[idx])
+                        except Exception:
+                            confidence = None
+                    box = OCRBox(0, 0, 1, 1)
+                    if idx < len(rec_polys):
+                        try:
+                            box = _box_from_points(rec_polys[idx])
+                        except Exception:
+                            box = OCRBox(0, 0, 1, 1)
+                    elif idx < len(rec_boxes):
+                        try:
+                            rect = rec_boxes[idx]
+                            box = OCRBox(int(rect[0]), int(rect[1]), max(1, int(rect[2] - rect[0])), max(1, int(rect[3] - rect[1])))
+                        except Exception:
+                            box = OCRBox(0, 0, 1, 1)
+                    lines.append(OCRLine(text, box, confidence, (OCRWord(text, box, confidence),)))
+                continue
             if not item:
                 continue
             box_points = item[0]
@@ -368,7 +408,7 @@ class RapidOCRBackend(OCRBackend):
                 self._available = False
 
     def available(self) -> bool:
-        return self._available and self._get_ocr() is not None
+        return self._available
 
     def _get_ocr(self):
         if self._ocr is not None:
