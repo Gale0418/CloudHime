@@ -71,6 +71,7 @@ from ocr_quality import (
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
 import translation_helpers as translation_tools
+from translation_registry import TranslationProviderRegistryConfig, build_translation_registry
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -80,6 +81,7 @@ from settings_store import (
     save_settings_data,
     should_migrate_to_appdata,
 )
+from translation_settings_panel import TranslationSettingsPanel
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -294,11 +296,13 @@ class OCRWorker(QObject):
         self.scan_region = None
         self.auto_threshold_enabled = True
         self.last_auto_threshold_refresh_ms = 0.0
+        self.translation_registry = None
         
         # 狀態標記
         
         self.binary_threshold = 100 
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
+        self._refresh_translation_registry()
         
         self.reload_ocr_backends()
 
@@ -340,6 +344,20 @@ class OCRWorker(QObject):
         else:
             print("[OCR] No OCR backends available.")
 
+    def _build_translation_registry_config(self):
+        return TranslationProviderRegistryConfig(
+            google_api_key=self.google_api_key,
+            gemma_model=self.gemma_model,
+            gemma_enabled=self.use_gemma_translation,
+            gemma_auto_switch_enabled=self.gemma_auto_switch_enabled,
+        )
+
+    def _refresh_translation_registry(self):
+        try:
+            self.translation_registry = build_translation_registry(self._build_translation_registry_config())
+        except Exception:
+            self.translation_registry = None
+
     def _recognize_with_backends(self, img_np):
         if not self.ocr_backends:
             return None
@@ -364,16 +382,20 @@ class OCRWorker(QObject):
 
     def set_google_api_key(self, api_key):
         self.google_api_key = (api_key or "").strip()
+        self._refresh_translation_registry()
 
     def set_gemma_enabled(self, enabled):
         self.use_gemma_translation = bool(enabled)
+        self._refresh_translation_registry()
 
     def set_gemma_auto_switch_enabled(self, enabled):
         self.gemma_auto_switch_enabled = bool(enabled)
+        self._refresh_translation_registry()
 
     def set_gemma_model(self, model_name):
         model_name = (model_name or "").strip()
         self.gemma_model = model_name or DEFAULT_GEMMA_MODEL
+        self._refresh_translation_registry()
 
     def set_scan_mode(self, scan_mode):
         self.scan_mode = scan_mode if scan_mode in (SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION) else SCAN_MODE_FULLSCREEN
@@ -2973,69 +2995,7 @@ class SettingsWindowRevamp(QWidget):
         header.addLayout(chip_row)
         main.addWidget(self.header_panel)
 
-        self.card_translate = QFrame()
-        translate = QVBoxLayout(self.card_translate)
-        translate.setContentsMargins(18, 18, 18, 18)
-        translate.setSpacing(12)
-        self.lbl_translate = QLabel("翻譯")
-        self.lbl_translate_hint = QLabel("Google 免設定；AI 模式請看右側 KEY 區塊")
-        self.lbl_translate_hint.setWordWrap(True)
-        self.lbl_translate_summary = QLabel("狀態：Google 翻譯中")
-        self.lbl_translate_summary.setWordWrap(True)
-        translate.addWidget(self.lbl_translate)
-        translate.addWidget(self.lbl_translate_hint)
-        translate.addWidget(self.lbl_translate_summary)
-
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(8)
-        self.lbl_translate_mode = QLabel("翻譯模式")
-        mode_row.addWidget(self.lbl_translate_mode)
-        mode_row.addStretch()
-        self.translate_mode_group = QButtonGroup(self)
-        self.translate_mode_group.setExclusive(True)
-        self.btn_translate_google = QPushButton("Google 翻譯")
-        self.btn_translate_google.setCheckable(True)
-        self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
-        self.translate_mode_group.addButton(self.btn_translate_google)
-        mode_row.addWidget(self.btn_translate_google)
-        self.btn_translate_ai = QPushButton("Gemma AI 翻譯")
-        self.btn_translate_ai.setCheckable(True)
-        self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
-        self.translate_mode_group.addButton(self.btn_translate_ai)
-        mode_row.addWidget(self.btn_translate_ai)
-        translate.addLayout(mode_row)
-
-        self.advanced_translate_frame = QFrame()
-        adv = QVBoxLayout(self.advanced_translate_frame)
-        adv.setContentsMargins(14, 14, 14, 14)
-        adv.setSpacing(10)
-        self.lbl_api_key = QLabel("Google API KEY")
-        adv.addWidget(self.lbl_api_key)
-        self.input_api_key = QLineEdit()
-        self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
-        self.input_api_key.setPlaceholderText("輸入 Google API KEY")
-        self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
-        adv.addWidget(self.input_api_key)
-        self.lbl_ai_model = QLabel("AI 模型")
-        adv.addWidget(self.lbl_ai_model)
-        self.cmb_ai_model = QComboBox()
-        for label, model_name in SUPPORTED_AI_MODELS:
-            self.cmb_ai_model.addItem(label, model_name)
-        self.cmb_ai_model.currentIndexChanged.connect(self.on_ai_model_changed)
-        adv.addWidget(self.cmb_ai_model)
-        self.chk_auto_switch = QCheckBox("自動切換")
-        self.chk_auto_switch.toggled.connect(self.on_auto_switch_toggled)
-        adv.addWidget(self.chk_auto_switch)
-        self.card_key = QFrame()
-        key_layout = QVBoxLayout(self.card_key)
-        key_layout.setContentsMargins(18, 18, 18, 18)
-        key_layout.setSpacing(12)
-        self.lbl_advanced_translate = QLabel("KEY")
-        self.lbl_advanced_hint = QLabel("輸入 Google API KEY，AI 模式才會用到")
-        self.lbl_advanced_hint.setWordWrap(True)
-        key_layout.addWidget(self.lbl_advanced_translate)
-        key_layout.addWidget(self.lbl_advanced_hint)
-        key_layout.addWidget(self.advanced_translate_frame)
+        self.translation_panel = TranslationSettingsPanel(self.controller, SUPPORTED_AI_MODELS, self)
 
         self.card_ocr = QFrame()
         ocr = QVBoxLayout(self.card_ocr)
@@ -3174,9 +3134,8 @@ class SettingsWindowRevamp(QWidget):
         body_grid.setVerticalSpacing(14)
         body_grid.setColumnStretch(0, 1)
         body_grid.setColumnStretch(1, 1)
-        body_grid.addWidget(self.card_translate, 0, 0, 1, 2)
-        body_grid.addWidget(self.card_key, 1, 0)
-        body_grid.addWidget(self.card_ocr, 1, 1)
+        body_grid.addWidget(self.translation_panel, 0, 0, 1, 2)
+        body_grid.addWidget(self.card_ocr, 1, 0, 1, 2)
         body_grid.addWidget(self.card_region_render, 2, 0)
         body_grid.addWidget(self.card_relief, 2, 1)
         main.addWidget(body)
@@ -3186,8 +3145,9 @@ class SettingsWindowRevamp(QWidget):
             self.frame,
             self.header_panel,
             body,
-            self.card_translate,
-            self.card_key,
+            self.translation_panel,
+            self.translation_panel.card_translate,
+            self.translation_panel.card_key,
             self.card_ocr,
             self.auto_scan_panel,
             self.card_region_render,
@@ -3197,55 +3157,24 @@ class SettingsWindowRevamp(QWidget):
             widget.installEventFilter(self)
 
         self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
-        self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
 
     def on_translate_mode_clicked(self, use_ai):
-        self.set_translate_mode(use_ai)
-        has_key = bool(self.controller.worker.google_api_key.strip())
-        if use_ai:
-            if has_key:
-                self._ai_requested = True
-                self.controller.btn_ai_mode.setChecked(True)
-                self.controller.toggle_ai_translation(True)
-            else:
-                self._ai_requested = True
-                self.controller.btn_ai_mode.blockSignals(True)
-                self.controller.btn_ai_mode.setChecked(False)
-                self.controller.btn_ai_mode.blockSignals(False)
-                self.update_key_state(True)
-                self.input_api_key.setFocus()
-        else:
-            self._ai_requested = False
-            self.controller.btn_ai_mode.setChecked(False)
-            self.controller.toggle_ai_translation(False)
+        self.translation_panel.on_translate_mode_clicked(use_ai)
 
     def on_api_key_text_changed(self, text):
-        self.controller.on_api_key_changed(text)
-        if text.strip() and self.btn_translate_ai.isChecked() and not self.controller.btn_ai_mode.isChecked():
-            self.controller.btn_ai_mode.setChecked(True)
-            self.controller.toggle_ai_translation(True)
-        self.update_translate_summary()
+        self.translation_panel.on_api_key_text_changed(text)
 
     def on_ai_model_changed(self, index):
-        self.controller.on_ai_model_changed(index)
-        self.update_translate_summary()
+        self.translation_panel.on_ai_model_changed(index)
 
     def on_auto_switch_toggled(self, checked):
-        self.controller.set_gemma_auto_switch_mode(checked)
-        self.update_translate_summary()
+        self.translation_panel.on_auto_switch_toggled(checked)
 
     def set_translate_mode(self, use_ai):
-        self.btn_translate_google.blockSignals(True)
-        self.btn_translate_ai.blockSignals(True)
-        self.btn_translate_google.setChecked(not use_ai)
-        self.btn_translate_ai.setChecked(use_ai)
-        self.btn_translate_google.blockSignals(False)
-        self.btn_translate_ai.blockSignals(False)
-        self.set_translate_advanced_visible(use_ai)
-        self.update_key_state(use_ai or self._ai_requested)
-        if use_ai and not self.input_api_key.text().strip():
-            self.input_api_key.setFocus()
-        self.update_translate_summary()
+        self.translation_panel.set_translate_mode(use_ai)
+
+    def set_translate_advanced_visible(self, visible):
+        self.translation_panel.set_translate_advanced_visible(visible)
 
     def on_random_scan_settings_changed(self, *_):
         self.controller.on_random_scan_settings_changed(self.spin_random_scan_center.value(), self.spin_random_scan_jitter.value())
@@ -3299,7 +3228,7 @@ class SettingsWindowRevamp(QWidget):
         return super().eventFilter(obj, event)
 
     def set_translate_advanced_visible(self, visible):
-        self.advanced_translate_frame.setVisible(True)
+        self.translation_panel.set_translate_advanced_visible(visible)
 
     def update_random_scan_summary(self):
         center = max(1, int(self.spin_random_scan_center.value()))
@@ -3328,24 +3257,10 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_summary.setText(f"目前：{side} · {font_pt} pt · {gap_px}px · {opacity}%")
 
     def update_translate_summary(self):
-        use_ai = self.btn_translate_ai.isChecked()
-        model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
-        if use_ai:
-            auto_state = "自動切換 ON" if self.chk_auto_switch.isChecked() else "自動切換 OFF"
-            self.lbl_translate_summary.setText(f"目前：AI 翻譯 · {model_name} · {auto_state}")
-        else:
-            self.lbl_translate_summary.setText("目前：Google 翻譯 · 免 API KEY")
+        self.translation_panel.update_translate_summary()
 
     def update_key_state(self, enabled):
-        self.card_key.setEnabled(enabled)
-        self.input_api_key.setEnabled(enabled)
-        self.cmb_ai_model.setEnabled(enabled)
-        self.chk_auto_switch.setEnabled(enabled)
-        effect = None
-        if not enabled:
-            effect = QGraphicsOpacityEffect(self.card_key)
-            effect.setOpacity(0.45)
-        self.card_key.setGraphicsEffect(effect)
+        self.translation_panel.update_key_state(enabled)
 
     def update_relief_state(self, enabled):
         self.card_relief.setEnabled(enabled)
@@ -3360,9 +3275,6 @@ class SettingsWindowRevamp(QWidget):
         self.card_relief.setGraphicsEffect(effect)
 
     def sync_from_controller(self):
-        ai_requested = self.controller.btn_ai_mode.isChecked()
-        if not ai_requested:
-            self._ai_requested = False
         theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
         self.spin_random_scan_center.blockSignals(True)
         self.spin_random_scan_center.setValue(self.controller.random_scan_center_seconds)
@@ -3385,25 +3297,8 @@ class SettingsWindowRevamp(QWidget):
         self.slider_relief_opacity.blockSignals(True)
         self.slider_relief_opacity.setValue(self.controller.region_frame_opacity)
         self.slider_relief_opacity.blockSignals(False)
-        self.input_api_key.blockSignals(True)
-        self.input_api_key.setText(self.controller.worker.google_api_key)
-        self.input_api_key.blockSignals(False)
-        self.cmb_ai_model.blockSignals(True)
-        self.cmb_ai_model.setCurrentIndex(self.controller.cmb_ai_model.currentIndex())
-        self.cmb_ai_model.blockSignals(False)
-        self.chk_auto_switch.blockSignals(True)
-        self.chk_auto_switch.setChecked(self.controller.worker.gemma_auto_switch_enabled)
-        self.chk_auto_switch.blockSignals(False)
-        self.btn_translate_google.blockSignals(True)
-        self.btn_translate_ai.blockSignals(True)
-        self.btn_translate_google.setChecked(not ai_requested)
-        self.btn_translate_ai.setChecked(ai_requested)
-        self.btn_translate_google.blockSignals(False)
-        self.btn_translate_ai.blockSignals(False)
-        self.set_translate_advanced_visible(True)
-        self.update_key_state(ai_requested or self._ai_requested)
+        self.translation_panel.sync_from_controller()
         self._sync_theme_mode(theme_mode)
-        self.update_translate_summary()
         self.update_random_scan_summary()
         self.update_region_render_summary()
         self.update_relief_summary()
@@ -3425,26 +3320,14 @@ class SettingsWindowRevamp(QWidget):
         self.setStyleSheet(theme.base_qss())
         self.frame.setStyleSheet(theme.window_qss(radius=22, border_width=2))
         self.header_panel.setStyleSheet(theme.header_qss(radius=18))
-        self.card_translate.setStyleSheet(theme.panel_qss("primary", radius=18))
-        self.card_key.setStyleSheet(theme.panel_qss("subtle", radius=18))
         self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=18))
         self.card_region_render.setStyleSheet(theme.panel_qss("subtle", radius=18))
         self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=18))
-        self.advanced_translate_frame.setStyleSheet(theme.panel_qss("transparent"))
         self.auto_scan_panel.setStyleSheet(theme.panel_qss("transparent"))
         self.lbl_title.setStyleSheet(f"font-size: 19px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
         self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_autosave.setStyleSheet(theme.pill_qss("accent", size=11))
         self.lbl_sync_state.setStyleSheet(f"color: {theme.subtext}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self.lbl_translate.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
-        self.lbl_translate_hint.setStyleSheet(f"color: {theme.subtext};")
-        self.lbl_translate_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
-        self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent", size=11))
-        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.accent};")
-        self.lbl_advanced_hint.setStyleSheet(f"color: {theme.subtext};")
-        self.lbl_api_key.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
-        self.lbl_ai_model.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
-        self.chk_auto_switch.setStyleSheet(f"color: {theme.text}; padding-top: 2px;")
         self.lbl_ocr.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
         self.lbl_ocr_hint.setStyleSheet(f"color: {theme.subtext};")
         self.lbl_auto_scan.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.accent};")
@@ -3467,13 +3350,12 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent", size=11))
         for combo in (
             self.cmb_theme_mode_chip,
-            self.cmb_ai_model,
             self.cmb_region_render_mode,
             self.cmb_relief_side,
         ):
             combo.setStyleSheet(theme.combo_qss(radius=6))
         self._sync_theme_mode(theme.key)
-        self.update_key_state(self.btn_translate_ai.isChecked() or self._ai_requested)
+        self.translation_panel.update_theme(theme_mode)
         self.update_relief_state(self.cmb_region_render_mode.currentData() == REGION_RENDER_RELIEF)
         self.btn_close.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {subtext}; border: none; font-size: 14px; font-weight: bold; }}"
