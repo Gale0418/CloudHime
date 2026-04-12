@@ -74,6 +74,21 @@ from ocr_quality import (
     score_ocr_items as quality_score_ocr_items,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
+from translation_helpers import (
+    build_ai_image_parts as build_translation_ai_image_parts,
+    build_gemma_multimodal_prompt as build_translation_gemma_multimodal_prompt,
+    build_gemma_prompt as build_translation_gemma_prompt,
+    build_gemma_prompt_v2 as build_translation_gemma_prompt_v2,
+    build_segmented_ocr_payload as build_translation_segmented_ocr_payload,
+    clean_model_output as translation_clean_model_output,
+    detect_source_language as translation_detect_source_language,
+    encode_image_for_ai as translation_encode_image_for_ai,
+    extract_gemma_text as translation_extract_gemma_text,
+    get_translation_provider_priority as translation_provider_priority,
+    parse_segmented_translation_json as translation_parse_segmented_translation_json,
+    should_replace_provider as translation_should_replace_provider,
+    split_translated_lines as translation_split_translated_lines,
+)
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -449,12 +464,7 @@ class OCRWorker(QObject):
         return preferred_model
 
     def detect_source_language(self, text):
-        if HAS_CJK_PATTERN.search(text):
-            return 'ja'
-        ascii_letters = sum(ch.isascii() and ch.isalpha() for ch in text)
-        if ascii_letters >= max(2, len(text.replace(" ", "")) * 0.4):
-            return 'en'
-        return 'auto'
+        return translation_detect_source_language(text)
 
     def get_google_translator(self, source_lang):
         translator = self.translators.get(source_lang)
@@ -476,14 +486,7 @@ class OCRWorker(QObject):
             self.translation_cache.popitem(last=False)
 
     def get_translation_provider_priority(self, provider):
-        provider = (provider or "").strip().lower()
-        if provider == "gemma-4":
-            return 30
-        if provider == "gemma-3":
-            return 20
-        if provider == "google":
-            return 10
-        return 0
+        return translation_provider_priority(provider)
 
     def get_current_ai_provider(self):
         model = (self.gemma_model or "").strip().lower()
@@ -494,7 +497,7 @@ class OCRWorker(QObject):
         return "google"
 
     def should_replace_provider(self, old_provider, new_provider):
-        return self.get_translation_provider_priority(new_provider) >= self.get_translation_provider_priority(old_provider)
+        return translation_should_replace_provider(old_provider, new_provider)
 
     def get_preferred_text_entry(self, text):
         key = self.make_hud_memory_key(text)
@@ -642,174 +645,34 @@ class OCRWorker(QObject):
         return translated
 
     def build_gemma_prompt(self, text):
-        return (
-            "你是遊戲畫面即時翻譯助手。"
-            "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。"
-            "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。"
-            "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n\n"
-            f"原文：\n{text}"
-        )
+        return build_translation_gemma_prompt(text)
 
     def extract_gemma_text(self, payload):
-        candidates = payload.get("candidates") or []
-        for candidate in candidates:
-            content = candidate.get("content") or {}
-            parts = content.get("parts") or []
-            text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
-            if text.strip():
-                return text.strip()
-        return ""
+        return translation_extract_gemma_text(payload)
 
     def build_gemma_prompt_v2(self, text):
-        return (
-            "You are a game and manga translation assistant. "
-            "Translate the input into natural Traditional Chinese used in Taiwan. "
-            "Preserve the original line breaks and sentence order. "
-            "Do not add explanations, notes, bullets, romanization, or the original text. "
-            "If the source contains dialogue, keep it conversational and concise.\n\n"
-            f"Source text:\n{text}"
-        )
+        return build_translation_gemma_prompt_v2(text)
 
     def build_segmented_ocr_payload(self, source_texts):
-        rows = []
-        for index, text in enumerate(source_texts):
-            rows.append(f"{index}\t{normalize_ocr_text(text)}")
-        return "\n".join(rows)
+        return build_translation_segmented_ocr_payload(source_texts)
 
     def build_gemma_multimodal_prompt(self, source_texts):
-        indexed_ocr = self.build_segmented_ocr_payload(source_texts)
-        return (
-            "You are a multimodal UI, game, and manga translation assistant.\n"
-            "You will receive one screenshot and OCR lines extracted from that same screenshot.\n"
-            "Use the screenshot to understand context, UI meaning, title, speaker tone, and ambiguous words.\n"
-            "Translate every OCR line into natural Traditional Chinese used in Taiwan.\n"
-            "Keep one output item for every input item.\n"
-            "Do not skip items. Do not merge items. Do not explain anything.\n"
-            "Return JSON only in this exact shape:\n"
-            "{\"segments\":[{\"index\":0,\"translation\":\"...\"}]}\n"
-            "Rules:\n"
-            "- index must match the input index exactly\n"
-            "- translation must contain only the translated text\n"
-            "- no markdown, no code fence, no comments\n\n"
-            f"OCR lines:\n{indexed_ocr}"
-        )
+        return build_translation_gemma_multimodal_prompt(source_texts)
 
     def split_translated_lines(self, translated_text, expected_count):
-        cleaned_text = self.clean_model_output(translated_text)
-        if expected_count <= 1:
-            return [cleaned_text]
-        translated_lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
-        if len(translated_lines) == expected_count:
-            return translated_lines
-        return []
+        return translation_split_translated_lines(translated_text, expected_count)
 
     def clean_model_output(self, text):
-        if not text:
-            return ""
-        text = text.strip().replace("```", "")
-        lines = []
-        for raw_line in text.splitlines():
-            line = raw_line.strip()
-            if not line:
-                continue
-            line = re.sub(r"^[*\-•]\s*", "", line)
-            if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
-                continue
-            line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
-            lines.append(line)
-
-        if not lines:
-            return ""
-
-        if len(lines) == 1:
-            line = lines[0]
-            line = re.sub(r"\s*\([^)]*(romanization|pinyin|direct translation)[^)]*\)", "", line, flags=re.IGNORECASE)
-            return line.strip(" \"'")
-
-        candidates = []
-        for line in lines:
-            quoted = re.findall(r'[\"“「]([\u3040-\u30ff\u4e00-\u9fff][^\"”」]*)[\"”」]', line)
-            if quoted:
-                candidates.extend(item.strip() for item in quoted if item.strip())
-                continue
-
-            if re.search(r"(translated as|translation)", line, re.IGNORECASE):
-                parts = re.split(r"[:：]", line, maxsplit=1)
-                if len(parts) == 2 and HAS_CJK_PATTERN.search(parts[1]):
-                    candidates.append(parts[1].strip(" \"'"))
-                    continue
-
-            stripped = line.strip(" \"'")
-            if HAS_CJK_PATTERN.search(stripped):
-                candidates.append(stripped)
-
-        if candidates:
-            candidates.sort(key=lambda item: (len(item), item))
-            return candidates[0]
-
-        preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
-        return "\n".join(preferred or lines).strip()
+        return translation_clean_model_output(text)
 
     def parse_segmented_translation_json(self, text, expected_count):
-        if not text:
-            return []
-        candidate = text.strip().replace("```json", "").replace("```JSON", "").replace("```", "").strip()
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return []
-        candidate = candidate[start:end + 1]
-        try:
-            payload = json.loads(candidate)
-        except json.JSONDecodeError:
-            return []
-
-        segments = payload.get("segments")
-        if not isinstance(segments, list):
-            return []
-
-        translated = [""] * expected_count
-        seen = set()
-        for item in segments:
-            if not isinstance(item, dict):
-                return []
-            index = item.get("index")
-            translation = item.get("translation", "")
-            if not isinstance(index, int) or not (0 <= index < expected_count):
-                return []
-            if index in seen:
-                return []
-            translation = self.clean_model_output(str(translation))
-            if not translation:
-                return []
-            translated[index] = translation
-            seen.add(index)
-
-        if len(seen) != expected_count or any(not line for line in translated):
-            return []
-        return translated
+        return translation_parse_segmented_translation_json(text, expected_count)
 
     def encode_image_for_ai(self, img_np):
-        if img_np is None or img_np.size == 0:
-            return b""
-        height, width = img_np.shape[:2]
-        if width > AI_IMAGE_MAX_WIDTH:
-            scale = AI_IMAGE_MAX_WIDTH / width
-            img_np = cv2.resize(img_np, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
-        success, encoded = cv2.imencode(".png", img_np)
-        return encoded.tobytes() if success else b""
+        return translation_encode_image_for_ai(img_np)
 
     def build_ai_image_parts(self, img_np):
-        parts = []
-        full_png = self.encode_image_for_ai(img_np)
-        if full_png:
-            parts.append({
-                "inline_data": {
-                    "mime_type": "image/png",
-                    "data": base64.b64encode(full_png).decode("ascii")
-                }
-            })
-        return parts
+        return build_translation_ai_image_parts(img_np)
 
     def translate_text_gemma(self, text):
         normalized_text = normalize_ocr_text(text)
