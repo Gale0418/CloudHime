@@ -148,11 +148,11 @@ class GemmaTranslationProvider:
         supported_models: Sequence[str] = SUPPORTED_GEMMA_MODEL_NAMES,
     ):
         self.google_api_key = (google_api_key or "").strip()
-        self.gemma_model = self.normalize_gemma_model(gemma_model)
         self.target_lang = target_lang
         self.enabled = bool(gemma_enabled)
         self.auto_switch_enabled = bool(auto_switch_enabled)
         self.supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
+        self.gemma_model = self.normalize_gemma_model(gemma_model)
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._call_timestamps: dict[str, list[float]] = {name: [] for name in self.supported_models}
 
