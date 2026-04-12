@@ -1,4 +1,5 @@
 PySide6
+pywin32
 winrt-Windows.Globalization
 winrt-Windows.Graphics.Imaging
 winrt-Windows.Media.Ocr

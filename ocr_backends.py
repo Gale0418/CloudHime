@@ -102,7 +102,7 @@ class WindowsOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available
+        return self._available and self._init_engine() is not None
 
     def _init_engine(self):
         if self._engine is not None:
@@ -244,7 +244,7 @@ class EasyOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available
+        return self._available and self._get_reader() is not None
 
     def _get_reader(self):
         if self._reader is not None:
@@ -301,7 +301,7 @@ class PaddleOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available
+        return self._available and self._get_ocr() is not None
 
     def _get_ocr(self):
         if self._ocr is not None:
@@ -368,7 +368,7 @@ class RapidOCRBackend(OCRBackend):
                 self._available = False
 
     def available(self) -> bool:
-        return self._available
+        return self._available and self._get_ocr() is not None
 
     def _get_ocr(self):
         if self._ocr is not None:
@@ -425,7 +425,7 @@ def normalize_backend_name(name: str) -> str:
 
 
 def default_backend_order() -> List[str]:
-    return ["windows", "rapidocr", "tesseract", "paddleocr", "easyocr"]
+    return ["windows"]
 
 
 def resolve_preferred_backends(preferred: Optional[Sequence[str]] = None) -> List[str]:

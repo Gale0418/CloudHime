@@ -4052,7 +4052,7 @@ class Controller(QWidget):
             self.region_render_mode,
             self.region_relief_side,
             self.region_relief_font_pt,
-            RELIEF_BUBBLE_OPACITY,
+            self.region_frame_opacity,
             self.region_relief_gap_px,
             self.selected_region,
         )
@@ -4101,7 +4101,7 @@ class Controller(QWidget):
             self.region_render_mode,
             self.region_relief_side,
             self.region_relief_font_pt,
-            RELIEF_BUBBLE_OPACITY,
+            self.region_frame_opacity,
             self.region_relief_gap_px,
             self.selected_region,
         )
@@ -4124,7 +4124,7 @@ class Controller(QWidget):
             self.region_render_mode,
             self.region_relief_side,
             self.region_relief_font_pt,
-            RELIEF_BUBBLE_OPACITY,
+            self.region_frame_opacity,
             self.region_relief_gap_px,
             self.selected_region,
         )
@@ -4213,7 +4213,7 @@ class Controller(QWidget):
             self.region_render_mode,
             self.region_relief_side,
             self.region_relief_font_pt,
-            RELIEF_BUBBLE_OPACITY,
+            self.region_frame_opacity,
             self.region_relief_gap_px,
             self.selected_region,
         )
@@ -4277,7 +4277,7 @@ class Controller(QWidget):
             self.region_render_mode,
             self.region_relief_side,
             self.region_relief_font_pt,
-            RELIEF_BUBBLE_OPACITY,
+            self.region_frame_opacity,
             self.region_relief_gap_px,
             self.selected_region,
         )
@@ -4399,7 +4399,7 @@ class Controller(QWidget):
             self.region_render_mode,
             self.region_relief_side,
             self.region_relief_font_pt,
-            RELIEF_BUBBLE_OPACITY,
+            self.region_frame_opacity,
             self.region_relief_gap_px,
             self.selected_region,
         )
