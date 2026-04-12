@@ -70,6 +70,10 @@ from themes import (
     resolve_theme,
 )
 from ocr_backends import discover_backends
+from ocr_quality import (
+    score_ocr_items as quality_score_ocr_items,
+    summarize_threshold_candidate as quality_summarize_threshold_candidate,
+)
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -1381,33 +1385,10 @@ class OCRWorker(QObject):
         return raw_items
 
     def score_ocr_items(self, raw_items):
-        if not raw_items:
-            return -1, []
-        merged_items = merge_horizontal_lines(raw_items)
-        filtered_items = [item for item in merged_items if is_valid_content(item['text'])]
-        if not filtered_items:
-            return 0, []
-        total_chars = sum(len(normalize_ocr_text(item['text'])) for item in filtered_items)
-        cjk_lines = sum(1 for item in filtered_items if HAS_CJK_PATTERN.search(item['text']))
-        tiny_lines = sum(1 for item in filtered_items if len(item['text'].strip()) <= 1)
-        score = (len(filtered_items) * 8) + total_chars + (cjk_lines * 3) - (tiny_lines * 6)
-        return score, filtered_items
+        return quality_score_ocr_items(raw_items)
 
     def summarize_threshold_candidate(self, items, max_items=8, max_chars=240):
-        if not items:
-            return ""
-        snippets = []
-        current_chars = 0
-        for item in items[:max_items]:
-            text = normalize_ocr_text(item.get('text', ''))
-            if not text:
-                continue
-            snippets.append(text)
-            current_chars += len(text)
-            if current_chars >= max_chars:
-                break
-        summary = "\n".join(snippets).strip()
-        return summary[:max_chars].strip()
+        return quality_summarize_threshold_candidate(items, max_items=max_items, max_chars=max_chars)
 
     def build_threshold_judge_prompt(self, candidates):
         rows = []
