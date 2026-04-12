@@ -70,6 +70,15 @@ from themes import (
     resolve_theme,
 )
 from ocr_backends import discover_backends
+from settings_store import (
+    create_settings_paths,
+    extract_backend_chain,
+    load_settings_data,
+    normalize_settings_payload,
+    resolve_region_opacity,
+    save_settings_data,
+    should_migrate_to_appdata,
+)
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -92,17 +101,7 @@ NOISE_ONLY_PATTERN = re.compile(r'^[-_=.,|/\\:;~^]+$')
 HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
-LEGACY_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "cloudhime_settings.json")
-def get_user_settings_file():
-    appdata_root = os.getenv("APPDATA") or os.path.expanduser("~")
-    settings_dir = os.path.join(appdata_root, "CloudHime")
-    try:
-        os.makedirs(settings_dir, exist_ok=True)
-    except Exception:
-        pass
-    return os.path.join(settings_dir, "cloudhime_settings.json")
-
-SETTINGS_FILE = get_user_settings_file()
+SETTINGS_PATHS = create_settings_paths(os.path.dirname(__file__))
 MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
@@ -3919,8 +3918,7 @@ class Controller(QWidget):
             self.save_timer.start(250)
 
     def get_settings_payload(self):
-        return {
-            "schema_version": 2,
+        payload = {
             "gemma_model": self.worker.gemma_model,
             "use_gemma_translation": self.worker.use_gemma_translation,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
@@ -3932,37 +3930,24 @@ class Controller(QWidget):
             "region_relief_side": self.region_relief_side,
             "region_relief_font_pt": int(self.region_relief_font_pt),
             "region_relief_gap_px": int(self.region_relief_gap_px),
-            "region_frame_opacity": int(self.region_frame_opacity),
-            "region_relief_opacity": int(self.region_frame_opacity),
             "scan_mode": self.scan_mode,
             "selected_region": list(self.selected_region) if self.selected_region else None,
             "is_dark_mode": self.is_dark_mode,
             "theme_mode": self.theme_mode,
             "binary_threshold": int(self.worker.binary_threshold),
         }
+        return normalize_settings_payload(payload, int(self.region_frame_opacity))
 
     def save_settings(self):
         try:
             payload = self.get_settings_payload()
-            with open(SETTINGS_FILE, "w", encoding="utf-8") as fp:
-                json.dump(payload, fp, ensure_ascii=False, indent=2)
+            save_settings_data(SETTINGS_PATHS, payload)
         except Exception as exc:
             print(f"[Settings] save failed: {exc}")
 
     def load_settings(self):
-        loaded_from_path = None
-        for settings_path in (SETTINGS_FILE, LEGACY_SETTINGS_FILE):
-            try:
-                with open(settings_path, "r", encoding="utf-8") as fp:
-                    self.settings_data = json.load(fp)
-                loaded_from_path = settings_path
-                break
-            except Exception:
-                continue
-        if loaded_from_path is None:
-            self.settings_data = {}
-
-        settings = self.settings_data if isinstance(self.settings_data, dict) else {}
+        settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
+        self.settings_data = settings
 
         threshold = int(settings.get("binary_threshold", self.worker.binary_threshold))
         threshold = max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, threshold))
@@ -3970,7 +3955,7 @@ class Controller(QWidget):
         self.update_threshold(threshold)
 
         self.worker.set_auto_threshold_enabled(True)
-        backend_chain = settings.get("ocr_backend_chain", settings.get("ocr_backends", None))
+        backend_chain = extract_backend_chain(settings)
         try:
             self.worker.reload_ocr_backends(backend_chain)
         except Exception:
@@ -3990,7 +3975,7 @@ class Controller(QWidget):
             self.region_relief_side = RELIEF_SIDE_AUTO
         self.region_relief_font_pt = max(MIN_BUBBLE_FONT_PT, min(48, int(settings.get("region_relief_font_pt", self.region_relief_font_pt))))
         self.region_relief_gap_px = max(0, min(RELIEF_MAX_GAP_PX, int(settings.get("region_relief_gap_px", self.region_relief_gap_px))))
-        self.region_frame_opacity = max(0, min(100, int(settings.get("region_frame_opacity", settings.get("region_relief_opacity", self.region_frame_opacity)))))
+        self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
         env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
         legacy_api_key = str(settings.get("google_api_key", "") or "").strip()
@@ -4023,7 +4008,7 @@ class Controller(QWidget):
             except Exception:
                 self.selected_region = None
 
-        if loaded_from_path == LEGACY_SETTINGS_FILE or not os.path.exists(SETTINGS_FILE):
+        if should_migrate_to_appdata(SETTINGS_PATHS, loaded_from_path):
             self.save_settings()
 
         saved_scan_mode = settings.get("scan_mode", SCAN_MODE_FULLSCREEN)
