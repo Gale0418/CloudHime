@@ -8,7 +8,6 @@
 
 import os
 import sys
-import base64
 import ctypes
 import ctypes.wintypes
 import random
@@ -36,9 +35,6 @@ except ImportError:
     from winrt.windows.globalization import Language
     from winrt.windows.graphics.imaging import BitmapDecoder
     from winrt.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
-
-# 翻譯套件
-from deep_translator import GoogleTranslator
 
 # 繁簡轉換
 try:
@@ -74,21 +70,7 @@ from ocr_quality import (
     score_ocr_items as quality_score_ocr_items,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
-from translation_helpers import (
-    build_ai_image_parts as build_translation_ai_image_parts,
-    build_gemma_multimodal_prompt as build_translation_gemma_multimodal_prompt,
-    build_gemma_prompt as build_translation_gemma_prompt,
-    build_gemma_prompt_v2 as build_translation_gemma_prompt_v2,
-    build_segmented_ocr_payload as build_translation_segmented_ocr_payload,
-    clean_model_output as translation_clean_model_output,
-    detect_source_language as translation_detect_source_language,
-    encode_image_for_ai as translation_encode_image_for_ai,
-    extract_gemma_text as translation_extract_gemma_text,
-    get_translation_provider_priority as translation_provider_priority,
-    parse_segmented_translation_json as translation_parse_segmented_translation_json,
-    should_replace_provider as translation_should_replace_provider,
-    split_translated_lines as translation_split_translated_lines,
-)
+import translation_helpers as translation_tools
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -378,7 +360,7 @@ class OCRWorker(QObject):
         return best_result
 
     def convert_to_trad(self, text):
-        return self.cc.convert(text) if self.cc else text
+        return translation_tools.convert_to_trad(text, self.cc)
 
     def set_google_api_key(self, api_key):
         self.google_api_key = (api_key or "").strip()
@@ -464,29 +446,19 @@ class OCRWorker(QObject):
         return preferred_model
 
     def detect_source_language(self, text):
-        return translation_detect_source_language(text)
+        return translation_tools.detect_source_language(text)
 
     def get_google_translator(self, source_lang):
-        translator = self.translators.get(source_lang)
-        if translator is None:
-            translator = GoogleTranslator(source=source_lang, target='zh-TW')
-            self.translators[source_lang] = translator
-        return translator
+        return translation_tools.get_google_translator(self.translators, source_lang)
 
     def get_cached_translation(self, cache_key):
-        cached = self.translation_cache.get(cache_key)
-        if cached is not None:
-            self.translation_cache.move_to_end(cache_key)
-        return cached
+        return translation_tools.get_cached_translation(self.translation_cache, cache_key)
 
     def remember_translation(self, cache_key, translated_text):
-        self.translation_cache[cache_key] = translated_text
-        self.translation_cache.move_to_end(cache_key)
-        if len(self.translation_cache) > TRANSLATION_CACHE_LIMIT:
-            self.translation_cache.popitem(last=False)
+        translation_tools.remember_translation(self.translation_cache, cache_key, translated_text, TRANSLATION_CACHE_LIMIT)
 
     def get_translation_provider_priority(self, provider):
-        return translation_provider_priority(provider)
+        return translation_tools.get_translation_provider_priority(provider)
 
     def get_current_ai_provider(self):
         model = (self.gemma_model or "").strip().lower()
@@ -497,7 +469,7 @@ class OCRWorker(QObject):
         return "google"
 
     def should_replace_provider(self, old_provider, new_provider):
-        return translation_should_replace_provider(old_provider, new_provider)
+        return translation_tools.should_replace_provider(old_provider, new_provider)
 
     def get_preferred_text_entry(self, text):
         key = self.make_hud_memory_key(text)
@@ -595,84 +567,53 @@ class OCRWorker(QObject):
         return "", ""
 
     def translate_text_google(self, text):
-        normalized_text = normalize_ocr_text(text)
-        if not normalized_text:
-            return ""
-        source_lang = self.detect_source_language(normalized_text)
-        cache_key = (source_lang, normalized_text)
-        cached = self.get_cached_translation(cache_key)
-        if cached is not None:
-            return cached
-        translator = self.get_google_translator(source_lang)
-        translated = translator.translate(normalized_text).strip()
-        self.remember_translation(cache_key, translated)
-        return translated
+        return translation_tools.translate_text_google(
+            text,
+            self.translators,
+            self.translation_cache,
+            cache_limit=TRANSLATION_CACHE_LIMIT,
+        )
 
     def translate_text_google_with_provider(self, text):
         return self.translate_text_google(text), "google"
 
     def translate_text_google_batch(self, source_texts):
-        normalized_texts = [normalize_ocr_text(text) for text in source_texts]
-        if not normalized_texts or any(not text for text in normalized_texts):
-            return []
-
-        translated = [None] * len(normalized_texts)
-        index = 0
-        while index < len(normalized_texts):
-            source_lang = self.detect_source_language(normalized_texts[index])
-            group_start = index
-            group_texts = [normalized_texts[index]]
-            index += 1
-            while index < len(normalized_texts) and self.detect_source_language(normalized_texts[index]) == source_lang:
-                group_texts.append(normalized_texts[index])
-                index += 1
-
-            cache_key = ("google-batch", source_lang, tuple(group_texts))
-            batch_result = self.get_cached_translation(cache_key)
-            if batch_result is None:
-                translator = self.get_google_translator(source_lang)
-                combined_source = "\n".join(group_texts)
-                combined_translated = translator.translate(combined_source).strip()
-                batch_result = self.split_translated_lines(combined_translated, len(group_texts))
-                if len(batch_result) != len(group_texts):
-                    return []
-                self.remember_translation(cache_key, batch_result)
-            for offset, line in enumerate(batch_result):
-                translated[group_start + offset] = line
-                single_cache_key = (source_lang, group_texts[offset])
-                self.remember_translation(single_cache_key, line)
-
-        return translated
+        return translation_tools.translate_text_google_batch(
+            source_texts,
+            self.translators,
+            self.translation_cache,
+            cache_limit=TRANSLATION_CACHE_LIMIT,
+        )
 
     def build_gemma_prompt(self, text):
-        return build_translation_gemma_prompt(text)
+        return translation_tools.build_gemma_prompt(text)
 
     def extract_gemma_text(self, payload):
-        return translation_extract_gemma_text(payload)
+        return translation_tools.extract_gemma_text(payload)
 
     def build_gemma_prompt_v2(self, text):
-        return build_translation_gemma_prompt_v2(text)
+        return translation_tools.build_gemma_prompt_v2(text)
 
     def build_segmented_ocr_payload(self, source_texts):
-        return build_translation_segmented_ocr_payload(source_texts)
+        return translation_tools.build_segmented_ocr_payload(source_texts)
 
     def build_gemma_multimodal_prompt(self, source_texts):
-        return build_translation_gemma_multimodal_prompt(source_texts)
+        return translation_tools.build_gemma_multimodal_prompt(source_texts)
 
     def split_translated_lines(self, translated_text, expected_count):
-        return translation_split_translated_lines(translated_text, expected_count)
+        return translation_tools.split_translated_lines(translated_text, expected_count)
 
     def clean_model_output(self, text):
-        return translation_clean_model_output(text)
+        return translation_tools.clean_model_output(text)
 
     def parse_segmented_translation_json(self, text, expected_count):
-        return translation_parse_segmented_translation_json(text, expected_count)
+        return translation_tools.parse_segmented_translation_json(text, expected_count)
 
     def encode_image_for_ai(self, img_np):
-        return translation_encode_image_for_ai(img_np)
+        return translation_tools.encode_image_for_ai(img_np, max_width=AI_IMAGE_MAX_WIDTH)
 
     def build_ai_image_parts(self, img_np):
-        return build_translation_ai_image_parts(img_np)
+        return translation_tools.build_ai_image_parts(img_np, max_width=AI_IMAGE_MAX_WIDTH)
 
     def translate_text_gemma(self, text):
         normalized_text = normalize_ocr_text(text)

@@ -3,42 +3,125 @@ from __future__ import annotations
 import base64
 import json
 import re
+from collections import OrderedDict
 from typing import Any, Sequence
 
 import cv2
 import numpy as np
+from deep_translator import GoogleTranslator
 
-from ocr_quality import normalize_ocr_text
+from ocr_quality import HAS_CJK_PATTERN, normalize_ocr_text
 
-AI_IMAGE_MAX_WIDTH = 1536
-HAS_CJK_PATTERN = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+GOOGLE_TARGET_LANG = "zh-TW"
+DEFAULT_AI_IMAGE_MAX_WIDTH = 1536
 
 
 def detect_source_language(text: Any) -> str:
-    normalized_text = normalize_ocr_text(text)
-    if not normalized_text:
-        return "auto"
-    if HAS_CJK_PATTERN.search(normalized_text):
+    text = str(text or "")
+    if HAS_CJK_PATTERN.search(text):
         return "ja"
-    ascii_letters = sum(ch.isascii() and ch.isalpha() for ch in normalized_text)
-    if ascii_letters >= max(2, len(normalized_text.replace(" ", "")) * 0.4):
+    ascii_letters = sum(ch.isascii() and ch.isalpha() for ch in text)
+    if ascii_letters >= max(2, len(text.replace(" ", "")) * 0.4):
         return "en"
     return "auto"
 
 
-def get_translation_provider_priority(provider: Any) -> int:
-    provider = (provider or "").strip().lower()
-    if provider == "gemma-4":
-        return 30
-    if provider == "gemma-3":
-        return 20
-    if provider == "google":
-        return 10
-    return 0
+def convert_to_trad(text: Any, cc: Any | None = None) -> Any:
+    return cc.convert(text) if cc else text
 
 
-def should_replace_provider(old_provider: Any, new_provider: Any) -> bool:
-    return get_translation_provider_priority(new_provider) >= get_translation_provider_priority(old_provider)
+def get_google_translator(
+    translators: dict[str, GoogleTranslator],
+    source_lang: str,
+    target_lang: str = GOOGLE_TARGET_LANG,
+) -> GoogleTranslator:
+    translator = translators.get(source_lang)
+    if translator is None:
+        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        translators[source_lang] = translator
+    return translator
+
+
+def get_cached_translation(cache: OrderedDict[Any, Any], cache_key: Any) -> Any:
+    cached = cache.get(cache_key)
+    if cached is not None:
+        cache.move_to_end(cache_key)
+    return cached
+
+
+def remember_translation(
+    cache: OrderedDict[Any, Any],
+    cache_key: Any,
+    translated_text: Any,
+    cache_limit: int = 512,
+) -> None:
+    cache[cache_key] = translated_text
+    cache.move_to_end(cache_key)
+    if len(cache) > cache_limit:
+        cache.popitem(last=False)
+
+
+def translate_text_google(
+    text: Any,
+    translators: dict[str, GoogleTranslator],
+    translation_cache: OrderedDict[Any, Any],
+    *,
+    target_lang: str = GOOGLE_TARGET_LANG,
+    cache_limit: int = 512,
+) -> str:
+    normalized_text = normalize_ocr_text(text)
+    if not normalized_text:
+        return ""
+    source_lang = detect_source_language(normalized_text)
+    cache_key = (source_lang, normalized_text)
+    cached = get_cached_translation(translation_cache, cache_key)
+    if cached is not None:
+        return cached
+    translator = get_google_translator(translators, source_lang, target_lang=target_lang)
+    translated = translator.translate(normalized_text).strip()
+    remember_translation(translation_cache, cache_key, translated, cache_limit=cache_limit)
+    return translated
+
+
+def translate_text_google_batch(
+    source_texts: Sequence[Any],
+    translators: dict[str, GoogleTranslator],
+    translation_cache: OrderedDict[Any, Any],
+    *,
+    target_lang: str = GOOGLE_TARGET_LANG,
+    cache_limit: int = 512,
+) -> list[str]:
+    normalized_texts = [normalize_ocr_text(text) for text in source_texts]
+    if not normalized_texts or any(not text for text in normalized_texts):
+        return []
+
+    translated: list[str | None] = [None] * len(normalized_texts)
+    index = 0
+    while index < len(normalized_texts):
+        source_lang = detect_source_language(normalized_texts[index])
+        group_start = index
+        group_texts = [normalized_texts[index]]
+        index += 1
+        while index < len(normalized_texts) and detect_source_language(normalized_texts[index]) == source_lang:
+            group_texts.append(normalized_texts[index])
+            index += 1
+
+        cache_key = ("google-batch", source_lang, tuple(group_texts))
+        batch_result = get_cached_translation(translation_cache, cache_key)
+        if batch_result is None:
+            translator = get_google_translator(translators, source_lang, target_lang=target_lang)
+            combined_source = "\n".join(group_texts)
+            combined_translated = translator.translate(combined_source).strip()
+            batch_result = split_translated_lines(combined_translated, len(group_texts))
+            if len(batch_result) != len(group_texts):
+                return []
+            remember_translation(translation_cache, cache_key, batch_result, cache_limit=cache_limit)
+        for offset, line in enumerate(batch_result):
+            translated[group_start + offset] = line
+            single_cache_key = (source_lang, group_texts[offset])
+            remember_translation(translation_cache, single_cache_key, line, cache_limit=cache_limit)
+
+    return [line or "" for line in translated]
 
 
 def build_gemma_prompt(text: Any) -> str:
@@ -47,24 +130,34 @@ def build_gemma_prompt(text: Any) -> str:
         "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。"
         "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。"
         "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n\n"
-        f"原文：\n{normalize_ocr_text(text)}"
+        f"原文：\n{text}"
     )
 
 
+def extract_gemma_text(payload: dict[str, Any]) -> str:
+    candidates = payload.get("candidates") or []
+    for candidate in candidates:
+        content = candidate.get("content") or {}
+        parts = content.get("parts") or []
+        text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
+        if text.strip():
+            return text.strip()
+    return ""
+
+
 def build_gemma_prompt_v2(text: Any) -> str:
-    normalized_text = normalize_ocr_text(text)
     return (
         "You are a game and manga translation assistant. "
         "Translate the input into natural Traditional Chinese used in Taiwan. "
         "Preserve the original line breaks and sentence order. "
         "Do not add explanations, notes, bullets, romanization, or the original text. "
         "If the source contains dialogue, keep it conversational and concise.\n\n"
-        f"Source text:\n{normalized_text}"
+        f"Source text:\n{text}"
     )
 
 
 def build_segmented_ocr_payload(source_texts: Sequence[Any]) -> str:
-    rows: list[str] = []
+    rows = []
     for index, text in enumerate(source_texts):
         rows.append(f"{index}\t{normalize_ocr_text(text)}")
     return "\n".join(rows)
@@ -89,11 +182,21 @@ def build_gemma_multimodal_prompt(source_texts: Sequence[Any]) -> str:
     )
 
 
+def split_translated_lines(translated_text: Any, expected_count: int) -> list[str]:
+    cleaned_text = clean_model_output(translated_text)
+    if expected_count <= 1:
+        return [cleaned_text]
+    translated_lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
+    if len(translated_lines) == expected_count:
+        return translated_lines
+    return []
+
+
 def clean_model_output(text: Any) -> str:
     if not text:
         return ""
     text = str(text).strip().replace("```", "")
-    lines: list[str] = []
+    lines = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
@@ -112,7 +215,7 @@ def clean_model_output(text: Any) -> str:
         line = re.sub(r"\s*\([^)]*(romanization|pinyin|direct translation)[^)]*\)", "", line, flags=re.IGNORECASE)
         return line.strip(" \"'")
 
-    candidates: list[str] = []
+    candidates = []
     for line in lines:
         quoted = re.findall(r'[\"“「]([\u3040-\u30ff\u4e00-\u9fff][^\"”」]*)[\"”」]', line)
         if quoted:
@@ -135,27 +238,6 @@ def clean_model_output(text: Any) -> str:
 
     preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
     return "\n".join(preferred or lines).strip()
-
-
-def split_translated_lines(translated_text: Any, expected_count: int) -> list[str]:
-    cleaned_text = clean_model_output(translated_text)
-    if expected_count <= 1:
-        return [cleaned_text]
-    translated_lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
-    if len(translated_lines) == expected_count:
-        return translated_lines
-    return []
-
-
-def extract_gemma_text(payload: dict[str, Any]) -> str:
-    candidates = payload.get("candidates") or []
-    for candidate in candidates:
-        content = candidate.get("content") or {}
-        parts = content.get("parts") or []
-        text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
-        if text.strip():
-            return text.strip()
-    return ""
 
 
 def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str]:
@@ -198,27 +280,40 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
     return translated
 
 
-def encode_image_for_ai(img_np: np.ndarray | None) -> bytes:
+def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> bytes:
     if img_np is None or img_np.size == 0:
         return b""
     height, width = img_np.shape[:2]
-    if width > AI_IMAGE_MAX_WIDTH:
-        scale = AI_IMAGE_MAX_WIDTH / width
+    if width > max_width:
+        scale = max_width / width
         img_np = cv2.resize(img_np, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
     success, encoded = cv2.imencode(".png", img_np)
     return encoded.tobytes() if success else b""
 
 
-def build_ai_image_parts(img_np: np.ndarray | None) -> list[dict[str, Any]]:
+def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> list[dict[str, Any]]:
     parts: list[dict[str, Any]] = []
-    full_png = encode_image_for_ai(img_np)
+    full_png = encode_image_for_ai(img_np, max_width=max_width)
     if full_png:
-        parts.append(
-            {
-                "inline_data": {
-                    "mime_type": "image/png",
-                    "data": base64.b64encode(full_png).decode("ascii"),
-                }
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/png",
+                "data": base64.b64encode(full_png).decode("ascii"),
             }
-        )
+        })
     return parts
+
+
+def get_translation_provider_priority(provider: Any) -> int:
+    provider = (provider or "").strip().lower()
+    if provider == "gemma-4":
+        return 30
+    if provider == "gemma-3":
+        return 20
+    if provider == "google":
+        return 10
+    return 0
+
+
+def should_replace_provider(old_provider: Any, new_provider: Any) -> bool:
+    return get_translation_provider_priority(new_provider) >= get_translation_provider_priority(old_provider)
