@@ -236,16 +236,15 @@ class TranslationSettingsPanel(QFrame):
         self.btn_translate_google.setStyleSheet(
             f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
             f"border-radius: 10px; padding: 6px 10px; }}"
-            f"QPushButton:checked {{ background-color: {theme.accent}; color: {theme.on_accent}; border-color: {theme.accent}; }}"
+            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
         )
         self.btn_translate_ai.setStyleSheet(
             f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
             f"border-radius: 10px; padding: 6px 10px; }}"
-            f"QPushButton:checked {{ background-color: {theme.accent}; color: {theme.on_accent}; border-color: {theme.accent}; }}"
+            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
         )
         self.input_api_key.setStyleSheet(
             f"background-color: {theme.card_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
             f"border-radius: 6px; padding: 6px;"
         )
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
-

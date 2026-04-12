@@ -2996,6 +2996,22 @@ class SettingsWindowRevamp(QWidget):
         main.addWidget(self.header_panel)
 
         self.translation_panel = TranslationSettingsPanel(self.controller, SUPPORTED_AI_MODELS, self)
+        self.card_translate = self.translation_panel.card_translate
+        self.card_key = self.translation_panel.card_key
+        self.advanced_translate_frame = self.translation_panel.advanced_translate_frame
+        self.lbl_translate = self.translation_panel.lbl_translate
+        self.lbl_translate_hint = self.translation_panel.lbl_translate_hint
+        self.lbl_translate_summary = self.translation_panel.lbl_translate_summary
+        self.lbl_translate_mode = self.translation_panel.lbl_translate_mode
+        self.btn_translate_google = self.translation_panel.btn_translate_google
+        self.btn_translate_ai = self.translation_panel.btn_translate_ai
+        self.lbl_advanced_translate = self.translation_panel.lbl_advanced_translate
+        self.lbl_advanced_hint = self.translation_panel.lbl_advanced_hint
+        self.lbl_api_key = self.translation_panel.lbl_api_key
+        self.input_api_key = self.translation_panel.input_api_key
+        self.lbl_ai_model = self.translation_panel.lbl_ai_model
+        self.cmb_ai_model = self.translation_panel.cmb_ai_model
+        self.chk_auto_switch = self.translation_panel.chk_auto_switch
 
         self.card_ocr = QFrame()
         ocr = QVBoxLayout(self.card_ocr)
