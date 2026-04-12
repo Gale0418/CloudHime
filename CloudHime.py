@@ -8,7 +8,6 @@
 
 import os
 import sys
-import asyncio
 import base64
 import ctypes
 import ctypes.wintypes
@@ -70,6 +69,7 @@ from themes import (
     build_settings_styles,
     resolve_theme,
 )
+from ocr_backends import discover_backends
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -276,7 +276,8 @@ class OCRWorker(QObject):
     def __init__(self):
         super().__init__()
         print("[OCR] Initializing OCR engine...")
-        self.engine = None
+        self.ocr_backend_chain = []
+        self.ocr_backends = []
         self.translators = {}
         self.last_combined_text = ""
         self.last_results = []
@@ -299,35 +300,64 @@ class OCRWorker(QObject):
         self.binary_threshold = 100 
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         
-        self.init_windows_ocr()
+        self.reload_ocr_backends()
 
-    def init_windows_ocr(self):
-        try:
-            lang = Language("ja-JP")
-            if not OcrEngine.is_language_supported(lang):
-                self.engine = OcrEngine.try_create_from_user_profile_languages()
-            else:
-                self.engine = OcrEngine.try_create_from_language(lang)
-            if self.engine:
-                print("[OCR] Windows OCR engine started.")
-        except Exception as e:
-            print(f"[OCR] Initialization failed: {e}")
+    def normalize_ocr_backend_chain(self, chain):
+        if chain is None:
+            return []
+        if isinstance(chain, str):
+            raw_items = [item.strip() for item in chain.split(",")]
+        elif isinstance(chain, (list, tuple)):
+            raw_items = [str(item).strip() for item in chain]
+        else:
+            raw_items = [str(chain).strip()]
+        cleaned = []
+        for item in raw_items:
+            item = item.lower()
+            if not item:
+                continue
+            if item in {"winrt", "winsdk", "windows-ocr", "windows_ocr"}:
+                item = "windows"
+            if item in {"rapid-ocr"}:
+                item = "rapidocr"
+            if item in {"easy-ocr"}:
+                item = "easyocr"
+            if item in {"paddle-ocr"}:
+                item = "paddleocr"
+            if item not in cleaned:
+                cleaned.append(item)
+        return cleaned
 
-    async def _run_ocr_async(self, img_np):
-        try:
-            success, encoded_image = cv2.imencode('.png', img_np)
-            if not success:
-                return None
-            stream = InMemoryRandomAccessStream()
-            writer = DataWriter(stream.get_output_stream_at(0))
-            writer.write_bytes(encoded_image.tobytes())
-            await writer.store_async()
-            await writer.flush_async()
-            decoder = await BitmapDecoder.create_async(stream)
-            software_bitmap = await decoder.get_software_bitmap_async()
-            return await self.engine.recognize_async(software_bitmap)
-        except Exception:
+    def reload_ocr_backends(self, backend_chain=None):
+        chain = self.normalize_ocr_backend_chain(
+            backend_chain if backend_chain is not None else self.ocr_backend_chain
+        )
+        self.ocr_backend_chain = chain
+        self.ocr_backends = discover_backends(chain)
+        if self.ocr_backends:
+            names = ", ".join(backend.name for backend in self.ocr_backends)
+            print(f"[OCR] Available backends: {names}")
+        else:
+            print("[OCR] No OCR backends available.")
+
+    def _recognize_with_backends(self, img_np):
+        if not self.ocr_backends:
             return None
+        best_result = None
+        best_score = -1
+        for backend in self.ocr_backends:
+            try:
+                result = backend.recognize(img_np)
+            except Exception:
+                continue
+            if not result or not result.lines:
+                continue
+            raw_items = self.extract_raw_items(result, 1.0, 0, 0)
+            score, filtered_items = self.score_ocr_items(raw_items)
+            if score > best_score and filtered_items:
+                best_score = score
+                best_result = result
+        return best_result
 
     def convert_to_trad(self, text):
         return self.cc.convert(text) if self.cc else text
@@ -1308,15 +1338,40 @@ class OCRWorker(QObject):
         raw_items = []
         if not ocr_result:
             return raw_items
-        for line in ocr_result.lines:
-            line_text = line.text
-            words = line.words
-            if not words or not line_text.strip():
+
+        def get_rect(obj):
+            rect = getattr(obj, "bounding_rect", None)
+            if rect is None:
+                rect = getattr(obj, "box", None)
+            if rect is None:
+                return None
+            x = int(getattr(rect, "x", 0))
+            y = int(getattr(rect, "y", 0))
+            w = int(getattr(rect, "width", getattr(rect, "w", 1)))
+            h = int(getattr(rect, "height", getattr(rect, "h", 1)))
+            return x, y, max(1, w), max(1, h)
+
+        for line in getattr(ocr_result, "lines", []):
+            line_text = normalize_ocr_text(getattr(line, "text", "") or "")
+            if not line_text.strip():
                 continue
-            x_min = min([w.bounding_rect.x for w in words])
-            y_min = min([w.bounding_rect.y for w in words])
-            x_max = max([w.bounding_rect.x + w.bounding_rect.width for w in words])
-            y_max = max([w.bounding_rect.y + w.bounding_rect.height for w in words])
+            words = list(getattr(line, "words", []) or [])
+            if words:
+                rects = [get_rect(word) for word in words]
+                rects = [rect for rect in rects if rect is not None]
+                if not rects:
+                    continue
+                x_min = min(rect[0] for rect in rects)
+                y_min = min(rect[1] for rect in rects)
+                x_max = max(rect[0] + rect[2] for rect in rects)
+                y_max = max(rect[1] + rect[3] for rect in rects)
+            else:
+                line_rect = get_rect(line)
+                if line_rect is None:
+                    continue
+                x_min, y_min, w, h = line_rect
+                x_max = x_min + w
+                y_max = y_min + h
             raw_items.append({
                 'text': line_text,
                 'x': int(x_min / scale_factor) + offset_x,
@@ -1474,7 +1529,7 @@ class OCRWorker(QObject):
                         rotated_crop = self.rotate_crop_for_ocr(crop, orientation)
                         img_for_ocr, scale_factor = self.build_ocr_image(rotated_crop, threshold)
                         try:
-                            ocr_result = asyncio.run(self._run_ocr_async(img_for_ocr))
+                            ocr_result = self._recognize_with_backends(img_for_ocr)
                         except Exception:
                             ocr_result = None
                         region_items = self.extract_raw_items(
@@ -1585,8 +1640,8 @@ class OCRWorker(QObject):
         }]
 
     def run_scan_once(self):
-        if not self.engine:
-            self.status_msg.emit("❌ 缺少日文套件")
+        if not self.ocr_backends:
+            self.status_msg.emit("❌ 缺少可用 OCR 後端")
             self.finished.emit([])
             self.show_ui.emit()
             return
@@ -3865,10 +3920,12 @@ class Controller(QWidget):
 
     def get_settings_payload(self):
         return {
+            "schema_version": 2,
             "gemma_model": self.worker.gemma_model,
             "use_gemma_translation": self.worker.use_gemma_translation,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
             "google_api_key": self.worker.google_api_key,
+            "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
             "region_render_mode": self.region_render_mode,
@@ -3913,6 +3970,11 @@ class Controller(QWidget):
         self.update_threshold(threshold)
 
         self.worker.set_auto_threshold_enabled(True)
+        backend_chain = settings.get("ocr_backend_chain", settings.get("ocr_backends", None))
+        try:
+            self.worker.reload_ocr_backends(backend_chain)
+        except Exception:
+            self.worker.reload_ocr_backends(None)
 
         center_seconds = int(settings.get("random_scan_center_seconds", self.random_scan_center_seconds))
         self.random_scan_center_seconds = max(3, min(300, center_seconds))
