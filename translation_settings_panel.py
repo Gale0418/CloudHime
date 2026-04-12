@@ -117,23 +117,20 @@ class TranslationSettingsPanel(QFrame):
         self.update_translate_summary()
 
     def on_translate_mode_clicked(self, use_ai):
-        self.set_translate_mode(use_ai)
         has_key = bool(self.controller.worker.google_api_key.strip())
         if use_ai:
             if has_key:
                 self._ai_requested = True
-                self.controller.btn_ai_mode.setChecked(True)
+                self.set_translate_mode(True)
                 self.controller.toggle_ai_translation(True)
             else:
                 self._ai_requested = True
-                self.controller.btn_ai_mode.blockSignals(True)
-                self.controller.btn_ai_mode.setChecked(False)
-                self.controller.btn_ai_mode.blockSignals(False)
-                self.update_key_state(True)
+                self.set_translate_mode(True)
+                self.controller.toggle_ai_translation(False)
                 self.input_api_key.setFocus()
         else:
             self._ai_requested = False
-            self.controller.btn_ai_mode.setChecked(False)
+            self.set_translate_mode(False)
             self.controller.toggle_ai_translation(False)
 
     def on_api_key_text_changed(self, text):

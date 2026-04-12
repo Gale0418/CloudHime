@@ -71,7 +71,8 @@ from ocr_quality import (
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
 import translation_helpers as translation_tools
-from translation_registry import TranslationProviderRegistryConfig, build_translation_registry
+from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
+from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -288,6 +289,14 @@ class OCRWorker(QObject):
         self.hud_memory = OrderedDict()
         self.preferred_text_memory = OrderedDict()
         self.gemma_call_timestamps = {model_name: [] for model_name in SUPPORTED_GEMMA_MODEL_NAMES}
+        self.google_translation_provider = GoogleTranslationProvider(target_lang=translation_tools.GOOGLE_TARGET_LANG)
+        self.gemma_translation_provider = GemmaTranslationProvider(
+            google_api_key="",
+            gemma_model=DEFAULT_GEMMA_MODEL,
+            target_lang=translation_tools.GOOGLE_TARGET_LANG,
+            auto_switch_enabled=False,
+            supported_models=SUPPORTED_GEMMA_MODEL_NAMES,
+        )
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
         self.use_gemma_translation = False
@@ -354,7 +363,20 @@ class OCRWorker(QObject):
 
     def _refresh_translation_registry(self):
         try:
-            self.translation_registry = build_translation_registry(self._build_translation_registry_config())
+            config = self._build_translation_registry_config()
+            self.google_translation_provider.set_target_lang(config.target_lang)
+            self.gemma_translation_provider.update_config(
+                google_api_key=config.google_api_key,
+                gemma_model=config.gemma_model,
+                target_lang=config.target_lang,
+                gemma_enabled=config.gemma_enabled,
+                auto_switch_enabled=config.gemma_auto_switch_enabled,
+                supported_models=config.supported_models,
+            )
+            self.translation_registry = TranslationProviderRegistry([
+                self.gemma_translation_provider,
+                self.google_translation_provider,
+            ])
         except Exception:
             self.translation_registry = None
 
@@ -737,7 +759,7 @@ class OCRWorker(QObject):
             results = provider.translate_multimodal(
                 source_texts,
                 image_parts,
-                target_lang=TARGET_LANG,
+                target_lang=translation_tools.GOOGLE_TARGET_LANG,
             )
             if results:
                 provider_model = self.normalize_gemma_model(results[0].model or self.gemma_model)
@@ -3435,8 +3457,8 @@ class SettingsWindowRevamp(QWidget):
         self.translation_panel.update_theme(theme_mode)
         self.update_relief_state(self.cmb_region_render_mode.currentData() == REGION_RENDER_RELIEF)
         self.btn_close.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {subtext}; border: none; font-size: 14px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {accent_soft}; color: {text}; border-radius: 15px; }}"
+            f"QPushButton {{ background-color: transparent; color: {theme.subtext}; border: none; font-size: 14px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {theme.accent_soft}; color: {theme.text}; border-radius: 15px; }}"
         )
 
     def mousePressEvent(self, event):
@@ -3869,6 +3891,8 @@ class Controller(QWidget):
             self.settings_window.chk_auto_switch.blockSignals(True)
             self.settings_window.chk_auto_switch.setChecked(enabled)
             self.settings_window.chk_auto_switch.blockSignals(False)
+        if self.settings_window is not None:
+            self.settings_window.update_translate_summary()
         self.schedule_save_settings()
 
     def on_worker_gemma_model_changed(self, old_model, new_model):
@@ -3885,6 +3909,8 @@ class Controller(QWidget):
             self.settings_window.cmb_ai_model.blockSignals(True)
             self.settings_window.cmb_ai_model.setCurrentIndex(model_index)
             self.settings_window.cmb_ai_model.blockSignals(False)
+            self.settings_window.update_translate_summary()
+        elif self.settings_window is not None:
             self.settings_window.update_translate_summary()
         if self.btn_ai_mode.isChecked():
             old_index = self.cmb_ai_model.findData(old_model)
@@ -3917,14 +3943,21 @@ class Controller(QWidget):
             self.settings_window.cmb_ai_model.blockSignals(True)
             self.settings_window.cmb_ai_model.setCurrentIndex(index)
             self.settings_window.cmb_ai_model.blockSignals(False)
+        if self.settings_window is not None:
+            self.settings_window.update_translate_summary()
         self.schedule_save_settings()
 
     def toggle_ai_translation(self, checked):
         has_key = bool(self.worker.google_api_key.strip())
+        if self.btn_ai_mode.isChecked() != checked:
+            self.btn_ai_mode.blockSignals(True)
+            self.btn_ai_mode.setChecked(checked)
+            self.btn_ai_mode.blockSignals(False)
         if checked and not has_key:
             self.lbl_status.setText("請先輸入 Google API KEY")
-            self.btn_ai_mode.setChecked(False)
             self.worker.set_gemma_enabled(False)
+            if self.settings_window is not None:
+                self.settings_window.set_translate_mode(False)
             self.schedule_save_settings()
             return
         self.worker.set_gemma_enabled(checked)

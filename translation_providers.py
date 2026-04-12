@@ -44,6 +44,12 @@ class GoogleTranslationProvider:
         self._translators: dict[str, GoogleTranslator] = {}
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
 
+    def set_target_lang(self, target_lang: str) -> None:
+        target_lang = (target_lang or "").strip() or "zh-TW"
+        if target_lang != self.target_lang:
+            self.target_lang = target_lang
+            self._translators.clear()
+
     def available(self) -> bool:
         return True
 
@@ -137,19 +143,51 @@ class GemmaTranslationProvider:
         google_api_key: str = "",
         gemma_model: str = DEFAULT_GEMMA_MODEL,
         target_lang: str = "zh-TW",
+        gemma_enabled: bool = False,
         auto_switch_enabled: bool = False,
         supported_models: Sequence[str] = SUPPORTED_GEMMA_MODEL_NAMES,
     ):
         self.google_api_key = (google_api_key or "").strip()
         self.gemma_model = self.normalize_gemma_model(gemma_model)
         self.target_lang = target_lang
+        self.enabled = bool(gemma_enabled)
         self.auto_switch_enabled = bool(auto_switch_enabled)
         self.supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._call_timestamps: dict[str, list[float]] = {name: [] for name in self.supported_models}
 
+    def update_config(
+        self,
+        *,
+        google_api_key: str | None = None,
+        gemma_model: str | None = None,
+        target_lang: str | None = None,
+        gemma_enabled: bool | None = None,
+        auto_switch_enabled: bool | None = None,
+        supported_models: Sequence[str] | None = None,
+    ) -> None:
+        if google_api_key is not None:
+            self.google_api_key = (google_api_key or "").strip()
+        if gemma_model is not None:
+            self.gemma_model = self.normalize_gemma_model(gemma_model)
+        if target_lang is not None:
+            self.target_lang = (target_lang or "").strip() or self.target_lang
+        if gemma_enabled is not None:
+            self.enabled = bool(gemma_enabled)
+        if auto_switch_enabled is not None:
+            self.auto_switch_enabled = bool(auto_switch_enabled)
+        if supported_models is not None:
+            new_supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
+            if new_supported_models != self.supported_models:
+                previous_timestamps = self._call_timestamps
+                self.supported_models = new_supported_models
+                self._call_timestamps = {
+                    name: list(previous_timestamps.get(name, []))
+                    for name in self.supported_models
+                }
+
     def available(self) -> bool:
-        return bool(self.google_api_key)
+        return bool(self.google_api_key and self.enabled)
 
     def normalize_gemma_model(self, model_name: str | None) -> str:
         model_name = (model_name or "").strip()
@@ -283,7 +321,11 @@ class GemmaTranslationProvider:
         cache_key = ("gemma-mm", model_name, normalized_texts, target_lang or self.target_lang)
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return [TranslationResult(text=item, provider=self.name, model=model_name) for item in cached]
+            translated_items, raw_text = cached
+            return [
+                TranslationResult(text=item, provider=self.name, model=model_name, raw_text=raw_text)
+                for item in translated_items
+            ]
 
         payload = self._request(
             model_name,
@@ -299,5 +341,5 @@ class GemmaTranslationProvider:
             translated = split_translated_lines(clean_model_output(raw_text), len(texts))
         if len(translated) != len(texts):
             raise ValueError("empty_gemma_multimodal_response")
-        self._remember(cache_key, translated)
+        self._remember(cache_key, (translated, raw_text))
         return [TranslationResult(text=line, provider=self.name, model=model_name, raw_text=raw_text) for line in translated]
