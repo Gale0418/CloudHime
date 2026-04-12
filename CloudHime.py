@@ -16,6 +16,7 @@ import random
 import re
 import json
 import time
+import traceback
 from collections import OrderedDict
 from urllib import request, error
 import numpy as np
@@ -60,6 +61,15 @@ from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainte
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
+from themes import (
+    ThemeRegistry,
+    build_bubble_style,
+    build_charge_bar_colors,
+    build_controller_styles,
+    build_selection_colors,
+    build_settings_styles,
+    resolve_theme,
+)
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -1798,6 +1808,7 @@ class TransBubble(QLabel):
     def __init__(self, parent, text, x, y, w, h, is_dark_mode=False, render_mode=REGION_RENDER_BUBBLE,
                  relief_side=RELIEF_SIDE_AUTO, relief_font_pt=18, relief_opacity=40, relief_gap_px=10, region_rect=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.text_padding = 8
         self.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
         self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF) else REGION_RENDER_BUBBLE
@@ -1825,18 +1836,31 @@ class TransBubble(QLabel):
         self.setGeometry(bubble_rect)
         self.show()
 
-    def set_theme(self, is_dark):
-        self.is_dark_mode = bool(is_dark)
+    def set_theme(self, theme_mode):
+        theme = resolve_theme(theme_mode)
+        self.theme_mode = theme.key
+        self.is_dark_mode = theme.key != "light"
         if self.render_mode == REGION_RENDER_RELIEF:
-            if self.is_dark_mode:
-                self.setStyleSheet("background: transparent; color: #FFFFFF; font-weight: bold; border: none; padding: 0px;")
-            else:
-                self.setStyleSheet("background: transparent; color: #111111; font-weight: bold; border: none; padding: 0px;")
-            return
-        if self.is_dark_mode:
-            self.setStyleSheet("background-color: rgba(35,35,35,245); color: #FFFFFF; font-weight: bold; border-radius: 12px; border: 1px solid #555; padding: 2px;")
+            self.setStyleSheet(theme.bubble_qss(relief=True))
+            self.bubble_fill_color = theme.bubble_relief_fg
+            self.bubble_outline_color = theme.bubble_relief_outline
+            try:
+                self.style().unpolish(self)
+                self.style().polish(self)
+            except Exception:
+                pass
+            self.update()
         else:
-            self.setStyleSheet("background-color: rgba(255,255,255,245); color: #000; font-weight: bold; border-radius: 12px; border: 1px solid #DDD; padding: 2px;")
+            self.setStyleSheet(theme.bubble_qss(relief=False))
+            self.bubble_fill_color = theme.bubble_fg
+            self.bubble_outline_color = theme.bubble_border
+            try:
+                self.style().unpolish(self)
+                self.style().polish(self)
+            except Exception:
+                pass
+        self.update()
+        self.repaint()
 
     def fit_text_strictly(self, text, w, h, max_size=30):
         font = self.font()
@@ -1987,12 +2011,8 @@ class TransBubble(QLabel):
         rect = self.rect().adjusted(self.text_padding, self.text_padding, -self.text_padding, -self.text_padding)
         font = self.font()
         painter.setFont(font)
-        if self.is_dark_mode:
-            fill = QColor("#FFFFFF")
-            outline = QColor(0, 0, 0, 220)
-        else:
-            fill = QColor("#111111")
-            outline = QColor(255, 255, 255, 220)
+        fill = QColor(getattr(self, "bubble_fill_color", "#FFFFFF"))
+        outline = QColor(getattr(self, "bubble_outline_color", "rgba(0, 0, 0, 220)"))
         painter.setBrush(Qt.NoBrush)
         flags = Qt.AlignCenter | Qt.TextWordWrap
         offsets = [(-2, 0), (2, 0), (0, -2), (0, 2), (-1, -1), (1, -1), (-1, 1), (1, 1)]
@@ -2013,6 +2033,7 @@ class OverlayWindow(QWidget):
         self.setGeometry(0, 0, screen.width(), screen.height())
         self.bubbles = []
         self.is_dark = False
+        self.theme_mode = "light"
         self.scan_mode = SCAN_MODE_FULLSCREEN
         self.render_mode = REGION_RENDER_BUBBLE
         self.relief_side = RELIEF_SIDE_AUTO
@@ -2028,10 +2049,15 @@ class OverlayWindow(QWidget):
         self.timer.timeout.connect(self.ghost_mode)
         self.timer.start(50)
 
-    def set_theme_mode(self, is_dark):
-        self.is_dark = is_dark
+    def set_theme_mode(self, theme_mode):
+        theme = resolve_theme(theme_mode)
+        self.theme_mode = theme.key
+        self.is_dark = theme.key != "light"
         for b in self.bubbles:
-            b.set_theme(is_dark)
+            b.set_theme(theme.key)
+            b.update()
+        self.update()
+        self.repaint()
 
     def set_render_context(self, scan_mode, render_mode, relief_side=None, relief_font_pt=None, relief_opacity=None, relief_gap_px=None, scan_region=None):
         self.scan_mode = scan_mode if scan_mode in (SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION) else SCAN_MODE_FULLSCREEN
@@ -2060,7 +2086,7 @@ class OverlayWindow(QWidget):
                     y,
                     w,
                     h,
-                    self.is_dark,
+                    self.theme_mode,
                     mode,
                     self.relief_side,
                     self.relief_font_pt,
@@ -2161,7 +2187,13 @@ class SelectionOverlay(QWidget):
         self.start_point = None
         self.current_rect = QRect()
         self.is_selecting = False
+        self.theme_mode = "light"
         self.hide()
+
+    def set_theme_mode(self, theme_mode):
+        theme = resolve_theme(theme_mode)
+        self.theme_mode = theme.key
+        self.update()
 
     def begin_selection(self):
         self.start_point = None
@@ -2175,12 +2207,15 @@ class SelectionOverlay(QWidget):
         if not self.isVisible():
             return
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(10, 18, 28, 90))
+        theme = resolve_theme(getattr(self, "theme_mode", "light"))
+        overlay_bg = QColor(theme.bg)
+        overlay_bg.setAlpha(90)
+        painter.fillRect(self.rect(), overlay_bg)
         if not self.current_rect.isNull():
             painter.setCompositionMode(QPainter.CompositionMode_Clear)
             painter.fillRect(self.current_rect, Qt.transparent)
             painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
-            painter.setPen(QPen(QColor("#4FC3F7"), 2))
+            painter.setPen(QPen(QColor(theme.accent), 2))
             painter.drawRect(self.current_rect)
         painter.end()
 
@@ -2229,11 +2264,14 @@ class RegionSelectionFrame(QWidget):
         self.drag_start_global = None
         self.drag_start_rect = None
         self.is_dark = False
+        self.theme_mode = "light"
         self.frame_opacity = 40
         self.hide()
 
-    def set_theme_mode(self, is_dark):
-        self.is_dark = bool(is_dark)
+    def set_theme_mode(self, theme_mode):
+        theme = resolve_theme(theme_mode)
+        self.theme_mode = theme.key
+        self.is_dark = theme.key != "light"
         self.update()
 
     def set_frame_opacity(self, opacity):
@@ -2268,8 +2306,10 @@ class RegionSelectionFrame(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         alpha = int(255 * max(0, min(100, self.frame_opacity)) / 100.0)
-        border_color = QColor("#55C7F3") if self.is_dark else QColor("#4FC3F7")
-        fill_color = QColor(85, 199, 243) if self.is_dark else QColor(79, 195, 247)
+        theme = resolve_theme(getattr(self, "theme_mode", "dark" if self.is_dark else "light"))
+        selection_colors = build_selection_colors(theme)
+        border_color = QColor(selection_colors["border"])
+        fill_color = QColor(selection_colors["fill"])
         border_color.setAlpha(alpha)
         fill_color.setAlpha(alpha)
         inner = QRect(self.margin, self.margin, self.width() - self.margin * 2, self.height() - self.margin * 2)
@@ -2976,80 +3016,44 @@ class SettingsWindow(QWidget):
         super().resizeEvent(event)
         self._lock_settings_columns()
 
-    def update_theme(self, is_dark):
-        if is_dark:
-            bg = "rgba(34, 39, 46, 242)"
-            card_bg = "rgba(56, 64, 74, 220)"
-            text = "#EAF7FF"
-            subtext = "#B7CCD9"
-            border = "#5B6B78"
-            accent = "#55C7F3"
-            accent_soft = "rgba(85, 199, 243, 0.18)"
-            input_bg = "#2F3942"
-        else:
-            bg = "rgba(240, 248, 255, 236)"
-            card_bg = "rgba(255, 255, 255, 225)"
-            text = "#39566B"
-            subtext = "#6C8A9D"
-            border = "#9DDCF2"
-            accent = "#4FC3F7"
-            accent_soft = "rgba(79, 195, 247, 0.16)"
-            input_bg = "#FFFFFF"
-        self.setStyleSheet(
-            f"QWidget {{ color: {text}; }}"
-            f"QFrame {{ border: none; }}"
-            f"QLineEdit, QComboBox, QSpinBox {{ background-color: {input_bg}; color: {text}; border: 1px solid {border}; border-radius: 10px; padding: 7px 10px; selection-background-color: {accent}; }}"
-            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 2px solid {accent}; }}"
-            f"QComboBox::drop-down {{ border: none; width: 22px; }}"
-            f"QComboBox::down-arrow {{ image: none; }}"
-            f"QSpinBox::up-button, QSpinBox::down-button {{ width: 16px; border: none; background: transparent; }}"
-            f"QCheckBox {{ color: {text}; spacing: 8px; }}"
-            f"QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 9px; border: 1px solid {border}; background: {input_bg}; }}"
-            f"QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}"
-            f"QSlider::groove:horizontal {{ height: 8px; border-radius: 4px; background: {accent_soft}; }}"
-            f"QSlider::handle:horizontal {{ width: 18px; margin: -5px 0; border-radius: 9px; background: {accent}; border: 2px solid white; }}"
-        )
-        self.frame.setStyleSheet(f"QFrame {{ background-color: {bg}; border: 2px solid {border}; border-radius: 20px; }}")
-        header_style = f"QFrame {{ background-color: {accent_soft}; border: 1px solid {border}; border-radius: 16px; }}"
-        subtle_card_style = f"QFrame {{ background-color: {card_bg}; border: 1px solid {border}; border-radius: 16px; }}"
-        primary_card_style = f"QFrame {{ background-color: {card_bg}; border: 1.5px solid {accent}; border-radius: 16px; }}"
-        self.header_panel.setStyleSheet(header_style)
-        self.card_translate.setStyleSheet(primary_card_style)
-        self.card_ocr.setStyleSheet(subtle_card_style)
-        self.card_region_render.setStyleSheet(subtle_card_style)
-        self.card_relief.setStyleSheet(subtle_card_style)
-        self.card_appearance.setStyleSheet(subtle_card_style)
-        self.advanced_translate_frame.setStyleSheet(f"QFrame {{ background-color: {accent_soft}; border: 1px solid {border}; border-radius: 12px; }}")
-        self.lbl_title.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {text}; background: transparent; border: none;")
-        self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {subtext}; background: transparent; border: none;")
-        self.lbl_autosave.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 4px 10px;")
-        self.lbl_sync_state.setStyleSheet(f"color: {text}; background-color: {card_bg}; border: 1px solid {border}; border-radius: 999px; padding: 4px 10px;")
-        self.lbl_appearance.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
-        self.lbl_ocr.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
-        self.lbl_region_render.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
-        self.lbl_region_render_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_region_render_mode.setStyleSheet(f"color: {text};")
-        self.lbl_region_render_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
-        self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
-        self.lbl_relief_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_relief_side.setStyleSheet(f"color: {text};")
-        self.lbl_relief_font.setStyleSheet(f"color: {text};")
-        self.lbl_relief_gap.setStyleSheet(f"color: {text};")
-        self.lbl_relief_opacity.setStyleSheet(f"color: {text};")
-        self.lbl_relief_gap_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
-        self.lbl_relief_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
-        self.lbl_relief_opacity_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
-        self.lbl_translate.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {text};")
-        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {accent};")
-        self.lbl_advanced_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_ocr_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_translate_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_random_scan_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
-        self.lbl_translate_summary.setStyleSheet(f"color: {accent}; font-weight: 600; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 999px; padding: 5px 10px;")
-        self.btn_close.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {subtext}; border: none; font-size: 14px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background-color: {accent_soft}; color: {text}; border-radius: 14px; }}"
-        )
+    def update_theme(self, theme_mode):
+        theme = resolve_theme(theme_mode)
+        self.setStyleSheet(theme.base_qss())
+        self.frame.setStyleSheet(theme.window_qss(radius=20, border_width=2))
+        self.header_panel.setStyleSheet(theme.header_qss(radius=16))
+        self.card_translate.setStyleSheet(theme.panel_qss("primary", radius=16))
+        self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=16))
+        self.card_region_render.setStyleSheet(theme.panel_qss("subtle", radius=16))
+        self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=16))
+        self.card_appearance.setStyleSheet(theme.panel_qss("subtle", radius=16))
+        self.advanced_translate_frame.setStyleSheet(f"QFrame {{ background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 12px; }}")
+        self.lbl_title.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
+        self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_autosave.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_sync_state.setStyleSheet(f"color: {theme.text}; background-color: {theme.card_bg}; border: 1px solid {theme.border}; border-radius: 999px; padding: 4px 10px;")
+        self.lbl_appearance.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
+        self.lbl_ocr.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
+        self.lbl_region_render.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
+        self.lbl_region_render_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_region_render_mode.setStyleSheet(f"color: {theme.text};")
+        self.lbl_region_render_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
+        self.lbl_relief_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_relief_side.setStyleSheet(f"color: {theme.text};")
+        self.lbl_relief_font.setStyleSheet(f"color: {theme.text};")
+        self.lbl_relief_gap.setStyleSheet(f"color: {theme.text};")
+        self.lbl_relief_opacity.setStyleSheet(f"color: {theme.text};")
+        self.lbl_relief_gap_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_translate.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
+        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {theme.accent};")
+        self.lbl_advanced_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_ocr_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_translate_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_random_scan_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.btn_close.setStyleSheet(theme.button_qss("ghost"))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -3121,10 +3125,10 @@ class SettingsWindowRevamp(QWidget):
         chip_row.addWidget(self.lbl_sync_state)
         chip_row.addStretch()
         self.cmb_theme_mode_chip = QComboBox()
-        self.cmb_theme_mode_chip.addItem("淺色模式", "light")
-        self.cmb_theme_mode_chip.addItem("深色模式", "dark")
+        for theme in ThemeRegistry.available():
+            self.cmb_theme_mode_chip.addItem(theme.label, theme.key)
         self.cmb_theme_mode_chip.setCursor(Qt.PointingHandCursor)
-        self.cmb_theme_mode_chip.setFixedWidth(112)
+        self.cmb_theme_mode_chip.setMinimumWidth(132)
         self.cmb_theme_mode_chip.currentIndexChanged.connect(self.on_theme_mode_changed)
         chip_row.addWidget(self.cmb_theme_mode_chip)
         header.addLayout(chip_row)
@@ -3577,89 +3581,59 @@ class SettingsWindowRevamp(QWidget):
             combo.setCurrentIndex(index)
             combo.blockSignals(False)
 
-    def update_theme(self, is_dark):
-        if is_dark:
-            bg = "rgba(26, 31, 36, 245)"
-            card_bg = "rgba(44, 51, 60, 228)"
-            text = "#EAF7FF"
-            subtext = "#B7CCD9"
-            border = "#5B6B78"
-            accent = "#55C7F3"
-            accent_soft = "rgba(85, 199, 243, 0.18)"
-            input_bg = "#2F3942"
-        else:
-            bg = "rgba(240, 248, 255, 238)"
-            card_bg = "rgba(255, 255, 255, 232)"
-            text = "#39566B"
-            subtext = "#6C8A9D"
-            border = "#9DDCF2"
-            accent = "#4FC3F7"
-            accent_soft = "rgba(79, 195, 247, 0.16)"
-            input_bg = "#FFFFFF"
-        self.setStyleSheet(
-            f"QWidget {{ color: {text}; }}"
-            f"QFrame {{ border: none; }}"
-            f"QScrollArea {{ border: none; background: transparent; }}"
-            f"QLineEdit, QComboBox, QSpinBox {{ background-color: {input_bg}; color: {text}; border: 1px solid {border}; border-radius: 10px; padding: 7px 10px; selection-background-color: {accent}; }}"
-            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 2px solid {accent}; }}"
-            f"QComboBox::drop-down {{ border: none; width: 22px; }}"
-            f"QComboBox::down-arrow {{ image: none; }}"
-            f"QSpinBox::up-button, QSpinBox::down-button {{ width: 16px; border: none; background: transparent; }}"
-            f"QCheckBox {{ color: {text}; spacing: 8px; }}"
-            f"QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 9px; border: 1px solid {border}; background: {input_bg}; }}"
-            f"QCheckBox::indicator:checked {{ background: {accent}; border: 1px solid {accent}; }}"
-            f"QSlider::groove:horizontal {{ height: 8px; border-radius: 4px; background: {accent_soft}; }}"
-            f"QSlider::handle:horizontal {{ width: 18px; margin: -5px 0; border-radius: 9px; background: {accent}; border: 2px solid white; }}"
-            f"QPushButton {{ padding: 7px 12px; border-radius: 10px; border: 1px solid {border}; background: {card_bg}; color: {text}; }}"
-            f"QPushButton:hover {{ border-color: {accent}; }}"
-            f"QPushButton:checked {{ background: {accent_soft}; border-color: {accent}; }}"
-        )
-        self.frame.setStyleSheet(f"QFrame {{ background-color: {bg}; border: 2px solid {border}; border-radius: 22px; }}")
-        header_style = f"QFrame {{ background-color: {accent_soft}; border: 1px solid {border}; border-radius: 18px; }}"
-        subtle_card_style = f"QFrame {{ background-color: {card_bg}; border: 1px solid {border}; border-radius: 18px; }}"
-        primary_card_style = f"QFrame {{ background-color: {card_bg}; border: 1.5px solid {accent}; border-radius: 18px; }}"
-        self.header_panel.setStyleSheet(header_style)
-        self.card_translate.setStyleSheet(primary_card_style)
-        self.card_key.setStyleSheet(subtle_card_style)
-        self.card_ocr.setStyleSheet(subtle_card_style)
-        self.card_region_render.setStyleSheet(subtle_card_style)
-        self.card_relief.setStyleSheet(subtle_card_style)
-        self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
-        self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
-        self.lbl_title.setStyleSheet(f"font-size: 19px; font-weight: 800; color: {text}; background: transparent; border: none;")
-        self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {subtext}; background: transparent; border: none;")
-        self.lbl_autosave.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self.lbl_sync_state.setStyleSheet(f"color: {subtext}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self.lbl_translate.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
-        self.lbl_translate_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_translate_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_translate_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {accent};")
-        self.lbl_advanced_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_api_key.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_ai_model.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.chk_auto_switch.setStyleSheet(f"color: {text}; padding-top: 2px;")
-        self.lbl_ocr.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
-        self.lbl_ocr_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_auto_scan.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {accent};")
-        self.lbl_auto_scan_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_random_scan_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self.lbl_random_scan_center.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_region_render.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
-        self.lbl_region_render_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_region_render_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_region_render_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self.lbl_relief.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {text};")
-        self.lbl_relief_hint.setStyleSheet(f"color: {subtext};")
-        self.lbl_relief_side.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_relief_font.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_relief_gap.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_relief_opacity.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {subtext};")
-        self.lbl_relief_gap_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
-        self.lbl_relief_opacity_value.setStyleSheet(f"color: {accent}; font-weight: 700; background-color: {accent_soft}; border: 1px solid {border}; border-radius: 10px; padding: 4px 6px;")
-        self.lbl_relief_summary.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
-        self._sync_theme_mode("dark" if is_dark else "light")
+    def update_theme(self, theme_mode):
+        theme = resolve_theme(theme_mode)
+        self.setStyleSheet(theme.base_qss())
+        self.frame.setStyleSheet(theme.window_qss(radius=22, border_width=2))
+        self.header_panel.setStyleSheet(theme.header_qss(radius=18))
+        self.card_translate.setStyleSheet(theme.panel_qss("primary", radius=18))
+        self.card_key.setStyleSheet(theme.panel_qss("subtle", radius=18))
+        self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=18))
+        self.card_region_render.setStyleSheet(theme.panel_qss("subtle", radius=18))
+        self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=18))
+        self.advanced_translate_frame.setStyleSheet(theme.panel_qss("transparent"))
+        self.auto_scan_panel.setStyleSheet(theme.panel_qss("transparent"))
+        self.lbl_title.setStyleSheet(f"font-size: 19px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
+        self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_autosave.setStyleSheet(theme.pill_qss("accent", size=11))
+        self.lbl_sync_state.setStyleSheet(f"color: {theme.subtext}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
+        self.lbl_translate.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
+        self.lbl_translate_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_translate_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent", size=11))
+        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.accent};")
+        self.lbl_advanced_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_api_key.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_ai_model.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.chk_auto_switch.setStyleSheet(f"color: {theme.text}; padding-top: 2px;")
+        self.lbl_ocr.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
+        self.lbl_ocr_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_auto_scan.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.accent};")
+        self.lbl_auto_scan_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_random_scan_summary.setStyleSheet(theme.pill_qss("accent", size=11))
+        self.lbl_random_scan_center.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_region_render.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
+        self.lbl_region_render_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_region_render_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_region_render_summary.setStyleSheet(theme.pill_qss("accent", size=11))
+        self.lbl_relief.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
+        self.lbl_relief_hint.setStyleSheet(f"color: {theme.subtext};")
+        self.lbl_relief_side.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_relief_font.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_relief_gap.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_relief_opacity.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
+        self.lbl_relief_gap_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent", size=11))
+        for combo in (
+            self.cmb_theme_mode_chip,
+            self.cmb_ai_model,
+            self.cmb_region_render_mode,
+            self.cmb_relief_side,
+        ):
+            combo.setStyleSheet(theme.combo_qss(radius=6))
+        self._sync_theme_mode(theme.key)
         self.update_key_state(self.btn_translate_ai.isChecked() or self._ai_requested)
         self.update_relief_state(self.cmb_region_render_mode.currentData() == REGION_RENDER_RELIEF)
         self.btn_close.setStyleSheet(
@@ -3972,10 +3946,11 @@ class Controller(QWidget):
         self.on_ai_model_changed(model_index)
 
         saved_theme_mode = str(settings.get("theme_mode", "") or "").strip()
-        if saved_theme_mode not in {"light", "dark"}:
+        if not saved_theme_mode:
             saved_theme_mode = "dark" if bool(settings.get("is_dark_mode", False)) else "light"
+        saved_theme_mode = ThemeRegistry.normalize_mode(saved_theme_mode)
         self.set_theme_mode(saved_theme_mode)
-        self.region_frame.set_theme_mode(self.is_dark_mode)
+        self.region_frame.set_theme_mode(saved_theme_mode)
         self.region_frame.set_frame_opacity(self.region_frame_opacity)
 
         saved_region = settings.get("selected_region")
@@ -4080,7 +4055,7 @@ class Controller(QWidget):
         self.region_relief_font_pt = max(MIN_BUBBLE_FONT_PT, min(48, int(font_pt)))
         self.region_relief_gap_px = max(0, min(RELIEF_MAX_GAP_PX, int(gap_px)))
         self.region_frame_opacity = max(0, min(100, int(opacity)))
-        self.region_frame.set_theme_mode(self.is_dark_mode)
+        self.region_frame.set_theme_mode(self.theme_mode)
         self.region_frame.set_frame_opacity(self.region_frame_opacity)
         self.overlay.set_render_context(
             self.scan_mode,
@@ -4183,7 +4158,7 @@ class Controller(QWidget):
         if scan_mode == SCAN_MODE_FULLSCREEN:
             self.region_frame.clear_region()
         elif self.selected_region:
-            self.region_frame.set_theme_mode(self.is_dark_mode)
+            self.region_frame.set_theme_mode(self.theme_mode)
             self.region_frame.set_frame_opacity(self.region_frame_opacity)
             self.region_frame.show_region(self.selected_region)
         else:
@@ -4226,7 +4201,7 @@ class Controller(QWidget):
         self.selected_region = rect
         self.worker.set_scan_region(rect)
         if self.scan_mode == SCAN_MODE_REGION:
-            self.region_frame.set_theme_mode(self.is_dark_mode)
+            self.region_frame.set_theme_mode(self.theme_mode)
             self.region_frame.set_frame_opacity(self.region_frame_opacity)
             self.region_frame.show_region(rect)
         self.refresh_overlay_from_last_results()
@@ -4250,15 +4225,37 @@ class Controller(QWidget):
     def toggle_settings_window(self):
         if self.settings_window is None:
             self.settings_window = SettingsWindowRevamp(self)
-        self.settings_window.sync_from_controller()
-        self.settings_window.update_theme(self.is_dark_mode)
-        self.settings_window.resize(800, 1000)
         if self.settings_window.isVisible():
             self.settings_window.hide()
         else:
             self.settings_window.show()
+            self.settings_window.resize(800, 1000)
+            try:
+                screen = QApplication.primaryScreen().availableGeometry()
+                x = screen.left() + max(0, (screen.width() - self.settings_window.width()) // 2)
+                y = screen.top() + max(0, (screen.height() - self.settings_window.height()) // 2)
+                self.settings_window.move(x, y)
+            except Exception:
+                pass
+            try:
+                self.settings_window.sync_from_controller()
+                self.settings_window.update_theme(self.theme_mode)
+            except Exception as exc:
+                self.log_ui_error("settings_window_sync", exc)
             self.settings_window.raise_()
             self.settings_window.activateWindow()
+            QTimer.singleShot(0, self.settings_window.raise_)
+            QTimer.singleShot(0, self.settings_window.activateWindow)
+
+    def log_ui_error(self, context, exc):
+        try:
+            log_path = os.path.join(os.path.dirname(__file__), "cloudhime_ui_errors.log")
+            with open(log_path, "a", encoding="utf-8") as fp:
+                fp.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {context}: {exc}\n")
+                fp.write(traceback.format_exc())
+                fp.write("\n")
+        except Exception:
+            pass
 
     def on_hotkey_pressed(self):
         QTimer.singleShot(0, self.on_immediate_click)
@@ -4391,23 +4388,28 @@ class Controller(QWidget):
             backup_used = len(self.worker.gemma_call_timestamps.get(backup_model, []))
             backup_limit = self.worker.get_gemma_model_call_limit(backup_model)
             backup_ready = self.worker.gemma_auto_switch_enabled and used >= limit and backup_used < backup_limit
+            theme = resolve_theme(self.theme_mode)
             if used >= limit and backup_ready:
-                self.charge_bar.set_theme_colors("#FFF4D6", "#E6B800", "#F4C542", "#7A5A00")
+                colors = build_charge_bar_colors(theme, "warning")
+                self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
                 self.charge_bar.set_progress(100, f"{current_label} {used}/{limit} -> {backup_label} {backup_used}/{backup_limit}")
                 self.lbl_status.setText(f"{current_label} 已滿，下一次會自動切到 {backup_label}")
                 return
             if used >= limit:
-                self.charge_bar.set_theme_colors("#FDE8E8", "#E57373", "#E53935", "#8B1E1E")
+                colors = build_charge_bar_colors(theme, "danger")
+                self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
                 self.charge_bar.set_progress(100, f"{current_label} {used}/{limit}")
                 self.lbl_status.setText(f"{current_label} 已滿 {limit}/{limit}，先改用 Google")
                 return
             if used >= 10:
-                self.charge_bar.set_theme_colors("#FFF4D6", "#E6B800", "#F4C542", "#7A5A00")
+                colors = build_charge_bar_colors(theme, "warning")
             else:
-                self.charge_bar.set_theme_colors("#E8F8FB", "#7FC8E8", "#4FC3F7", "#3A5C72")
+                colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(progress, f"{current_label} {used}/{limit}")
         else:
-            self.charge_bar.set_theme_colors("#F2F5F7", "#D7E0E8", "#B7C7D8", "#6B7C8A")
+            colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(0, "Google")
 
     def hide_ui_for_scan(self):
@@ -4428,65 +4430,49 @@ class Controller(QWidget):
         self.set_theme_mode("dark" if not self.is_dark_mode else "light")
 
     def set_theme_mode(self, theme_mode):
-        if isinstance(theme_mode, bool):
-            theme_mode = "dark" if theme_mode else "light"
-        theme_mode = str(theme_mode or "light").strip().lower()
-        if theme_mode not in {"light", "dark"}:
-            theme_mode = "light"
-        self.theme_mode = theme_mode
-        self.is_dark_mode = theme_mode == "dark"
+        theme = resolve_theme(theme_mode)
+        self.theme_mode = theme.key
+        self.is_dark_mode = theme.key != "light"
         self.update_frame_style()
-        self.overlay.set_theme_mode(self.is_dark_mode)
-        self.region_frame.set_theme_mode(self.is_dark_mode)
+        self.selection_overlay.set_theme_mode(theme.key)
+        self.overlay.set_theme_mode(theme.key)
+        self.region_frame.set_theme_mode(theme.key)
         if self.settings_window is not None:
-            self.settings_window.update_theme(self.is_dark_mode)
+            self.settings_window.update_theme(theme.key)
+        self.refresh_overlay_from_last_results()
         self.schedule_save_settings()
 
     def update_frame_style(self):
-        if self.is_dark_mode:
-            bg, border, text, btn_bg = "rgba(45,45,45,240)", "#555", "#E0E0E0", "#424242"
-            status_bg, status_bd = "#3A3A3A", "#555"
-            btn_fg, btn_hover, btn_chk = "#E0E0E0", "#505050", "#00ACC1"
-            bulb_bg, bulb_fg = "transparent", "#FFEB3B"
-        else:
-            bg, border, text, btn_bg = "rgba(240,248,255,230)", "#87CEEB", "#444", "#E0F7FA"
-            status_bg, status_bd = "white", "#87CEEB"
-            btn_fg, btn_hover, btn_chk = "#444", "#B2EBF2", "#4FC3F7"
-            bulb_bg, bulb_fg = "transparent", "#555"
-
-        self.frame.setStyleSheet(f"QFrame {{ background-color: {bg}; border-radius: 15px; border: 2px solid {border}; }}")
-        self.lbl_title.setStyleSheet(f"color: {text}; font-weight: bold; background: transparent; border: none;")
-        self.lbl_status.setStyleSheet(f"color: {text}; background-color: {status_bg}; border: 1px solid {status_bd}; border-radius: 4px;")
-        self.input_api_key.setStyleSheet(f"background-color: {status_bg}; color: {text}; border: 1px solid {status_bd}; border-radius: 6px; padding: 6px;")
-        self.cmb_ai_model.setStyleSheet(f"background-color: {btn_bg}; color: {text}; border: 1px solid {border}; border-radius: 6px; padding: 4px;")
+        theme = resolve_theme(self.theme_mode)
+        self.frame.setStyleSheet(theme.window_qss(radius=15, border_width=2))
+        self.lbl_title.setStyleSheet(f"color: {theme.text}; font-weight: bold; background: transparent; border: none;")
+        self.lbl_status.setStyleSheet(f"color: {theme.text}; background-color: {theme.card_bg}; border: 1px solid {theme.border}; border-radius: 4px;")
+        self.input_api_key.setStyleSheet(f"background-color: {theme.card_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 6px;")
+        self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
 
         self.btn_now.set_theme_colors(
-            btn_bg,
-            btn_fg,
-            border,
-            btn_hover,
-            btn_chk,
-            "#888888",
-            "#CCCCCC",
+            theme.control_bg,
+            theme.text,
+            theme.border,
+            theme.control_hover,
+            theme.control_checked,
+            theme.control_disabled_bg,
+            theme.control_disabled_fg,
         )
 
-        auto_btn_style = f"""
-            QPushButton {{ background-color: {btn_bg}; color: {btn_fg}; border-radius: 8px; padding: 8px; font-weight: bold; border: none; }}
-            QPushButton:hover:!checked {{ background-color: {btn_hover}; }}
-            QPushButton:checked {{ background-color: {btn_chk}; color: white; }}
-        """
+        auto_btn_style = theme.button_qss("toggle")
         self.btn_30.setStyleSheet(auto_btn_style)
         self.btn_ai_mode.setStyleSheet(auto_btn_style)
         self.btn_mode_full.setStyleSheet(auto_btn_style)
         self.btn_mode_region.setStyleSheet(auto_btn_style)
-        
-        self.btn_stop.setStyleSheet("QPushButton {{ background-color: #D32F2F; color: white; border-radius: 10px; padding: 5px; border: none; }} QPushButton:hover {{ background-color: #E57373; }}")
+
+        self.btn_stop.setStyleSheet(theme.button_qss("toggle"))
         self.btn_theme.setText("⚙")
-        self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: {bulb_bg}; color: {bulb_fg}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: rgba(128,128,128,0.2); border-radius: 15px; }}")
+        self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: transparent; color: {theme.accent}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: {theme.accent_soft}; border-radius: 15px; }}")
         if self.settings_window is not None:
-            self.settings_window.update_theme(self.is_dark_mode)
+            self.settings_window.update_theme(theme.key)
             self.settings_window.sync_from_controller()
-        self.region_frame.set_theme_mode(self.is_dark_mode)
+        self.region_frame.set_theme_mode(theme.key)
 
     def close_app(self):
         self.save_settings()
