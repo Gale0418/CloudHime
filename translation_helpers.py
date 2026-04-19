@@ -35,10 +35,11 @@ def get_google_translator(
     source_lang: str,
     target_lang: str = GOOGLE_TARGET_LANG,
 ) -> GoogleTranslator:
-    translator = translators.get(source_lang)
+    cache_key = f"{source_lang}->{target_lang}"
+    translator = translators.get(cache_key)
     if translator is None:
         translator = GoogleTranslator(source=source_lang, target=target_lang)
-        translators[source_lang] = translator
+        translators[cache_key] = translator
     return translator
 
 
@@ -73,7 +74,7 @@ def translate_text_google(
     if not normalized_text:
         return ""
     source_lang = detect_source_language(normalized_text)
-    cache_key = (source_lang, normalized_text)
+    cache_key = (source_lang, target_lang, normalized_text)
     cached = get_cached_translation(translation_cache, cache_key)
     if cached is not None:
         return cached
@@ -106,7 +107,7 @@ def translate_text_google_batch(
             group_texts.append(normalized_texts[index])
             index += 1
 
-        cache_key = ("google-batch", source_lang, tuple(group_texts))
+        cache_key = ("google-batch", source_lang, target_lang, tuple(group_texts))
         batch_result = get_cached_translation(translation_cache, cache_key)
         if batch_result is None:
             translator = get_google_translator(translators, source_lang, target_lang=target_lang)
@@ -118,7 +119,7 @@ def translate_text_google_batch(
             remember_translation(translation_cache, cache_key, batch_result, cache_limit=cache_limit)
         for offset, line in enumerate(batch_result):
             translated[group_start + offset] = line
-            single_cache_key = (source_lang, group_texts[offset])
+            single_cache_key = (source_lang, target_lang, group_texts[offset])
             remember_translation(translation_cache, single_cache_key, line, cache_limit=cache_limit)
 
     return [line or "" for line in translated]

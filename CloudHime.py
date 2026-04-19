@@ -1,7 +1,7 @@
 ﻿# ==========================================
 # 🌟 雲朵翻譯姬 v3.0 - 螢幕 OCR 即時翻譯工具 (邏輯修正版) (｀・ω・´)ゞ
 # ==========================================
-# 核心引擎: Windows Media OCR (WinRT)
+# 核心引擎: Windows OCR 優先、可選 OCR 後端
 # 翻譯引擎: Google + Gemma (多模態支援)
 # 架構優化: 移除多餘引用，清理過期的 Argos 備援邏輯
 # ==========================================
@@ -25,18 +25,6 @@ import mss
 
 # Windows API 相關
 import win32con 
-
-# Windows Runtime API
-try:
-    from winsdk.windows.media.ocr import OcrEngine
-    from winsdk.windows.globalization import Language
-    from winsdk.windows.graphics.imaging import BitmapDecoder
-    from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
-except ImportError:
-    from winrt.windows.media.ocr import OcrEngine
-    from winrt.windows.globalization import Language
-    from winrt.windows.graphics.imaging import BitmapDecoder
-    from winrt.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
 
 # 繁簡轉換
 try:
@@ -3990,13 +3978,37 @@ class Controller(QWidget):
             save_settings_data(SETTINGS_PATHS, payload)
         except Exception as exc:
             print(f"[Settings] save failed: {exc}")
+            try:
+                log_path = os.path.join(os.path.dirname(__file__), "cloudhime_ui_errors.log")
+                with open(log_path, "a", encoding="utf-8") as fp:
+                    fp.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] save_settings failed: {exc}\n")
+                    fp.write(traceback.format_exc())
+                    fp.write("\n")
+            except Exception:
+                pass
+            return False
+        return True
 
     def load_settings(self):
         settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
         self.settings_data = settings
 
-        threshold = int(settings.get("binary_threshold", self.worker.binary_threshold))
-        threshold = max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, threshold))
+        def safe_int(value, fallback, lower=None, upper=None):
+            try:
+                numeric = int(value)
+            except Exception:
+                numeric = int(fallback)
+            if lower is not None:
+                numeric = max(lower, numeric)
+            if upper is not None:
+                numeric = min(upper, numeric)
+            return numeric
+
+        def safe_choice(value, fallback, *allowed):
+            candidate = str(value or "").strip()
+            return candidate if candidate in allowed else fallback
+
+        threshold = safe_int(settings.get("binary_threshold", self.worker.binary_threshold), self.worker.binary_threshold, AUTO_THRESHOLD_MIN, AUTO_THRESHOLD_MAX)
         self.worker.binary_threshold = threshold
         self.update_threshold(threshold)
 
@@ -4019,21 +4031,28 @@ class Controller(QWidget):
         except Exception:
             self.worker.reload_ocr_backends(None)
 
-        center_seconds = int(settings.get("random_scan_center_seconds", self.random_scan_center_seconds))
-        self.random_scan_center_seconds = max(3, min(300, center_seconds))
+        center_seconds = safe_int(settings.get("random_scan_center_seconds", self.random_scan_center_seconds), self.random_scan_center_seconds, 3, 300)
+        self.random_scan_center_seconds = center_seconds
 
-        jitter_percent = int(settings.get("random_scan_jitter_percent", self.random_scan_jitter_percent))
-        self.random_scan_jitter_percent = max(0, min(100, jitter_percent))
+        jitter_percent = safe_int(settings.get("random_scan_jitter_percent", self.random_scan_jitter_percent), self.random_scan_jitter_percent, 0, 100)
+        self.random_scan_jitter_percent = jitter_percent
 
-        region_render_mode = str(settings.get("region_render_mode", REGION_RENDER_BUBBLE) or REGION_RENDER_BUBBLE)
-        self.region_render_mode = region_render_mode if region_render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
+        self.region_render_mode = safe_choice(
+            settings.get("region_render_mode", REGION_RENDER_BUBBLE),
+            REGION_RENDER_BUBBLE,
+            REGION_RENDER_BUBBLE,
+            REGION_RENDER_RELIEF,
+            REGION_RENDER_SCREENSHOT,
+        )
         self.worker.set_region_render_mode(self.region_render_mode)
 
-        self.region_relief_side = str(settings.get("region_relief_side", RELIEF_SIDE_AUTO) or RELIEF_SIDE_AUTO)
-        if self.region_relief_side not in {opt[1] for opt in RELIEF_SIDE_OPTIONS}:
-            self.region_relief_side = RELIEF_SIDE_AUTO
-        self.region_relief_font_pt = max(MIN_BUBBLE_FONT_PT, min(48, int(settings.get("region_relief_font_pt", self.region_relief_font_pt))))
-        self.region_relief_gap_px = max(0, min(RELIEF_MAX_GAP_PX, int(settings.get("region_relief_gap_px", self.region_relief_gap_px))))
+        self.region_relief_side = safe_choice(
+            settings.get("region_relief_side", RELIEF_SIDE_AUTO),
+            RELIEF_SIDE_AUTO,
+            *(opt[1] for opt in RELIEF_SIDE_OPTIONS),
+        )
+        self.region_relief_font_pt = safe_int(settings.get("region_relief_font_pt", self.region_relief_font_pt), self.region_relief_font_pt, MIN_BUBBLE_FONT_PT, 48)
+        self.region_relief_gap_px = safe_int(settings.get("region_relief_gap_px", self.region_relief_gap_px), self.region_relief_gap_px, 0, RELIEF_MAX_GAP_PX)
         self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
         env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
@@ -4042,7 +4061,7 @@ class Controller(QWidget):
         if api_key:
             self.on_api_key_changed(api_key)
 
-        model_name = str(settings.get("gemma_model", DEFAULT_GEMMA_MODEL) or DEFAULT_GEMMA_MODEL)
+        model_name = safe_choice(settings.get("gemma_model", DEFAULT_GEMMA_MODEL), DEFAULT_GEMMA_MODEL, *SUPPORTED_GEMMA_MODEL_NAMES)
         model_index = self.cmb_ai_model.findData(model_name)
         if model_index < 0:
             model_index = 0
@@ -4070,7 +4089,7 @@ class Controller(QWidget):
         if should_migrate_to_appdata(SETTINGS_PATHS, loaded_from_path):
             self.save_settings()
 
-        saved_scan_mode = settings.get("scan_mode", SCAN_MODE_FULLSCREEN)
+        saved_scan_mode = safe_choice(settings.get("scan_mode", SCAN_MODE_FULLSCREEN), SCAN_MODE_FULLSCREEN, SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION)
         if saved_scan_mode == SCAN_MODE_REGION and self.selected_region:
             self.btn_mode_region.setChecked(True)
             self.set_scan_mode(SCAN_MODE_REGION)
