@@ -1118,18 +1118,37 @@ class OCRWorker(QObject):
 
     def capture_scan_area(self):
         with mss.mss() as sct:
+            virtual_monitor = sct.monitors[0] if sct.monitors else None
             if self.scan_mode == SCAN_MODE_REGION and self.scan_region:
-                left, top, width, height = self.scan_region
+                left, top, width, height = [int(v) for v in self.scan_region]
+                if virtual_monitor:
+                    virt_left = int(virtual_monitor.get("left", 0))
+                    virt_top = int(virtual_monitor.get("top", 0))
+                    virt_right = virt_left + int(virtual_monitor.get("width", 0))
+                    virt_bottom = virt_top + int(virtual_monitor.get("height", 0))
+                    left = max(virt_left, left)
+                    top = max(virt_top, top)
+                    right = min(virt_right, left + max(1, width))
+                    bottom = min(virt_bottom, top + max(1, height))
+                    width = max(1, right - left)
+                    height = max(1, bottom - top)
                 capture_rect = {
-                    "left": max(0, int(left)),
-                    "top": max(0, int(top)),
-                    "width": max(1, int(width)),
-                    "height": max(1, int(height)),
+                    "left": left,
+                    "top": top,
+                    "width": max(1, width),
+                    "height": max(1, height),
                 }
             else:
-                capture_rect = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+                capture_rect = virtual_monitor or (sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0])
 
-            screenshot = sct.grab(capture_rect)
+            try:
+                screenshot = sct.grab(capture_rect)
+            except Exception:
+                if capture_rect is not virtual_monitor and virtual_monitor is not None:
+                    screenshot = sct.grab(virtual_monitor)
+                    capture_rect = virtual_monitor
+                else:
+                    raise
             img = np.array(screenshot)
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             return img, capture_rect["left"], capture_rect["top"]
@@ -1733,7 +1752,8 @@ class OCRWorker(QObject):
         try:
             img, offset_x, offset_y = self.capture_scan_area()
             ai_image_parts = self.build_ai_image_parts(img)
-        except Exception:
+        except Exception as exc:
+            self.status_msg.emit(f"❌ 擷取螢幕失敗：{type(exc).__name__}")
             self.finished.emit([])
             self.show_ui.emit()
             return
@@ -3762,6 +3782,7 @@ class Controller(QWidget):
         self.settings_data = {}
         self.cooldown_total_ms = 5000
         self.cooldown_end_time = 0.0
+        self.scan_in_progress = False
         
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 180) 
@@ -4131,7 +4152,20 @@ class Controller(QWidget):
         )
         if self.settings_window is not None:
             self.settings_window.update_region_render_summary()
+        self.update_mode_status_text()
         self.schedule_save_settings()
+
+    def update_mode_status_text(self):
+        if self.scan_mode == SCAN_MODE_FULLSCREEN:
+            self.lbl_status.setText("🖥 目前模式：全螢幕")
+            return
+
+        if self.region_render_mode == REGION_RENDER_RELIEF:
+            self.lbl_status.setText("🧩 目前模式：浮雕")
+        elif self.region_render_mode == REGION_RENDER_SCREENSHOT:
+            self.lbl_status.setText("🖼 目前模式：截圖")
+        else:
+            self.lbl_status.setText("💬 目前模式：氣泡")
 
     def on_region_relief_settings_changed(self, side, font_pt, gap_px, opacity):
         side = str(side or RELIEF_SIDE_AUTO)
@@ -4292,6 +4326,7 @@ class Controller(QWidget):
         else:
             self.region_frame.clear_region()
         self.refresh_overlay_from_last_results()
+        self.update_mode_status_text()
         self.schedule_save_settings()
 
     def activate_region_translation(self):
@@ -4414,7 +4449,14 @@ class Controller(QWidget):
         self.cooldown_end_time = 0.0
         self.btn_now.setEnabled(True)
         self.btn_now.setText("⚡ 立即 (~)")
-        self.lbl_status.setText("✅ 已就緒")
+        status_text = self.lbl_status.text()
+        if not self.scan_in_progress:
+            # 截圖模式的完成訊息要保留，不要被冷卻結束直接蓋掉
+            if any(token in status_text for token in ("截圖", "翻譯", "完成")):
+                return
+            self.update_mode_status_text()
+        elif "截圖" in status_text:
+            self.lbl_status.setText("🖼 截圖翻譯進行中...")
 
     def update_cooldown_progress(self):
         if self.cooldown_end_time <= 0:
@@ -4459,6 +4501,7 @@ class Controller(QWidget):
             self.display_timer.stop()
 
     def on_scan_complete(self, results):
+        self.scan_in_progress = False
         self.last_scan_results = list(results) if results else []
         self.overlay.set_render_context(
             self.scan_mode,
@@ -4485,6 +4528,7 @@ class Controller(QWidget):
             self.schedule_next_scan()
 
     def stop_scan(self):
+        self.scan_in_progress = False
         self.current_auto_interval = 0
         self.auto_timer.stop()
         self.display_timer.stop()
@@ -4495,6 +4539,7 @@ class Controller(QWidget):
         self.overlay.clear_all()
 
     def trigger_scan_sequence(self):
+        self.scan_in_progress = True
         self.display_timer.stop()
         self.overlay.setVisible(False)
         QTimer.singleShot(50, self._emit_scan_signal)
@@ -4503,7 +4548,7 @@ class Controller(QWidget):
         self.request_scan.emit()
 
     def update_status(self, msg):
-        if self.display_timer.isActive() and "完成" not in msg:
+        if self.display_timer.isActive() and not any(token in msg for token in ("完成", "翻譯", "失敗", "錯誤", "需要", "就緒")):
             return
         self.lbl_status.setText(msg)
         self.update_gemma_rate_indicator()
