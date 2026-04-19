@@ -111,32 +111,26 @@ class TranslationSettingsPanel(QFrame):
 
         outer.addWidget(self.card_translate)
         outer.addWidget(self.card_key)
-        self.card_key.setVisible(False)
+        self.card_key.setVisible(True)
 
         self.set_translate_advanced_visible(False)
         self.update_translate_summary()
 
     def on_translate_mode_clicked(self, use_ai):
         has_key = bool(self.controller.worker.google_api_key.strip())
+        self._ai_requested = bool(use_ai)
         if use_ai:
             if has_key:
-                self._ai_requested = True
-                self.set_translate_mode(True)
                 self.controller.toggle_ai_translation(True)
             else:
-                self._ai_requested = True
-                self.set_translate_mode(True)
                 self.controller.toggle_ai_translation(False)
                 self.input_api_key.setFocus()
         else:
-            self._ai_requested = False
-            self.set_translate_mode(False)
             self.controller.toggle_ai_translation(False)
 
     def on_api_key_text_changed(self, text):
         self.controller.on_api_key_changed(text)
-        if text.strip() and self.btn_translate_ai.isChecked() and not self.controller.btn_ai_mode.isChecked():
-            self.controller.btn_ai_mode.setChecked(True)
+        if text.strip() and self._ai_requested and not self.controller.btn_ai_mode.isChecked():
             self.controller.toggle_ai_translation(True)
         self.update_translate_summary()
 
@@ -155,14 +149,15 @@ class TranslationSettingsPanel(QFrame):
         self.btn_translate_ai.setChecked(use_ai)
         self.btn_translate_google.blockSignals(False)
         self.btn_translate_ai.blockSignals(False)
+        enabled = bool(use_ai or self._ai_requested)
         self.set_translate_advanced_visible(True)
-        self.update_key_state(use_ai or self._ai_requested)
+        self.update_key_state(enabled)
         if use_ai and not self.input_api_key.text().strip():
             self.input_api_key.setFocus()
         self.update_translate_summary()
 
     def set_translate_advanced_visible(self, visible):
-        self.card_key.setVisible(bool(visible))
+        self.card_key.setVisible(True)
 
     def update_translate_summary(self):
         use_ai = self.btn_translate_ai.isChecked()
@@ -186,8 +181,8 @@ class TranslationSettingsPanel(QFrame):
 
     def sync_from_controller(self):
         ai_requested = self.controller.btn_ai_mode.isChecked()
-        if not ai_requested:
-            self._ai_requested = False
+        if ai_requested:
+            self._ai_requested = True
 
         self.input_api_key.blockSignals(True)
         self.input_api_key.setText(self.controller.worker.google_api_key)
@@ -208,14 +203,15 @@ class TranslationSettingsPanel(QFrame):
         self.btn_translate_google.blockSignals(False)
         self.btn_translate_ai.blockSignals(False)
 
+        enabled = bool(ai_requested or self._ai_requested)
         self.set_translate_advanced_visible(True)
-        self.update_key_state(ai_requested or self._ai_requested)
+        self.update_key_state(enabled)
         self.update_translate_summary()
 
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
         self.card_translate.setStyleSheet(theme.panel_qss("primary", radius=16))
-        self.card_key.setStyleSheet(theme.panel_qss("transparent"))
+        self.card_key.setStyleSheet(theme.panel_qss("subtle", radius=16))
         self.advanced_translate_frame.setStyleSheet(
             f"QFrame {{ background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 12px; }}"
         )

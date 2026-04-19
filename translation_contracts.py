@@ -10,6 +10,7 @@ class TranslationResult:
     provider: str
     model: str | None = None
     raw_text: str | None = None
+    from_cache: bool = False
 
 
 class TranslationProvider(Protocol):
