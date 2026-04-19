@@ -252,8 +252,8 @@ class EasyOCRBackend(OCRBackend):
 
     def _can_use_gpu(self) -> bool:
         try:
-            import torch  # type: ignore
-
+            import importlib
+            torch = importlib.import_module("torch")
             return bool(torch.cuda.is_available())
         except Exception:
             return False
