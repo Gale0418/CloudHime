@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import difflib
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -11,9 +14,13 @@ from deep_translator import GoogleTranslator
 
 from translation_contracts import TranslationProvider, TranslationResult
 from translation_helpers import (
+    build_gemma_prompt_conservative,
     build_gemma_multimodal_prompt,
-    build_gemma_prompt_v2,
     clean_model_output,
+    clean_model_output_multiline,
+    build_gemma_screenshot_prompt_v2,
+    clean_screenshot_translation_output,
+    is_valid_screenshot_translation,
     detect_source_language,
     extract_gemma_text,
     parse_segmented_translation_json,
@@ -86,7 +93,7 @@ class GoogleTranslationProvider:
         cache_key = (source_lang, normalized, target_lang or self.target_lang)
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return TranslationResult(text=str(cached), provider=self.name)
+            return TranslationResult(text=str(cached), provider=self.name, from_cache=True)
         translator = self._get_translator(source_lang)
         translated = translator.translate(normalized).strip()
         self._remember(cache_key, translated)
@@ -205,6 +212,25 @@ class GemmaTranslationProvider:
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
 
+    def _normalize_compare_text(self, text: Any) -> str:
+        normalized = clean_model_output(text)
+        if not normalized:
+            return ""
+        normalized = re.sub(r"[\s\(\)（）\[\]【】「」『』《》<>“”\"'、，。！？!?…：;；\-—~]+", "", normalized)
+        return normalized.lower()
+
+    def _should_fallback_to_text_translation(self, source_text_hint: Any, translated_text: Any) -> bool:
+        if re.search(r"[\u3040-\u30ff]", str(translated_text or "")):
+            return True
+        source_norm = self._normalize_compare_text(source_text_hint)
+        translated_norm = self._normalize_compare_text(translated_text)
+        if not source_norm or not translated_norm:
+            return False
+        if source_norm == translated_norm:
+            return True
+        similarity = difflib.SequenceMatcher(None, source_norm, translated_norm).ratio()
+        return similarity >= 0.82
+
     def _prune_timestamps(self, model_name: str) -> None:
         cutoff = time.monotonic() - GEMMA_RATE_LIMIT_WINDOW_SEC
         self._call_timestamps[model_name] = [ts for ts in self._call_timestamps.get(model_name, []) if ts >= cutoff]
@@ -230,7 +256,7 @@ class GemmaTranslationProvider:
                     return candidate
         return model
 
-    def _request(self, model_name: str, prompt: str, *, image_parts: Sequence[dict[str, Any]] | None = None, max_output_tokens: int = 1024, temperature: float = 0.2) -> dict[str, Any]:
+    def _request(self, model_name: str, prompt: str, *, image_parts: Sequence[dict[str, Any]] | None = None, max_output_tokens: int = 1024, temperature: float = 0.2, response_mime_type: str = "text/plain") -> dict[str, Any]:
         req_body = {
             "contents": [
                 {
@@ -242,7 +268,7 @@ class GemmaTranslationProvider:
                 "topP": 0.9,
                 "topK": 32,
                 "maxOutputTokens": max_output_tokens,
-                "responseMimeType": "text/plain",
+                "responseMimeType": response_mime_type,
             },
         }
         req = request.Request(
@@ -275,8 +301,8 @@ class GemmaTranslationProvider:
         cache_key = ("gemma", model_name, normalized, target_lang or self.target_lang)
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return TranslationResult(text=str(cached), provider=self.name, model=model_name)
-        payload = self._request(model_name, build_gemma_prompt_v2(normalized), max_output_tokens=1024, temperature=0.2)
+            return TranslationResult(text=str(cached), provider=self.name, model=model_name, from_cache=True)
+        payload = self._request(model_name, build_gemma_prompt_conservative(normalized), max_output_tokens=1024, temperature=0.2)
         self._record_call(model_name)
         translated = clean_model_output(extract_gemma_text(payload))
         if not translated:
@@ -323,7 +349,7 @@ class GemmaTranslationProvider:
         if cached is not None:
             translated_items, raw_text = cached
             return [
-                TranslationResult(text=item, provider=self.name, model=model_name, raw_text=raw_text)
+                TranslationResult(text=item, provider=self.name, model=model_name, raw_text=raw_text, from_cache=True)
                 for item in translated_items
             ]
 
@@ -343,3 +369,62 @@ class GemmaTranslationProvider:
             raise ValueError("empty_gemma_multimodal_response")
         self._remember(cache_key, (translated, raw_text))
         return [TranslationResult(text=line, provider=self.name, model=model_name, raw_text=raw_text) for line in translated]
+
+    def translate_screenshot(
+        self,
+        image_parts: Sequence[dict[str, Any]],
+        *,
+        target_lang: str = "zh-TW",
+        source_text_hint: str | None = None,
+    ) -> TranslationResult:
+        if not image_parts:
+            raise ValueError("missing_image_context")
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+        model_name = self._resolve_model()
+        if not self._can_call(model_name):
+            raise ValueError("gemma_rate_limited")
+
+        cache_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
+        cache_key = ("gemma-screenshot", model_name, hashlib.sha1(cache_seed.encode("utf-8")).hexdigest(), target_lang or self.target_lang)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            translated_text, raw_text = cached
+            return TranslationResult(text=str(translated_text), provider=self.name, model=model_name, raw_text=raw_text, from_cache=True)
+
+        last_raw_text = ""
+        translated = ""
+        payload = None
+        for attempt_index in range(3):
+            retry_note = None
+            if attempt_index >= 1 and last_raw_text:
+                retry_note = (
+                    "Rewrite the previous answer as translation only. "
+                    f"Previous answer was: {last_raw_text[:600]}"
+                )
+            prompt = build_gemma_screenshot_prompt_v2(retry_note)
+            payload = self._request(
+                model_name,
+                prompt,
+                image_parts=image_parts,
+                max_output_tokens=2048,
+                temperature=0.0 if attempt_index else 0.1,
+                response_mime_type="application/json",
+            )
+            self._record_call(model_name)
+            last_raw_text = extract_gemma_text(payload)
+            translated = clean_screenshot_translation_output(last_raw_text)
+            if is_valid_screenshot_translation(translated):
+                break
+            translated = ""
+        if not translated:
+            raise ValueError("empty_gemma_screenshot_response")
+        if source_text_hint and self._should_fallback_to_text_translation(source_text_hint, translated):
+            try:
+                source_lang = detect_source_language(source_text_hint)
+                translator = GoogleTranslator(source=source_lang, target=target_lang or self.target_lang)
+                translated = clean_model_output(translator.translate(clean_model_output(source_text_hint)).strip()) or translated
+            except Exception:
+                translated = self.translate(source_text_hint, target_lang=target_lang).text or translated
+        self._remember(cache_key, (translated, last_raw_text))
+        return TranslationResult(text=translated, provider=self.name, model=model_name, raw_text=last_raw_text)

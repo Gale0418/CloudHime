@@ -182,6 +182,24 @@ def build_gemma_multimodal_prompt(source_texts: Sequence[Any]) -> str:
     )
 
 
+def build_gemma_screenshot_prompt(source_text_hint: Any = None) -> str:
+    return (
+        "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
+        "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
+        "Return exactly one JSON object and nothing else:\n"
+        "{\"translation\":\"...\"}\n"
+        "Rules:\n"
+        "- The translation value must contain only the translated Chinese text.\n"
+        "- Do not include romanization, pinyin, furigana, meaning, context, notes, labels, or explanations.\n"
+        "- Do not repeat the source text.\n"
+        "- Do not add markdown, code fences, bullets, or extra keys.\n"
+        "- Preserve line breaks inside the translation string when they help readability.\n"
+        "- For spatial or context words such as \"手前\" and \"奥\", choose the most natural Taiwanese phrasing for the scene.\n"
+        "- If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
+        "If you cannot comply, output {\"translation\":\"\"}."
+    )
+
+
 def split_translated_lines(translated_text: Any, expected_count: int) -> list[str]:
     cleaned_text = clean_model_output(translated_text)
     if expected_count <= 1:
@@ -240,6 +258,62 @@ def clean_model_output(text: Any) -> str:
     return "\n".join(preferred or lines).strip()
 
 
+def clean_model_output_multiline(text: Any) -> str:
+    if not text:
+        return ""
+    text = str(text).strip().replace("```", "")
+    lines = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^[*\-•\s]+", "", line)
+        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
+            continue
+        line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        line = line.strip(" \"'")
+        if line:
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def extract_screenshot_translation(text: Any) -> str:
+    if not text:
+        return ""
+    candidate = str(text).strip().replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            payload = json.loads(candidate[start:end + 1])
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            for key in ("translation", "text", "result", "output"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    return clean_model_output_multiline(value).strip()
+    cleaned = clean_model_output_multiline(candidate)
+    if not cleaned:
+        return ""
+    filtered: list[str] = []
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lowered = stripped.lower()
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lowered):
+            continue
+        if lowered in {"text:", "translation:", "output:"}:
+            continue
+        if re.search(r"[A-Za-z]{4,}", stripped) and not HAS_CJK_PATTERN.search(stripped):
+            continue
+        filtered.append(stripped)
+    if filtered:
+        return "\n".join(filtered).strip()
+    return ""
+
+
 def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str]:
     if not text:
         return []
@@ -280,6 +354,85 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
     return translated
 
 
+def build_gemma_screenshot_prompt_v2(retry_note: str | None = None) -> str:
+    retry_block = ""
+    if retry_note:
+        retry_block = (
+            "\nPrevious answer was invalid because it contained non-translation text.\n"
+            f"Do not repeat this mistake: {retry_note.strip()}\n"
+        )
+    return (
+        "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
+        "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
+        "Focus only on the actual Chinese translation, not dictionary notes or analysis.\n"
+        "Return exactly one JSON object and nothing else:\n"
+        "{\"translation\":\"...\"}\n"
+        "Rules:\n"
+        "- The translation value must contain only the translated Chinese text.\n"
+        "- Do not include romanization, pinyin, furigana, meaning, context, notes, labels, or explanations.\n"
+        "- Do not repeat the source text.\n"
+        "- Do not add markdown, code fences, bullets, or extra keys.\n"
+        "- Preserve line breaks inside the translation string when they help readability.\n"
+        "- For spatial or context words such as \"手前\" and \"奥\", choose the most natural Taiwanese phrasing for the scene.\n"
+        "- If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
+        "- If you produce anything other than the translation, the answer is invalid.\n"
+        "If you cannot comply, output {\"translation\":\"\"}."
+        f"{retry_block}"
+    )
+
+
+def clean_screenshot_translation_output(text: Any) -> str:
+    if not text:
+        return ""
+    candidate = str(text).strip().replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            payload = json.loads(candidate[start:end + 1])
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            for key in ("translation", "text", "result", "output"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    return clean_model_output_multiline(value).strip()
+
+    lines = []
+    for raw_line in candidate.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]?", lower):
+            continue
+        if re.match(r"^[A-Za-z\s]+:\s*$", line):
+            continue
+        if re.search(r"[\u3040-\u30ff]", line):
+            continue
+        if re.search(r"[A-Za-z]{4,}", line) and not HAS_CJK_PATTERN.search(line):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def is_valid_screenshot_translation(text: Any) -> bool:
+    if not text:
+        return False
+    normalized = str(text).strip()
+    if not normalized:
+        return False
+    if re.search(r"[\u3040-\u30ff]", normalized):
+        return False
+    if re.search(r"[A-Za-z]", normalized):
+        return False
+    if not HAS_CJK_PATTERN.search(normalized):
+        return False
+    compact = re.sub(r"[\s\W_]+", "", normalized)
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff]", compact))
+    return cjk_count >= 2 or len(compact) <= 2
+
+
 def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> bytes:
     if img_np is None or img_np.size == 0:
         return b""
@@ -289,6 +442,17 @@ def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH
         img_np = cv2.resize(img_np, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
     success, encoded = cv2.imencode(".png", img_np)
     return encoded.tobytes() if success else b""
+
+
+def build_gemma_prompt_conservative(text: Any) -> str:
+    return (
+        "你是遊戲畫面即時翻譯助手。\n"
+        "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。\n"
+        "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。\n"
+        "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n"
+        "OCR 內容可能有破損、缺字或斷行，請優先維持原意並做適度修補；若無法確定，請保守翻譯，不要硬猜。\n\n"
+        f"原文：\n{text}"
+    )
 
 
 def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> list[dict[str, Any]]:

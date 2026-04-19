@@ -38,12 +38,21 @@ def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None
 
 
 def save_settings_data(paths: SettingsPaths, payload: dict[str, Any]) -> None:
-    try:
-        os.makedirs(os.path.dirname(paths.appdata_file), exist_ok=True)
-    except Exception:
-        pass
-    with open(paths.appdata_file, "w", encoding="utf-8") as fp:
-        json.dump(payload, fp, ensure_ascii=False, indent=2)
+    targets = (paths.appdata_file, paths.legacy_file)
+    last_error: Exception | None = None
+    for target in targets:
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+        except Exception:
+            pass
+        try:
+            with open(target, "w", encoding="utf-8") as fp:
+                json.dump(payload, fp, ensure_ascii=False, indent=2)
+            return
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
 
 
 def should_migrate_to_appdata(paths: SettingsPaths, loaded_from_path: str | None) -> bool:

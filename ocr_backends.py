@@ -235,28 +235,52 @@ class EasyOCRBackend(OCRBackend):
     def __init__(self):
         self._available = False
         self._reader = None
+        self._gpu_enabled = False
+        self._import_error = None
         try:
             import easyocr  # type: ignore
 
             self._easyocr = easyocr
             self._available = True
-        except Exception:
+        except Exception as exc:
+            self._import_error = exc
+            print(f"[OCR] EasyOCR unavailable: {exc}")
             self._available = False
 
     def available(self) -> bool:
         return self._available
+
+    def _can_use_gpu(self) -> bool:
+        try:
+            import torch  # type: ignore
+
+            return bool(torch.cuda.is_available())
+        except Exception:
+            return False
 
     def _get_reader(self):
         if self._reader is not None:
             return self._reader
         if not self._available:
             return None
+        gpu_enabled = self._can_use_gpu()
+        self._gpu_enabled = gpu_enabled
         for langs in (["ch_tra", "en"], ["ja", "en"], ["ch_sim", "en"]):
             try:
-                self._reader = self._easyocr.Reader(langs, gpu=False, verbose=False)
+                self._reader = self._easyocr.Reader(langs, gpu=gpu_enabled, verbose=False)
+                mode = "GPU" if gpu_enabled else "CPU"
+                print(f"[OCR] EasyOCR reader initialized ({mode})")
                 break
             except Exception:
                 self._reader = None
+                if gpu_enabled:
+                    try:
+                        self._reader = self._easyocr.Reader(langs, gpu=False, verbose=False)
+                        self._gpu_enabled = False
+                        print("[OCR] EasyOCR reader initialized (CPU fallback)")
+                        break
+                    except Exception:
+                        self._reader = None
         return self._reader
 
     def recognize(self, image: np.ndarray) -> OCRResult:
@@ -281,105 +305,6 @@ class EasyOCRBackend(OCRBackend):
             if len(item) >= 3:
                 try:
                     confidence = float(item[2])
-                except Exception:
-                    confidence = None
-            box = _box_from_points(box_points)
-            lines.append(OCRLine(text, box, confidence, (OCRWord(text, box, confidence),)))
-        return OCRResult(self.name, tuple(lines))
-
-
-class PaddleOCRBackend(OCRBackend):
-    name = "paddleocr"
-
-    def __init__(self):
-        self._available = False
-        self._ocr = None
-        try:
-            from paddleocr import PaddleOCR  # type: ignore
-
-            self._PaddleOCR = PaddleOCR
-            self._available = True
-        except Exception:
-            self._available = False
-
-    def available(self) -> bool:
-        return self._available
-
-    def _get_ocr(self):
-        if self._ocr is not None:
-            return self._ocr
-        if not self._available:
-            return None
-        attempts = (
-            {"use_textline_orientation": True, "lang": "en"},
-            {"use_textline_orientation": True, "lang": "japan"},
-            {"use_textline_orientation": True, "lang": "ch"},
-            {"use_angle_cls": True, "lang": "en"},
-            {"use_angle_cls": True, "lang": "japan"},
-            {"use_angle_cls": True, "lang": "ch"},
-        )
-        for kwargs in attempts:
-            try:
-                self._ocr = self._PaddleOCR(**kwargs)
-                break
-            except Exception:
-                self._ocr = None
-        return self._ocr
-
-    def recognize(self, image: np.ndarray) -> OCRResult:
-        ocr = self._get_ocr()
-        if ocr is None:
-            return OCRResult(self.name, ())
-        image = _ensure_bgr(image)
-        try:
-            try:
-                items = ocr.predict(image)
-            except Exception:
-                items = ocr.ocr(image)
-        except Exception as exc:
-            return OCRResult(self.name, (), error=str(exc))
-        lines: list[OCRLine] = []
-        for item in items or []:
-            if isinstance(item, dict):
-                rec_texts = list(item.get("rec_texts") or [])
-                rec_scores = list(item.get("rec_scores") or [])
-                rec_polys = list(item.get("rec_polys") or [])
-                rec_boxes = list(item.get("rec_boxes") or [])
-                for idx, raw_text in enumerate(rec_texts):
-                    text = str(raw_text).strip()
-                    if not text:
-                        continue
-                    confidence = None
-                    if idx < len(rec_scores):
-                        try:
-                            confidence = float(rec_scores[idx])
-                        except Exception:
-                            confidence = None
-                    box = OCRBox(0, 0, 1, 1)
-                    if idx < len(rec_polys):
-                        try:
-                            box = _box_from_points(rec_polys[idx])
-                        except Exception:
-                            box = OCRBox(0, 0, 1, 1)
-                    elif idx < len(rec_boxes):
-                        try:
-                            rect = rec_boxes[idx]
-                            box = OCRBox(int(rect[0]), int(rect[1]), max(1, int(rect[2] - rect[0])), max(1, int(rect[3] - rect[1])))
-                        except Exception:
-                            box = OCRBox(0, 0, 1, 1)
-                    lines.append(OCRLine(text, box, confidence, (OCRWord(text, box, confidence),)))
-                continue
-            if not item:
-                continue
-            box_points = item[0]
-            payload = item[1] if len(item) > 1 else ["", 0.0]
-            text = str(payload[0]).strip() if isinstance(payload, (list, tuple)) and payload else str(payload).strip()
-            if not text:
-                continue
-            confidence = None
-            if isinstance(payload, (list, tuple)) and len(payload) > 1:
-                try:
-                    confidence = float(payload[1])
                 except Exception:
                     confidence = None
             box = _box_from_points(box_points)
@@ -455,7 +380,6 @@ BACKEND_CLASSES = {
     "windows": WindowsOCRBackend,
     "tesseract": TesseractBackend,
     "easyocr": EasyOCRBackend,
-    "paddleocr": PaddleOCRBackend,
     "rapidocr": RapidOCRBackend,
 }
 

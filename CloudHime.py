@@ -10,6 +10,8 @@ import os
 import sys
 import ctypes
 import ctypes.wintypes
+import hashlib
+import difflib
 import random
 import re
 import json
@@ -20,6 +22,10 @@ from urllib import request, error
 import numpy as np
 import cv2
 import mss
+try:
+    import torch  # noqa: F401
+except Exception:
+    torch = None
 
 # Windows API 相關
 import win32con 
@@ -70,6 +76,7 @@ from ocr_quality import (
     score_ocr_items as quality_score_ocr_items,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
+from ocr_backend_installer import detect_backend_state
 import translation_helpers as translation_tools
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
@@ -82,6 +89,7 @@ from settings_store import (
     save_settings_data,
     should_migrate_to_appdata,
 )
+from ocr_backend_panel import OcrBackendSettingsPanel
 from translation_settings_panel import TranslationSettingsPanel
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
@@ -118,6 +126,7 @@ SCAN_MODE_FULLSCREEN = "fullscreen"
 SCAN_MODE_REGION = "region"
 REGION_RENDER_BUBBLE = "bubble"
 REGION_RENDER_RELIEF = "relief"
+REGION_RENDER_SCREENSHOT = "screenshot"
 RELIEF_SIDE_AUTO = "auto"
 RELIEF_SIDE_TOP = "top"
 RELIEF_SIDE_BOTTOM = "bottom"
@@ -302,6 +311,7 @@ class OCRWorker(QObject):
         self.use_gemma_translation = False
         self.gemma_auto_switch_enabled = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
+        self.region_render_mode = REGION_RENDER_BUBBLE
         self.scan_region = None
         self.auto_threshold_enabled = True
         self.last_auto_threshold_refresh_ms = 0.0
@@ -313,7 +323,7 @@ class OCRWorker(QObject):
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         self._refresh_translation_registry()
         
-        self.reload_ocr_backends()
+        self.reload_ocr_backends(log=False)
 
     def normalize_ocr_backend_chain(self, chain):
         if chain is None:
@@ -335,18 +345,20 @@ class OCRWorker(QObject):
                 item = "rapidocr"
             if item in {"easy-ocr"}:
                 item = "easyocr"
-            if item in {"paddle-ocr"}:
-                item = "paddleocr"
+            if item not in {"windows", "tesseract", "easyocr", "rapidocr"}:
+                continue
             if item not in cleaned:
                 cleaned.append(item)
         return cleaned
 
-    def reload_ocr_backends(self, backend_chain=None):
+    def reload_ocr_backends(self, backend_chain=None, log=True):
         chain = self.normalize_ocr_backend_chain(
             backend_chain if backend_chain is not None else self.ocr_backend_chain
         )
         self.ocr_backend_chain = chain
         self.ocr_backends = discover_backends(chain)
+        if not log:
+            return
         if self.ocr_backends:
             names = ", ".join(backend.name for backend in self.ocr_backends)
             print(f"[OCR] Available backends: {names}")
@@ -433,6 +445,12 @@ class OCRWorker(QObject):
 
     def set_scan_mode(self, scan_mode):
         self.scan_mode = scan_mode if scan_mode in (SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION) else SCAN_MODE_FULLSCREEN
+
+    def set_region_render_mode(self, render_mode):
+        render_mode = str(render_mode or REGION_RENDER_BUBBLE)
+        if render_mode not in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT):
+            render_mode = REGION_RENDER_BUBBLE
+        self.region_render_mode = render_mode
 
     def set_scan_region(self, rect):
         self.scan_region = rect if rect and rect[2] > 0 and rect[3] > 0 else None
@@ -693,6 +711,92 @@ class OCRWorker(QObject):
     def build_ai_image_parts(self, img_np):
         return translation_tools.build_ai_image_parts(img_np, max_width=AI_IMAGE_MAX_WIDTH)
 
+    def build_screenshot_text_hint(self, img_np):
+        if not self.ocr_backends:
+            return ""
+        try:
+            img_for_ocr, scale_factor = self.build_ocr_image(img_np, self.binary_threshold, scale_factor=2.0)
+            ocr_result = self._recognize_with_backends(img_for_ocr)
+        except Exception:
+            return ""
+        if not ocr_result or not getattr(ocr_result, "lines", None):
+            return ""
+        raw_items = []
+        for line in ocr_result.lines:
+            text = normalize_ocr_text(getattr(line, "text", "") or "")
+            if text:
+                if any(
+                    marker in text
+                    for marker in (
+                        "雲朵翻譯姬",
+                        "截圖翻譯完成",
+                        "全螢幕翻譯",
+                        "框選翻譯",
+                        "立即",
+                        "停止",
+                        "Gemma",
+                        "OCR",
+                        "v3.0",
+                        "5s",
+                    )
+                ):
+                    continue
+                confidence = getattr(line, "confidence", None)
+                try:
+                    confidence = float(confidence) if confidence is not None else None
+                except Exception:
+                    confidence = None
+                if confidence is not None and confidence < 0.55:
+                    continue
+                box = getattr(line, "box", None)
+                x = int(getattr(box, "x", 0) or 0)
+                y = int(getattr(box, "y", 0) or 0)
+                w = max(1, int(getattr(box, "w", 1) or 1))
+                h = max(1, int(getattr(box, "h", 1) or 1))
+                raw_items.append({
+                    "text": self.convert_to_trad(text),
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                    "confidence": confidence,
+                })
+        if not raw_items:
+            return ""
+        score, filtered_items = quality_score_ocr_items(raw_items)
+        if score < 18 or len(filtered_items) < 2:
+            return ""
+        hint = quality_summarize_threshold_candidate(filtered_items, max_items=6, max_chars=180).strip()
+        if len(hint) < 12:
+            return ""
+        return hint[:400]
+
+    def _normalize_translation_compare_text(self, text):
+        normalized = normalize_ocr_text(text)
+        if not normalized:
+            return ""
+        normalized = re.sub(r"[\s\(\)（）\[\]【】「」『』《》<>“”\"'、，。！？!?…：;；\-—~]+", "", normalized)
+        return normalized.lower()
+
+    def _should_fallback_to_text_translation(self, source_text_hint, translated_text):
+        if re.search(r"[\u3040-\u30ff]", str(translated_text or "")):
+            return True
+        source_norm = self._normalize_translation_compare_text(source_text_hint)
+        translated_norm = self._normalize_translation_compare_text(translated_text)
+        if not source_norm or not translated_norm:
+            return False
+        if source_norm == translated_norm:
+            return True
+        similarity = difflib.SequenceMatcher(None, source_norm, translated_norm).ratio()
+        return similarity >= 0.82
+
+    def _is_suspiciously_short_translation(self, source_text_hint, translated_text):
+        source_norm = self._normalize_translation_compare_text(source_text_hint)
+        translated_norm = self._normalize_translation_compare_text(translated_text)
+        if len(source_norm) < 8 or len(translated_norm) < 2:
+            return False
+        return len(translated_norm) <= max(4, int(len(source_norm) * 0.35))
+
     def translate_text_gemma(self, text):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
@@ -705,7 +809,9 @@ class OCRWorker(QObject):
                 old_model = self.gemma_model
                 self.gemma_model = provider_model
                 self.gemma_model_changed.emit(old_model, provider_model)
-            return result.text
+            if result.text and not getattr(result, "from_cache", False):
+                self.record_gemma_call(provider_model)
+            return self.convert_to_trad(result.text)
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
@@ -748,6 +854,7 @@ class OCRWorker(QObject):
         if not translated:
             raise ValueError("empty_gemma_response")
 
+        translated = self.convert_to_trad(translated)
         self.remember_translation(cache_key, translated)
         return translated
 
@@ -768,8 +875,9 @@ class OCRWorker(QObject):
                     self.gemma_model = provider_model
                     self.gemma_model_changed.emit(old_model, provider_model)
                 raw_text = results[0].raw_text or "\n".join(item.text for item in results)
-                if raw_text:
-                    return raw_text
+                if raw_text and not getattr(results[0], "from_cache", False):
+                    self.record_gemma_call(provider_model)
+                    return self.convert_to_trad(raw_text)
             raise ValueError("empty_gemma_multimodal_response")
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
@@ -812,11 +920,100 @@ class OCRWorker(QObject):
             payload = json.loads(response.read().decode("utf-8"))
         self.record_gemma_call(model_name)
 
-        translated = self.extract_gemma_text(payload)
+        translated = self.convert_to_trad(self.extract_gemma_text(payload))
         if not translated:
             raise ValueError("empty_gemma_multimodal_response")
 
         self.remember_translation(cache_key, translated)
+        return translated
+
+    def translate_screenshot_gemma(self, image_parts, source_text_hint=""):
+        if not image_parts:
+            raise ValueError("missing_image_context")
+        provider = self._get_translation_provider("gemma")
+        if provider is not None:
+            result = provider.translate_screenshot(
+                image_parts,
+                target_lang=translation_tools.GOOGLE_TARGET_LANG,
+                source_text_hint=source_text_hint,
+            )
+            provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
+            if provider_model and provider_model != self.gemma_model:
+                old_model = self.gemma_model
+                self.gemma_model = provider_model
+                self.gemma_model_changed.emit(old_model, provider_model)
+            translated = self.convert_to_trad(result.text)
+            if translated and not getattr(result, "from_cache", False):
+                self.record_gemma_call(provider_model)
+            if source_text_hint and (
+                self._should_fallback_to_text_translation(source_text_hint, translated)
+                or self._is_suspiciously_short_translation(source_text_hint, translated)
+            ):
+                fallback = self.translate_text_gemma(source_text_hint)
+                if fallback:
+                    return fallback
+            return translated
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+        model_name = self.resolve_gemma_model_for_call(self.gemma_model)
+        if not self.can_call_gemma(model_name):
+            raise ValueError("gemma_rate_limited")
+
+        translated = ""
+        last_payload = None
+        last_raw_text = ""
+        for attempt_index in range(3):
+            retry_note = None
+            if attempt_index >= 1 and last_raw_text:
+                retry_note = (
+                    "Rewrite the previous answer as translation only. "
+                    f"Previous answer was: {last_raw_text[:600]}"
+                )
+            prompt = translation_tools.build_gemma_screenshot_prompt_v2(retry_note)
+            req_body = {
+                "contents": [{
+                    "parts": [*image_parts, {"text": prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.0 if attempt_index else 0.1,
+                    "topP": 0.9,
+                    "topK": 32,
+                    "maxOutputTokens": 2048,
+                    "responseMimeType": "application/json"
+                }
+            }
+            req = request.Request(
+                GOOGLE_API_ENDPOINT.format(model=model_name),
+                data=json.dumps(req_body).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.google_api_key,
+                },
+                method="POST",
+            )
+            with request.urlopen(req, timeout=25) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            self.record_gemma_call(model_name)
+            last_payload = payload
+            last_raw_text = self.extract_gemma_text(payload)
+            translated = self.convert_to_trad(
+                translation_tools.clean_screenshot_translation_output(last_raw_text)
+            )
+            if translation_tools.is_valid_screenshot_translation(translated):
+                break
+            translated = ""
+        if not translated:
+            raise ValueError("empty_gemma_screenshot_response")
+        if source_text_hint and (
+            self._should_fallback_to_text_translation(source_text_hint, translated)
+            or self._is_suspiciously_short_translation(source_text_hint, translated)
+        ):
+            fallback = self.translate_text_google(source_text_hint)
+            if fallback:
+                return fallback
+            fallback = self.translate_text_gemma(source_text_hint)
+            if fallback:
+                return fallback
         return translated
 
     def translate_text_gemma_with_provider(self, text):
@@ -1529,7 +1726,8 @@ class OCRWorker(QObject):
         }]
 
     def run_scan_once(self):
-        if not self.ocr_backends:
+        is_screenshot_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT
+        if not is_screenshot_mode and not self.ocr_backends:
             self.status_msg.emit("❌ 缺少可用 OCR 後端")
             self.finished.emit([])
             self.show_ui.emit()
@@ -1541,6 +1739,44 @@ class OCRWorker(QObject):
             ai_image_parts = self.build_ai_image_parts(img)
         except Exception:
             self.finished.emit([])
+            self.show_ui.emit()
+            return
+
+        if is_screenshot_mode:
+            if not self.has_multimodal_ai():
+                self.status_msg.emit("❌ 截圖模式需要 Gemma AI 與 Google API KEY")
+                self.finished.emit([])
+                self.show_ui.emit()
+                return
+            self.status_msg.emit("🖼 截圖模式翻譯中...")
+            try:
+                translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
+            except Exception:
+                self.status_msg.emit("❌ 截圖翻譯失敗")
+                self.finished.emit([])
+                self.show_ui.emit()
+                return
+
+            if not translated_text:
+                self.handle_empty()
+                self.show_ui.emit()
+                return
+
+            current_combined_text = hashlib.sha1(img.tobytes()).hexdigest()
+            current_provider = self.get_current_ai_provider()
+            is_upgrade_needed = self.get_translation_provider_priority(current_provider) > self.get_translation_provider_priority(self.last_provider)
+            if current_combined_text == self.last_combined_text and not is_upgrade_needed:
+                self.status_msg.emit("♻️ 畫面靜止")
+                self.finished.emit(self.last_results)
+                self.show_ui.emit()
+                return
+
+            self.last_combined_text = current_combined_text
+            self.last_provider = current_provider
+            final_results = [(translated_text, int(offset_x), int(offset_y), int(img.shape[1]), int(img.shape[0]))]
+            self.last_results = final_results
+            self.status_msg.emit("✅ 截圖翻譯完成")
+            self.finished.emit(final_results)
             self.show_ui.emit()
             return
 
@@ -1755,7 +1991,7 @@ class TransBubble(QLabel):
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.text_padding = 8
         self.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
-        self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF) else REGION_RENDER_BUBBLE
+        self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
         self.relief_side = relief_side if relief_side in {opt[1] for opt in RELIEF_SIDE_OPTIONS} else RELIEF_SIDE_AUTO
         self.relief_font_pt = max(MIN_BUBBLE_FONT_PT, int(relief_font_pt))
         self.relief_opacity = max(0, min(100, int(relief_opacity)))
@@ -1770,6 +2006,8 @@ class TransBubble(QLabel):
         self.setMouseTracking(True)
         if self.render_mode == REGION_RENDER_RELIEF:
             bubble_rect, best_size = self.compute_relief_layout(text, x, y, w, h)
+        elif self.render_mode == REGION_RENDER_SCREENSHOT:
+            bubble_rect, best_size = self.compute_screenshot_layout(text, x, y, w, h)
         else:
             bubble_rect, best_size = self.compute_bubble_layout(text, x, y, w, h)
         font = self.font()
@@ -1937,6 +2175,42 @@ class TransBubble(QLabel):
         )
         return cand, font_size
 
+    def compute_screenshot_layout(self, text, x, y, w, h):
+        parent_rect = self.parent().rect()
+        anchor = self.region_rect if self.region_rect is not None else QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
+        base_rect, base_size = self.compute_bubble_layout(text, x, y, w, h)
+        base_rect = QRect(base_rect)
+        gap = max(14, min(RELIEF_MAX_GAP_PX, max(14, int(min(anchor.width(), anchor.height()) * 0.1))))
+
+        candidates: list[QRect] = []
+        centered_y = int(round(anchor.center().y() - base_rect.height() / 2))
+        centered_x = int(round(anchor.center().x() - base_rect.width() / 2))
+        candidates.append(QRect(anchor.right() + gap, centered_y, base_rect.width(), base_rect.height()))
+        candidates.append(QRect(anchor.left() - gap - base_rect.width(), centered_y, base_rect.width(), base_rect.height()))
+        candidates.append(QRect(centered_x, anchor.top() - gap - base_rect.height(), base_rect.width(), base_rect.height()))
+        candidates.append(QRect(centered_x, anchor.bottom() + gap, base_rect.width(), base_rect.height()))
+
+        best_rect = QRect(base_rect)
+        best_score = None
+        for cand in candidates:
+            cand = QRect(
+                max(0, min(cand.x(), parent_rect.width() - cand.width())),
+                max(0, min(cand.y(), parent_rect.height() - cand.height())),
+                cand.width(),
+                cand.height(),
+            )
+            overlap = self._rect_overlap_area(cand, anchor)
+            offscreen_penalty = 0
+            if cand.left() <= 0 or cand.top() <= 0 or cand.right() >= parent_rect.right() or cand.bottom() >= parent_rect.bottom():
+                offscreen_penalty = 2500
+            distance = abs(cand.center().x() - anchor.center().x()) + abs(cand.center().y() - anchor.center().y())
+            score = (overlap + offscreen_penalty, distance)
+            if best_score is None or score < best_score:
+                best_score = score
+                best_rect = cand
+
+        return best_rect, base_size
+
     def _rect_overlap_area(self, first, second):
         ix1 = max(first.left(), second.left())
         iy1 = max(first.top(), second.top())
@@ -2005,7 +2279,7 @@ class OverlayWindow(QWidget):
 
     def set_render_context(self, scan_mode, render_mode, relief_side=None, relief_font_pt=None, relief_opacity=None, relief_gap_px=None, scan_region=None):
         self.scan_mode = scan_mode if scan_mode in (SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION) else SCAN_MODE_FULLSCREEN
-        self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF) else REGION_RENDER_BUBBLE
+        self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
         if relief_side in {opt[1] for opt in RELIEF_SIDE_OPTIONS}:
             self.relief_side = relief_side
         if relief_font_pt is not None:
@@ -2020,8 +2294,8 @@ class OverlayWindow(QWidget):
         self.clear_all()
         for t, x, y, w, h in results:
             mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else REGION_RENDER_BUBBLE
-            # 框選 + 浮雕模式：把掃描框傳入，讓翻譯貼在框的外側
-            region_rect = self.scan_region if (mode == REGION_RENDER_RELIEF and self.scan_mode == SCAN_MODE_REGION and self.scan_region) else None
+            # 框選 + 浮雕 / 截圖模式：把掃描框傳入，讓翻譯貼在框的外側
+            region_rect = self.scan_region if (mode in (REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) and self.scan_mode == SCAN_MODE_REGION and self.scan_region) else None
             self.bubbles.append(
                 TransBubble(
                     self,
@@ -2660,6 +2934,7 @@ class SettingsWindow(QWidget):
         self.cmb_region_render_mode = QComboBox()
         self.cmb_region_render_mode.addItem("氣泡功能", REGION_RENDER_BUBBLE)
         self.cmb_region_render_mode.addItem("浮雕功能", REGION_RENDER_RELIEF)
+        self.cmb_region_render_mode.addItem("截圖模式", REGION_RENDER_SCREENSHOT)
         self.cmb_region_render_mode.currentIndexChanged.connect(self.on_region_render_mode_changed)
         render_row.addWidget(self.cmb_region_render_mode)
         region_render_layout.addLayout(render_row)
@@ -2854,6 +3129,9 @@ class SettingsWindow(QWidget):
         if mode == REGION_RENDER_RELIEF:
             self.lbl_region_render_summary.setText("狀態：浮雕功能 · 文字貼近原文")
             self.card_relief.setVisible(True)
+        elif mode == REGION_RENDER_SCREENSHOT:
+            self.lbl_region_render_summary.setText("狀態：截圖模式 · 整塊區域一起理解")
+            self.card_relief.setVisible(False)
         else:
             self.lbl_region_render_summary.setText("狀態：氣泡功能 · 保留原本泡泡")
             self.card_relief.setVisible(False)
@@ -2891,9 +3169,13 @@ class SettingsWindow(QWidget):
         self.spin_random_scan_jitter.blockSignals(False)
 
         self.cmb_region_render_mode.blockSignals(True)
-        self.cmb_region_render_mode.setCurrentIndex(
-            1 if self.controller.region_render_mode == REGION_RENDER_RELIEF else 0
-        )
+        if self.controller.region_render_mode == REGION_RENDER_RELIEF:
+            render_index = 1
+        elif self.controller.region_render_mode == REGION_RENDER_SCREENSHOT:
+            render_index = 2
+        else:
+            render_index = 0
+        self.cmb_region_render_mode.setCurrentIndex(render_index)
         self.cmb_region_render_mode.blockSignals(False)
 
         self.cmb_relief_side.blockSignals(True)
@@ -3023,8 +3305,8 @@ class SettingsWindowRevamp(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.old_pos = None
-        self._drag_origin = None
         self._ai_requested = False
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setFixedSize(800, 1000)
 
         root = QVBoxLayout(self)
@@ -3063,10 +3345,9 @@ class SettingsWindowRevamp(QWidget):
 
         chip_row = QHBoxLayout()
         chip_row.setSpacing(8)
-        self.lbl_autosave = QLabel("自動儲存中")
-        self.lbl_sync_state = QLabel("即時同步")
-        chip_row.addWidget(self.lbl_autosave)
-        chip_row.addWidget(self.lbl_sync_state)
+        self.ocr_backend_panel = OcrBackendSettingsPanel(self.controller, self)
+        self.ocr_backend_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        chip_row.addWidget(self.ocr_backend_panel)
         chip_row.addStretch()
         self.cmb_theme_mode_chip = QComboBox()
         for theme in ThemeRegistry.available():
@@ -3159,6 +3440,7 @@ class SettingsWindowRevamp(QWidget):
         self.cmb_region_render_mode = QComboBox()
         self.cmb_region_render_mode.addItem("氣泡功能", REGION_RENDER_BUBBLE)
         self.cmb_region_render_mode.addItem("浮雕功能", REGION_RENDER_RELIEF)
+        self.cmb_region_render_mode.addItem("截圖模式", REGION_RENDER_SCREENSHOT)
         self.cmb_region_render_mode.currentIndexChanged.connect(self.on_region_render_mode_changed)
         render_row.addWidget(self.cmb_region_render_mode)
         render.addLayout(render_row)
@@ -3227,35 +3509,28 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_summary.setWordWrap(True)
         relief.addWidget(self.lbl_relief_summary)
         body = QWidget()
+        body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         body_grid = QGridLayout(body)
         body_grid.setContentsMargins(0, 0, 0, 0)
         body_grid.setHorizontalSpacing(14)
         body_grid.setVerticalSpacing(14)
         body_grid.setColumnStretch(0, 1)
         body_grid.setColumnStretch(1, 1)
-        body_grid.addWidget(self.translation_panel, 0, 0, 1, 2)
-        body_grid.addWidget(self.card_ocr, 1, 0, 1, 2)
+        self.card_translate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.card_key.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.card_ocr.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.card_region_render.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.card_relief.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        body_grid.addWidget(self.card_translate, 0, 0, 1, 2)
+        body_grid.addWidget(self.card_key, 1, 0)
+        body_grid.addWidget(self.card_ocr, 1, 1)
         body_grid.addWidget(self.card_region_render, 2, 0)
         body_grid.addWidget(self.card_relief, 2, 1)
         main.addWidget(body)
 
-        self._drag_widgets = [
-            self,
-            self.frame,
-            self.header_panel,
-            body,
-            self.translation_panel,
-            self.translation_panel.card_translate,
-            self.translation_panel.card_key,
-            self.card_ocr,
-            self.auto_scan_panel,
-            self.card_region_render,
-            self.card_relief,
-        ]
-        for widget in self._drag_widgets:
-            widget.installEventFilter(self)
-
         self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.translation_panel.set_translate_advanced_visible(True)
+        self.translation_panel.hide()
 
     def on_translate_mode_clicked(self, use_ai):
         self.translation_panel.on_translate_mode_clicked(use_ai)
@@ -3302,28 +3577,6 @@ class SettingsWindowRevamp(QWidget):
         self.controller.set_theme_mode(theme_mode)
 
     def eventFilter(self, obj, event):
-        if obj in getattr(self, "_drag_widgets", ()):
-            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-                local_pos = event.position().toPoint()
-                child = obj.childAt(local_pos) if hasattr(obj, "childAt") else None
-                interactive_types = (QPushButton, QLineEdit, QComboBox, QCheckBox, QSpinBox)
-                while child is not None:
-                    if isinstance(child, interactive_types):
-                        return super().eventFilter(obj, event)
-                    child = child.parentWidget()
-                self._drag_origin = event.globalPosition().toPoint()
-                event.accept()
-                return True
-            if event.type() == QEvent.MouseMove and self._drag_origin is not None and event.buttons() & Qt.LeftButton:
-                delta = event.globalPosition().toPoint() - self._drag_origin
-                self.move(self.x() + delta.x(), self.y() + delta.y())
-                self._drag_origin = event.globalPosition().toPoint()
-                event.accept()
-                return True
-            if event.type() == QEvent.MouseButtonRelease and self._drag_origin is not None:
-                self._drag_origin = None
-                event.accept()
-                return True
         return super().eventFilter(obj, event)
 
     def set_translate_advanced_visible(self, visible):
@@ -3342,6 +3595,9 @@ class SettingsWindowRevamp(QWidget):
         if mode == REGION_RENDER_RELIEF:
             self.lbl_region_render_summary.setText("目前：浮雕功能 · 文字貼近原文")
             self.update_relief_state(True)
+        elif mode == REGION_RENDER_SCREENSHOT:
+            self.lbl_region_render_summary.setText("目前：截圖模式 · 整塊區域一起理解")
+            self.update_relief_state(False)
         else:
             self.lbl_region_render_summary.setText("目前：氣泡功能 · 保留原本泡泡")
             self.update_relief_state(False)
@@ -3362,6 +3618,7 @@ class SettingsWindowRevamp(QWidget):
         self.translation_panel.update_key_state(enabled)
 
     def update_relief_state(self, enabled):
+        self.card_relief.setVisible(enabled)
         self.card_relief.setEnabled(enabled)
         self.cmb_relief_side.setEnabled(enabled)
         self.spin_relief_font.setEnabled(enabled)
@@ -3375,6 +3632,7 @@ class SettingsWindowRevamp(QWidget):
 
     def sync_from_controller(self):
         theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
+        self.ocr_backend_panel.sync_from_controller()
         self.spin_random_scan_center.blockSignals(True)
         self.spin_random_scan_center.setValue(self.controller.random_scan_center_seconds)
         self.spin_random_scan_center.blockSignals(False)
@@ -3382,7 +3640,13 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
         self.spin_random_scan_jitter.blockSignals(False)
         self.cmb_region_render_mode.blockSignals(True)
-        self.cmb_region_render_mode.setCurrentIndex(1 if self.controller.region_render_mode == REGION_RENDER_RELIEF else 0)
+        if self.controller.region_render_mode == REGION_RENDER_RELIEF:
+            render_index = 1
+        elif self.controller.region_render_mode == REGION_RENDER_SCREENSHOT:
+            render_index = 2
+        else:
+            render_index = 0
+        self.cmb_region_render_mode.setCurrentIndex(render_index)
         self.cmb_region_render_mode.blockSignals(False)
         self.cmb_relief_side.blockSignals(True)
         self.cmb_relief_side.setCurrentIndex(max(0, self.cmb_relief_side.findData(self.controller.region_relief_side)))
@@ -3419,14 +3683,13 @@ class SettingsWindowRevamp(QWidget):
         self.setStyleSheet(theme.base_qss())
         self.frame.setStyleSheet(theme.window_qss(radius=22, border_width=2))
         self.header_panel.setStyleSheet(theme.header_qss(radius=18))
+        self.ocr_backend_panel.update_theme(theme_mode)
         self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=18))
         self.card_region_render.setStyleSheet(theme.panel_qss("subtle", radius=18))
         self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=18))
         self.auto_scan_panel.setStyleSheet(theme.panel_qss("transparent"))
         self.lbl_title.setStyleSheet(f"font-size: 19px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
         self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_autosave.setStyleSheet(theme.pill_qss("accent", size=11))
-        self.lbl_sync_state.setStyleSheet(f"color: {theme.subtext}; font-size: 11px; font-weight: 700; background: transparent; border: none; padding: 0;")
         self.lbl_ocr.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {theme.text};")
         self.lbl_ocr_hint.setStyleSheet(f"color: {theme.subtext};")
         self.lbl_auto_scan.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.accent};")
@@ -3722,6 +3985,18 @@ class Controller(QWidget):
 
         self.worker.set_auto_threshold_enabled(True)
         backend_chain = extract_backend_chain(settings)
+        if backend_chain is None:
+            backend_chain = ["windows"]
+        backend_chain = self.worker.normalize_ocr_backend_chain(backend_chain)
+        if "windows" not in backend_chain:
+            backend_chain.insert(0, "windows")
+        for backend_name in ("easyocr", "rapidocr", "tesseract"):
+            try:
+                state = detect_backend_state(backend_name)
+            except Exception:
+                continue
+            if state.available and backend_name not in backend_chain:
+                backend_chain.append(backend_name)
         try:
             self.worker.reload_ocr_backends(backend_chain)
         except Exception:
@@ -3734,7 +4009,8 @@ class Controller(QWidget):
         self.random_scan_jitter_percent = max(0, min(100, jitter_percent))
 
         region_render_mode = str(settings.get("region_render_mode", REGION_RENDER_BUBBLE) or REGION_RENDER_BUBBLE)
-        self.region_render_mode = region_render_mode if region_render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF) else REGION_RENDER_BUBBLE
+        self.region_render_mode = region_render_mode if region_render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
+        self.worker.set_region_render_mode(self.region_render_mode)
 
         self.region_relief_side = str(settings.get("region_relief_side", RELIEF_SIDE_AUTO) or RELIEF_SIDE_AUTO)
         if self.region_relief_side not in {opt[1] for opt in RELIEF_SIDE_OPTIONS}:
@@ -3844,9 +4120,10 @@ class Controller(QWidget):
 
     def on_region_render_mode_changed(self, mode):
         mode = str(mode or REGION_RENDER_BUBBLE)
-        if mode not in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF):
+        if mode not in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT):
             mode = REGION_RENDER_BUBBLE
         self.region_render_mode = mode
+        self.worker.set_region_render_mode(mode)
         self.overlay.set_render_context(
             self.scan_mode,
             self.region_render_mode,
@@ -3894,6 +4171,37 @@ class Controller(QWidget):
         if self.settings_window is not None:
             self.settings_window.update_translate_summary()
         self.schedule_save_settings()
+
+    def get_ocr_backend_chain(self):
+        chain = list(getattr(self.worker, "ocr_backend_chain", []) or [])
+        if "windows" not in chain:
+            chain.insert(0, "windows")
+        return chain
+
+    def set_ocr_backend_chain(self, chain):
+        normalized = self.worker.normalize_ocr_backend_chain(chain)
+        if not normalized:
+            normalized = ["windows"]
+        self.worker.reload_ocr_backends(normalized)
+        if self.settings_window is not None:
+            self.settings_window.sync_from_controller()
+        self.save_settings()
+
+    def set_ocr_backend_enabled(self, backend_name, enabled):
+        backend_name = str(backend_name or "").strip().lower()
+        if not backend_name:
+            return
+        if backend_name == "windows":
+            enabled = True
+        chain = self.get_ocr_backend_chain()
+        if enabled:
+            if backend_name not in chain:
+                chain.append(backend_name)
+        else:
+            chain = [item for item in chain if item != backend_name]
+        if not chain:
+            chain = ["windows"]
+        self.set_ocr_backend_chain(chain)
 
     def on_worker_gemma_model_changed(self, old_model, new_model):
         old_model = str(old_model or "")
@@ -4165,7 +4473,17 @@ class Controller(QWidget):
             self.region_relief_gap_px,
             self.selected_region,
         )
-        self.overlay.update_bubbles(results)
+        display_results = list(results) if results else []
+        if self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT and display_results:
+            combined_text = "\n".join(str(text).strip() for text, *_ in display_results if str(text).strip())
+            if combined_text:
+                if self.selected_region:
+                    anchor = self.selected_region
+                else:
+                    first = display_results[0]
+                    anchor = (int(first[1]), int(first[2]), max(1, int(first[3])), max(1, int(first[4])))
+                display_results = [(combined_text, int(anchor[0]), int(anchor[1]), max(1, int(anchor[2])), max(1, int(anchor[3])))]
+        self.overlay.update_bubbles(display_results)
         self.overlay.raise_()
         if self.current_auto_interval > 0:
             self.schedule_next_scan()
