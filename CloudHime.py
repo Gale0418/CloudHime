@@ -22,10 +22,6 @@ from urllib import request, error
 import numpy as np
 import cv2
 import mss
-try:
-    import torch  # noqa: F401
-except Exception:
-    torch = None
 
 # Windows API 相關
 import win32con 
