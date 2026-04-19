@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,14 +27,23 @@ def create_settings_paths(script_dir: str, appdata_root: str | None = None) -> S
 
 
 def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None]:
+    candidates: list[tuple[float, dict[str, Any], str]] = []
     for settings_path in (paths.appdata_file, paths.legacy_file):
         try:
             with open(settings_path, "r", encoding="utf-8") as fp:
                 payload = json.load(fp)
             if isinstance(payload, dict):
-                return payload, settings_path
+                try:
+                    mtime = os.path.getmtime(settings_path)
+                except Exception:
+                    mtime = 0.0
+                candidates.append((mtime, payload, settings_path))
         except Exception:
             continue
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[2] == paths.legacy_file))
+        _, payload, settings_path = candidates[-1]
+        return payload, settings_path
     return {}, None
 
 
@@ -42,12 +52,24 @@ def save_settings_data(paths: SettingsPaths, payload: dict[str, Any]) -> None:
     last_error: Exception | None = None
     for target in targets:
         try:
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+            target_dir = os.path.dirname(target)
+            os.makedirs(target_dir, exist_ok=True)
         except Exception:
             pass
         try:
-            with open(target, "w", encoding="utf-8") as fp:
-                json.dump(payload, fp, ensure_ascii=False, indent=2)
+            fd, temp_path = tempfile.mkstemp(dir=target_dir or None, prefix=".cloudhime-", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                    json.dump(payload, fp, ensure_ascii=False, indent=2)
+                    fp.flush()
+                    os.fsync(fp.fileno())
+                os.replace(temp_path, target)
+            except Exception:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+                raise
             return
         except Exception as exc:
             last_error = exc

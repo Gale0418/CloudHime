@@ -118,6 +118,7 @@ def install_backend_packages(name: str) -> Tuple[bool, str]:
             state = detect_backend_state(backend_name)
             if not state.available:
                 note = spec.install_note or "Requires tesseract.exe."
-                return False, note
+                messages.append(f"{note} Restart the app if tesseract was just installed.")
+                return True, "\n".join(messages).strip()
 
     return True, "\n".join(messages).strip() or f"{spec.label} install completed."
