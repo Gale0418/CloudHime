@@ -18,7 +18,7 @@ from translation_helpers import (
     build_gemma_multimodal_prompt,
     clean_model_output,
     clean_model_output_multiline,
-    build_gemma_screenshot_prompt_v2,
+    build_gemma_screenshot_prompt_v3,
     clean_screenshot_translation_output,
     is_valid_screenshot_translation,
     detect_source_language,
@@ -402,14 +402,17 @@ class GemmaTranslationProvider:
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            prompt = build_gemma_screenshot_prompt_v2(retry_note)
+            prompt = build_gemma_screenshot_prompt_v3(source_text_hint, retry_note)
             payload = self._request(
                 model_name,
                 prompt,
                 image_parts=image_parts,
                 max_output_tokens=2048,
                 temperature=0.0 if attempt_index else 0.1,
-                response_mime_type="application/json",
+                # gemma-3-27b-it does not support JSON mode for screenshot requests.
+                # Keep the prompt JSON-shaped, but let the model answer in plain text so
+                # the existing cleaner can extract JSON or fallback text safely.
+                response_mime_type="text/plain",
             )
             self._record_call(model_name)
             last_raw_text = extract_gemma_text(payload)

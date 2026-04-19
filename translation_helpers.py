@@ -354,6 +354,42 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
     return translated
 
 
+def build_gemma_screenshot_prompt_v3(source_text_hint: Any = None, retry_note: str | None = None) -> str:
+    hint_block = ""
+    if source_text_hint:
+        hint_text = clean_model_output_multiline(str(source_text_hint)).strip()
+        if hint_text:
+            hint_block = (
+                "\nOCR hint (may be imperfect, trust the image more):\n"
+                f"{hint_text[:1200]}\n"
+            )
+
+    retry_block = ""
+    if retry_note:
+        retry_block = (
+            "\nPrevious answer was too literal or contained analysis.\n"
+            f"Rewrite it as a natural Taiwanese translation only: {retry_note.strip()}\n"
+        )
+
+    return (
+        "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
+        "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
+        "Use everyday Taiwanese phrasing, not word-for-word dictionary translation.\n"
+        "For dialogue, keep it short, fluent, and spoken-like.\n"
+        "Return only the translated Chinese text. No notes, no JSON, no markdown, no code fences, no explanations.\n"
+        "Do not repeat the source text.\n"
+        "Do not include romanization, pinyin, furigana, labels, or analysis.\n"
+        "If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
+        "Important glossary:\n"
+        "- おっと -> 哦 / 喔 / 哎呀\n"
+        "- 空気 in dialogue usually means 氣氛 / 氛圍, not physical 空氣\n"
+        "- 手前と奥の空気が違いすぎないか？ -> 前後的氣氛差太多了吧？\n"
+        "If you cannot comply, output nothing.\n"
+        f"{hint_block}"
+        f"{retry_block}"
+    )
+
+
 def build_gemma_screenshot_prompt_v2(retry_note: str | None = None) -> str:
     retry_block = ""
     if retry_note:
