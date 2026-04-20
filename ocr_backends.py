@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
@@ -104,6 +105,28 @@ class WindowsOCRBackend(OCRBackend):
     def available(self) -> bool:
         return self._available and self._init_engine() is not None
 
+    def _run_coroutine_sync(self, coroutine):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coroutine)
+
+        result: dict[str, object] = {}
+        error: dict[str, BaseException] = {}
+
+        def runner():
+            try:
+                result["value"] = asyncio.run(coroutine)
+            except BaseException as exc:
+                error["exc"] = exc
+
+        thread = threading.Thread(target=runner, daemon=True)
+        thread.start()
+        thread.join()
+        if error:
+            raise error["exc"]
+        return result.get("value")
+
     def _init_engine(self):
         if self._engine is not None:
             return self._engine
@@ -138,7 +161,7 @@ class WindowsOCRBackend(OCRBackend):
 
     def recognize(self, image: np.ndarray) -> OCRResult:
         try:
-            ocr_result = asyncio.run(self._recognize_async(image))
+            ocr_result = self._run_coroutine_sync(self._recognize_async(image))
         except Exception as exc:
             return OCRResult(self.name, (), error=str(exc))
         if not ocr_result:
@@ -237,6 +260,7 @@ class EasyOCRBackend(OCRBackend):
         self._reader = None
         self._gpu_enabled = False
         self._import_error = None
+        self._init_error = None
         try:
             import easyocr  # type: ignore
 
@@ -248,7 +272,7 @@ class EasyOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available
+        return self._get_reader() is not None
 
     def _can_use_gpu(self) -> bool:
         try:
@@ -265,13 +289,15 @@ class EasyOCRBackend(OCRBackend):
             return None
         gpu_enabled = self._can_use_gpu()
         self._gpu_enabled = gpu_enabled
+        last_error = None
         for langs in (["ch_tra", "en"], ["ja", "en"], ["ch_sim", "en"]):
             try:
                 self._reader = self._easyocr.Reader(langs, gpu=gpu_enabled, verbose=False)
                 mode = "GPU" if gpu_enabled else "CPU"
                 print(f"[OCR] EasyOCR reader initialized ({mode})")
                 break
-            except Exception:
+            except Exception as exc:
+                last_error = exc
                 self._reader = None
                 if gpu_enabled:
                     try:
@@ -279,14 +305,17 @@ class EasyOCRBackend(OCRBackend):
                         self._gpu_enabled = False
                         print("[OCR] EasyOCR reader initialized (CPU fallback)")
                         break
-                    except Exception:
+                    except Exception as exc:
+                        last_error = exc
                         self._reader = None
+        self._init_error = last_error
         return self._reader
 
     def recognize(self, image: np.ndarray) -> OCRResult:
         reader = self._get_reader()
         if reader is None:
-            return OCRResult(self.name, ())
+            message = str(self._init_error or self._import_error or "easyocr_unavailable")
+            return OCRResult(self.name, (), error=message)
         image = _ensure_bgr(image)
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         try:
@@ -318,6 +347,7 @@ class RapidOCRBackend(OCRBackend):
     def __init__(self):
         self._available = False
         self._ocr = None
+        self._init_error = None
         try:
             from rapidocr_onnxruntime import RapidOCR  # type: ignore
 
@@ -333,7 +363,7 @@ class RapidOCRBackend(OCRBackend):
                 self._available = False
 
     def available(self) -> bool:
-        return self._available
+        return self._get_ocr() is not None
 
     def _get_ocr(self):
         if self._ocr is not None:
@@ -342,14 +372,16 @@ class RapidOCRBackend(OCRBackend):
             return None
         try:
             self._ocr = self._RapidOCR()
-        except Exception:
+        except Exception as exc:
+            self._init_error = exc
             self._ocr = None
         return self._ocr
 
     def recognize(self, image: np.ndarray) -> OCRResult:
         ocr = self._get_ocr()
         if ocr is None:
-            return OCRResult(self.name, ())
+            message = str(self._init_error or "rapidocr_unavailable")
+            return OCRResult(self.name, (), error=message)
         image = _ensure_bgr(image)
         try:
             items = ocr(image)

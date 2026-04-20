@@ -157,7 +157,9 @@ class TranslationSettingsPanel(QFrame):
         self.update_translate_summary()
 
     def set_translate_advanced_visible(self, visible):
-        self.card_key.setVisible(True)
+        visible = bool(visible)
+        self.card_key.setVisible(visible)
+        self.advanced_translate_frame.setVisible(visible)
 
     def update_translate_summary(self):
         use_ai = self.btn_translate_ai.isChecked()

@@ -35,10 +35,11 @@ def get_google_translator(
     source_lang: str,
     target_lang: str = GOOGLE_TARGET_LANG,
 ) -> GoogleTranslator:
-    translator = translators.get(source_lang)
+    cache_key = f"{source_lang}->{target_lang}"
+    translator = translators.get(cache_key)
     if translator is None:
         translator = GoogleTranslator(source=source_lang, target=target_lang)
-        translators[source_lang] = translator
+        translators[cache_key] = translator
     return translator
 
 
@@ -73,7 +74,7 @@ def translate_text_google(
     if not normalized_text:
         return ""
     source_lang = detect_source_language(normalized_text)
-    cache_key = (source_lang, normalized_text)
+    cache_key = (source_lang, target_lang, normalized_text)
     cached = get_cached_translation(translation_cache, cache_key)
     if cached is not None:
         return cached
@@ -106,7 +107,7 @@ def translate_text_google_batch(
             group_texts.append(normalized_texts[index])
             index += 1
 
-        cache_key = ("google-batch", source_lang, tuple(group_texts))
+        cache_key = ("google-batch", source_lang, target_lang, tuple(group_texts))
         batch_result = get_cached_translation(translation_cache, cache_key)
         if batch_result is None:
             translator = get_google_translator(translators, source_lang, target_lang=target_lang)
@@ -118,7 +119,7 @@ def translate_text_google_batch(
             remember_translation(translation_cache, cache_key, batch_result, cache_limit=cache_limit)
         for offset, line in enumerate(batch_result):
             translated[group_start + offset] = line
-            single_cache_key = (source_lang, group_texts[offset])
+            single_cache_key = (source_lang, target_lang, group_texts[offset])
             remember_translation(translation_cache, single_cache_key, line, cache_limit=cache_limit)
 
     return [line or "" for line in translated]
@@ -352,6 +353,42 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
     if len(seen) != expected_count or any(not line for line in translated):
         return []
     return translated
+
+
+def build_gemma_screenshot_prompt_v3(source_text_hint: Any = None, retry_note: str | None = None) -> str:
+    hint_block = ""
+    if source_text_hint:
+        hint_text = clean_model_output_multiline(str(source_text_hint)).strip()
+        if hint_text:
+            hint_block = (
+                "\nOCR hint (may be imperfect, trust the image more):\n"
+                f"{hint_text[:1200]}\n"
+            )
+
+    retry_block = ""
+    if retry_note:
+        retry_block = (
+            "\nPrevious answer was too literal or contained analysis.\n"
+            f"Rewrite it as a natural Taiwanese translation only: {retry_note.strip()}\n"
+        )
+
+    return (
+        "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
+        "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
+        "Use everyday Taiwanese phrasing, not word-for-word dictionary translation.\n"
+        "For dialogue, keep it short, fluent, and spoken-like.\n"
+        "Return only the translated Chinese text. No notes, no JSON, no markdown, no code fences, no explanations.\n"
+        "Do not repeat the source text.\n"
+        "Do not include romanization, pinyin, furigana, labels, or analysis.\n"
+        "If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
+        "Important glossary:\n"
+        "- おっと -> 哦 / 喔 / 哎呀\n"
+        "- 空気 in dialogue usually means 氣氛 / 氛圍, not physical 空氣\n"
+        "- 手前と奥の空気が違いすぎないか？ -> 前後的氣氛差太多了吧？\n"
+        "If you cannot comply, output nothing.\n"
+        f"{hint_block}"
+        f"{retry_block}"
+    )
 
 
 def build_gemma_screenshot_prompt_v2(retry_note: str | None = None) -> str:
