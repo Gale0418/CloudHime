@@ -48,6 +48,13 @@ class OcrBackendSettingsPanel(QFrame):
         self.lbl_windows.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
         outer.addWidget(self.lbl_windows)
 
+        self.btn_google_ocr = QPushButton("GoogleOCR")
+        self.btn_google_ocr.setCheckable(True)
+        self.btn_google_ocr.setCursor(Qt.PointingHandCursor)
+        self.btn_google_ocr.clicked.connect(self.on_google_ocr_toggled)
+        self.btn_google_ocr.setMinimumHeight(28)
+        outer.addWidget(self.btn_google_ocr)
+
         for backend_name in optional_backend_names():
             spec = BACKEND_SPECS[backend_name]
             button = QPushButton(spec.label)
@@ -72,8 +79,16 @@ class OcrBackendSettingsPanel(QFrame):
 
     def _refresh_summary(self):
         chain_text = summarize_backend_chain(self._backend_chain())
+        if getattr(self.controller, "google_ocr_enabled", False):
+            chain_text = f"{chain_text} + GoogleOCR"
         self.setToolTip(chain_text)
         self.lbl_windows.setToolTip(chain_text)
+        self.btn_google_ocr.setToolTip("Use Gemma screenshot OCR assist before translation.")
+
+    def on_google_ocr_toggled(self, checked):
+        if hasattr(self.controller, "set_google_ocr_enabled"):
+            self.controller.set_google_ocr_enabled(bool(checked))
+        self.sync_from_controller()
 
     def _set_controller_backend_enabled(self, backend_name, enabled):
         if hasattr(self.controller, "set_ocr_backend_enabled"):
@@ -165,6 +180,10 @@ class OcrBackendSettingsPanel(QFrame):
 
     def sync_from_controller(self):
         chain = set(self._backend_chain())
+        google_ocr_enabled = bool(getattr(self.controller, "google_ocr_enabled", False))
+        self.btn_google_ocr.blockSignals(True)
+        self.btn_google_ocr.setChecked(google_ocr_enabled)
+        self.btn_google_ocr.blockSignals(False)
         for backend_name in optional_backend_names():
             button = self._backend_buttons[backend_name]
             state = self._backend_state_cache.get(backend_name)
@@ -179,6 +198,7 @@ class OcrBackendSettingsPanel(QFrame):
             detail = state.detail if state is not None and state.detail else BACKEND_SPECS[backend_name].install_note
             button.setToolTip(detail)
             button.setEnabled(True if self._busy_backend != backend_name else False)
+        self.btn_google_ocr.setEnabled(True)
         self._refresh_summary()
 
     def update_theme(self, theme_mode):
@@ -194,6 +214,13 @@ class OcrBackendSettingsPanel(QFrame):
             f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
             f"QPushButton:disabled {{ color: {theme.subtext}; }}"
         )
+        google_ocr_style = (
+            f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
+            f"border-radius: 10px; padding: 5px 10px; font-size: 11px; font-weight: 700; }}"
+            f"QPushButton:checked {{ background-color: {theme.accent_soft}; color: {theme.text}; border-color: {theme.accent}; }}"
+            f"QPushButton:disabled {{ color: {theme.subtext}; }}"
+        )
+        self.btn_google_ocr.setStyleSheet(google_ocr_style)
         for backend_name in optional_backend_names():
             button = self._backend_buttons.get(backend_name)
             if button is not None:

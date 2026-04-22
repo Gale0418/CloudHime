@@ -276,7 +276,6 @@ class GemmaTranslationProvider:
                 if candidate == model:
                     continue
                 if self._can_call(candidate):
-                    self.gemma_model = candidate
                     return candidate
         return model
 
@@ -304,6 +303,7 @@ class GemmaTranslationProvider:
             },
             method="POST",
         )
+        self._record_call(model_name)
         with request.urlopen(req, timeout=25) as response:
             return json.loads(response.read().decode("utf-8"))
 
@@ -332,7 +332,6 @@ class GemmaTranslationProvider:
             max_output_tokens=1024,
             temperature=0.2,
         )
-        self._record_call(model_name)
         translated = clean_model_output(extract_gemma_text(payload))
         if not translated:
             raise ValueError("empty_gemma_response")
@@ -389,7 +388,6 @@ class GemmaTranslationProvider:
             max_output_tokens=2048,
             temperature=0.1,
         )
-        self._record_call(model_name)
         raw_text = extract_gemma_text(payload)
         translated = parse_segmented_translation_json(raw_text, len(texts))
         if not translated:
@@ -443,7 +441,6 @@ class GemmaTranslationProvider:
                 # the existing cleaner can extract JSON or fallback text safely.
                 response_mime_type="text/plain",
             )
-            self._record_call(model_name)
             last_raw_text = extract_gemma_text(payload)
             translated = clean_screenshot_translation_output(last_raw_text)
             if is_valid_screenshot_translation(translated):
@@ -460,3 +457,55 @@ class GemmaTranslationProvider:
                 translated = self.translate(source_text_hint, target_lang=target_lang).text or translated
         self._remember(cache_key, (translated, last_raw_text))
         return TranslationResult(text=translated, provider=self.name, model=model_name, raw_text=last_raw_text)
+
+    def transcribe_screenshot(
+        self,
+        image_parts: Sequence[dict[str, Any]],
+        *,
+        source_text_hint: str | None = None,
+    ) -> TranslationResult:
+        if not image_parts:
+            raise ValueError("missing_image_context")
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+        model_name = self._resolve_model()
+        if not self._can_call(model_name):
+            raise ValueError("gemma_rate_limited")
+
+        cache_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
+        cache_key = (
+            "gemma-ocr",
+            model_name,
+            hashlib.sha1(cache_seed.encode("utf-8")).hexdigest(),
+        )
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            transcription, raw_text = cached
+            return TranslationResult(text=str(transcription), provider=self.name, model=model_name, raw_text=raw_text, from_cache=True)
+
+        prompt = (
+            "You are an OCR engine.\n"
+            "Read every visible line of text in the image exactly as it appears.\n"
+            "Do not translate, summarize, or explain.\n"
+            "Preserve line breaks when possible.\n"
+            "Return plain text only.\n"
+            "If the image has no readable text, return an empty string."
+        )
+        hint = clean_model_output_multiline(source_text_hint or "").strip()
+        if hint:
+            prompt += f"\n\nOCR hint:\n{hint[:1200]}"
+
+        payload = self._request(
+            model_name,
+            prompt,
+            image_parts=image_parts,
+            max_output_tokens=2048,
+            temperature=0.0,
+            response_mime_type="text/plain",
+        )
+        raw_text = extract_gemma_text(payload)
+        transcription = clean_model_output_multiline(raw_text).strip()
+        if not transcription:
+            raise ValueError("empty_gemma_ocr_response")
+        self._remember(cache_key, (transcription, raw_text))
+        return TranslationResult(text=transcription, provider=self.name, model=model_name, raw_text=raw_text)
