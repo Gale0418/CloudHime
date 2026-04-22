@@ -41,15 +41,13 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate = QLabel("翻譯功能")
         self.lbl_translate_hint = QLabel("Google 翻譯可以直接使用，AI 模式才需要 API KEY。")
         self.lbl_translate_hint.setWordWrap(True)
-        self.lbl_translate_summary = QLabel("目前：Google 翻譯 · 免 API KEY")
-        self.lbl_translate_summary.setWordWrap(False)
-
-        translate_layout.addWidget(self.lbl_translate)
-        translate_layout.addWidget(self.lbl_translate_hint)
-        translate_layout.addWidget(self.lbl_translate_summary)
-
+        self.lbl_translate_hint.setVisible(True)
+        self.lbl_translate_summary = QLabel("")
+        self.lbl_translate_summary.setVisible(False)
         self.lbl_translate_mode = QLabel("")
         self.lbl_translate_mode.setVisible(False)
+
+        translate_layout.addWidget(self.lbl_translate)
 
         self.translate_mode_group = QButtonGroup(self)
         self.translate_mode_group.setExclusive(True)
@@ -82,19 +80,22 @@ class TranslationSettingsPanel(QWidget):
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setSpacing(10)
 
-        self.lbl_advanced_translate = QLabel("進階翻譯設定")
-        self.lbl_advanced_hint = QLabel("Gemma Prompt 會套用到 AI 翻譯與截圖模式。")
-        self.lbl_advanced_hint.setWordWrap(True)
-        advanced_layout.addWidget(self.lbl_advanced_translate)
-        advanced_layout.addWidget(self.lbl_advanced_hint)
+        self.lbl_advanced_translate = QLabel("")
+        self.lbl_advanced_translate.setVisible(False)
+        self.lbl_advanced_hint = QLabel("")
+        self.lbl_advanced_hint.setVisible(False)
 
         self.lbl_api_key = QLabel("Google API KEY")
+        self.lbl_api_key.setVisible(False)
         advanced_layout.addWidget(self.lbl_api_key)
         self.input_api_key = QLineEdit()
         self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
-        self.input_api_key.setPlaceholderText("輸入 Google API KEY")
+        self.input_api_key.setPlaceholderText("輸入 API KEY")
         self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
         advanced_layout.addWidget(self.input_api_key)
+
+        self.separator = QFrame()
+        advanced_layout.addWidget(self.separator)
 
         self.lbl_ai_model = QLabel("AI 模型")
         advanced_layout.addWidget(self.lbl_ai_model)
@@ -109,7 +110,7 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt = QPlainTextEdit()
         self.input_gemma_prompt.setPlaceholderText("輸入自訂的 AI 翻譯提示詞...")
         self.input_gemma_prompt.setTabChangesFocus(True)
-        self.input_gemma_prompt.setMinimumHeight(92)
+        self.input_gemma_prompt.setMinimumHeight(122)
         self.input_gemma_prompt.textChanged.connect(self.on_gemma_prompt_changed)
         advanced_layout.addWidget(self.input_gemma_prompt)
 
@@ -171,12 +172,7 @@ class TranslationSettingsPanel(QWidget):
         self.advanced_translate_frame.setVisible(bool(visible))
 
     def update_translate_summary(self):
-        use_ai = self.btn_translate_ai.isChecked()
-        model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
-        if use_ai:
-            self.lbl_translate_summary.setText(f"目前：AI 翻譯 · {model_name}")
-        else:
-            self.lbl_translate_summary.setText("目前：Google 翻譯 · 免 API KEY")
+        self.lbl_translate_summary.setText("")
 
     def update_key_state(self, enabled):
         self.input_api_key.setEnabled(enabled)
@@ -198,7 +194,8 @@ class TranslationSettingsPanel(QWidget):
         self.cmb_ai_model.blockSignals(False)
 
         self.input_gemma_prompt.blockSignals(True)
-        self.input_gemma_prompt.setPlainText(getattr(self.controller, "gemma_prompt", ""))
+        prompt_text = getattr(self.controller, "gemma_prompt", "") or self.controller.get_default_gemma_prompt()
+        self.input_gemma_prompt.setPlainText(prompt_text)
         self.input_gemma_prompt.blockSignals(False)
 
         self.chk_auto_switch.blockSignals(True)
@@ -221,30 +218,45 @@ class TranslationSettingsPanel(QWidget):
         theme = resolve_theme(theme_mode)
         self.card_translate.setStyleSheet(theme.panel_qss("subtle", radius=16))
         self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
-        self.lbl_translate.setStyleSheet(f"font-size: 17px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
-        self.lbl_translate_hint.setStyleSheet(f"color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_translate_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_translate_summary.setStyleSheet(f"color: {theme.accent}; font-size: 11px; font-weight: 700; background: transparent; border: none;")
-        self.lbl_advanced_translate.setVisible(False)
-        self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.accent}; background: transparent; border: none;")
-        self.lbl_advanced_hint.setStyleSheet(f"color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_api_key.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_ai_model.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_gemma_prompt.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none;")
+
+        self.lbl_translate.setStyleSheet(
+            f"font-size: 17px; font-weight: 800; color: {theme.text}; background: transparent; border: none;"
+        )
+        self.lbl_translate_hint.setStyleSheet(
+            f"font-size: 12px; color: {theme.subtext}; background: transparent; border: none;"
+        )
+        self.lbl_translate_summary.setStyleSheet("background: transparent; border: none; color: transparent;")
+        self.lbl_advanced_translate.setStyleSheet("background: transparent; border: none; color: transparent;")
+        self.lbl_advanced_hint.setStyleSheet("background: transparent; border: none; color: transparent;")
+
+        self.separator.setStyleSheet(f"border: none; border-bottom: 1px dotted {theme.border}; background: transparent;")
+        field_label_style = (
+            f"font-size: 12px; font-weight: 700; color: {theme.subtext}; "
+            "background: transparent; border: none;"
+        )
+        accent_label_style = (
+            f"font-size: 12px; font-weight: 700; color: {theme.accent}; "
+            "background: transparent; border: none;"
+        )
+        self.lbl_api_key.setStyleSheet(field_label_style)
+        self.lbl_ai_model.setStyleSheet(accent_label_style)
+        self.lbl_gemma_prompt.setStyleSheet(accent_label_style)
+
         button_style = (
             f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
-            f"border-radius: 10px; padding: 6px 12px; }}"
+            f"border-radius: 10px; padding: 7px 12px; font-size: 14px; }}"
             f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
         )
         self.btn_translate_google.setStyleSheet(button_style)
         self.btn_translate_ai.setStyleSheet(button_style)
+
         self.input_api_key.setStyleSheet(
             f"background-color: {theme.card_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
-            f"border-radius: 6px; padding: 7px;"
+            f"border-radius: 6px; padding: 7px; font-size: 13px;"
         )
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
         self.input_gemma_prompt.setStyleSheet(
             f"QPlainTextEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
-            f"border-radius: 6px; padding: 6px; }}"
+            f"border-radius: 6px; padding: 6px; font-size: 13px; }}"
         )
         self.update_translate_summary()
