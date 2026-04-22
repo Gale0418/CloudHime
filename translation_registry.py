@@ -15,6 +15,7 @@ from translation_providers import (
 class TranslationProviderRegistryConfig:
     google_api_key: str = ""
     gemma_model: str = "gemma-3-27b-it"
+    gemma_prompt: str = ""
     gemma_enabled: bool = False
     gemma_auto_switch_enabled: bool = False
     target_lang: str = "zh-TW"
@@ -53,6 +54,7 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
             GemmaTranslationProvider(
                 google_api_key=config.google_api_key,
                 gemma_model=config.gemma_model,
+                gemma_prompt=config.gemma_prompt,
                 target_lang=config.target_lang,
                 auto_switch_enabled=config.gemma_auto_switch_enabled,
                 supported_models=config.supported_models,

@@ -103,7 +103,7 @@ class WindowsOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._available and self._init_engine() is not None
+        return self._available
 
     def _run_coroutine_sync(self, coroutine):
         try:
@@ -272,7 +272,7 @@ class EasyOCRBackend(OCRBackend):
             self._available = False
 
     def available(self) -> bool:
-        return self._get_reader() is not None
+        return self._available
 
     def _can_use_gpu(self) -> bool:
         try:
@@ -363,7 +363,7 @@ class RapidOCRBackend(OCRBackend):
                 self._available = False
 
     def available(self) -> bool:
-        return self._get_ocr() is not None
+        return self._available
 
     def _get_ocr(self):
         if self._ocr is not None:

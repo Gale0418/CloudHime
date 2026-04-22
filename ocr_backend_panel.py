@@ -27,6 +27,7 @@ class OcrBackendSettingsPanel(QFrame):
         self._busy_backend = None
         self._install_jobs = {}
         self._backend_buttons = {}
+        self._backend_state_cache = {}
         self._build_ui()
         self.sync_from_controller()
 
@@ -99,6 +100,13 @@ class OcrBackendSettingsPanel(QFrame):
         button.setEnabled(not busy)
         button.setText(f"{BACKEND_SPECS[backend_name].label}..." if busy else BACKEND_SPECS[backend_name].label)
 
+    def _cache_backend_state(self, backend_name):
+        try:
+            self._backend_state_cache[backend_name] = detect_backend_state(backend_name)
+        except Exception:
+            self._backend_state_cache.pop(backend_name, None)
+        return self._backend_state_cache.get(backend_name)
+
     def on_backend_toggled(self, backend_name, checked):
         if backend_name == "windows":
             self.sync_from_controller()
@@ -115,7 +123,7 @@ class OcrBackendSettingsPanel(QFrame):
         self._set_controller_backend_enabled(backend_name, True)
         self.sync_from_controller()
 
-        state = detect_backend_state(backend_name)
+        state = self._cache_backend_state(backend_name)
         if not state.available:
             self._start_backend_install(backend_name)
 
@@ -139,7 +147,9 @@ class OcrBackendSettingsPanel(QFrame):
     def _on_install_finished(self, backend_name, success, message):
         self._install_jobs.pop(backend_name, None)
         self._busy_backend = None
-        state = detect_backend_state(backend_name)
+        state = self._cache_backend_state(backend_name)
+        if state is None:
+            state = detect_backend_state(backend_name)
         if success and state.available:
             self._set_controller_backend_enabled(backend_name, True)
             self.sync_from_controller()
@@ -157,7 +167,7 @@ class OcrBackendSettingsPanel(QFrame):
         chain = set(self._backend_chain())
         for backend_name in optional_backend_names():
             button = self._backend_buttons[backend_name]
-            state = detect_backend_state(backend_name)
+            state = self._backend_state_cache.get(backend_name)
             checked = backend_name in chain
             button.blockSignals(True)
             button.setChecked(checked)
@@ -166,7 +176,9 @@ class OcrBackendSettingsPanel(QFrame):
                 button.setText(f"{BACKEND_SPECS[backend_name].label}...")
             else:
                 button.setText(BACKEND_SPECS[backend_name].label)
-            button.setToolTip(state.detail if state.detail else BACKEND_SPECS[backend_name].install_note)
+            detail = state.detail if state is not None and state.detail else BACKEND_SPECS[backend_name].install_note
+            button.setToolTip(detail)
+            button.setEnabled(True if self._busy_backend != backend_name else False)
         self._refresh_summary()
 
     def update_theme(self, theme_mode):

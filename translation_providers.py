@@ -149,6 +149,7 @@ class GemmaTranslationProvider:
         *,
         google_api_key: str = "",
         gemma_model: str = DEFAULT_GEMMA_MODEL,
+        gemma_prompt: str = "",
         target_lang: str = "zh-TW",
         gemma_enabled: bool = False,
         auto_switch_enabled: bool = False,
@@ -158,6 +159,7 @@ class GemmaTranslationProvider:
         self.target_lang = target_lang
         self.enabled = bool(gemma_enabled)
         self.auto_switch_enabled = bool(auto_switch_enabled)
+        self.gemma_prompt = (gemma_prompt or "").strip()
         self.supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
         self.gemma_model = self.normalize_gemma_model(gemma_model)
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
@@ -168,6 +170,7 @@ class GemmaTranslationProvider:
         *,
         google_api_key: str | None = None,
         gemma_model: str | None = None,
+        gemma_prompt: str | None = None,
         target_lang: str | None = None,
         gemma_enabled: bool | None = None,
         auto_switch_enabled: bool | None = None,
@@ -177,6 +180,8 @@ class GemmaTranslationProvider:
             self.google_api_key = (google_api_key or "").strip()
         if gemma_model is not None:
             self.gemma_model = self.normalize_gemma_model(gemma_model)
+        if gemma_prompt is not None:
+            self.gemma_prompt = (gemma_prompt or "").strip()
         if target_lang is not None:
             self.target_lang = (target_lang or "").strip() or self.target_lang
         if gemma_enabled is not None:
@@ -211,6 +216,12 @@ class GemmaTranslationProvider:
         self._translation_cache.move_to_end(cache_key)
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
+
+    def _apply_custom_prompt(self, prompt: str) -> str:
+        custom_prompt = self.gemma_prompt.strip()
+        if not custom_prompt:
+            return prompt
+        return f"{custom_prompt}\n\n{prompt}"
 
     def _normalize_compare_text(self, text: Any) -> str:
         normalized = clean_model_output(text)
@@ -302,7 +313,12 @@ class GemmaTranslationProvider:
         cached = self._get_cached(cache_key)
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, model=model_name, from_cache=True)
-        payload = self._request(model_name, build_gemma_prompt_conservative(normalized), max_output_tokens=1024, temperature=0.2)
+        payload = self._request(
+            model_name,
+            self._apply_custom_prompt(build_gemma_prompt_conservative(normalized)),
+            max_output_tokens=1024,
+            temperature=0.2,
+        )
         self._record_call(model_name)
         translated = clean_model_output(extract_gemma_text(payload))
         if not translated:
@@ -355,7 +371,7 @@ class GemmaTranslationProvider:
 
         payload = self._request(
             model_name,
-            build_gemma_multimodal_prompt(texts),
+            self._apply_custom_prompt(build_gemma_multimodal_prompt(texts)),
             image_parts=image_parts,
             max_output_tokens=2048,
             temperature=0.1,
@@ -402,7 +418,7 @@ class GemmaTranslationProvider:
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            prompt = build_gemma_screenshot_prompt_v3(source_text_hint, retry_note)
+            prompt = self._apply_custom_prompt(build_gemma_screenshot_prompt_v3(source_text_hint, retry_note))
             payload = self._request(
                 model_name,
                 prompt,
