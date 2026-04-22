@@ -3350,10 +3350,10 @@ class SettingsWindowRevamp(QWidget):
         self.setMinimumSize(800, 1000)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(0)
 
-        self.backdrop_panel = QWidget()
+        self.backdrop_panel = QFrame()
         self.backdrop_panel.setObjectName("settingsBackdropPanel")
         self.backdrop_panel.setAttribute(Qt.WA_StyledBackground, True)
         backdrop = QVBoxLayout(self.backdrop_panel)
@@ -3759,18 +3759,18 @@ class SettingsWindowRevamp(QWidget):
         theme = resolve_theme(theme_mode)
         self.setStyleSheet(
             theme.base_qss()
-            + f"\nQWidget#settingsWindowRevamp {{ background-color: {theme.shell_bg}; }}"
+            + f"\nQWidget#settingsWindowRevamp {{ background: transparent; }}"
         )
         self.backdrop_panel.setStyleSheet(
-            f"QWidget#settingsBackdropPanel {{ background-color: {theme.shell_bg}; border: none; }}"
+            f"QFrame#settingsBackdropPanel {{ background-color: {theme.shell_bg}; border: 2px solid {theme.shell_border}; border-radius: 20px; }}"
         )
         self.top_panel.setStyleSheet(
-            f"QWidget#settingsTopPanel {{ background-color: {theme.shell_bg}; border: none; }}"
+            f"QWidget#settingsTopPanel {{ background: transparent; border: none; }}"
         )
         self.shell_panel.setStyleSheet(
-            f"QFrame#settingsShellPanel {{ background-color: {theme.shell_bg}; border: none; }}"
+            f"QFrame#settingsShellPanel {{ background: transparent; border: none; }}"
         )
-        self.frame.setStyleSheet(theme.window_qss(radius=26, border_width=2))
+        self.frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         self.ocr_backend_panel.update_theme(theme_mode)
         self.card_translate.setStyleSheet(theme.panel_qss("subtle", radius=22))
         self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=22))
