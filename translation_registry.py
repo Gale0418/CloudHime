@@ -49,7 +49,7 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
     providers: list[TranslationProvider] = [
         GoogleTranslationProvider(target_lang=config.target_lang),
     ]
-    if config.google_api_key and config.gemma_enabled:
+    if config.google_api_key:
         providers.insert(
             0,
             GemmaTranslationProvider(
@@ -58,6 +58,7 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
                 gemma_prompt=config.gemma_prompt,
                 screenshot_gemma_prompt=config.screenshot_gemma_prompt,
                 target_lang=config.target_lang,
+                gemma_enabled=config.gemma_enabled,
                 auto_switch_enabled=config.gemma_auto_switch_enabled,
                 supported_models=config.supported_models,
             ),

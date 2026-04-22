@@ -1,4 +1,4 @@
-# ==========================================
+﻿# ==========================================
 # 🌟 雲朵翻譯姬 v3.0 - 螢幕 OCR 即時翻譯工具 (邏輯修正版) (｀・ω・´)ゞ
 # ==========================================
 # 核心引擎: Windows OCR 優先、可選 OCR 後端
@@ -826,6 +826,120 @@ class OCRWorker(QObject):
             return False
         return len(translated_norm) <= max(4, int(len(source_norm) * 0.35))
 
+    def _score_ocr_candidate_text(self, text):
+        normalized = normalize_ocr_text(text)
+        if not normalized:
+            return -10_000
+        kana_count = len(re.findall(r"[\u3040-\u30ff]", normalized))
+        cjk_count = len(re.findall(r"[\u4e00-\u9fff]", normalized))
+        ascii_count = sum(ch.isascii() and ch.isalpha() for ch in normalized)
+        digit_count = sum(ch.isdigit() for ch in normalized)
+        punct_count = sum(ch in "。、，,.!?！？:：;；()[]{}<>/\\|~`" for ch in normalized)
+        noise_count = sum(ch in "=_-*" for ch in normalized)
+        basic_punct = set("。、，,.!?！？:：;；()（）[]【】{}<>/\\|~`'\"-—・…")
+        weird_count = sum(
+            1
+            for ch in normalized
+            if not (ch.isascii() and ch.isalnum())
+            and not re.match(r"[\u3040-\u30ff\u4e00-\u9fff]", ch)
+            and ch not in basic_punct
+            and not ch.isspace()
+        )
+        return (
+            (len(normalized) * 2)
+            + (cjk_count * 3)
+            + (kana_count * 2)
+            + ascii_count
+            + digit_count
+            - (punct_count * 2)
+            - (noise_count * 3)
+            - (weird_count * 4)
+        )
+
+    def _choose_better_ocr_candidate(self, local_text, google_text):
+        local_norm = normalize_ocr_text(local_text)
+        google_norm = normalize_ocr_text(google_text)
+        if not local_norm:
+            return google_norm
+        if not google_norm:
+            return local_norm
+        if local_norm == google_norm:
+            return local_norm
+        local_score = self._score_ocr_candidate_text(local_norm)
+        google_score = self._score_ocr_candidate_text(google_norm)
+        if google_score >= local_score + 1:
+            return google_norm
+        if len(google_norm) > len(local_norm) and google_score >= local_score:
+            return google_norm
+        return local_norm
+
+    def refine_merged_items_with_google_ocr(self, items, image_parts):
+        if not self.google_ocr_enabled or not self.google_api_key:
+            return list(items)
+        provider = self._get_translation_provider("gemma")
+        if provider is None or not hasattr(provider, "transcribe_screenshot"):
+            return list(items)
+        try:
+            source_hint = "\n".join(
+                normalize_ocr_text(item.get("text", ""))
+                for item in items
+                if normalize_ocr_text(item.get("text", ""))
+            )
+            result = provider.transcribe_screenshot(image_parts, source_text_hint=source_hint)
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            google_lines = [normalize_ocr_text(line) for line in str(result.text or "").splitlines() if normalize_ocr_text(line)]
+        except Exception:
+            return list(items)
+        if not google_lines:
+            return list(items)
+
+        local_items = [dict(item) for item in items if normalize_ocr_text(item.get("text", ""))]
+        if not local_items:
+            return list(items)
+
+        local_items.sort(key=lambda item: (int(item.get("y", 0)), int(item.get("x", 0))))
+        if len(google_lines) >= len(local_items):
+            if len(google_lines) == len(local_items):
+                refined_items = []
+                for local_item, google_text in zip(local_items, google_lines):
+                    refined_item = dict(local_item)
+                    refined_item["text"] = self._choose_better_ocr_candidate(local_item.get("text", ""), google_text)
+                    refined_items.append(refined_item)
+                return refined_items
+            return list(local_items)
+
+        group_count = max(1, len(google_lines))
+        base_size = len(local_items) // group_count
+        remainder = len(local_items) % group_count
+        group_sizes = [base_size + (1 if index >= group_count - remainder else 0) for index in range(group_count)]
+
+        refined_items = []
+        cursor = 0
+        for index, group_size in enumerate(group_sizes):
+            chunk = local_items[cursor:cursor + group_size]
+            cursor += group_size
+            if not chunk:
+                continue
+            x1 = min(int(item.get("x", 0)) for item in chunk)
+            y1 = min(int(item.get("y", 0)) for item in chunk)
+            x2 = max(int(item.get("x", 0)) + int(item.get("w", 1)) for item in chunk)
+            y2 = max(int(item.get("y", 0)) + int(item.get("h", 1)) for item in chunk)
+            local_group_text = normalize_ocr_text(
+                " ".join(
+                    normalize_ocr_text(item.get("text", ""))
+                    for item in chunk
+                    if normalize_ocr_text(item.get("text", ""))
+                )
+            )
+            refined_items.append({
+                "text": self._choose_better_ocr_candidate(local_group_text, google_lines[min(index, len(google_lines) - 1)]),
+                "x": x1,
+                "y": y1,
+                "w": max(1, x2 - x1),
+                "h": max(1, y2 - y1),
+            })
+        return refined_items
+
     def translate_text_gemma(self, text):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
@@ -851,7 +965,7 @@ class OCRWorker(QObject):
         req_body = {
             "contents": [{
                 "parts": [{
-                    "text": self.build_gemma_prompt_v2(normalized_text)
+                    "text": translation_tools.build_gemma_prompt_with_override(normalized_text, self.gemma_prompt)
                 }]
             }],
             "generationConfig": {
@@ -897,8 +1011,14 @@ class OCRWorker(QObject):
                 provider_model = self.normalize_gemma_model(results[0].model or self.gemma_model)
                 self.active_gemma_model = provider_model
                 self.sync_gemma_call_timestamps_from_provider(provider)
-                raw_text = results[0].raw_text or "\n".join(item.text for item in results)
-                return self.convert_to_trad(raw_text)
+                translated_text = {
+                    "segments": [
+                        {"index": index, "translation": self.convert_to_trad(item.text)}
+                        for index, item in enumerate(results)
+                        if item.text
+                    ]
+                }
+                return json.dumps(translated_text, ensure_ascii=False)
             raise ValueError("empty_gemma_multimodal_response")
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
@@ -1788,14 +1908,14 @@ class OCRWorker(QObject):
             self.status_msg.emit("🖼 截圖模式翻譯中...")
             try:
                 translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
-            except Exception:
-                self.status_msg.emit("❌ 截圖翻譯失敗")
+            except Exception as exc:
+                self.status_msg.emit(f"❌ 截圖翻譯失敗：{type(exc).__name__}: {exc}")
                 self.finished.emit([])
                 self.show_ui.emit()
                 return
 
             if not translated_text:
-                self.handle_empty()
+                self.handle_empty("⚠️ 截圖翻譯結果為空")
                 self.show_ui.emit()
                 return
 
@@ -1941,11 +2061,9 @@ class OCRWorker(QObject):
 
         try:
             self.status_msg.emit("🧠 AI 大圖翻譯..." if self.has_multimodal_ai() else "🌐 Google...")
+            if self.google_ocr_enabled and self.google_api_key:
+                merged_items = self.refine_merged_items_with_google_ocr(merged_items, ai_image_parts)
             source_texts = [item['text'] for item in merged_items]
-            if self.google_ocr_enabled and self.has_multimodal_ai():
-                refined_source_texts = self.refine_source_texts_with_google_ocr(source_texts, ai_image_parts)
-                if len(refined_source_texts) == len(source_texts):
-                    source_texts = refined_source_texts
             current_combined_text = "\n".join(source_texts)
             self.last_combined_text = current_combined_text
             translated_list = []
@@ -2017,9 +2135,9 @@ class OCRWorker(QObject):
             self.last_results = fallback
             self.finished.emit(fallback)
 
-    def handle_empty(self):
+    def handle_empty(self, message="💤 畫面無文字"):
         if self.last_combined_text != "":
-            self.status_msg.emit("💤 畫面無文字")
+            self.status_msg.emit(message)
             self.last_combined_text = ""
             self.last_results = []
         self.finished.emit([])
@@ -3988,8 +4106,9 @@ class Controller(QWidget):
 
         status_row = QHBoxLayout()
         self.lbl_status = QLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
-        self.lbl_status.setAlignment(Qt.AlignCenter)
-        self.lbl_status.setFixedHeight(30)
+        self.lbl_status.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setMinimumHeight(30)
         self.charge_bar = StatusChargeBar()
         self.btn_theme = QPushButton("💡")
         self.btn_theme.setFixedSize(30, 30)
@@ -4506,12 +4625,31 @@ class Controller(QWidget):
         normalized = normalize_ocr_text(text)
         if not normalized:
             return -10_000
+        kana_count = len(re.findall(r"[\u3040-\u30ff]", normalized))
         cjk_count = len(re.findall(r"[\u4e00-\u9fff]", normalized))
         ascii_count = sum(ch.isascii() and ch.isalpha() for ch in normalized)
         digit_count = sum(ch.isdigit() for ch in normalized)
         punct_count = sum(ch in "。、，,.!?！？:：;；()[]{}<>/\\|~`" for ch in normalized)
         noise_count = sum(ch in "=_-*" for ch in normalized)
-        return (len(normalized) * 2) + (cjk_count * 3) + ascii_count + digit_count - (punct_count * 2) - (noise_count * 3)
+        basic_punct = set("。、，,.!?！？:：;；()（）[]【】{}<>/\\|~`'\"-—・…")
+        weird_count = sum(
+            1
+            for ch in normalized
+            if not (ch.isascii() and ch.isalnum())
+            and not re.match(r"[\u3040-\u30ff\u4e00-\u9fff]", ch)
+            and ch not in basic_punct
+            and not ch.isspace()
+        )
+        return (
+            (len(normalized) * 2)
+            + (cjk_count * 3)
+            + (kana_count * 2)
+            + ascii_count
+            + digit_count
+            - (punct_count * 2)
+            - (noise_count * 3)
+            - (weird_count * 4)
+        )
 
     def _choose_better_ocr_candidate(self, local_text, google_text):
         local_norm = normalize_ocr_text(local_text)
@@ -4524,35 +4662,73 @@ class Controller(QWidget):
             return local_norm
         local_score = self._score_ocr_candidate_text(local_norm)
         google_score = self._score_ocr_candidate_text(google_norm)
-        if google_score > local_score + 3:
+        if google_score >= local_score + 1:
             return google_norm
         if len(google_norm) > len(local_norm) and google_score >= local_score:
             return google_norm
         return local_norm
 
-    def refine_source_texts_with_google_ocr(self, source_texts, image_parts):
-        if not self.google_ocr_enabled or not self.has_multimodal_ai():
-            return list(source_texts)
+    def refine_merged_items_with_google_ocr(self, items, image_parts):
+        if not self.google_ocr_enabled or not self.google_api_key:
+            return list(items)
         provider = self._get_translation_provider("gemma")
         if provider is None or not hasattr(provider, "transcribe_screenshot"):
-            return list(source_texts)
+            return list(items)
         try:
-            source_hint = "\n".join(normalize_ocr_text(text) for text in source_texts if normalize_ocr_text(text))
+            source_hint = "\n".join(
+                normalize_ocr_text(item.get("text", ""))
+                for item in items
+                if normalize_ocr_text(item.get("text", ""))
+            )
             result = provider.transcribe_screenshot(image_parts, source_text_hint=source_hint)
             self.sync_gemma_call_timestamps_from_provider(provider)
             google_lines = [normalize_ocr_text(line) for line in str(result.text or "").splitlines() if normalize_ocr_text(line)]
         except Exception:
-            return list(source_texts)
+            return list(items)
         if not google_lines:
-            return list(source_texts)
-        if len(google_lines) == len(source_texts):
-            return [
-                self._choose_better_ocr_candidate(local_text, google_text)
-                for local_text, google_text in zip(source_texts, google_lines)
-            ]
-        if len(source_texts) == 1:
-            return [self._choose_better_ocr_candidate(source_texts[0], "\n".join(google_lines))]
-        return list(source_texts)
+            return list(items)
+
+        local_items = [dict(item) for item in items if normalize_ocr_text(item.get("text", ""))]
+        if not local_items:
+            return list(items)
+
+        local_items.sort(key=lambda item: (int(item.get("y", 0)), int(item.get("x", 0))))
+        if len(google_lines) >= len(local_items):
+            if len(google_lines) == len(local_items):
+                refined_items = []
+                for local_item, google_text in zip(local_items, google_lines):
+                    refined_item = dict(local_item)
+                    refined_item["text"] = self._choose_better_ocr_candidate(local_item.get("text", ""), google_text)
+                    refined_items.append(refined_item)
+                return refined_items
+            return list(local_items)
+
+        group_count = max(1, len(google_lines))
+        base_size = len(local_items) // group_count
+        remainder = len(local_items) % group_count
+        group_sizes = [base_size + (1 if index >= group_count - remainder else 0) for index in range(group_count)]
+
+        refined_items = []
+        cursor = 0
+        for index, group_size in enumerate(group_sizes):
+            chunk = local_items[cursor:cursor + group_size]
+            cursor += group_size
+            if not chunk:
+                continue
+            x1 = min(int(item.get("x", 0)) for item in chunk)
+            y1 = min(int(item.get("y", 0)) for item in chunk)
+            x2 = max(int(item.get("x", 0)) + int(item.get("w", 1)) for item in chunk)
+            y2 = max(int(item.get("y", 0)) + int(item.get("h", 1)) for item in chunk)
+            local_group_text = normalize_ocr_text(" ".join(normalize_ocr_text(item.get("text", "")) for item in chunk if normalize_ocr_text(item.get("text", ""))))
+            refined_item = {
+                "text": self._choose_better_ocr_candidate(local_group_text, google_lines[min(index, len(google_lines) - 1)]),
+                "x": x1,
+                "y": y1,
+                "w": max(1, x2 - x1),
+                "h": max(1, y2 - y1),
+            }
+            refined_items.append(refined_item)
+        return refined_items
 
     def _apply_pending_gemma_prompt(self):
         self.worker.set_gemma_prompt(self._pending_gemma_prompt)
@@ -4834,6 +5010,8 @@ class Controller(QWidget):
     def update_status(self, msg):
         if self.display_timer.isActive() and not any(token in msg for token in ("完成", "翻譯", "失敗", "錯誤", "需要", "就緒")):
             return
+        self.lbl_status.setToolTip(msg)
+        self.lbl_status.setStatusTip(msg)
         self.lbl_status.setText(msg)
         self.update_gemma_rate_indicator()
 
