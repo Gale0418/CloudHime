@@ -69,18 +69,16 @@ def detect_backend_state(name: str) -> BackendRuntimeState:
         detail = "Ready" if python_ready and binary_ready else "Needs tesseract.exe"
         return BackendRuntimeState(python_ready and binary_ready, python_ready and binary_ready, detail)
     if backend_name == "easyocr":
-        try:
-            from ocr_backends import EasyOCRBackend
+        easyocr_ready = _has_module("easyocr") and _has_module("torch") and _has_module("torchvision")
+        if easyocr_ready:
+            try:
+                import torch  # type: ignore
 
-            backend = EasyOCRBackend()
-            available = backend.available()
-            if available:
-                detail = "Ready (GPU)" if backend._can_use_gpu() else "Ready (CPU)"
-                return BackendRuntimeState(available, available, detail)
-        except Exception:
-            available = False
-        detail = "Ready" if available else "Needs easyocr / torch / torchvision"
-        return BackendRuntimeState(available, available, detail)
+                detail = "Ready (GPU)" if torch.cuda.is_available() else "Ready (CPU)"
+            except Exception:
+                detail = "Ready"
+            return BackendRuntimeState(True, True, detail)
+        return BackendRuntimeState(False, False, "Needs easyocr / torch / torchvision")
     if backend_name == "rapidocr":
         python_ready = _has_module("rapidocr_onnxruntime") or _has_module("rapidocr")
         detail = "Ready" if python_ready else "Needs rapidocr-onnxruntime"
