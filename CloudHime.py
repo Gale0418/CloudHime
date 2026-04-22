@@ -299,7 +299,6 @@ class OCRWorker(QObject):
         self.gemma_prompt = ""
         self.screenshot_gemma_prompt = ""
         self._pending_screenshot_gemma_prompt = ""
-        self.screenshot_gemma_prompt = ""
         self.use_gemma_translation = False
         self.gemma_auto_switch_enabled = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
@@ -3746,6 +3745,13 @@ class SettingsWindowRevamp(QWidget):
         self.slider_relief_opacity.blockSignals(True)
         self.slider_relief_opacity.setValue(self.controller.region_frame_opacity)
         self.slider_relief_opacity.blockSignals(False)
+        self.input_screenshot_gemma_prompt.blockSignals(True)
+        screenshot_prompt = (
+            getattr(self.controller, "screenshot_gemma_prompt", "")
+            or self.controller.get_default_screenshot_gemma_prompt()
+        )
+        self.input_screenshot_gemma_prompt.setPlainText(screenshot_prompt)
+        self.input_screenshot_gemma_prompt.blockSignals(False)
         self.translation_panel.sync_from_controller()
         self._sync_theme_mode(theme_mode)
         self._sync_render_mode()
@@ -3872,6 +3878,7 @@ class SettingsWindowRevamp(QWidget):
 class Controller(QWidget):
 
     DEFAULT_GEMMA_PROMPT = translation_tools.DEFAULT_SYSTEM_PROMPT
+    DEFAULT_SCREENSHOT_GEMMA_PROMPT = translation_tools.DEFAULT_SCREENSHOT_SYSTEM_PROMPT
 
     request_scan = Signal()
 
@@ -4216,7 +4223,10 @@ class Controller(QWidget):
             self.gemma_prompt = str(settings.get("gemma_prompt", "") or "").strip() or self.get_default_gemma_prompt()
             self.worker.set_gemma_prompt(self.gemma_prompt)
 
-            self.screenshot_gemma_prompt = str(settings.get("screenshot_gemma_prompt", "") or "").strip()
+            self.screenshot_gemma_prompt = (
+                str(settings.get("screenshot_gemma_prompt", "") or "").strip()
+                or self.get_default_screenshot_gemma_prompt()
+            )
             self.worker.set_screenshot_gemma_prompt(self.screenshot_gemma_prompt)
             if self.settings_window is not None and self.settings_window.input_screenshot_gemma_prompt.toPlainText() != self.screenshot_gemma_prompt:
                 self.settings_window.input_screenshot_gemma_prompt.blockSignals(True)
@@ -4472,6 +4482,9 @@ class Controller(QWidget):
 
     def get_default_gemma_prompt(self):
         return self.DEFAULT_GEMMA_PROMPT
+
+    def get_default_screenshot_gemma_prompt(self):
+        return self.DEFAULT_SCREENSHOT_GEMMA_PROMPT
 
     def _apply_pending_gemma_prompt(self):
         self.worker.set_gemma_prompt(self._pending_gemma_prompt)
