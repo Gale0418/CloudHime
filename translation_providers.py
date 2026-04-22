@@ -20,6 +20,7 @@ from translation_helpers import (
     clean_model_output,
     clean_model_output_multiline,
     build_gemma_screenshot_prompt_v3,
+    build_screenshot_prompt_with_override,
     clean_screenshot_translation_output,
     is_valid_screenshot_translation,
     detect_source_language,
@@ -151,6 +152,7 @@ class GemmaTranslationProvider:
         google_api_key: str = "",
         gemma_model: str = DEFAULT_GEMMA_MODEL,
         gemma_prompt: str = "",
+        screenshot_gemma_prompt: str = "",
         target_lang: str = "zh-TW",
         gemma_enabled: bool = False,
         auto_switch_enabled: bool = False,
@@ -161,6 +163,7 @@ class GemmaTranslationProvider:
         self.enabled = bool(gemma_enabled)
         self.auto_switch_enabled = bool(auto_switch_enabled)
         self.gemma_prompt = (gemma_prompt or "").strip()
+        self.screenshot_gemma_prompt = (screenshot_gemma_prompt or "").strip()
         self.supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
         self.gemma_model = self.normalize_gemma_model(gemma_model)
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
@@ -172,6 +175,7 @@ class GemmaTranslationProvider:
         google_api_key: str | None = None,
         gemma_model: str | None = None,
         gemma_prompt: str | None = None,
+        screenshot_gemma_prompt: str | None = None,
         target_lang: str | None = None,
         gemma_enabled: bool | None = None,
         auto_switch_enabled: bool | None = None,
@@ -183,6 +187,8 @@ class GemmaTranslationProvider:
             self.gemma_model = self.normalize_gemma_model(gemma_model)
         if gemma_prompt is not None:
             self.gemma_prompt = (gemma_prompt or "").strip()
+        if screenshot_gemma_prompt is not None:
+            self.screenshot_gemma_prompt = (screenshot_gemma_prompt or "").strip()
         if target_lang is not None:
             self.target_lang = (target_lang or "").strip() or self.target_lang
         if gemma_enabled is not None:
@@ -425,11 +431,7 @@ class GemmaTranslationProvider:
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            custom = self.gemma_prompt.strip()
-            if custom and source_text_hint:
-                prompt = f"{custom}\n\n{build_gemma_screenshot_prompt_v3(source_text_hint, retry_note)}"
-            else:
-                prompt = build_gemma_screenshot_prompt_v3(source_text_hint, retry_note)
+            prompt = build_screenshot_prompt_with_override(source_text_hint, retry_note, self.screenshot_gemma_prompt)
             payload = self._request(
                 model_name,
                 prompt,
