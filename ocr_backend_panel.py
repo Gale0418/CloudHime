@@ -83,7 +83,12 @@ class OcrBackendSettingsPanel(QFrame):
             chain_text = f"{chain_text} + GoogleOCR"
         self.setToolTip(chain_text)
         self.lbl_windows.setToolTip(chain_text)
-        self.btn_google_ocr.setToolTip("Use Gemma screenshot OCR assist before translation.")
+        has_ai = bool(getattr(getattr(self.controller, "worker", None), "has_multimodal_ai", lambda: False)())
+        if has_ai:
+            tooltip = "Use Gemma screenshot OCR assist before translation."
+        else:
+            tooltip = "Requires Gemma AI + Google API KEY to work."
+        self.btn_google_ocr.setToolTip(tooltip)
 
     def on_google_ocr_toggled(self, checked):
         if hasattr(self.controller, "set_google_ocr_enabled"):
@@ -181,6 +186,7 @@ class OcrBackendSettingsPanel(QFrame):
     def sync_from_controller(self):
         chain = set(self._backend_chain())
         google_ocr_enabled = bool(getattr(self.controller, "google_ocr_enabled", False))
+        has_ai = bool(getattr(getattr(self.controller, "worker", None), "has_multimodal_ai", lambda: False)())
         self.btn_google_ocr.blockSignals(True)
         self.btn_google_ocr.setChecked(google_ocr_enabled)
         self.btn_google_ocr.blockSignals(False)
@@ -198,7 +204,7 @@ class OcrBackendSettingsPanel(QFrame):
             detail = state.detail if state is not None and state.detail else BACKEND_SPECS[backend_name].install_note
             button.setToolTip(detail)
             button.setEnabled(True if self._busy_backend != backend_name else False)
-        self.btn_google_ocr.setEnabled(True)
+        self.btn_google_ocr.setEnabled(has_ai or google_ocr_enabled)
         self._refresh_summary()
 
     def update_theme(self, theme_mode):

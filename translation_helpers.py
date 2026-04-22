@@ -207,10 +207,10 @@ def clean_model_output(text: Any) -> str:
         line = raw_line.strip()
         if not line:
             continue
-        line = re.sub(r"^[*\-?兡\s*", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:嚗", line, re.IGNORECASE):
+        line = re.sub(r"^[*\-\s]+", "", line)
+        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
             continue
-        line = re.sub(r"^(Translation|Output)\s*[:嚗\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
         lines.append(line)
 
     if not lines:
@@ -223,13 +223,13 @@ def clean_model_output(text: Any) -> str:
 
     candidates = []
     for line in lines:
-        quoted = re.findall(r'[\"?([\u3040-\u30ff\u4e00-\u9fff][^\"?*)[\"?', line)
+        quoted = re.findall(r'["“”\']([^"\n]+?)["“”\']', line)
         if quoted:
             candidates.extend(item.strip() for item in quoted if item.strip())
             continue
 
         if re.search(r"(translated as|translation)", line, re.IGNORECASE):
-            parts = re.split(r"[:嚗", line, maxsplit=1)
+            parts = re.split(r"[:：]", line, maxsplit=1)
             if len(parts) == 2 and HAS_CJK_PATTERN.search(parts[1]):
                 candidates.append(parts[1].strip(" \"'"))
                 continue
@@ -242,8 +242,8 @@ def clean_model_output(text: Any) -> str:
         candidates.sort(key=lambda item: (len(item), item))
         return candidates[0]
 
-    preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
-    return "\n".join(preferred or lines).strip()
+        preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
+        return "\n".join(preferred or lines).strip()
 
 
 def clean_model_output_multiline(text: Any) -> str:
@@ -255,10 +255,10 @@ def clean_model_output_multiline(text: Any) -> str:
         line = raw_line.strip()
         if not line:
             continue
-        line = re.sub(r"^[*\-?兝s]+", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:嚗", line, re.IGNORECASE):
+        line = re.sub(r"^[*\-\s]+", "", line)
+        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
             continue
-        line = re.sub(r"^(Translation|Output)\s*[:嚗\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
         line = line.strip(" \"'")
         if line:
             lines.append(line)
@@ -290,7 +290,7 @@ def extract_screenshot_translation(text: Any) -> str:
         if not stripped:
             continue
         lowered = stripped.lower()
-        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:嚗", lowered):
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lowered):
             continue
         if lowered in {"text:", "translation:", "output:"}:
             continue
@@ -427,7 +427,7 @@ def clean_screenshot_translation_output(text: Any) -> str:
         if not line:
             continue
         lower = line.lower()
-        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:嚗?", lower):
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lower):
             continue
         if re.match(r"^[A-Za-z\s]+:\s*$", line):
             continue
@@ -476,13 +476,19 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 def build_gemma_prompt_conservative(text: Any) -> str:
-    return f"{DEFAULT_SYSTEM_PROMPT}\n\n??嚗n{text}"
+    return (
+        f"{DEFAULT_SYSTEM_PROMPT}\n\n"
+        f"Source text:\n{text}"
+    )
 
 
 def build_gemma_prompt_with_override(text: Any, custom_prompt: str = "") -> str:
     """Return the default prompt unless the user provides an override."""
     system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else DEFAULT_SYSTEM_PROMPT
-    return f"{system}\n\n??嚗n{text}"
+    return (
+        f"{system}\n\n"
+        f"Source text:\n{text}"
+    )
 
 
 def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> list[dict[str, Any]]:

@@ -206,7 +206,7 @@ class GemmaTranslationProvider:
                 }
 
     def available(self) -> bool:
-        return bool(self.google_api_key and self.enabled)
+        return bool(self.google_api_key)
 
     def normalize_gemma_model(self, model_name: str | None) -> str:
         model_name = (model_name or "").strip()
@@ -473,10 +473,12 @@ class GemmaTranslationProvider:
             raise ValueError("gemma_rate_limited")
 
         cache_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
+        hint_seed = clean_model_output_multiline(source_text_hint or "").strip()
         cache_key = (
             "gemma-ocr",
             model_name,
             hashlib.sha1(cache_seed.encode("utf-8")).hexdigest(),
+            hashlib.sha1(hint_seed.encode("utf-8")).hexdigest() if hint_seed else "",
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -491,9 +493,8 @@ class GemmaTranslationProvider:
             "Return plain text only.\n"
             "If the image has no readable text, return an empty string."
         )
-        hint = clean_model_output_multiline(source_text_hint or "").strip()
-        if hint:
-            prompt += f"\n\nOCR hint:\n{hint[:1200]}"
+        if hint_seed:
+            prompt += f"\n\nOCR hint:\n{hint_seed[:1200]}"
 
         payload = self._request(
             model_name,
