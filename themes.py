@@ -33,19 +33,19 @@ class ThemeDefinition:
     def base_qss(self) -> str:
         return f"QWidget {{ color: {self.text}; }} QFrame {{ border: none; }}"
 
-    def window_qss(self, radius: int = 20, border_width: int = 2) -> str:
+    def window_qss(self, radius: int = 24, border_width: int = 2) -> str:
         return (
             f"QFrame {{ background-color: {self.shell_bg}; border: {border_width}px solid {self.shell_border}; "
             f"border-radius: {int(radius)}px; }}"
         )
 
-    def header_qss(self, radius: int = 16) -> str:
+    def header_qss(self, radius: int = 22) -> str:
         return (
             f"QFrame {{ background-color: {self.header_bg}; border: 1px solid {self.header_border}; "
             f"border-radius: {int(radius)}px; }}"
         )
 
-    def panel_qss(self, variant: str = "subtle", radius: int = 16) -> str:
+    def panel_qss(self, variant: str = "subtle", radius: int = 20) -> str:
         variant = str(variant or "subtle").strip().lower()
         if variant == "primary":
             return (

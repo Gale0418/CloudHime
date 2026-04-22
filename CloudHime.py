@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # 🌟 雲朵翻譯姬 v3.0 - 螢幕 OCR 即時翻譯工具 (邏輯修正版) (｀・ω・´)ゞ
 # ==========================================
 # 核心引擎: Windows OCR 優先、可選 OCR 後端
@@ -3433,8 +3433,8 @@ class SettingsWindowRevamp(QWidget):
 
         self.card_ocr = QFrame()
         ocr = QVBoxLayout(self.card_ocr)
-        ocr.setContentsMargins(18, 14, 18, 14)
-        ocr.setSpacing(8)
+        ocr.setContentsMargins(18, 10, 18, 10)
+        ocr.setSpacing(4)
         ocr.setAlignment(Qt.AlignTop)
         self.lbl_ocr = QLabel("自動掃描")
         self.lbl_ocr_hint = QLabel("你可以隨意修改自動掃描的秒數以及偏移幅度")
@@ -3477,11 +3477,12 @@ class SettingsWindowRevamp(QWidget):
 
         self.card_region_render = QFrame()
         render = QVBoxLayout(self.card_region_render)
-        render.setContentsMargins(18, 18, 18, 18)
-        render.setSpacing(12)
+        render.setContentsMargins(18, 10, 18, 10)
+        render.setSpacing(6)
         self.lbl_region_render = QLabel("文字模式")
-        self.lbl_region_render_hint = QLabel("氣泡保留原本樣式，浮雕會貼近原文。截圖模式會直接交給 Gemma 理解。")
+        self.lbl_region_render_hint = QLabel("在框選模式下才會啟用，一共有三種文字顯示方式可以切換")
         self.lbl_region_render_hint.setWordWrap(True)
+        self.lbl_region_render_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_region_render.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_region_render.setStyleSheet("background: transparent; border: none;")
         render.addWidget(self.lbl_region_render)
@@ -3499,7 +3500,7 @@ class SettingsWindowRevamp(QWidget):
         self.btn_render_bubble.clicked.connect(lambda: self.on_region_render_mode_clicked(REGION_RENDER_BUBBLE))
         self.render_mode_group.addButton(self.btn_render_bubble)
         render_row.addWidget(self.btn_render_bubble)
-        self.btn_render_relief = QPushButton("浮雕模式")
+        self.btn_render_relief = QPushButton("浮離模式")
         self.btn_render_relief.setCheckable(True)
         self.btn_render_relief.setCursor(Qt.PointingHandCursor)
         self.btn_render_relief.clicked.connect(lambda: self.on_region_render_mode_clicked(REGION_RENDER_RELIEF))
@@ -3513,90 +3514,76 @@ class SettingsWindowRevamp(QWidget):
         render_row.addWidget(self.btn_render_screenshot)
         render.addLayout(render_row)
         self.lbl_region_render_summary = QLabel("狀態：氣泡模式")
-        self.lbl_region_render_summary.setWordWrap(True)
+        self.lbl_region_render_summary.setWordWrap(False)
+        self.lbl_region_render_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         render.addWidget(self.lbl_region_render_summary)
 
         self.card_relief = QFrame()
         relief = QVBoxLayout(self.card_relief)
-        relief.setContentsMargins(18, 18, 18, 18)
+        relief.setContentsMargins(18, 10, 18, 10)
         relief.setSpacing(12)
-        self.lbl_relief = QLabel("浮雕細節")
-        self.lbl_relief_hint = QLabel("只在浮雕模式啟用，位移 0 會對齊原位")
+        self.lbl_relief = QLabel("浮離細節")
+        self.lbl_relief_hint = QLabel("只在浮離模式才啟用，位移 0 會對齊原位")
         self.lbl_relief_hint.setWordWrap(True)
+        self.lbl_relief_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_relief.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_relief.setStyleSheet("background: transparent; border: none;")
         relief.addWidget(self.lbl_relief)
         relief.addWidget(self.lbl_relief_hint)
-        side_block = QVBoxLayout()
-        side_block.setContentsMargins(0, 0, 0, 0)
-        side_block.setSpacing(4)
+
+        side_row = QHBoxLayout()
         self.lbl_relief_side = QLabel("文字方向")
         self.lbl_relief_side.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        side_block.addWidget(self.lbl_relief_side)
-        side_row = QHBoxLayout()
-        side_row.setSpacing(8)
+        side_row.addWidget(self.lbl_relief_side)
         side_row.addStretch()
         self.cmb_relief_side = QComboBox()
         for label, value in RELIEF_SIDE_OPTIONS:
             self.cmb_relief_side.addItem(label, value)
         self.cmb_relief_side.currentIndexChanged.connect(self.on_relief_setting_changed)
         side_row.addWidget(self.cmb_relief_side)
-        side_block.addLayout(side_row)
-        relief.addLayout(side_block)
-        font_block = QVBoxLayout()
-        font_block.setContentsMargins(0, 0, 0, 0)
-        font_block.setSpacing(4)
+        relief.addLayout(side_row)
+
+        font_row = QHBoxLayout()
         self.lbl_relief_font = QLabel("文字大小")
         self.lbl_relief_font.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        font_block.addWidget(self.lbl_relief_font)
-        font_row = QHBoxLayout()
-        font_row.setSpacing(8)
+        font_row.addWidget(self.lbl_relief_font)
         font_row.addStretch()
         self.spin_relief_font = QSpinBox()
         self.spin_relief_font.setRange(8, 48)
-        self.spin_relief_font.setSuffix(" pt")
         self.spin_relief_font.valueChanged.connect(self.on_relief_setting_changed)
         font_row.addWidget(self.spin_relief_font)
-        font_block.addLayout(font_row)
-        relief.addLayout(font_block)
-        gap_block = QVBoxLayout()
-        gap_block.setContentsMargins(0, 0, 0, 0)
-        gap_block.setSpacing(4)
-        self.lbl_relief_gap = QLabel("浮雕位移")
-        self.lbl_relief_gap.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        gap_block.addWidget(self.lbl_relief_gap)
+        relief.addLayout(font_row)
+
         gap_row = QHBoxLayout()
-        gap_row.setSpacing(8)
+        self.lbl_relief_gap = QLabel("浮離位移")
+        self.lbl_relief_gap.setStyleSheet("background: transparent; border: none; padding: 0px;")
+        gap_row.addWidget(self.lbl_relief_gap)
+        self.lbl_relief_gap_value = QLabel("10 px")
+        gap_row.addWidget(self.lbl_relief_gap_value)
+        gap_row.addStretch()
         self.slider_relief_gap = QSlider(Qt.Horizontal)
         self.slider_relief_gap.setRange(0, RELIEF_MAX_GAP_PX)
+        self.slider_relief_gap.setFixedWidth(130)
         self.slider_relief_gap.valueChanged.connect(self.on_relief_setting_changed)
         gap_row.addWidget(self.slider_relief_gap)
-        self.lbl_relief_gap_value = QLabel("10 px")
-        self.lbl_relief_gap_value.setFixedWidth(58)
-        self.lbl_relief_gap_value.setAlignment(Qt.AlignCenter)
-        gap_row.addWidget(self.lbl_relief_gap_value)
-        gap_block.addLayout(gap_row)
-        relief.addLayout(gap_block)
-        opacity_block = QVBoxLayout()
-        opacity_block.setContentsMargins(0, 0, 0, 0)
-        opacity_block.setSpacing(4)
-        self.lbl_relief_opacity = QLabel("選區框透明度")
-        self.lbl_relief_opacity.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        opacity_block.addWidget(self.lbl_relief_opacity)
+        relief.addLayout(gap_row)
+
         opacity_row = QHBoxLayout()
-        opacity_row.setSpacing(8)
+        self.lbl_relief_opacity = QLabel("邊框透明度")
+        self.lbl_relief_opacity.setStyleSheet("background: transparent; border: none; padding: 0px;")
+        opacity_row.addWidget(self.lbl_relief_opacity)
+        self.lbl_relief_opacity_value = QLabel("40%")
+        opacity_row.addWidget(self.lbl_relief_opacity_value)
+        opacity_row.addStretch()
         self.slider_relief_opacity = QSlider(Qt.Horizontal)
         self.slider_relief_opacity.setRange(0, 100)
+        self.slider_relief_opacity.setFixedWidth(130)
         self.slider_relief_opacity.valueChanged.connect(self.on_relief_setting_changed)
         opacity_row.addWidget(self.slider_relief_opacity)
-        self.lbl_relief_opacity_value = QLabel("40%")
-        self.lbl_relief_opacity_value.setFixedWidth(46)
-        self.lbl_relief_opacity_value.setAlignment(Qt.AlignCenter)
-        opacity_row.addWidget(self.lbl_relief_opacity_value)
-        opacity_block.addLayout(opacity_row)
-        relief.addLayout(opacity_block)
+        relief.addLayout(opacity_row)
         self.lbl_relief_summary = QLabel("狀態：自動 · 18 pt · 選區框透明度 40%")
-        self.lbl_relief_summary.setWordWrap(True)
+        self.lbl_relief_summary.setWordWrap(False)
+        self.lbl_relief_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         relief.addWidget(self.lbl_relief_summary)
         body = QWidget()
         body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -3681,7 +3668,7 @@ class SettingsWindowRevamp(QWidget):
     def update_region_render_summary(self):
         mode = self.controller.region_render_mode
         if mode == REGION_RENDER_RELIEF:
-            self.lbl_region_render_summary.setText("目前：浮雕模式 · 文字貼近原文")
+            self.lbl_region_render_summary.setText("目前：浮離模式 · 文字貼近原文")
             self.update_relief_state(True)
         elif mode == REGION_RENDER_SCREENSHOT:
             self.lbl_region_render_summary.setText("目前：截圖模式 · 整塊區域一起理解")
@@ -3783,47 +3770,56 @@ class SettingsWindowRevamp(QWidget):
         self.shell_panel.setStyleSheet(
             f"QFrame#settingsShellPanel {{ background-color: {theme.shell_bg}; border: none; }}"
         )
-        self.frame.setStyleSheet(theme.window_qss(radius=22, border_width=2))
+        self.frame.setStyleSheet(theme.window_qss(radius=26, border_width=2))
         self.ocr_backend_panel.update_theme(theme_mode)
-        self.card_translate.setStyleSheet(theme.panel_qss("subtle", radius=18))
-        self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=18))
-        self.card_region_render.setStyleSheet(theme.panel_qss("subtle", radius=18))
-        self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=18))
+        self.card_translate.setStyleSheet(theme.panel_qss("subtle", radius=22))
+        self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=22))
+        self.card_region_render.setStyleSheet(theme.panel_qss("subtle", radius=22))
+        self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=22))
         self.auto_scan_panel.setStyleSheet(theme.panel_qss("transparent"))
-        self.lbl_page_title.setStyleSheet(f"font-size: 28px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
-        self.lbl_page_subtitle.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_page_title.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
+        self.lbl_page_subtitle.setStyleSheet(f"font-size: 12px; color: {theme.subtext}; background: transparent; border: none;")
         self.btn_close.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.subtext}; border: none; font-size: 16px; font-weight: 900; }}"
             f"QPushButton:hover {{ background-color: {theme.accent_soft}; color: {theme.text}; border-radius: 15px; }}"
         )
-        self.lbl_ocr.setStyleSheet(f"font-size: 17px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
-        self.lbl_ocr_hint.setStyleSheet(f"font-size: 12px; color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_auto_scan.setStyleSheet(f"font-size: 17px; font-weight: 900; color: {theme.text};")
-        self.lbl_auto_scan_hint.setStyleSheet(f"color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_ocr.setStyleSheet(f"font-size: 17px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
+        self.lbl_ocr_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_auto_scan.setStyleSheet(f"font-size: 17px; font-weight: 800; color: {theme.text};")
+        self.lbl_auto_scan_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_random_scan_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 700; background-color: {theme.accent_soft}; "
-            f"border: none; border-radius: 4px; padding: 4px 8px;"
+            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
+            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
         )
-        self.lbl_random_scan_center.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
-        self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext};")
-        self.lbl_region_render.setStyleSheet(f"font-size: 17px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
-        self.lbl_region_render_hint.setStyleSheet(f"color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_region_render_mode.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_random_scan_center.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_region_render.setStyleSheet(f"font-size: 17px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
+        self.lbl_region_render_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_region_render_mode.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_region_render_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 700; background-color: {theme.accent_soft}; "
-            f"border: none; border-radius: 4px; padding: 4px 8px;"
+            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
+            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
         )
-        self.lbl_relief.setStyleSheet(f"font-size: 17px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
-        self.lbl_relief_hint.setStyleSheet(f"color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_relief_side.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.text}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_font.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_gap.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_opacity.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_gap_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
-        self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief.setStyleSheet(f"font-size: 17px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
+        self.lbl_relief_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_relief_side.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_font.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_gap.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_opacity.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_gap_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
+        spinbox_style = (
+            f"QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
+            f"border-radius: 8px; padding: 3px 8px; }} "
+            f"QSpinBox:focus {{ border: 2px solid {theme.accent}; }} "
+            "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }"
+        )
+        self.spin_random_scan_center.setStyleSheet(spinbox_style)
+        self.spin_random_scan_jitter.setStyleSheet(spinbox_style)
+        self.spin_relief_font.setStyleSheet(spinbox_style)
         self.lbl_relief_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 700; background-color: {theme.accent_soft}; "
-            f"border: none; border-radius: 4px; padding: 4px 8px;"
+            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
+            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
         )
         self.cmb_theme_mode_chip.setStyleSheet(theme.combo_qss(radius=6))
         self.cmb_relief_side.setStyleSheet(theme.combo_qss(radius=6))
@@ -3853,6 +3849,8 @@ class SettingsWindowRevamp(QWidget):
 # 設定與同步
 # ==========================================
 class Controller(QWidget):
+
+    DEFAULT_GEMMA_PROMPT = "請將內容翻成自然、簡潔的台灣繁體中文，保留原意、語氣與分段，不要加說明、不要列點、不要輸出原文。"
 
     request_scan = Signal()
 
@@ -4190,7 +4188,7 @@ class Controller(QWidget):
                 self.settings_window.cmb_ai_model.blockSignals(False)
                 self.settings_window.update_translate_summary()
 
-            self.gemma_prompt = str(settings.get("gemma_prompt", "") or "").strip()
+            self.gemma_prompt = str(settings.get("gemma_prompt", "") or "").strip() or self.get_default_gemma_prompt()
             self.worker.set_gemma_prompt(self.gemma_prompt)
             if self.settings_window is not None and self.settings_window.input_gemma_prompt.toPlainText() != self.gemma_prompt:
                 self.settings_window.input_gemma_prompt.blockSignals(True)
@@ -4439,6 +4437,9 @@ class Controller(QWidget):
         self._pending_gemma_prompt = self.gemma_prompt
         if hasattr(self, "gemma_prompt_timer"):
             self.gemma_prompt_timer.start(350)
+
+    def get_default_gemma_prompt(self):
+        return self.DEFAULT_GEMMA_PROMPT
 
     def _apply_pending_gemma_prompt(self):
         self.worker.set_gemma_prompt(self._pending_gemma_prompt)
