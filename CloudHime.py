@@ -296,10 +296,12 @@ class OCRWorker(QObject):
         )
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
+        self.active_gemma_model = self.gemma_model
         self.gemma_prompt = ""
         self.screenshot_gemma_prompt = ""
         self._pending_screenshot_gemma_prompt = ""
         self.use_gemma_translation = False
+        self.google_ocr_enabled = False
         self.gemma_auto_switch_enabled = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
         self.region_render_mode = REGION_RENDER_BUBBLE
@@ -453,6 +455,7 @@ class OCRWorker(QObject):
     def set_gemma_model(self, model_name):
         model_name = (model_name or "").strip()
         self.gemma_model = model_name or DEFAULT_GEMMA_MODEL
+        self.active_gemma_model = self.gemma_model
         self._refresh_translation_registry()
 
     def set_gemma_prompt(self, prompt):
@@ -521,22 +524,19 @@ class OCRWorker(QObject):
     def resolve_gemma_model_for_call(self, preferred_model=None):
         preferred_model = self.normalize_gemma_model(preferred_model or self.gemma_model)
         if not self.has_multimodal_ai():
+            self.active_gemma_model = preferred_model
             return preferred_model
         if self.can_call_gemma(preferred_model):
-            if preferred_model != self.gemma_model:
-                old_model = self.gemma_model
-                self.gemma_model = preferred_model
-                self.gemma_model_changed.emit(old_model, preferred_model)
+            self.active_gemma_model = preferred_model
             return preferred_model
         if self.gemma_auto_switch_enabled:
             for candidate in SUPPORTED_GEMMA_MODEL_NAMES:
                 if candidate == preferred_model:
                     continue
                 if self.can_call_gemma(candidate):
-                    old_model = self.gemma_model
-                    self.gemma_model = candidate
-                    self.gemma_model_changed.emit(old_model, candidate)
+                    self.active_gemma_model = candidate
                     return candidate
+        self.active_gemma_model = preferred_model
         return preferred_model
 
     def detect_source_language(self, text):
@@ -555,12 +555,21 @@ class OCRWorker(QObject):
         return translation_tools.get_translation_provider_priority(provider)
 
     def get_current_ai_provider(self):
-        model = (self.gemma_model or "").strip().lower()
+        model = (getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model or "").strip().lower()
         if "gemma-4" in model:
             return "gemma-4"
         if "gemma-3" in model:
             return "gemma-3"
         return "google"
+
+    def sync_gemma_call_timestamps_from_provider(self, provider):
+        timestamps = getattr(provider, "_call_timestamps", None)
+        if not isinstance(timestamps, dict):
+            return
+        self.gemma_call_timestamps = {
+            model_name: list(timestamps.get(model_name, []))
+            for model_name in SUPPORTED_GEMMA_MODEL_NAMES
+        }
 
     def should_replace_provider(self, old_provider, new_provider):
         return translation_tools.should_replace_provider(old_provider, new_provider)
@@ -825,12 +834,8 @@ class OCRWorker(QObject):
         if provider is not None:
             result = provider.translate(normalized_text)
             provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
-            if provider_model and provider_model != self.gemma_model:
-                old_model = self.gemma_model
-                self.gemma_model = provider_model
-                self.gemma_model_changed.emit(old_model, provider_model)
-            if result.text and not getattr(result, "from_cache", False):
-                self.record_gemma_call(provider_model)
+            self.active_gemma_model = provider_model
+            self.sync_gemma_call_timestamps_from_provider(provider)
             return self.convert_to_trad(result.text)
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
@@ -866,9 +871,9 @@ class OCRWorker(QObject):
             },
             method="POST",
         )
+        self.record_gemma_call(model_name)
         with request.urlopen(req, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        self.record_gemma_call(model_name)
 
         translated = self.clean_model_output(self.extract_gemma_text(payload))
         if not translated:
@@ -890,14 +895,10 @@ class OCRWorker(QObject):
             )
             if results:
                 provider_model = self.normalize_gemma_model(results[0].model or self.gemma_model)
-                if provider_model and provider_model != self.gemma_model:
-                    old_model = self.gemma_model
-                    self.gemma_model = provider_model
-                    self.gemma_model_changed.emit(old_model, provider_model)
+                self.active_gemma_model = provider_model
+                self.sync_gemma_call_timestamps_from_provider(provider)
                 raw_text = results[0].raw_text or "\n".join(item.text for item in results)
-                if raw_text and not getattr(results[0], "from_cache", False):
-                    self.record_gemma_call(provider_model)
-                    return self.convert_to_trad(raw_text)
+                return self.convert_to_trad(raw_text)
             raise ValueError("empty_gemma_multimodal_response")
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
@@ -936,9 +937,9 @@ class OCRWorker(QObject):
             },
             method="POST",
         )
+        self.record_gemma_call(model_name)
         with request.urlopen(req, timeout=25) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        self.record_gemma_call(model_name)
 
         translated = self.convert_to_trad(self.extract_gemma_text(payload))
         if not translated:
@@ -958,13 +959,9 @@ class OCRWorker(QObject):
                 source_text_hint=source_text_hint,
             )
             provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
-            if provider_model and provider_model != self.gemma_model:
-                old_model = self.gemma_model
-                self.gemma_model = provider_model
-                self.gemma_model_changed.emit(old_model, provider_model)
+            self.active_gemma_model = provider_model
+            self.sync_gemma_call_timestamps_from_provider(provider)
             translated = self.convert_to_trad(result.text)
-            if translated and not getattr(result, "from_cache", False):
-                self.record_gemma_call(provider_model)
             if source_text_hint and (
                 self._should_fallback_to_text_translation(source_text_hint, translated)
                 or self._is_suspiciously_short_translation(source_text_hint, translated)
@@ -1011,9 +1008,9 @@ class OCRWorker(QObject):
                 },
                 method="POST",
             )
+            self.record_gemma_call(model_name)
             with request.urlopen(req, timeout=25) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-            self.record_gemma_call(model_name)
             last_payload = payload
             last_raw_text = self.extract_gemma_text(payload)
             translated = self.convert_to_trad(
@@ -1945,6 +1942,12 @@ class OCRWorker(QObject):
         try:
             self.status_msg.emit("🧠 AI 大圖翻譯..." if self.has_multimodal_ai() else "🌐 Google...")
             source_texts = [item['text'] for item in merged_items]
+            if self.google_ocr_enabled and self.has_multimodal_ai():
+                refined_source_texts = self.refine_source_texts_with_google_ocr(source_texts, ai_image_parts)
+                if len(refined_source_texts) == len(source_texts):
+                    source_texts = refined_source_texts
+            current_combined_text = "\n".join(source_texts)
+            self.last_combined_text = current_combined_text
             translated_list = []
             provider_list = []
             try:
@@ -1971,9 +1974,10 @@ class OCRWorker(QObject):
                         provider_list[missing_indexes[offset]] = batch_providers[offset]
 
             for i, item in enumerate(merged_items):
+                source_text = source_texts[i] if i < len(source_texts) else item['text']
                 trans_text = translated_list[i]
                 provider = provider_list[i]
-                known_text, known_provider = self.get_best_known_translation(item['text'])
+                known_text, known_provider = self.get_best_known_translation(source_text)
                 if known_text and not self.should_replace_provider(known_provider, provider):
                     trans_text = known_text
                     provider = known_provider
@@ -1982,20 +1986,20 @@ class OCRWorker(QObject):
                     icon = "🧠" if prefix == "AI" else "🌐"
                     self.status_msg.emit(f"{icon} {prefix} {i+1}/{len(merged_items)}")
                     try:
-                        trans_text, provider = self.translate_text_preferred_with_provider(item['text'])
+                        trans_text, provider = self.translate_text_preferred_with_provider(source_text)
                     except Exception:
-                        trans_text = item['text']
+                        trans_text = source_text
                         provider = ""
 
                 trans_text = trans_text.strip()
                 cache_key = (
-                    self.detect_source_language(merged_items[i]['text']),
-                    normalize_ocr_text(merged_items[i]['text'])
+                    self.detect_source_language(source_text),
+                    normalize_ocr_text(source_text)
                 )
                 self.remember_translation(cache_key, trans_text)
-                self.remember_preferred_text(item['text'], trans_text, provider or "")
+                self.remember_preferred_text(source_text, trans_text, provider or "")
                 self.remember_hud_observation(
-                    item['text'],
+                    source_text,
                     (item['x'], item['y'], item['w'], item['h']),
                     trans_text,
                     provider or "",
@@ -3890,6 +3894,7 @@ class Controller(QWidget):
         self.region_frame = RegionSelectionFrame()
         self.region_frame.region_changed.connect(self.on_region_frame_changed)
         self.settings_window = None
+        self.google_ocr_enabled = False
         self.is_dark_mode = False
         self.theme_mode = "light"
         self.current_auto_interval = 0 
@@ -4102,6 +4107,7 @@ class Controller(QWidget):
             "gemma_prompt": self.gemma_prompt,
             "screenshot_gemma_prompt": self.screenshot_gemma_prompt,
             "use_gemma_translation": self.worker.use_gemma_translation,
+            "google_ocr_enabled": self.google_ocr_enabled,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
             "google_api_key": self.worker.google_api_key,
             "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
@@ -4266,6 +4272,10 @@ class Controller(QWidget):
             self.worker.set_gemma_enabled(use_gemma_translation)
             if self.settings_window is not None:
                 self.settings_window.set_translate_mode(use_gemma_translation)
+            self.google_ocr_enabled = bool(settings.get("google_ocr_enabled", False))
+            self.worker.google_ocr_enabled = self.google_ocr_enabled
+            if self.settings_window is not None:
+                self.settings_window.ocr_backend_panel.sync_from_controller()
             self.worker.set_gemma_auto_switch_enabled(bool(settings.get("gemma_auto_switch_enabled", False)))
             if self.settings_window is not None:
                 self.settings_window.chk_auto_switch.blockSignals(True)
@@ -4485,6 +4495,64 @@ class Controller(QWidget):
 
     def get_default_screenshot_gemma_prompt(self):
         return self.DEFAULT_SCREENSHOT_GEMMA_PROMPT
+
+    def set_google_ocr_enabled(self, enabled):
+        self.google_ocr_enabled = bool(enabled)
+        if hasattr(self, "worker"):
+            self.worker.google_ocr_enabled = self.google_ocr_enabled
+        self.schedule_save_settings()
+
+    def _score_ocr_candidate_text(self, text):
+        normalized = normalize_ocr_text(text)
+        if not normalized:
+            return -10_000
+        cjk_count = len(re.findall(r"[\u4e00-\u9fff]", normalized))
+        ascii_count = sum(ch.isascii() and ch.isalpha() for ch in normalized)
+        digit_count = sum(ch.isdigit() for ch in normalized)
+        punct_count = sum(ch in "。、，,.!?！？:：;；()[]{}<>/\\|~`" for ch in normalized)
+        noise_count = sum(ch in "=_-*" for ch in normalized)
+        return (len(normalized) * 2) + (cjk_count * 3) + ascii_count + digit_count - (punct_count * 2) - (noise_count * 3)
+
+    def _choose_better_ocr_candidate(self, local_text, google_text):
+        local_norm = normalize_ocr_text(local_text)
+        google_norm = normalize_ocr_text(google_text)
+        if not local_norm:
+            return google_norm
+        if not google_norm:
+            return local_norm
+        if local_norm == google_norm:
+            return local_norm
+        local_score = self._score_ocr_candidate_text(local_norm)
+        google_score = self._score_ocr_candidate_text(google_norm)
+        if google_score > local_score + 3:
+            return google_norm
+        if len(google_norm) > len(local_norm) and google_score >= local_score:
+            return google_norm
+        return local_norm
+
+    def refine_source_texts_with_google_ocr(self, source_texts, image_parts):
+        if not self.google_ocr_enabled or not self.has_multimodal_ai():
+            return list(source_texts)
+        provider = self._get_translation_provider("gemma")
+        if provider is None or not hasattr(provider, "transcribe_screenshot"):
+            return list(source_texts)
+        try:
+            source_hint = "\n".join(normalize_ocr_text(text) for text in source_texts if normalize_ocr_text(text))
+            result = provider.transcribe_screenshot(image_parts, source_text_hint=source_hint)
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            google_lines = [normalize_ocr_text(line) for line in str(result.text or "").splitlines() if normalize_ocr_text(line)]
+        except Exception:
+            return list(source_texts)
+        if not google_lines:
+            return list(source_texts)
+        if len(google_lines) == len(source_texts):
+            return [
+                self._choose_better_ocr_candidate(local_text, google_text)
+                for local_text, google_text in zip(source_texts, google_lines)
+            ]
+        if len(source_texts) == 1:
+            return [self._choose_better_ocr_candidate(source_texts[0], "\n".join(google_lines))]
+        return list(source_texts)
 
     def _apply_pending_gemma_prompt(self):
         self.worker.set_gemma_prompt(self._pending_gemma_prompt)
@@ -4775,6 +4843,8 @@ class Controller(QWidget):
         self.worker.prune_gemma_call_timestamps()
         if self.worker.has_multimodal_ai():
             selected_model = self.worker.normalize_gemma_model(self.worker.gemma_model)
+            if self.worker.can_call_gemma(selected_model):
+                self.worker.active_gemma_model = selected_model
             current_index = self.cmb_ai_model.findData(selected_model)
             current_label = self.cmb_ai_model.itemText(current_index) if current_index >= 0 else selected_model
             used = len(self.worker.gemma_call_timestamps.get(selected_model, []))

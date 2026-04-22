@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import json
@@ -127,11 +127,12 @@ def translate_text_google_batch(
 
 def build_gemma_prompt(text: Any) -> str:
     return (
-        "你是遊戲畫面即時翻譯助手。"
-        "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。"
-        "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。"
-        "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n\n"
-        f"原文：\n{text}"
+        "You are a game and manga translation assistant.\n"
+        "Translate the input into natural Traditional Chinese used in Taiwan.\n"
+        "Preserve the original line breaks and sentence order.\n"
+        "Do not add explanations, notes, bullets, romanization, or the original text.\n"
+        "If the source contains dialogue, keep it conversational and concise.\n\n"
+        f"Source text:\n{text}"
     )
 
 
@@ -184,21 +185,7 @@ def build_gemma_multimodal_prompt(source_texts: Sequence[Any]) -> str:
 
 
 def build_gemma_screenshot_prompt(source_text_hint: Any = None) -> str:
-    return (
-        "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
-        "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
-        "Return exactly one JSON object and nothing else:\n"
-        "{\"translation\":\"...\"}\n"
-        "Rules:\n"
-        "- The translation value must contain only the translated Chinese text.\n"
-        "- Do not include romanization, pinyin, furigana, meaning, context, notes, labels, or explanations.\n"
-        "- Do not repeat the source text.\n"
-        "- Do not add markdown, code fences, bullets, or extra keys.\n"
-        "- Preserve line breaks inside the translation string when they help readability.\n"
-        "- For spatial or context words such as \"手前\" and \"奥\", choose the most natural Taiwanese phrasing for the scene.\n"
-        "- If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
-        "If you cannot comply, output {\"translation\":\"\"}."
-    )
+    return build_screenshot_prompt_with_override(source_text_hint, custom_prompt='')
 
 
 def split_translated_lines(translated_text: Any, expected_count: int) -> list[str]:
@@ -220,10 +207,10 @@ def clean_model_output(text: Any) -> str:
         line = raw_line.strip()
         if not line:
             continue
-        line = re.sub(r"^[*\-•]\s*", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
+        line = re.sub(r"^[*\-?兡\s*", "", line)
+        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:嚗", line, re.IGNORECASE):
             continue
-        line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^(Translation|Output)\s*[:嚗\s*", "", line, flags=re.IGNORECASE)
         lines.append(line)
 
     if not lines:
@@ -236,13 +223,13 @@ def clean_model_output(text: Any) -> str:
 
     candidates = []
     for line in lines:
-        quoted = re.findall(r'[\"“「]([\u3040-\u30ff\u4e00-\u9fff][^\"”」]*)[\"”」]', line)
+        quoted = re.findall(r'[\"?([\u3040-\u30ff\u4e00-\u9fff][^\"?*)[\"?', line)
         if quoted:
             candidates.extend(item.strip() for item in quoted if item.strip())
             continue
 
         if re.search(r"(translated as|translation)", line, re.IGNORECASE):
-            parts = re.split(r"[:：]", line, maxsplit=1)
+            parts = re.split(r"[:嚗", line, maxsplit=1)
             if len(parts) == 2 and HAS_CJK_PATTERN.search(parts[1]):
                 candidates.append(parts[1].strip(" \"'"))
                 continue
@@ -268,10 +255,10 @@ def clean_model_output_multiline(text: Any) -> str:
         line = raw_line.strip()
         if not line:
             continue
-        line = re.sub(r"^[*\-•\s]+", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
+        line = re.sub(r"^[*\-?兝s]+", "", line)
+        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:嚗", line, re.IGNORECASE):
             continue
-        line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^(Translation|Output)\s*[:嚗\s*", "", line, flags=re.IGNORECASE)
         line = line.strip(" \"'")
         if line:
             lines.append(line)
@@ -303,7 +290,7 @@ def extract_screenshot_translation(text: Any) -> str:
         if not stripped:
             continue
         lowered = stripped.lower()
-        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lowered):
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:嚗", lowered):
             continue
         if lowered in {"text:", "translation:", "output:"}:
             continue
@@ -356,19 +343,7 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
 
 
 DEFAULT_SCREENSHOT_SYSTEM_PROMPT = (
-    "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
-    "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
-    "Use everyday Taiwanese phrasing, not word-for-word dictionary translation.\n"
-    "For dialogue, keep it short, fluent, and spoken-like.\n"
-    "Return only the translated Chinese text. No notes, no JSON, no markdown, no code fences, no explanations.\n"
-    "Do not repeat the source text.\n"
-    "Do not include romanization, pinyin, furigana, labels, or analysis.\n"
-    "If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
-    "Important glossary:\n"
-    "- おっと -> 哦 / 喔 / 哎呀\n"
-    "- 空気 in dialogue usually means 氣氛 / 氛圍, not physical 空氣\n"
-    "- 手前と奥の空気が違いすぎないか？ -> 前後的氣氛差太多了吧？\n"
-    "If you cannot comply, output nothing."
+    "Please help me translate the text in the image directly into Traditional Chinese."
 )
 
 
@@ -421,7 +396,7 @@ def build_gemma_screenshot_prompt_v2(retry_note: str | None = None) -> str:
         "- Do not repeat the source text.\n"
         "- Do not add markdown, code fences, bullets, or extra keys.\n"
         "- Preserve line breaks inside the translation string when they help readability.\n"
-        "- For spatial or context words such as \"手前\" and \"奥\", choose the most natural Taiwanese phrasing for the scene.\n"
+        "- For spatial or context words, choose the most natural Taiwanese phrasing for the scene.\n"
         "- If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
         "- If you produce anything other than the translation, the answer is invalid.\n"
         "If you cannot comply, output {\"translation\":\"\"}."
@@ -452,7 +427,7 @@ def clean_screenshot_translation_output(text: Any) -> str:
         if not line:
             continue
         lower = line.lower()
-        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]?", lower):
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:嚗?", lower):
             continue
         if re.match(r"^[A-Za-z\s]+:\s*$", line):
             continue
@@ -493,22 +468,21 @@ def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH
 
 
 DEFAULT_SYSTEM_PROMPT = (
-    "你是遊戲畫面即時翻譯助手。\n"
-    "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。\n"
-    "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。\n"
-    "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n"
-    "OCR 內容可能有破損、缺字或斷行，請優先維持原意並做適度修補；若無法確定，請保守翻譯，不要硬猜。"
+    "You are a game translation assistant."
+    "Translate the input into natural Traditional Chinese used in Taiwan."
+    "Preserve the original line breaks and sentence order."
+    "Do not add explanations, notes, bullets, romanization, or the original text."
 )
 
 
 def build_gemma_prompt_conservative(text: Any) -> str:
-    return f"{DEFAULT_SYSTEM_PROMPT}\n\n原文：\n{text}"
+    return f"{DEFAULT_SYSTEM_PROMPT}\n\n??嚗n{text}"
 
 
 def build_gemma_prompt_with_override(text: Any, custom_prompt: str = "") -> str:
-    """如果使用者有填自訂 prompt，完全取代 system 指令；否則用預設。"""
+    """Return the default prompt unless the user provides an override."""
     system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else DEFAULT_SYSTEM_PROMPT
-    return f"{system}\n\n原文：\n{text}"
+    return f"{system}\n\n??嚗n{text}"
 
 
 def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> list[dict[str, Any]]:
@@ -537,3 +511,8 @@ def get_translation_provider_priority(provider: Any) -> int:
 
 def should_replace_provider(old_provider: Any, new_provider: Any) -> bool:
     return get_translation_provider_priority(new_provider) >= get_translation_provider_priority(old_provider)
+
+
+
+
+
