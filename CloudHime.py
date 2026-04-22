@@ -3850,7 +3850,7 @@ class SettingsWindowRevamp(QWidget):
 # ==========================================
 class Controller(QWidget):
 
-    DEFAULT_GEMMA_PROMPT = "請將內容翻成自然、簡潔的台灣繁體中文，保留原意、語氣與分段，不要加說明、不要列點、不要輸出原文。"
+    DEFAULT_GEMMA_PROMPT = translation_tools.DEFAULT_SYSTEM_PROMPT
 
     request_scan = Signal()
 

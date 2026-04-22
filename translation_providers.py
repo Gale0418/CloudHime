@@ -15,6 +15,7 @@ from deep_translator import GoogleTranslator
 from translation_contracts import TranslationProvider, TranslationResult
 from translation_helpers import (
     build_gemma_prompt_conservative,
+    build_gemma_prompt_with_override,
     build_gemma_multimodal_prompt,
     clean_model_output,
     clean_model_output_multiline,
@@ -217,11 +218,17 @@ class GemmaTranslationProvider:
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
 
-    def _apply_custom_prompt(self, prompt: str) -> str:
-        custom_prompt = self.gemma_prompt.strip()
-        if not custom_prompt:
-            return prompt
-        return f"{custom_prompt}\n\n{prompt}"
+    def _build_prompt(self, text: str) -> str:
+        """用自訂 prompt 取代預設 system 指令，沒填就用預設。"""
+        return build_gemma_prompt_with_override(text, self.gemma_prompt)
+
+    def _build_multimodal_prompt(self, texts) -> str:
+        """多模態版，自訂 prompt 附加在前面（保留原有格式）。"""
+        base = build_gemma_multimodal_prompt(texts)
+        custom = self.gemma_prompt.strip()
+        if not custom:
+            return base
+        return f"{custom}\n\n{base}"
 
     def _normalize_compare_text(self, text: Any) -> str:
         normalized = clean_model_output(text)
@@ -315,7 +322,7 @@ class GemmaTranslationProvider:
             return TranslationResult(text=str(cached), provider=self.name, model=model_name, from_cache=True)
         payload = self._request(
             model_name,
-            self._apply_custom_prompt(build_gemma_prompt_conservative(normalized)),
+            self._build_prompt(normalized),
             max_output_tokens=1024,
             temperature=0.2,
         )
@@ -371,7 +378,7 @@ class GemmaTranslationProvider:
 
         payload = self._request(
             model_name,
-            self._apply_custom_prompt(build_gemma_multimodal_prompt(texts)),
+            self._build_multimodal_prompt(texts),
             image_parts=image_parts,
             max_output_tokens=2048,
             temperature=0.1,
@@ -418,7 +425,11 @@ class GemmaTranslationProvider:
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            prompt = self._apply_custom_prompt(build_gemma_screenshot_prompt_v3(source_text_hint, retry_note))
+            custom = self.gemma_prompt.strip()
+            if custom and source_text_hint:
+                prompt = f"{custom}\n\n{build_gemma_screenshot_prompt_v3(source_text_hint, retry_note)}"
+            else:
+                prompt = build_gemma_screenshot_prompt_v3(source_text_hint, retry_note)
             payload = self._request(
                 model_name,
                 prompt,

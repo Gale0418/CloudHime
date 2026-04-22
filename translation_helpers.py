@@ -481,15 +481,23 @@ def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH
     return encoded.tobytes() if success else b""
 
 
+DEFAULT_SYSTEM_PROMPT = (
+    "你是遊戲畫面即時翻譯助手。\n"
+    "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。\n"
+    "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。\n"
+    "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n"
+    "OCR 內容可能有破損、缺字或斷行，請優先維持原意並做適度修補；若無法確定，請保守翻譯，不要硬猜。"
+)
+
+
 def build_gemma_prompt_conservative(text: Any) -> str:
-    return (
-        "你是遊戲畫面即時翻譯助手。\n"
-        "請把輸入內容翻成自然、流暢、口語化的繁體中文（台灣用語）。\n"
-        "保留原本換行數與句子順序，不要加入說明、註解、前言，也不要輸出原文。\n"
-        "若有英文專有名詞可保留，若是日文台詞請優先翻成自然對話。\n"
-        "OCR 內容可能有破損、缺字或斷行，請優先維持原意並做適度修補；若無法確定，請保守翻譯，不要硬猜。\n\n"
-        f"原文：\n{text}"
-    )
+    return f"{DEFAULT_SYSTEM_PROMPT}\n\n原文：\n{text}"
+
+
+def build_gemma_prompt_with_override(text: Any, custom_prompt: str = "") -> str:
+    """如果使用者有填自訂 prompt，完全取代 system 指令；否則用預設。"""
+    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else DEFAULT_SYSTEM_PROMPT
+    return f"{system}\n\n原文：\n{text}"
 
 
 def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> list[dict[str, Any]]:
