@@ -36,7 +36,7 @@ except ImportError:
 
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup,
-                               QSlider, QLineEdit, QCheckBox, QComboBox,
+                               QSlider, QLineEdit, QCheckBox, QComboBox, QPlainTextEdit,
                                QSpinBox, QSizePolicy, QSplitter, QScrollArea,
                                QGraphicsOpacityEffect,
                                QGridLayout)
@@ -297,6 +297,9 @@ class OCRWorker(QObject):
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
         self.gemma_prompt = ""
+        self.screenshot_gemma_prompt = ""
+        self._pending_screenshot_gemma_prompt = ""
+        self.screenshot_gemma_prompt = ""
         self.use_gemma_translation = False
         self.gemma_auto_switch_enabled = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
@@ -362,6 +365,7 @@ class OCRWorker(QObject):
             google_api_key=self.google_api_key,
             gemma_model=self.gemma_model,
             gemma_prompt=self.gemma_prompt,
+            screenshot_gemma_prompt=self.screenshot_gemma_prompt,
             gemma_enabled=self.use_gemma_translation,
             gemma_auto_switch_enabled=self.gemma_auto_switch_enabled,
         )
@@ -454,6 +458,10 @@ class OCRWorker(QObject):
 
     def set_gemma_prompt(self, prompt):
         self.gemma_prompt = (prompt or "").strip()
+        self._refresh_translation_registry()
+
+    def set_screenshot_gemma_prompt(self, prompt):
+        self.screenshot_gemma_prompt = (prompt or "").strip()
         self._refresh_translation_registry()
 
     def set_scan_mode(self, scan_mode):
@@ -3478,7 +3486,8 @@ class SettingsWindowRevamp(QWidget):
         self.card_region_render = QFrame()
         render = QVBoxLayout(self.card_region_render)
         render.setContentsMargins(18, 10, 18, 10)
-        render.setSpacing(6)
+        render.setSpacing(4)
+        render.setAlignment(Qt.AlignTop)
         self.lbl_region_render = QLabel("文字模式")
         self.lbl_region_render_hint = QLabel("在框選模式下才會啟用，一共有三種文字顯示方式可以切換")
         self.lbl_region_render_hint.setWordWrap(True)
@@ -3487,11 +3496,12 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_region_render.setStyleSheet("background: transparent; border: none;")
         render.addWidget(self.lbl_region_render)
         render.addWidget(self.lbl_region_render_hint)
-        self.lbl_region_render_mode = QLabel("顯示方式")
-        self.lbl_region_render_mode.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        render.addWidget(self.lbl_region_render_mode)
         render_row = QHBoxLayout()
         render_row.setSpacing(8)
+        self.lbl_region_render_mode = QLabel("顯示方式")
+        self.lbl_region_render_mode.setStyleSheet("background: transparent; border: none; padding: 0px;")
+        render_row.addWidget(self.lbl_region_render_mode)
+        render_row.addStretch()
         self.render_mode_group = QButtonGroup(self)
         self.render_mode_group.setExclusive(True)
         self.btn_render_bubble = QPushButton("氣泡模式")
@@ -3518,10 +3528,19 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_region_render_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         render.addWidget(self.lbl_region_render_summary)
 
+        self.input_screenshot_gemma_prompt = QPlainTextEdit()
+        self.input_screenshot_gemma_prompt.setPlaceholderText("此為截圖模式專用的系統提示詞（選填）。\n如果不填，將使用預設的截圖翻譯指令。")
+        self.input_screenshot_gemma_prompt.setTabChangesFocus(True)
+        self.input_screenshot_gemma_prompt.setMinimumHeight(122)
+        self.input_screenshot_gemma_prompt.textChanged.connect(self.controller.on_screenshot_gemma_prompt_changed)
+        self.input_screenshot_gemma_prompt.setVisible(False)
+        render.addWidget(self.input_screenshot_gemma_prompt)
+
         self.card_relief = QFrame()
         relief = QVBoxLayout(self.card_relief)
         relief.setContentsMargins(18, 10, 18, 10)
-        relief.setSpacing(12)
+        relief.setSpacing(8)
+        relief.setAlignment(Qt.AlignTop)
         self.lbl_relief = QLabel("浮離細節")
         self.lbl_relief_hint = QLabel("只在浮離模式才啟用，位移 0 會對齊原位")
         self.lbl_relief_hint.setWordWrap(True)
@@ -3670,9 +3689,11 @@ class SettingsWindowRevamp(QWidget):
         if mode == REGION_RENDER_RELIEF:
             self.lbl_region_render_summary.setText("目前：浮離模式 · 文字貼近原文")
             self.update_relief_state(True)
+            self.input_screenshot_gemma_prompt.setVisible(False)
         elif mode == REGION_RENDER_SCREENSHOT:
             self.lbl_region_render_summary.setText("目前：截圖模式 · 整塊區域一起理解")
             self.update_relief_state(False)
+            self.input_screenshot_gemma_prompt.setVisible(True)
         else:
             self.lbl_region_render_summary.setText("目前：氣泡模式 · 保留原本泡泡")
             self.update_relief_state(False)
@@ -3898,6 +3919,9 @@ class Controller(QWidget):
         self.gemma_prompt_timer = QTimer(self)
         self.gemma_prompt_timer.setSingleShot(True)
         self.gemma_prompt_timer.timeout.connect(self._apply_pending_gemma_prompt)
+        self.screenshot_gemma_prompt_timer = QTimer(self)
+        self.screenshot_gemma_prompt_timer.setSingleShot(True)
+        self.screenshot_gemma_prompt_timer.timeout.connect(self._apply_pending_screenshot_gemma_prompt)
         self.load_settings()
         
         self.hotkey_filter = GlobalHotKeyFilter(self.on_hotkey_pressed)
@@ -4069,6 +4093,7 @@ class Controller(QWidget):
         payload = {
             "gemma_model": self.worker.gemma_model,
             "gemma_prompt": self.gemma_prompt,
+            "screenshot_gemma_prompt": self.screenshot_gemma_prompt,
             "use_gemma_translation": self.worker.use_gemma_translation,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
             "google_api_key": self.worker.google_api_key,
@@ -4190,6 +4215,13 @@ class Controller(QWidget):
 
             self.gemma_prompt = str(settings.get("gemma_prompt", "") or "").strip() or self.get_default_gemma_prompt()
             self.worker.set_gemma_prompt(self.gemma_prompt)
+
+            self.screenshot_gemma_prompt = str(settings.get("screenshot_gemma_prompt", "") or "").strip()
+            self.worker.set_screenshot_gemma_prompt(self.screenshot_gemma_prompt)
+            if self.settings_window is not None and self.settings_window.input_screenshot_gemma_prompt.toPlainText() != self.screenshot_gemma_prompt:
+                self.settings_window.input_screenshot_gemma_prompt.blockSignals(True)
+                self.settings_window.input_screenshot_gemma_prompt.setPlainText(self.screenshot_gemma_prompt)
+                self.settings_window.input_screenshot_gemma_prompt.blockSignals(False)
             if self.settings_window is not None and self.settings_window.input_gemma_prompt.toPlainText() != self.gemma_prompt:
                 self.settings_window.input_gemma_prompt.blockSignals(True)
                 self.settings_window.input_gemma_prompt.setPlainText(self.gemma_prompt)
@@ -4444,6 +4476,17 @@ class Controller(QWidget):
     def _apply_pending_gemma_prompt(self):
         self.worker.set_gemma_prompt(self._pending_gemma_prompt)
         self.schedule_save_settings()
+
+    def _apply_pending_screenshot_gemma_prompt(self):
+        self.worker.set_screenshot_gemma_prompt(self._pending_screenshot_gemma_prompt)
+        self.schedule_save_settings()
+
+    def on_screenshot_gemma_prompt_changed(self):
+        if not self.settings_window:
+            return
+        self.screenshot_gemma_prompt = self.settings_window.input_screenshot_gemma_prompt.toPlainText().strip()
+        self._pending_screenshot_gemma_prompt = self.screenshot_gemma_prompt
+        self.screenshot_gemma_prompt_timer.start(1000)
 
     def toggle_ai_translation(self, checked):
         has_key = bool(self.worker.google_api_key.strip())
