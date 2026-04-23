@@ -127,7 +127,9 @@ GOOGLE_BATCH_SIZE = 12
 SMART_FULLSCREEN_MAX_REGIONS = 3
 SMART_FULLSCREEN_MIN_AREA_RATIO = 0.015
 SMART_FULLSCREEN_MAX_AREA_RATIO = 0.82
-AUTO_THRESHOLD_REFRESH_INTERVAL_MS = 60 * 1000
+# 自動調整閥值不要太常重算，避免每次掃描都在做昂貴的複判。
+# 平常十分鐘才刷新一次；若使用者按「立即掃描」，會另外強制重算一次。
+AUTO_THRESHOLD_REFRESH_INTERVAL_MS = 10 * 60 * 1000
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 RELIEF_BUBBLE_OPACITY = 40
@@ -1544,11 +1546,13 @@ class OCRWorker(QObject):
                 tiles.append((left, top, right - left, bottom - top))
         return tiles
 
-    def get_ocr_regions(self, img):
+    def get_ocr_regions(self, img, page_region=None):
         img_h, img_w = img.shape[:2]
         full_rect = (0, 0, img_w, img_h)
         if self.scan_mode != SCAN_MODE_FULLSCREEN:
             return [full_rect]
+        if page_region:
+            return [page_region]
         manga_page = self.detect_manga_page_region(img)
         if manga_page:
             return [manga_page]
@@ -1758,35 +1762,65 @@ class OCRWorker(QObject):
             regions = ocr_regions or [(0, 0, img.shape[1], img.shape[0])]
             orientations = orientation_candidates or [0]
 
+            prepared_regions = []
+            for region_x, region_y, region_w, region_h in regions:
+                crop = img[region_y:region_y + region_h, region_x:region_x + region_w]
+                if crop.size == 0:
+                    continue
+                crop_w, crop_h = crop.shape[1], crop.shape[0]
+                prepared_orientations = []
+                for orientation in orientations:
+                    rotated_crop = self.rotate_crop_for_ocr(crop, orientation)
+                    if rotated_crop.size == 0:
+                        continue
+                    rot_h, rot_w = rotated_crop.shape[:2]
+                    scale_factor = 3.0
+                    img_scaled = cv2.resize(
+                        rotated_crop,
+                        (int(rot_w * scale_factor), int(rot_h * scale_factor)),
+                        interpolation=cv2.INTER_CUBIC,
+                    )
+                    gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
+                    prepared_orientations.append(
+                        {
+                            "orientation": orientation,
+                            "gray": gray,
+                            "scale_factor": scale_factor,
+                            "crop_w": crop_w,
+                            "crop_h": crop_h,
+                            "offset_x": offset_x + region_x,
+                            "offset_y": offset_y + region_y,
+                        }
+                    )
+                if prepared_orientations:
+                    prepared_regions.append(prepared_orientations)
+
             for threshold in threshold_values:
                 raw_items = []
-                for region_x, region_y, region_w, region_h in regions:
-                    crop = img[region_y:region_y + region_h, region_x:region_x + region_w]
-                    if crop.size == 0:
-                        continue
+                for prepared_orientations in prepared_regions:
                     crop_best_items = []
                     crop_best_score = -1
-                    crop_w, crop_h = crop.shape[1], crop.shape[0]
-                    for orientation in orientations:
-                        rotated_crop = self.rotate_crop_for_ocr(crop, orientation)
-                        img_for_ocr, scale_factor = self.build_ocr_image(rotated_crop, threshold)
+                    for prepared in prepared_orientations:
+                        _, binary = cv2.threshold(prepared["gray"], threshold, 255, cv2.THRESH_BINARY)
+                        img_final = cv2.bitwise_not(binary)
+                        img_for_ocr = cv2.cvtColor(img_final, cv2.COLOR_GRAY2BGR)
                         try:
                             ocr_result = self._recognize_with_backends(img_for_ocr)
                         except Exception:
                             ocr_result = None
                         region_items = self.extract_raw_items(
                             ocr_result,
-                            scale_factor,
-                            offset_x + region_x,
-                            offset_y + region_y,
+                            prepared["scale_factor"],
+                            prepared["offset_x"],
+                            prepared["offset_y"],
                         )
                         region_items = self.remap_items_from_orientation(
                             region_items,
-                            orientation,
-                            crop_w,
-                            crop_h,
-                            offset_x + region_x,
-                            offset_y + region_y,
+                            prepared["orientation"],
+                            prepared["crop_w"],
+                            prepared["crop_h"],
+                            prepared["offset_x"],
+                            prepared["offset_y"],
                         )
                         score, filtered_items = self.score_ocr_items(region_items)
                         if score > crop_best_score:
@@ -1883,6 +1917,7 @@ class OCRWorker(QObject):
 
     def run_scan_once(self):
         is_screenshot_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT
+        ai_image_parts = None
         if not is_screenshot_mode and not self.ocr_backends:
             self.status_msg.emit("❌ 缺少可用 OCR 後端")
             self.finished.emit([])
@@ -1892,7 +1927,6 @@ class OCRWorker(QObject):
         self.hide_ui.emit()
         try:
             img, offset_x, offset_y = self.capture_scan_area()
-            ai_image_parts = self.build_ai_image_parts(img)
         except Exception as exc:
             self.status_msg.emit(f"❌ 擷取螢幕失敗：{type(exc).__name__}")
             self.finished.emit([])
@@ -1905,6 +1939,7 @@ class OCRWorker(QObject):
                 self.finished.emit([])
                 self.show_ui.emit()
                 return
+            ai_image_parts = self.build_ai_image_parts(img)
             self.status_msg.emit("🖼 截圖模式翻譯中...")
             try:
                 translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
@@ -1948,7 +1983,7 @@ class OCRWorker(QObject):
                     ocr_regions = [page_region]
                     ocr_orientations = [0, 90, 270]
                 else:
-                    ocr_regions = self.get_ocr_regions(img)
+                    ocr_regions = self.get_ocr_regions(img, page_region=page_region)
             except Exception:
                 ocr_regions = None
                 ocr_orientations = [0]
@@ -1965,28 +2000,6 @@ class OCRWorker(QObject):
             self.finished.emit([])
             self.show_ui.emit()
             return
-
-        if self.scan_mode == SCAN_MODE_FULLSCREEN and len(filtered_items) <= 1:
-            if page_region and (not ocr_regions or len(ocr_regions) == 1):
-                tile_regions = self.split_region_into_tiles(page_region, cols=2, rows=3, overlap=0.10)
-                if tile_regions:
-                    self.status_msg.emit("📚 漫畫頁切片重試中...")
-                    try:
-                        fallback_thresholds = sorted({
-                            max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, used_threshold - 10)),
-                            max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, used_threshold)),
-                            max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, used_threshold + 10)),
-                        })
-                        used_threshold, filtered_items = self.run_ocr_with_best_threshold(
-                            img,
-                            offset_x,
-                            offset_y,
-                            tile_regions,
-                            fallback_thresholds,
-                            ocr_orientations,
-                        )
-                    except Exception:
-                        filtered_items = []
 
         if (
             self.scan_mode == SCAN_MODE_FULLSCREEN
@@ -2028,6 +2041,29 @@ class OCRWorker(QObject):
                     filtered_items = []
             if not filtered_items and self.scan_mode == SCAN_MODE_REGION:
                 self.status_msg.emit("框選區域沒有掃到文字，請框大一點或換個角度。")
+
+        if self.scan_mode == SCAN_MODE_FULLSCREEN and len(filtered_items) <= 1 and page_region:
+            tile_regions = self.split_region_into_tiles(page_region, cols=2, rows=3, overlap=0.10)
+            if tile_regions:
+                self.status_msg.emit("📚 漫畫頁切片重試中...")
+                try:
+                    fallback_thresholds = sorted({
+                        max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, used_threshold - 10)),
+                        max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, used_threshold)),
+                        max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, used_threshold + 10)),
+                    })
+                    used_threshold, filtered_items = self.run_ocr_with_best_threshold(
+                        img,
+                        offset_x,
+                        offset_y,
+                        tile_regions,
+                        fallback_thresholds,
+                        ocr_orientations,
+                    )
+                except Exception:
+                    filtered_items = []
+
+        if not filtered_items:
             self.handle_empty()
             return
 
@@ -2062,6 +2098,8 @@ class OCRWorker(QObject):
         try:
             self.status_msg.emit("🧠 AI 大圖翻譯..." if self.has_multimodal_ai() else "🌐 Google...")
             if self.google_ocr_enabled and self.google_api_key:
+                if ai_image_parts is None:
+                    ai_image_parts = self.build_ai_image_parts(img)
                 merged_items = self.refine_merged_items_with_google_ocr(merged_items, ai_image_parts)
             source_texts = [item['text'] for item in merged_items]
             current_combined_text = "\n".join(source_texts)
@@ -2069,6 +2107,8 @@ class OCRWorker(QObject):
             translated_list = []
             provider_list = []
             try:
+                if ai_image_parts is None and self.has_multimodal_ai():
+                    ai_image_parts = self.build_ai_image_parts(img)
                 translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts)
             except Exception:
                 translated_list = []
@@ -4226,6 +4266,7 @@ class Controller(QWidget):
             "gemma_prompt": self.gemma_prompt,
             "screenshot_gemma_prompt": self.screenshot_gemma_prompt,
             "use_gemma_translation": self.worker.use_gemma_translation,
+            "auto_threshold_enabled": self.worker.auto_threshold_enabled,
             "google_ocr_enabled": self.google_ocr_enabled,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
             "google_api_key": self.worker.google_api_key,
@@ -4286,7 +4327,7 @@ class Controller(QWidget):
             self.worker.binary_threshold = threshold
             self.update_threshold(threshold)
 
-            self.worker.set_auto_threshold_enabled(True)
+            self.worker.set_auto_threshold_enabled(bool(settings.get("auto_threshold_enabled", self.worker.auto_threshold_enabled)))
             backend_chain = extract_backend_chain(settings)
             if backend_chain is None:
                 backend_chain = ["windows"]
@@ -4508,7 +4549,8 @@ class Controller(QWidget):
         self.schedule_save_settings()
 
     def set_auto_threshold_mode(self, enabled):
-        self.worker.set_auto_threshold_enabled(True)
+        self.worker.set_auto_threshold_enabled(enabled)
+        self.schedule_save_settings()
 
     def set_gemma_auto_switch_mode(self, enabled):
         self.worker.set_gemma_auto_switch_enabled(enabled)
@@ -4531,8 +4573,6 @@ class Controller(QWidget):
         if not normalized:
             normalized = ["windows"]
         self.worker.reload_ocr_backends(normalized)
-        if self.settings_window is not None:
-            self.settings_window.sync_from_controller()
         self.save_settings()
 
     def set_ocr_backend_enabled(self, backend_name, enabled):
