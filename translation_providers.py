@@ -322,7 +322,13 @@ class GemmaTranslationProvider:
         model_name = self._resolve_model()
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
-        cache_key = ("gemma", model_name, normalized, target_lang or self.target_lang)
+        cache_key = (
+            "gemma",
+            model_name,
+            normalized,
+            target_lang or self.target_lang,
+            self.gemma_prompt,
+        )
         cached = self._get_cached(cache_key)
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, model=model_name, from_cache=True)
@@ -372,7 +378,13 @@ class GemmaTranslationProvider:
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
         normalized_texts = tuple(clean_model_output(text).strip() if text else "" for text in texts)
-        cache_key = ("gemma-mm", model_name, normalized_texts, target_lang or self.target_lang)
+        cache_key = (
+            "gemma-mm",
+            model_name,
+            normalized_texts,
+            target_lang or self.target_lang,
+            self.gemma_prompt,
+        )
         cached = self._get_cached(cache_key)
         if cached is not None:
             translated_items, raw_text = cached
@@ -413,7 +425,14 @@ class GemmaTranslationProvider:
             raise ValueError("gemma_rate_limited")
 
         cache_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
-        cache_key = ("gemma-screenshot", model_name, hashlib.sha1(cache_seed.encode("utf-8")).hexdigest(), target_lang or self.target_lang)
+        cache_key = (
+            "gemma-screenshot",
+            model_name,
+            hashlib.sha1(cache_seed.encode("utf-8")).hexdigest(),
+            target_lang or self.target_lang,
+            self.screenshot_gemma_prompt,
+            hashlib.sha1((source_text_hint or "").encode("utf-8")).hexdigest(),
+        )
         cached = self._get_cached(cache_key)
         if cached is not None:
             translated_text, raw_text = cached
