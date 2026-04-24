@@ -7,7 +7,7 @@ import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 from urllib import error, request
 
 from deep_translator import GoogleTranslator
@@ -378,10 +378,12 @@ class GemmaTranslationProvider:
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
         normalized_texts = tuple(clean_model_output(text).strip() if text else "" for text in texts)
+        image_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
         cache_key = (
             "gemma-mm",
             model_name,
             normalized_texts,
+            hashlib.sha1(image_seed.encode("utf-8")).hexdigest(),
             target_lang or self.target_lang,
             self.gemma_prompt,
         )
@@ -415,6 +417,7 @@ class GemmaTranslationProvider:
         *,
         target_lang: str = "zh-TW",
         source_text_hint: str | None = None,
+        debug_log: Callable[[str], None] | None = None,
     ) -> TranslationResult:
         if not image_parts:
             raise ValueError("missing_image_context")
@@ -462,10 +465,27 @@ class GemmaTranslationProvider:
             )
             last_raw_text = extract_gemma_text(payload)
             translated = clean_screenshot_translation_output(last_raw_text)
-            if is_valid_screenshot_translation(translated):
+            is_valid = is_valid_screenshot_translation(translated)
+            if debug_log is not None:
+                debug_log(
+                    "\n".join([
+                        f"[screenshot attempt {attempt_index + 1}] model={model_name}",
+                        f"valid={is_valid}",
+                        f"raw={last_raw_text if last_raw_text else '<empty>'}",
+                        f"cleaned={translated if translated else '<empty>'}",
+                    ])
+                )
+            if is_valid:
                 break
             translated = ""
         if not translated:
+            if debug_log is not None:
+                debug_log(
+                    "\n".join([
+                        f"[screenshot failed] model={model_name}",
+                        f"last_raw={last_raw_text if last_raw_text else '<empty>'}",
+                    ])
+                )
             raise ValueError("empty_gemma_screenshot_response")
         if source_text_hint and self._should_fallback_to_text_translation(source_text_hint, translated):
             try:

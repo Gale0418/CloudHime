@@ -127,9 +127,9 @@ GOOGLE_BATCH_SIZE = 12
 SMART_FULLSCREEN_MAX_REGIONS = 3
 SMART_FULLSCREEN_MIN_AREA_RATIO = 0.015
 SMART_FULLSCREEN_MAX_AREA_RATIO = 0.82
-# 自動調整閥值不要太常重算，避免每次掃描都在做昂貴的複判。
-# 平常十分鐘才刷新一次；若使用者按「立即掃描」，會另外強制重算一次。
-AUTO_THRESHOLD_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES = 10
+AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN = 1
+AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 RELIEF_BUBBLE_OPACITY = 40
@@ -309,6 +309,7 @@ class OCRWorker(QObject):
         self.region_render_mode = REGION_RENDER_BUBBLE
         self.scan_region = None
         self.auto_threshold_enabled = True
+        self.auto_threshold_refresh_interval_ms = DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES * 60 * 1000
         self.last_auto_threshold_refresh_ms = 0.0
         self.translation_registry = None
         
@@ -484,6 +485,13 @@ class OCRWorker(QObject):
         self.auto_threshold_enabled = bool(enabled)
         if not self.auto_threshold_enabled:
             self.last_auto_threshold_refresh_ms = 0.0
+
+    def set_auto_threshold_refresh_interval_minutes(self, minutes):
+        minutes = max(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            min(AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX, int(minutes)),
+        )
+        self.auto_threshold_refresh_interval_ms = minutes * 60 * 1000
 
     def has_multimodal_ai(self):
         return self.use_gemma_translation and bool(self.google_api_key)
@@ -1073,12 +1081,22 @@ class OCRWorker(QObject):
     def translate_screenshot_gemma(self, image_parts, source_text_hint=""):
         if not image_parts:
             raise ValueError("missing_image_context")
+        self.log_ai_debug(
+            "\n".join([
+                "[screenshot start]",
+                f"scan_mode={self.scan_mode}",
+                f"region_render_mode={self.region_render_mode}",
+                f"image_parts={len(image_parts)}",
+                f"source_text_hint_len={len(source_text_hint or '')}",
+            ])
+        )
         provider = self._get_translation_provider("gemma")
         if provider is not None:
             result = provider.translate_screenshot(
                 image_parts,
                 target_lang=translation_tools.GOOGLE_TARGET_LANG,
                 source_text_hint=source_text_hint,
+                debug_log=self.log_ai_debug,
             )
             provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
             self.active_gemma_model = provider_model
@@ -1753,7 +1771,7 @@ class OCRWorker(QObject):
             self.auto_threshold_enabled
             and (
                 self.last_auto_threshold_refresh_ms <= 0.0
-                or (now_ms - self.last_auto_threshold_refresh_ms) >= AUTO_THRESHOLD_REFRESH_INTERVAL_MS
+                or (now_ms - self.last_auto_threshold_refresh_ms) >= self.auto_threshold_refresh_interval_ms
             )
         )
 
@@ -2211,7 +2229,7 @@ class TransBubble(QLabel):
         elif self.render_mode == REGION_RENDER_SCREENSHOT:
             bubble_rect, best_size = self.compute_screenshot_layout(text, x, y, w, h)
         else:
-            bubble_rect, best_size = self.compute_bubble_layout(text, x, y, w, h)
+            bubble_rect, best_size = self.compute_bubble_layout(text, x, y, w, h, tight=True)
         font = self.font()
         font.setFamily("Microsoft JhengHei")
         font.setPointSizeF(best_size)
@@ -2271,15 +2289,20 @@ class TransBubble(QLabel):
             text,
         ).height()
 
-    def compute_bubble_layout(self, text, x, y, w, h, fixed_font_size=None):
+    def compute_bubble_layout(self, text, x, y, w, h, fixed_font_size=None, tight=False):
         parent_rect = self.parent().rect()
-        base_w = max(MIN_BUBBLE_WIDTH, w + 10)
-        base_h = max(MIN_BUBBLE_HEIGHT, h + 10)
-        max_w = min(max(base_w, int(parent_rect.width() * 0.55)), max(base_w, 460))
-        max_h = min(max(base_h, int(parent_rect.height() * 0.32)), max(base_h, 320))
+        extra_w = 2 if tight else 10
+        extra_h = 2 if tight else 10
+        base_w = max(MIN_BUBBLE_WIDTH, w + extra_w)
+        base_h = max(MIN_BUBBLE_HEIGHT, h + extra_h)
+        max_w_limit = 360 if tight else 460
+        max_h_limit = 260 if tight else 320
+        max_w = min(max(base_w, int(parent_rect.width() * (0.45 if tight else 0.55))), max(base_w, max_w_limit))
+        max_h = min(max(base_h, int(parent_rect.height() * (0.25 if tight else 0.32))), max(base_h, max_h_limit))
 
         width_candidates = []
-        for scale in (1.0, 1.2, 1.45, 1.75, 2.1, 2.5, 3.0):
+        width_scales = (1.0, 1.1, 1.25, 1.45, 1.75, 2.1) if tight else (1.0, 1.2, 1.45, 1.75, 2.1, 2.5, 3.0)
+        for scale in width_scales:
             width_candidates.append(min(max_w, int(base_w * scale)))
         width_candidates.append(max_w)
         width_candidates = sorted(set(width_candidates))
@@ -2327,7 +2350,7 @@ class TransBubble(QLabel):
     def compute_relief_layout(self, text, x, y, w, h):
         parent_rect = self.parent().rect()
         # 浮雕模式以氣泡位置為基準，位移 0 時要和氣泡模式完全一致
-        base_rect, base_size = self.compute_bubble_layout(text, x, y, w, h, fixed_font_size=self.relief_font_pt)
+        base_rect, base_size = self.compute_bubble_layout(text, x, y, w, h, fixed_font_size=self.relief_font_pt, tight=True)
         base_rect = QRect(base_rect)
         gap = max(0, int(self.relief_gap_px))
         font_size = float(self.relief_font_pt)
@@ -2515,7 +2538,8 @@ class OverlayWindow(QWidget):
                     region_rect,
                 )
             )
-        self.arrange_bubbles()
+        if any(b.render_mode == REGION_RENDER_SCREENSHOT for b in self.bubbles):
+            self.arrange_bubbles()
         self.setVisible(True)
         self.raise_()
 
@@ -3113,9 +3137,26 @@ class SettingsWindow(QWidget):
         jitter_row.addWidget(self.spin_random_scan_jitter)
         auto_scan_layout.addLayout(jitter_row)
 
+        threshold_row = QHBoxLayout()
+        self.lbl_auto_threshold_refresh = QLabel("閥值刷新")
+        threshold_row.addWidget(self.lbl_auto_threshold_refresh)
+        threshold_row.addStretch()
+        self.spin_auto_threshold_refresh_minutes = QSpinBox()
+        self.spin_auto_threshold_refresh_minutes.setRange(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX,
+        )
+        self.spin_auto_threshold_refresh_minutes.setSuffix(" 分鐘")
+        self.spin_auto_threshold_refresh_minutes.valueChanged.connect(self.on_auto_threshold_refresh_changed)
+        threshold_row.addWidget(self.spin_auto_threshold_refresh_minutes)
+        auto_scan_layout.addLayout(threshold_row)
+
         self.lbl_random_scan_summary = QLabel("目前：10s 附近 · 約 8 ~ 12 秒")
         self.lbl_random_scan_summary.setWordWrap(True)
         auto_scan_layout.addWidget(self.lbl_random_scan_summary)
+        self.lbl_auto_threshold_refresh_summary = QLabel("狀態：每 10 分鐘重新評估一次閥值")
+        self.lbl_auto_threshold_refresh_summary.setWordWrap(True)
+        auto_scan_layout.addWidget(self.lbl_auto_threshold_refresh_summary)
         ocr_layout.addWidget(self.auto_scan_panel)
 
         self.card_region_render = QFrame()
@@ -3300,6 +3341,10 @@ class SettingsWindow(QWidget):
         )
         self.update_random_scan_summary()
 
+    def on_auto_threshold_refresh_changed(self, *_):
+        self.controller.set_auto_threshold_refresh_minutes(self.spin_auto_threshold_refresh_minutes.value())
+        self.update_auto_threshold_refresh_summary()
+
     def on_region_render_mode_clicked(self, mode):
         self.controller.on_region_render_mode_changed(mode)
         self.update_region_render_summary()
@@ -3325,6 +3370,10 @@ class SettingsWindow(QWidget):
         low = max(1, center - spread)
         high = max(low, center + spread)
         self.lbl_random_scan_summary.setText(f"狀態：{center}s 附近 · 約 {low} ~ {high} 秒")
+
+    def update_auto_threshold_refresh_summary(self):
+        minutes = max(1, int(self.spin_auto_threshold_refresh_minutes.value()))
+        self.lbl_auto_threshold_refresh_summary.setText(f"狀態：每 {minutes} 分鐘重新評估一次閥值")
 
     def update_region_render_summary(self):
         mode = self.cmb_region_render_mode.itemData(self.cmb_region_render_mode.currentIndex())
@@ -3375,6 +3424,10 @@ class SettingsWindow(QWidget):
         self.spin_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
         self.spin_random_scan_jitter.blockSignals(False)
 
+        self.spin_auto_threshold_refresh_minutes.blockSignals(True)
+        self.spin_auto_threshold_refresh_minutes.setValue(self.controller.auto_threshold_refresh_minutes)
+        self.spin_auto_threshold_refresh_minutes.blockSignals(False)
+
         self.cmb_region_render_mode.blockSignals(True)
         if self.controller.region_render_mode == REGION_RENDER_RELIEF:
             render_index = 1
@@ -3422,6 +3475,7 @@ class SettingsWindow(QWidget):
         self.set_translate_advanced_visible(self.controller.btn_ai_mode.isChecked())
         self.update_translate_summary()
         self.update_random_scan_summary()
+        self.update_auto_threshold_refresh_summary()
         self.update_region_render_summary()
         self.update_relief_summary()
         QTimer.singleShot(0, self._lock_settings_columns)
@@ -3485,7 +3539,10 @@ class SettingsWindow(QWidget):
         self.lbl_ocr_hint.setStyleSheet(f"color: {theme.subtext};")
         self.lbl_translate_hint.setStyleSheet(f"color: {theme.subtext};")
         self.lbl_random_scan_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_auto_threshold_refresh.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_auto_threshold_refresh_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
         self.btn_close.setStyleSheet(theme.button_qss("ghost"))
 
     def mousePressEvent(self, event):
@@ -3643,6 +3700,23 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_random_scan_summary.setWordWrap(False)
         self.lbl_random_scan_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         ocr.addWidget(self.lbl_random_scan_summary)
+        threshold_row = QHBoxLayout()
+        threshold_row.setSpacing(8)
+        self.lbl_auto_threshold_refresh = QLabel("閥值刷新")
+        threshold_row.addWidget(self.lbl_auto_threshold_refresh)
+        threshold_row.addStretch()
+        self.spin_auto_threshold_refresh_minutes = QSpinBox()
+        self.spin_auto_threshold_refresh_minutes.setRange(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX,
+        )
+        self.spin_auto_threshold_refresh_minutes.setSuffix(" 分鐘")
+        self.spin_auto_threshold_refresh_minutes.valueChanged.connect(self.on_auto_threshold_refresh_changed)
+        threshold_row.addWidget(self.spin_auto_threshold_refresh_minutes)
+        ocr.addLayout(threshold_row)
+        self.lbl_auto_threshold_refresh_summary = QLabel("狀態：每 10 分鐘重新評估一次閥值")
+        self.lbl_auto_threshold_refresh_summary.setWordWrap(True)
+        ocr.addWidget(self.lbl_auto_threshold_refresh_summary)
 
         self.card_region_render = QFrame()
         render = QVBoxLayout(self.card_region_render)
@@ -3809,6 +3883,10 @@ class SettingsWindowRevamp(QWidget):
         self.controller.on_random_scan_settings_changed(self.spin_random_scan_center.value(), self.spin_random_scan_jitter.value())
         self.update_random_scan_summary()
 
+    def on_auto_threshold_refresh_changed(self, *_):
+        self.controller.set_auto_threshold_refresh_minutes(self.spin_auto_threshold_refresh_minutes.value())
+        self.update_auto_threshold_refresh_summary()
+
     def on_region_render_mode_clicked(self, mode):
         self.controller.on_region_render_mode_changed(mode)
         self.update_region_render_summary()
@@ -3844,6 +3922,10 @@ class SettingsWindowRevamp(QWidget):
         low = max(1, center - spread)
         high = max(low, center + spread)
         self.lbl_random_scan_summary.setText(f"目前：{center}s 附近 · 約 {low} ~ {high} 秒")
+
+    def update_auto_threshold_refresh_summary(self):
+        minutes = max(1, int(self.spin_auto_threshold_refresh_minutes.value()))
+        self.lbl_auto_threshold_refresh_summary.setText(f"目前：每 {minutes} 分鐘重新評估一次閥值")
 
     def update_region_render_summary(self):
         mode = self.controller.region_render_mode
@@ -3895,6 +3977,9 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_jitter.blockSignals(True)
         self.spin_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
         self.spin_random_scan_jitter.blockSignals(False)
+        self.spin_auto_threshold_refresh_minutes.blockSignals(True)
+        self.spin_auto_threshold_refresh_minutes.setValue(self.controller.auto_threshold_refresh_minutes)
+        self.spin_auto_threshold_refresh_minutes.blockSignals(False)
         self.cmb_relief_side.blockSignals(True)
         self.cmb_relief_side.setCurrentIndex(max(0, self.cmb_relief_side.findData(self.controller.region_relief_side)))
         self.cmb_relief_side.blockSignals(False)
@@ -3918,6 +4003,7 @@ class SettingsWindowRevamp(QWidget):
         self._sync_theme_mode(theme_mode)
         self._sync_render_mode()
         self.update_random_scan_summary()
+        self.update_auto_threshold_refresh_summary()
         self.update_region_render_summary()
         self.update_relief_summary()
 
@@ -3976,7 +4062,12 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_ocr_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_auto_scan.setStyleSheet(f"font-size: 17px; font-weight: 800; color: {theme.text};")
         self.lbl_auto_scan_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
+        self.lbl_auto_threshold_refresh.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_random_scan_summary.setStyleSheet(
+            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
+            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
+        )
+        self.lbl_auto_threshold_refresh_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
             f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
         )
@@ -4005,6 +4096,7 @@ class SettingsWindowRevamp(QWidget):
         )
         self.spin_random_scan_center.setStyleSheet(spinbox_style)
         self.spin_random_scan_jitter.setStyleSheet(spinbox_style)
+        self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
         self.spin_relief_font.setStyleSheet(spinbox_style)
         self.lbl_relief_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
@@ -4059,10 +4151,11 @@ class Controller(QWidget):
         self.countdown_seconds = 0
         self.random_scan_center_seconds = 10
         self.random_scan_jitter_percent = 20
+        self.auto_threshold_refresh_minutes = DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES
         self.region_render_mode = REGION_RENDER_BUBBLE
         self.region_relief_side = RELIEF_SIDE_AUTO
         self.region_relief_font_pt = 18
-        self.region_relief_gap_px = 10
+        self.region_relief_gap_px = 8
         self.region_frame_opacity = 40
         self.gemma_prompt = ""
         self.was_minimized = False
@@ -4267,6 +4360,7 @@ class Controller(QWidget):
             "screenshot_gemma_prompt": self.screenshot_gemma_prompt,
             "use_gemma_translation": self.worker.use_gemma_translation,
             "auto_threshold_enabled": self.worker.auto_threshold_enabled,
+            "auto_threshold_refresh_minutes": int(self.auto_threshold_refresh_minutes),
             "google_ocr_enabled": self.google_ocr_enabled,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
             "google_api_key": self.worker.google_api_key,
@@ -4328,6 +4422,13 @@ class Controller(QWidget):
             self.update_threshold(threshold)
 
             self.worker.set_auto_threshold_enabled(bool(settings.get("auto_threshold_enabled", self.worker.auto_threshold_enabled)))
+            auto_threshold_minutes = safe_int(
+                settings.get("auto_threshold_refresh_minutes", self.auto_threshold_refresh_minutes),
+                self.auto_threshold_refresh_minutes,
+                AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+                AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX,
+            )
+            self.set_auto_threshold_refresh_minutes(auto_threshold_minutes, persist=False)
             backend_chain = extract_backend_chain(settings)
             if backend_chain is None:
                 backend_chain = ["windows"]
@@ -4551,6 +4652,16 @@ class Controller(QWidget):
     def set_auto_threshold_mode(self, enabled):
         self.worker.set_auto_threshold_enabled(enabled)
         self.schedule_save_settings()
+
+    def set_auto_threshold_refresh_minutes(self, minutes, persist=True):
+        minutes = max(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            min(AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX, int(minutes)),
+        )
+        self.auto_threshold_refresh_minutes = minutes
+        self.worker.set_auto_threshold_refresh_interval_minutes(minutes)
+        if persist:
+            self.schedule_save_settings()
 
     def set_gemma_auto_switch_mode(self, enabled):
         self.worker.set_gemma_auto_switch_enabled(enabled)
@@ -4917,6 +5028,25 @@ class Controller(QWidget):
                 fp.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {context}: {exc}\n")
                 fp.write(traceback.format_exc())
                 fp.write("\n")
+        except Exception:
+            pass
+
+    def log_ai_debug(self, message):
+        try:
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+            log_line = f"[{timestamp}] {message}\n\n"
+            log_paths = [
+                os.path.join(os.path.dirname(__file__), "cloudhime_ai_debug.log"),
+                os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "CloudHime", "cloudhime_ai_debug.log"),
+            ]
+            for log_path in log_paths:
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, "a", encoding="utf-8") as fp:
+                        fp.write(log_line)
+                except Exception:
+                    pass
+            print(f"[AI-DEBUG] {message}")
         except Exception:
             pass
 
