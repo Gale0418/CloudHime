@@ -18,6 +18,7 @@ import json
 import time
 import traceback
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib import request, error
 import numpy as np
 import cv2
@@ -930,30 +931,13 @@ class OCRWorker(QObject):
         except Exception:
             pass
 
-    def refine_merged_items_with_google_ocr(self, items, image_parts):
-        if not self.google_ocr_enabled or not self.google_api_key:
-            return list(items)
-        provider = self._get_translation_provider("gemma")
-        if provider is None or not hasattr(provider, "transcribe_screenshot"):
-            return list(items)
-        try:
-            source_hint = "\n".join(
-                normalize_ocr_text(item.get("text", ""))
-                for item in items
-                if normalize_ocr_text(item.get("text", ""))
-            )
-            result = provider.transcribe_screenshot(image_parts, source_text_hint=source_hint)
-            self.sync_gemma_call_timestamps_from_provider(provider)
-            google_lines = [normalize_ocr_text(line) for line in str(result.text or "").splitlines() if normalize_ocr_text(line)]
-        except Exception:
-            return list(items)
+    def _merge_google_lines_into_items(self, items, google_lines):
+        """純 CPU 合併：把 Google OCR 文字行對應到本地 OCR 的 bounding box"""
         if not google_lines:
             return list(items)
-
         local_items = [dict(item) for item in items if normalize_ocr_text(item.get("text", ""))]
         if not local_items:
             return list(items)
-
         local_items.sort(key=lambda item: (int(item.get("y", 0)), int(item.get("x", 0))))
         if len(google_lines) >= len(local_items):
             if len(google_lines) == len(local_items):
@@ -964,12 +948,10 @@ class OCRWorker(QObject):
                     refined_items.append(refined_item)
                 return refined_items
             return list(local_items)
-
         group_count = max(1, len(google_lines))
         base_size = len(local_items) // group_count
         remainder = len(local_items) % group_count
         group_sizes = [base_size + (1 if index >= group_count - remainder else 0) for index in range(group_count)]
-
         refined_items = []
         cursor = 0
         for index, group_size in enumerate(group_sizes):
@@ -996,6 +978,25 @@ class OCRWorker(QObject):
                 "h": max(1, y2 - y1),
             })
         return refined_items
+
+    def refine_merged_items_with_google_ocr(self, items, image_parts):
+        if not self.google_ocr_enabled or not self.google_api_key:
+            return list(items)
+        provider = self._get_translation_provider("gemma")
+        if provider is None or not hasattr(provider, "transcribe_screenshot"):
+            return list(items)
+        try:
+            source_hint = "\n".join(
+                normalize_ocr_text(item.get("text", ""))
+                for item in items
+                if normalize_ocr_text(item.get("text", ""))
+            )
+            result = provider.transcribe_screenshot(image_parts, source_text_hint=source_hint)
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            google_lines = [normalize_ocr_text(line) for line in str(result.text or "").splitlines() if normalize_ocr_text(line)]
+        except Exception:
+            return list(items)
+        return self._merge_google_lines_into_items(items, google_lines)
 
     def translate_text_gemma(self, text):
         normalized_text = normalize_ocr_text(text)
@@ -1840,6 +1841,13 @@ class OCRWorker(QObject):
                         continue
                     rot_h, rot_w = rotated_crop.shape[:2]
                     scale_factor = 3.0
+                    # 框選模式：限制圖片最大邊長 1000px，避免大對話框 OCR 過慢
+                    if self.scan_mode == SCAN_MODE_REGION:
+                        max_dim = 1000
+                        scaled_w = int(rot_w * scale_factor)
+                        scaled_h = int(rot_h * scale_factor)
+                        if scaled_w > max_dim or scaled_h > max_dim:
+                            scale_factor = max(1.5, min(max_dim / rot_w, max_dim / rot_h))
                     img_scaled = cv2.resize(
                         rotated_crop,
                         (int(rot_w * scale_factor), int(rot_h * scale_factor)),
@@ -1860,38 +1868,68 @@ class OCRWorker(QObject):
                 if prepared_orientations:
                     prepared_regions.append(prepared_orientations)
 
+            # 並列 OCR：把所有（閥値, 區域索引, 方向）組合同時丟給 ThreadPoolExecutor
+            def _run_one(task):
+                threshold, region_idx, prepared = task
+                _, binary = cv2.threshold(prepared["gray"], threshold, 255, cv2.THRESH_BINARY)
+                img_final = cv2.bitwise_not(binary)
+                img_for_ocr = cv2.cvtColor(img_final, cv2.COLOR_GRAY2BGR)
+                try:
+                    ocr_result = self._recognize_with_backends(img_for_ocr)
+                except Exception:
+                    ocr_result = None
+                region_items = self.extract_raw_items(
+                    ocr_result,
+                    prepared["scale_factor"],
+                    prepared["offset_x"],
+                    prepared["offset_y"],
+                )
+                region_items = self.remap_items_from_orientation(
+                    region_items,
+                    prepared["orientation"],
+                    prepared["crop_w"],
+                    prepared["crop_h"],
+                    prepared["offset_x"],
+                    prepared["offset_y"],
+                )
+                score, filtered_items = self.score_ocr_items(region_items)
+                return threshold, region_idx, prepared["orientation"], score, filtered_items
+
+            tasks = [
+                (threshold, region_idx, prepared)
+                for threshold in threshold_values
+                for region_idx, prepared_orientations in enumerate(prepared_regions)
+                for prepared in prepared_orientations
+            ]
+
+            # 收集並列結果： results_map[(threshold, region_idx)] = [(score, items), ...]
+            results_map = {}
+            if len(tasks) == 1:
+                # 單任務直接跑，省略 ThreadPoolExecutor 開銷
+                try:
+                    threshold, region_idx, orientation, score, filtered_items = _run_one(tasks[0])
+                    results_map.setdefault((threshold, region_idx), []).append((score, filtered_items))
+                except Exception:
+                    pass
+            else:
+                max_workers = min(len(tasks), 8)
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {executor.submit(_run_one, task): task for task in tasks}
+                    for future in as_completed(futures):
+                        try:
+                            threshold, region_idx, orientation, score, filtered_items = future.result()
+                            results_map.setdefault((threshold, region_idx), []).append((score, filtered_items))
+                        except Exception:
+                            pass
+
+            # 依閥値排序組裝結果
             for threshold in threshold_values:
                 raw_items = []
-                for prepared_orientations in prepared_regions:
-                    crop_best_items = []
-                    crop_best_score = -1
-                    for prepared in prepared_orientations:
-                        _, binary = cv2.threshold(prepared["gray"], threshold, 255, cv2.THRESH_BINARY)
-                        img_final = cv2.bitwise_not(binary)
-                        img_for_ocr = cv2.cvtColor(img_final, cv2.COLOR_GRAY2BGR)
-                        try:
-                            ocr_result = self._recognize_with_backends(img_for_ocr)
-                        except Exception:
-                            ocr_result = None
-                        region_items = self.extract_raw_items(
-                            ocr_result,
-                            prepared["scale_factor"],
-                            prepared["offset_x"],
-                            prepared["offset_y"],
-                        )
-                        region_items = self.remap_items_from_orientation(
-                            region_items,
-                            prepared["orientation"],
-                            prepared["crop_w"],
-                            prepared["crop_h"],
-                            prepared["offset_x"],
-                            prepared["offset_y"],
-                        )
-                        score, filtered_items = self.score_ocr_items(region_items)
-                        if score > crop_best_score:
-                            crop_best_score = score
-                            crop_best_items = filtered_items
-                    raw_items.extend(crop_best_items)
+                for region_idx in range(len(prepared_regions)):
+                    region_results = results_map.get((threshold, region_idx), [])
+                    if region_results:
+                        best_score_items = max(region_results, key=lambda x: x[0])
+                        raw_items.extend(best_score_items[1])
                 score, filtered_items = self.score_ocr_items(raw_items)
                 candidate_results.append({
                     "threshold": threshold,
@@ -1907,7 +1945,11 @@ class OCRWorker(QObject):
         if candidate_thresholds:
             candidates = [int(value) for value in candidate_thresholds if value is not None]
         elif should_refresh_auto_threshold:
-            candidates = list(AUTO_THRESHOLD_CANDIDATES)
+            # 框選模式：圖小且有目標，只試 3 個代表性閥值就夠，大幅減少 refresh 耗時
+            if self.scan_mode == SCAN_MODE_REGION:
+                candidates = [90, 140, 190]
+            else:
+                candidates = list(AUTO_THRESHOLD_CANDIDATES)
         else:
             candidates = [base_threshold]
         candidates = sorted({max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, value)) for value in candidates})
@@ -1922,7 +1964,8 @@ class OCRWorker(QObject):
             best_score,
         )
 
-        if self.auto_threshold_enabled and should_refresh_auto_threshold:
+        # 框選模式 refresh 時跳過 local offset，省去額外 OCR 呼叫
+        if self.auto_threshold_enabled and should_refresh_auto_threshold and self.scan_mode != SCAN_MODE_REGION:
             local_candidates = sorted({
                 max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, best_threshold + offset))
                 for offset in AUTO_THRESHOLD_LOCAL_OFFSETS
@@ -1937,7 +1980,7 @@ class OCRWorker(QObject):
                 )
                 candidate_results.extend(local_results)
 
-        if self.auto_threshold_enabled and self.google_api_key:
+        if self.auto_threshold_enabled and self.google_api_key and should_refresh_auto_threshold:
             top_candidates = sorted(candidate_results, key=lambda item: item["score"], reverse=True)[:3]
             if len(top_candidates) >= 2:
                 self.status_msg.emit("🧠 句子完整度複判中...")
@@ -1982,6 +2025,12 @@ class OCRWorker(QObject):
 
     def run_scan_once(self):
         is_screenshot_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT
+        is_relief_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_RELIEF
+        _t0 = time.perf_counter()
+        def _log(label):
+            if is_relief_mode:
+                elapsed = (time.perf_counter() - _t0) * 1000
+                print(f"[浮雕計時] {label}: +{elapsed:.1f}ms (累計)", flush=True)
         ai_image_parts = None
         if not is_screenshot_mode and not self.ocr_backends:
             self.status_msg.emit("❌ 缺少可用 OCR 後端")
@@ -1990,13 +2039,39 @@ class OCRWorker(QObject):
             return
 
         self.hide_ui.emit()
+        _log("開始 - hide_ui")
         try:
             img, offset_x, offset_y = self.capture_scan_area()
+            _log("① 截圖完成")
         except Exception as exc:
-            self.status_msg.emit(f"❌ 擷取螢幕失敗：{type(exc).__name__}")
+            self.status_msg.emit(f"\u274c 擷取螢幕失敗：{type(exc).__name__}")
             self.finished.emit([])
             self.show_ui.emit()
             return
+
+        # 截圖後立刻預取 Google OCR（與本地 OCR 並列進行）
+        # 注意：多模態 AI 翻譯已包含看圖能力，可代替 Google OCR refine，故不重複呼叫
+        _google_ocr_future = None
+        _prefetch_image_parts = None
+        _use_google_ocr_refine = self.google_ocr_enabled and self.google_api_key and not self.has_multimodal_ai()
+        if _use_google_ocr_refine and self.scan_mode == SCAN_MODE_REGION:
+            try:
+                _prefetch_image_parts = self.build_ai_image_parts(img)
+                ai_image_parts = _prefetch_image_parts
+                _provider_snap = self._get_translation_provider("gemma")
+                if _provider_snap is not None and hasattr(_provider_snap, "transcribe_screenshot"):
+                    _google_executor = ThreadPoolExecutor(max_workers=1)
+                    def _bg_google_ocr(_prov=_provider_snap, _parts=_prefetch_image_parts):
+                        try:
+                            result = _prov.transcribe_screenshot(_parts)
+                            self.sync_gemma_call_timestamps_from_provider(_prov)
+                            return result
+                        except Exception:
+                            return None
+                    _google_ocr_future = _google_executor.submit(_bg_google_ocr)
+                    _log("① 截圖完成 (Google OCR 預取已啟動)")
+            except Exception:
+                _google_ocr_future = None
 
         if is_screenshot_mode:
             if not self.has_multimodal_ai():
@@ -2057,9 +2132,11 @@ class OCRWorker(QObject):
             # 真的抓不到再走後面的旋轉重試，避免平白多花時間。
             ocr_orientations = [0]
         self.status_msg.emit("🔍 自動調整清晰度中...")
+        _log("② 開始 OCR")
 
         try:
             used_threshold, filtered_items = self.run_ocr_with_best_threshold(img, offset_x, offset_y, ocr_regions, None, ocr_orientations)
+            _log(f"③ OCR 完成 (找到 {len(filtered_items)} 段)")
         except Exception:
             self.status_msg.emit("❌ 辨識錯誤")
             self.finished.emit([])
@@ -2162,10 +2239,27 @@ class OCRWorker(QObject):
 
         try:
             self.status_msg.emit("🧠 AI 大圖翻譯..." if self.has_multimodal_ai() else "🌐 Google...")
-            if self.google_ocr_enabled and self.google_api_key:
-                if ai_image_parts is None:
-                    ai_image_parts = self.build_ai_image_parts(img)
-                merged_items = self.refine_merged_items_with_google_ocr(merged_items, ai_image_parts)
+            if _use_google_ocr_refine:
+                if _google_ocr_future is not None:
+                    _log("⑤ 等待 Google OCR 預取結果...")
+                    try:
+                        _google_result = _google_ocr_future.result()
+                        _log("⑥ Google OCR 精煉完成 (已預取)")
+                        if _google_result is not None:
+                            _google_lines = [normalize_ocr_text(line) for line in str(_google_result.text or "").splitlines() if normalize_ocr_text(line)]
+                            merged_items = self._merge_google_lines_into_items(merged_items, _google_lines)
+                    except Exception:
+                        pass
+                else:
+                    if ai_image_parts is None:
+                        _log("④-pre 開始 build_ai_image_parts (Google OCR)")
+                        ai_image_parts = self.build_ai_image_parts(img)
+                        _log("④ build_ai_image_parts 完成 (Google OCR)")
+                    _log("⑤ 開始 refine_merged_items_with_google_ocr")
+                    merged_items = self.refine_merged_items_with_google_ocr(merged_items, ai_image_parts)
+                    _log("⑥ Google OCR 精煉完成")
+            elif self.google_ocr_enabled and self.has_multimodal_ai():
+                _log("⑤ 多模態 AI 可用，跳過 Google OCR refine（由 AI 翻譯直接讀圖修正）")
             source_texts = [item['text'] for item in merged_items]
             current_combined_text = "\n".join(source_texts)
             self.last_combined_text = current_combined_text
@@ -2173,8 +2267,12 @@ class OCRWorker(QObject):
             provider_list = []
             try:
                 if ai_image_parts is None and self.has_multimodal_ai():
+                    _log("⑦-pre 開始 build_ai_image_parts (多模態翻譯)")
                     ai_image_parts = self.build_ai_image_parts(img)
+                    _log("⑦ build_ai_image_parts 完成")
+                _log("⑧ 開始 translate_items_with_ai_and_providers")
                 translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts)
+                _log(f"⑨ 翻譯完成 (共 {len(translated_list)} 段)")
             except Exception:
                 translated_list = []
                 provider_list = []
@@ -2230,6 +2328,7 @@ class OCRWorker(QObject):
                 final_results.append((trans_text, item['x'], item['y'], item['w'], item['h']))
 
             self.last_results = final_results
+            _log(f"⑩ 全部完成！共 {len(final_results)} 筆結果")
             self.status_msg.emit("✅ 翻譯完成")
             self.finished.emit(final_results)
 

@@ -249,3 +249,42 @@ valid=True
 raw=我們是很有熱忱的遊戲開發者，但我們真的受不了了。
 cleaned=我們是很有熱忱的遊戲開發者，但我們真的受不了了。
 
+[2026-04-28 05:02:28] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-28 05:02:33] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=Here's the translation of the text in the image into Traditional Chinese:
+
+**streamGenerateContent 並且使用 Server-Sent Events (SSE) 解析資料。**
+
+Here's a breakdown:
+
+*   **streamGenerateContent:** Remains the same as it's a code/function name.
+*   **並且 (bìngqiě):** and, also
+*   **使用 (shǐyòng):** use, utilize
+*   **Server-Sent Events (SSE):** Remains the same as it's a technical term.
+*   **解析 (jiěxì):** parse, analyze
+*   **資料 (zīliào):** data, information.
+cleaned=**streamGenerateContent 並且使用 Server-Sent Events (SSE) 解析資料。**
+*   **並且 (bìngqiě):** and, also
+*   **使用 (shǐyòng):** use, utilize
+*   **解析 (jiěxì):** parse, analyze
+*   **資料 (zīliào):** data, information.
+
+[2026-04-28 05:02:35] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=streamGenerateContent 並使用 Server-Sent Events (SSE) 剖析資料。
+cleaned=streamGenerateContent 並使用 Server-Sent Events (SSE) 剖析資料。
+
+[2026-04-28 05:02:36] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=streamGenerateContent 使用 Server-Sent Events (SSE) 解析資料。
+cleaned=streamGenerateContent 使用 Server-Sent Events (SSE) 解析資料。
+
+[2026-04-28 05:02:36] [screenshot failed] model=gemma-3-27b-it
+last_raw=streamGenerateContent 使用 Server-Sent Events (SSE) 解析資料。
+
