@@ -133,13 +133,16 @@ class TranslationSettingsPanel(QWidget):
                 self.controller.toggle_ai_translation(True)
             else:
                 self.controller.toggle_ai_translation(False)
+                self.sync_from_controller()
                 self.input_api_key.setFocus()
+                return
         else:
             self.controller.toggle_ai_translation(False)
+        self.sync_from_controller()
 
     def on_api_key_text_changed(self, text):
         self.controller.on_api_key_changed(text)
-        if text.strip() and self._ai_requested and not self.controller.btn_ai_mode.isChecked():
+        if text.strip() and self._ai_requested and not getattr(self.controller.worker, "use_gemma_translation", False):
             self.controller.toggle_ai_translation(True)
         self.update_translate_summary()
 
@@ -182,8 +185,8 @@ class TranslationSettingsPanel(QWidget):
         self.chk_auto_switch.setEnabled(enabled)
 
     def sync_from_controller(self):
-        ai_requested = self.controller.btn_ai_mode.isChecked()
-        if ai_requested:
+        ai_enabled = bool(getattr(self.controller.worker, "use_gemma_translation", False))
+        if ai_enabled:
             self._ai_requested = True
 
         self.input_api_key.blockSignals(True)
@@ -205,12 +208,12 @@ class TranslationSettingsPanel(QWidget):
 
         self.btn_translate_google.blockSignals(True)
         self.btn_translate_ai.blockSignals(True)
-        self.btn_translate_google.setChecked(not ai_requested)
-        self.btn_translate_ai.setChecked(ai_requested)
+        self.btn_translate_google.setChecked(not ai_enabled)
+        self.btn_translate_ai.setChecked(ai_enabled)
         self.btn_translate_google.blockSignals(False)
         self.btn_translate_ai.blockSignals(False)
 
-        enabled = bool(ai_requested or self._ai_requested)
+        enabled = bool(ai_enabled or self._ai_requested)
         self.set_translate_advanced_visible(enabled)
         self.update_key_state(enabled)
         self.update_translate_summary()

@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # 🌟 雲朵翻譯姬 v3.0 - 螢幕 OCR 即時翻譯工具 (邏輯修正版) (｀・ω・´)ゞ
 # ==========================================
 # 核心引擎: Windows OCR 優先、可選 OCR 後端
@@ -79,6 +79,7 @@ from translation_settings_panel import TranslationSettingsPanel
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
+STARTUP_T0 = time.perf_counter()
 
 TRANSLATION_CACHE_LIMIT = 512
 HUD_MEMORY_LIMIT = 160
@@ -134,6 +135,14 @@ GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 RELIEF_BUBBLE_OPACITY = 40
 RELIEF_MAX_GAP_PX = 500
+
+
+def startup_log(stage, detail=""):
+    elapsed_ms = (time.perf_counter() - STARTUP_T0) * 1000.0
+    message = f"[Startup][{elapsed_ms:8.1f} ms] {stage}"
+    if detail:
+        message += f" | {detail}"
+    print(message, flush=True)
 
 # ==========================================
 # 🛡️ 核心：Windows 原生熱鍵過濾器
@@ -273,7 +282,7 @@ class OCRWorker(QObject):
 
     def __init__(self):
         super().__init__()
-        print("[OCR] Initializing OCR engine...")
+        startup_log("OCRWorker.__init__ start")
         self.ocr_backend_chain = []
         self.ocr_backends = []
         self.translators = {}
@@ -318,6 +327,10 @@ class OCRWorker(QObject):
         self.binary_threshold = 100 
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         self._refresh_translation_registry()
+        startup_log(
+            "OCRWorker.__init__ done",
+            f"backends={len(self.ocr_backends)} registry={'ready' if self.translation_registry else 'none'}",
+        )
 
     def normalize_ocr_backend_chain(self, chain):
         if chain is None:
@@ -685,7 +698,12 @@ class OCRWorker(QObject):
             normalized_text = normalize_ocr_text(text)
             if not normalized_text:
                 return ""
-            return provider.translate(normalized_text).text
+            result = provider.translate(normalized_text)
+            self.log_translation_debug(
+                f"google single {'hit' if getattr(result, 'from_cache', False) else 'miss'} "
+                f"source={normalized_text!r}"
+            )
+            return result.text
         return translation_tools.translate_text_google(
             text,
             self.translators,
@@ -712,6 +730,10 @@ class OCRWorker(QObject):
             results = provider.translate_batch(normalized_texts)
             if len(results) != len(normalized_texts):
                 return []
+            cache_hits = sum(1 for item in results if getattr(item, "from_cache", False))
+            self.log_translation_debug(
+                f"google batch hits={cache_hits}/{len(results)} source_count={len(normalized_texts)}"
+            )
             return [item.text for item in results]
         return translation_tools.translate_text_google_batch(
             source_texts,
@@ -882,6 +904,31 @@ class OCRWorker(QObject):
         if len(google_norm) > len(local_norm) and google_score >= local_score:
             return google_norm
         return local_norm
+
+    def log_ai_debug(self, message):
+        try:
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+            log_line = f"[{timestamp}] {message}\n\n"
+            log_paths = [
+                os.path.join(os.path.dirname(__file__), "cloudhime_ai_debug.log"),
+                os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "CloudHime", "cloudhime_ai_debug.log"),
+            ]
+            for log_path in log_paths:
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, "a", encoding="utf-8") as fp:
+                        fp.write(log_line)
+                except Exception:
+                    pass
+            print(f"[AI-DEBUG] {message}")
+        except Exception:
+            pass
+
+    def log_translation_debug(self, message):
+        try:
+            self.log_ai_debug(f"[TRANSLATION] {message}")
+        except Exception:
+            pass
 
     def refine_merged_items_with_google_ocr(self, items, image_parts):
         if not self.google_ocr_enabled or not self.google_api_key:
@@ -2221,7 +2268,7 @@ class TransBubble(QLabel):
         self.setText(text)
         self.set_theme(is_dark_mode)
         self.setAlignment(Qt.AlignCenter)
-        self.setWordWrap(True)
+        self.setWordWrap(self.render_mode != REGION_RENDER_RELIEF)
         self.setMargin(self.text_padding)
         self.setMouseTracking(True)
         if self.render_mode == REGION_RENDER_RELIEF:
@@ -2268,10 +2315,11 @@ class TransBubble(QLabel):
         font = self.font()
         font.setFamily("Microsoft JhengHei")
         font.setBold(True)
-        max_size = max(MIN_BUBBLE_FONT_PT, int(max_size))
-        for size in range(max_size, MIN_BUBBLE_FONT_PT - 1, -1):
+        # Google Lens 風格：從氣泡高度推算起始字型大小 (1px ≈ 0.75pt)
+        start_size = max(MIN_BUBBLE_FONT_PT, min(int(h * 0.75), 72))
+        for size in range(start_size, MIN_BUBBLE_FONT_PT - 1, -1):
             font.setPointSizeF(float(size))
-            if QFontMetrics(font).boundingRect(0, 0, max(1, w - self.text_padding * 2), 0, Qt.TextWordWrap, text).height() <= max(1, h - self.text_padding * 2):
+            if QFontMetrics(font).boundingRect(0, 0, max(1, w), 0, Qt.TextWordWrap, text).height() <= max(1, h):
                 return float(size)
         return float(MIN_BUBBLE_FONT_PT)
 
@@ -2349,11 +2397,26 @@ class TransBubble(QLabel):
 
     def compute_relief_layout(self, text, x, y, w, h):
         parent_rect = self.parent().rect()
-        # 浮雕模式以氣泡位置為基準，位移 0 時要和氣泡模式完全一致
-        base_rect, base_size = self.compute_bubble_layout(text, x, y, w, h, fixed_font_size=self.relief_font_pt, tight=True)
-        base_rect = QRect(base_rect)
         gap = max(0, int(self.relief_gap_px))
         font_size = float(self.relief_font_pt)
+
+        # 單行量測：用實際字型寬度決定氣泡大小，不換行
+        font = QFont("Microsoft JhengHei")
+        font.setBold(True)
+        font.setPointSizeF(font_size)
+        fm = QFontMetrics(font)
+        bubble_w = fm.horizontalAdvance(text) + self.text_padding * 2
+        bubble_h = fm.height() + self.text_padding * 2
+        bubble_w = max(bubble_w, max(MIN_BUBBLE_WIDTH, w))
+        bubble_h = max(bubble_h, max(MIN_BUBBLE_HEIGHT, h))
+
+        source_center_x = x + w / 2
+        source_center_y = y + h / 2
+        left = int(round(source_center_x - bubble_w / 2))
+        top = int(round(source_center_y - bubble_h / 2))
+        left = max(0, min(left, parent_rect.width() - bubble_w))
+        top = max(0, min(top, parent_rect.height() - bubble_h))
+        base_rect = QRect(left, top, bubble_w, bubble_h)
 
         if gap == 0:
             return base_rect, font_size
@@ -2367,7 +2430,6 @@ class TransBubble(QLabel):
         elif self.relief_side == RELIEF_SIDE_RIGHT:
             dx, dy = gap, 0
         else:
-            # 自動：優先維持貼近原位，再依空間選一個最自然的方向
             candidates = [(0, -gap), (0, gap), (-gap, 0), (gap, 0)]
             best_rect = QRect(base_rect)
             best_score = None
@@ -2710,7 +2772,19 @@ class RegionSelectionFrame(QWidget):
         self.is_dark = False
         self.theme_mode = "light"
         self.frame_opacity = 40
+        self.region_pass_through = False
         self.hide()
+
+    def set_region_pass_through(self, pass_through):
+        self.region_pass_through = bool(pass_through)
+        flags = self.windowFlags()
+        if self.region_pass_through:
+            flags |= Qt.WindowTransparentForInput
+        else:
+            flags &= ~Qt.WindowTransparentForInput
+        self.setWindowFlags(flags)
+        if self.isVisible():
+            self.show()
 
     def set_theme_mode(self, theme_mode):
         theme = resolve_theme(theme_mode)
@@ -3297,19 +3371,13 @@ class SettingsWindow(QWidget):
         self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
 
     def on_translate_mode_clicked(self, use_ai):
-        self.set_translate_mode(use_ai)
-        self.controller.btn_ai_mode.setChecked(use_ai)
+        self._ai_requested = bool(use_ai)
         self.controller.toggle_ai_translation(use_ai)
-        if use_ai and not self.controller.worker.google_api_key.strip():
-            self.set_translate_mode(True)
-            self.update_translate_summary()
-        else:
-            self.sync_from_controller()
+        self.sync_from_controller()
 
     def on_api_key_text_changed(self, text):
         self.controller.on_api_key_changed(text)
-        if text.strip() and self.btn_translate_ai.isChecked() and not self.controller.btn_ai_mode.isChecked():
-            self.controller.btn_ai_mode.setChecked(True)
+        if text.strip() and self._ai_requested and not getattr(self.controller.worker, "use_gemma_translation", False):
             self.controller.toggle_ai_translation(True)
         self.update_translate_summary()
 
@@ -3468,11 +3536,14 @@ class SettingsWindow(QWidget):
 
         self.btn_translate_google.blockSignals(True)
         self.btn_translate_ai.blockSignals(True)
-        self.btn_translate_google.setChecked(not self.controller.btn_ai_mode.isChecked())
-        self.btn_translate_ai.setChecked(self.controller.btn_ai_mode.isChecked())
+        ai_enabled = bool(getattr(self.controller.worker, "use_gemma_translation", False))
+        if ai_enabled:
+            self._ai_requested = True
+        self.btn_translate_google.setChecked(not ai_enabled)
+        self.btn_translate_ai.setChecked(ai_enabled)
         self.btn_translate_google.blockSignals(False)
         self.btn_translate_ai.blockSignals(False)
-        self.set_translate_advanced_visible(self.controller.btn_ai_mode.isChecked())
+        self.set_translate_advanced_visible(bool(ai_enabled or self._ai_requested))
         self.update_translate_summary()
         self.update_random_scan_summary()
         self.update_auto_threshold_refresh_summary()
@@ -3542,6 +3613,12 @@ class SettingsWindow(QWidget):
         self.lbl_auto_threshold_refresh.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_auto_threshold_refresh_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
+        spinbox_style = (
+            f"QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
+            f"border-radius: 8px; padding: 3px 8px; }} "
+            f"QSpinBox:focus {{ border: 2px solid {theme.accent}; }} "
+            "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }"
+        )
         self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
         self.btn_close.setStyleSheet(theme.button_qss("ghost"))
 
@@ -3670,6 +3747,11 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_ocr.setStyleSheet("background: transparent; border: none;")
         ocr.addWidget(self.lbl_ocr)
         ocr.addWidget(self.lbl_ocr_hint)
+        
+        self.chk_region_pass_through = QCheckBox("允許滑鼠穿透框選區 (點擊背景遊戲)")
+        self.chk_region_pass_through.setChecked(getattr(self.controller, "region_pass_through", False))
+        self.chk_region_pass_through.toggled.connect(self.controller.on_region_pass_through_changed)
+        ocr.addWidget(self.chk_region_pass_through)
 
         self.auto_scan_panel = QWidget()
         self.lbl_auto_scan = QLabel("掃描設定")
@@ -3970,7 +4052,9 @@ class SettingsWindowRevamp(QWidget):
 
     def sync_from_controller(self):
         theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
-        self.ocr_backend_panel.sync_from_controller()
+        ocr_backend_panel = getattr(self, "ocr_backend_panel", None)
+        if ocr_backend_panel is not None:
+            ocr_backend_panel.sync_from_controller()
         self.spin_random_scan_center.blockSignals(True)
         self.spin_random_scan_center.setValue(self.controller.random_scan_center_seconds)
         self.spin_random_scan_center.blockSignals(False)
@@ -3999,7 +4083,9 @@ class SettingsWindowRevamp(QWidget):
         )
         self.input_screenshot_gemma_prompt.setPlainText(screenshot_prompt)
         self.input_screenshot_gemma_prompt.blockSignals(False)
-        self.translation_panel.sync_from_controller()
+        translation_panel = getattr(self, "translation_panel", None)
+        if translation_panel is not None:
+            translation_panel.sync_from_controller()
         self._sync_theme_mode(theme_mode)
         self._sync_render_mode()
         self.update_random_scan_summary()
@@ -4138,6 +4224,19 @@ class Controller(QWidget):
 
     def __init__(self, overlay):
         super().__init__()
+        controller_t0 = time.perf_counter()
+        last_mark = controller_t0
+
+        def mark(stage, detail=""):
+            nonlocal last_mark
+            now = time.perf_counter()
+            elapsed_ms = (now - last_mark) * 1000.0
+            total_ms = (now - controller_t0) * 1000.0
+            suffix = f"{detail} | " if detail else ""
+            startup_log(f"Controller.{stage}", f"{suffix}+{elapsed_ms:.1f} ms / {total_ms:.1f} ms total")
+            last_mark = now
+
+        mark("__init__ start")
         self.overlay = overlay
         self.selection_overlay = SelectionOverlay()
         self.selection_overlay.selection_made.connect(self.on_region_selected)
@@ -4157,6 +4256,7 @@ class Controller(QWidget):
         self.region_relief_font_pt = 18
         self.region_relief_gap_px = 8
         self.region_frame_opacity = 40
+        self.region_pass_through = False
         self.gemma_prompt = ""
         self.was_minimized = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
@@ -4173,8 +4273,10 @@ class Controller(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         
         self.set_cloud_icon()
+        mark("ui shell ready")
 
         self.setup_ui()
+        mark("setup_ui done")
         self.setup_worker()
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
@@ -4192,6 +4294,7 @@ class Controller(QWidget):
         QTimer.singleShot(500, self.enable_hotkey)
 
         self.old_pos = None
+        mark("__init__ end")
 
     def set_cloud_icon(self):
         size = 64
@@ -4314,6 +4417,8 @@ class Controller(QWidget):
         self.update_frame_style()
 
     def setup_worker(self):
+        worker_t0 = time.perf_counter()
+        startup_log("Controller.setup_worker start")
         self.ocr_thread = QThread()
         self.worker = OCRWorker()
         self.worker.set_scan_mode(self.scan_mode)
@@ -4345,6 +4450,10 @@ class Controller(QWidget):
         self.gemma_rate_timer.setInterval(1000)
         self.gemma_rate_timer.timeout.connect(self.update_gemma_rate_indicator)
         self.gemma_rate_timer.start()
+        startup_log(
+            "Controller.setup_worker done",
+            f"+{(time.perf_counter() - worker_t0) * 1000.0:.1f} ms",
+        )
 
     def enable_hotkey(self):
         self.hotkey_filter.register_hotkey(self.winId())
@@ -4367,6 +4476,7 @@ class Controller(QWidget):
             "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
+            "region_pass_through": getattr(self, "region_pass_through", False),
             "region_render_mode": self.region_render_mode,
             "region_relief_side": self.region_relief_side,
             "region_relief_font_pt": int(self.region_relief_font_pt),
@@ -4397,6 +4507,8 @@ class Controller(QWidget):
         return True
 
     def load_settings(self):
+        load_t0 = time.perf_counter()
+        startup_log("Controller.load_settings start")
         settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
         self.settings_data = settings
         self.worker.begin_translation_registry_batch()
@@ -4439,6 +4551,10 @@ class Controller(QWidget):
                 self.worker.reload_ocr_backends(backend_chain)
             except Exception:
                 self.worker.reload_ocr_backends(None)
+            startup_log(
+                "Controller.load_settings backends",
+                f"chain={','.join(backend_chain) if backend_chain else 'none'}",
+            )
 
             center_seconds = safe_int(settings.get("random_scan_center_seconds", self.random_scan_center_seconds), self.random_scan_center_seconds, 3, 300)
             self.random_scan_center_seconds = center_seconds
@@ -4511,6 +4627,12 @@ class Controller(QWidget):
             self.set_theme_mode(saved_theme_mode)
             self.region_frame.set_theme_mode(saved_theme_mode)
             self.region_frame.set_frame_opacity(self.region_frame_opacity)
+            self.region_pass_through = bool(settings.get("region_pass_through", False))
+            self.region_frame.set_region_pass_through(self.region_pass_through)
+            if self.settings_window is not None:
+                self.settings_window.chk_region_pass_through.blockSignals(True)
+                self.settings_window.chk_region_pass_through.setChecked(self.region_pass_through)
+                self.settings_window.chk_region_pass_through.blockSignals(False)
 
             saved_region = settings.get("selected_region")
             if isinstance(saved_region, list) and len(saved_region) == 4:
@@ -4562,6 +4684,10 @@ class Controller(QWidget):
                 self.save_settings()
         finally:
             self.worker.end_translation_registry_batch()
+            startup_log(
+                "Controller.load_settings done",
+                f"+{(time.perf_counter() - load_t0) * 1000.0:.1f} ms",
+            )
 
     def update_threshold(self, val):
         self.worker.binary_threshold = val
@@ -4594,6 +4720,12 @@ class Controller(QWidget):
         low = max(1000, center_ms - spread_ms)
         high = max(low, center_ms + spread_ms)
         return random.randint(low, high)
+
+    def on_region_pass_through_changed(self, checked):
+        self.region_pass_through = checked
+        if hasattr(self, 'region_frame'):
+            self.region_frame.set_region_pass_through(checked)
+        self.schedule_save_settings()
 
     def on_region_render_mode_changed(self, mode):
         mode = str(mode or REGION_RENDER_BUBBLE)
@@ -4719,7 +4851,7 @@ class Controller(QWidget):
             self.settings_window.update_translate_summary()
         elif self.settings_window is not None:
             self.settings_window.update_translate_summary()
-        if self.btn_ai_mode.isChecked():
+        if getattr(self.worker, "use_gemma_translation", False):
             old_index = self.cmb_ai_model.findData(old_model)
             old_label = self.cmb_ai_model.itemText(old_index) if old_index >= 0 else old_model
             new_label = self.cmb_ai_model.itemText(model_index) if model_index >= 0 else new_model
@@ -4732,15 +4864,14 @@ class Controller(QWidget):
             self.input_api_key.blockSignals(True)
             self.input_api_key.setText(text)
             self.input_api_key.blockSignals(False)
-        if self.btn_ai_mode.isChecked() and not text.strip():
-            self.btn_ai_mode.setChecked(False)
-            self.worker.set_gemma_enabled(False)
-            if self.settings_window is not None:
-                self.settings_window.set_translate_mode(False)
+        if getattr(self.worker, "use_gemma_translation", False) and not text.strip():
+            self.toggle_ai_translation(False)
         if self.settings_window is not None and self.settings_window.input_api_key.text() != text:
             self.settings_window.input_api_key.blockSignals(True)
             self.settings_window.input_api_key.setText(text)
             self.settings_window.input_api_key.blockSignals(False)
+        if self.settings_window is not None and hasattr(self.settings_window, "ocr_backend_panel"):
+            self.settings_window.ocr_backend_panel.sync_from_controller()
         self.schedule_save_settings()
 
     def on_ai_model_changed(self, index):
@@ -4819,68 +4950,6 @@ class Controller(QWidget):
             return google_norm
         return local_norm
 
-    def refine_merged_items_with_google_ocr(self, items, image_parts):
-        if not self.google_ocr_enabled or not self.google_api_key:
-            return list(items)
-        provider = self._get_translation_provider("gemma")
-        if provider is None or not hasattr(provider, "transcribe_screenshot"):
-            return list(items)
-        try:
-            source_hint = "\n".join(
-                normalize_ocr_text(item.get("text", ""))
-                for item in items
-                if normalize_ocr_text(item.get("text", ""))
-            )
-            result = provider.transcribe_screenshot(image_parts, source_text_hint=source_hint)
-            self.sync_gemma_call_timestamps_from_provider(provider)
-            google_lines = [normalize_ocr_text(line) for line in str(result.text or "").splitlines() if normalize_ocr_text(line)]
-        except Exception:
-            return list(items)
-        if not google_lines:
-            return list(items)
-
-        local_items = [dict(item) for item in items if normalize_ocr_text(item.get("text", ""))]
-        if not local_items:
-            return list(items)
-
-        local_items.sort(key=lambda item: (int(item.get("y", 0)), int(item.get("x", 0))))
-        if len(google_lines) >= len(local_items):
-            if len(google_lines) == len(local_items):
-                refined_items = []
-                for local_item, google_text in zip(local_items, google_lines):
-                    refined_item = dict(local_item)
-                    refined_item["text"] = self._choose_better_ocr_candidate(local_item.get("text", ""), google_text)
-                    refined_items.append(refined_item)
-                return refined_items
-            return list(local_items)
-
-        group_count = max(1, len(google_lines))
-        base_size = len(local_items) // group_count
-        remainder = len(local_items) % group_count
-        group_sizes = [base_size + (1 if index >= group_count - remainder else 0) for index in range(group_count)]
-
-        refined_items = []
-        cursor = 0
-        for index, group_size in enumerate(group_sizes):
-            chunk = local_items[cursor:cursor + group_size]
-            cursor += group_size
-            if not chunk:
-                continue
-            x1 = min(int(item.get("x", 0)) for item in chunk)
-            y1 = min(int(item.get("y", 0)) for item in chunk)
-            x2 = max(int(item.get("x", 0)) + int(item.get("w", 1)) for item in chunk)
-            y2 = max(int(item.get("y", 0)) + int(item.get("h", 1)) for item in chunk)
-            local_group_text = normalize_ocr_text(" ".join(normalize_ocr_text(item.get("text", "")) for item in chunk if normalize_ocr_text(item.get("text", ""))))
-            refined_item = {
-                "text": self._choose_better_ocr_candidate(local_group_text, google_lines[min(index, len(google_lines) - 1)]),
-                "x": x1,
-                "y": y1,
-                "w": max(1, x2 - x1),
-                "h": max(1, y2 - y1),
-            }
-            refined_items.append(refined_item)
-        return refined_items
-
     def _apply_pending_gemma_prompt(self):
         self.worker.set_gemma_prompt(self._pending_gemma_prompt)
         self.schedule_save_settings()
@@ -4897,22 +4966,21 @@ class Controller(QWidget):
         self.screenshot_gemma_prompt_timer.start(1000)
 
     def toggle_ai_translation(self, checked):
+        desired_enabled = bool(checked)
         has_key = bool(self.worker.google_api_key.strip())
-        if self.btn_ai_mode.isChecked() != checked:
-            self.btn_ai_mode.blockSignals(True)
-            self.btn_ai_mode.setChecked(checked)
-            self.btn_ai_mode.blockSignals(False)
-        if checked and not has_key:
+        if desired_enabled and not has_key:
             self.lbl_status.setText("請先輸入 Google API KEY")
-            self.worker.set_gemma_enabled(False)
-            if self.settings_window is not None:
-                self.settings_window.set_translate_mode(False)
-            self.schedule_save_settings()
-            return
-        self.worker.set_gemma_enabled(checked)
+            desired_enabled = False
+        self.worker.set_gemma_enabled(desired_enabled)
+        if self.btn_ai_mode.isChecked() != desired_enabled:
+            self.btn_ai_mode.blockSignals(True)
+            self.btn_ai_mode.setChecked(desired_enabled)
+            self.btn_ai_mode.blockSignals(False)
         if self.settings_window is not None:
-            self.settings_window.set_translate_mode(checked)
-        if checked:
+            self.settings_window.set_translate_mode(desired_enabled)
+            if hasattr(self.settings_window, "ocr_backend_panel"):
+                self.settings_window.ocr_backend_panel.sync_from_controller()
+        if desired_enabled:
             self.lbl_status.setText(f"AI模型: {self.cmb_ai_model.currentText()}")
         self.schedule_save_settings()
 
@@ -5050,12 +5118,18 @@ class Controller(QWidget):
         except Exception:
             pass
 
+    def log_translation_debug(self, message):
+        try:
+            self.log_ai_debug(f"[TRANSLATION] {message}")
+        except Exception:
+            pass
+
     def on_hotkey_pressed(self):
         QTimer.singleShot(0, self.on_immediate_click)
 
     def on_immediate_click(self):
         if self.cooldown_timer.isActive():
-            print("❄️ 冷卻中...請稍後")
+            print("[Hotkey] Cooldown active, please wait")
             return
         if self.scan_mode == SCAN_MODE_REGION and not self.selected_region:
             self.lbl_status.setText("請先設定框選區域")
@@ -5320,7 +5394,9 @@ class Controller(QWidget):
     def mouseReleaseEvent(self, event): self.old_pos = None
 
 if __name__ == "__main__":
+    startup_log("main start")
     app = QApplication(sys.argv)
+    startup_log("QApplication created")
     loaded_font = None
     for font_path in (
         r"C:\Windows\Fonts\msjh.ttc",
@@ -5338,9 +5414,14 @@ if __name__ == "__main__":
                 break
     if loaded_font is None:
         app.setFont(QFont("Microsoft JhengHei UI", 10))
+    startup_log("font ready", loaded_font or "Microsoft JhengHei UI")
     
     overlay = OverlayWindow()
+    startup_log("OverlayWindow created")
     overlay.show()
+    startup_log("OverlayWindow shown")
     ctrl = Controller(overlay)
+    startup_log("Controller created")
     ctrl.show()
+    startup_log("Controller shown")
     sys.exit(app.exec())
