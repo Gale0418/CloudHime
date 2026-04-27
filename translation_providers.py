@@ -30,6 +30,7 @@ from translation_helpers import (
 )
 
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GOOGLE_STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
 SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-3-27b-it", "gemma-4-31b-it")
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
@@ -80,6 +81,60 @@ class GoogleTranslationProvider:
         self._translation_cache.move_to_end(cache_key)
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
+
+    def _stream_request(self, model_name: str, prompt: str, *, image_parts=None, max_output_tokens: int = 1024, temperature: float = 0.2):
+        """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
+        req_body = {
+            "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature, "topP": 0.9, "topK": 32, "maxOutputTokens": max_output_tokens},
+        }
+        req = request.Request(
+            GOOGLE_STREAM_ENDPOINT.format(model=model_name),
+            data=json.dumps(req_body).encode("utf-8"),
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.google_api_key},
+            method="POST",
+        )
+        self._record_call(model_name)
+        with request.urlopen(req, timeout=30) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                try:
+                    chunk_data = json.loads(data_str)
+                    parts = chunk_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
+                    for part in parts:
+                        text = part.get("text", "")
+                        if text:
+                            yield text
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    pass
+
+    def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
+        """Generator: 串流翻譯，每次 yield 一個文字 chunk（打字機效果用）。"""
+        normalized = clean_model_output(text).strip() if text else ""
+        if not normalized:
+            return
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+        model_name = self._resolve_model()
+        if not self._can_call(model_name):
+            raise ValueError("gemma_rate_limited")
+        # 快取命中時直接 yield 完整結果
+        cache_key = ("gemma", model_name, normalized, target_lang or self.target_lang, self.gemma_prompt)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            yield str(cached)
+            return
+        prompt = self._build_prompt(normalized)
+        accumulated = ""
+        for chunk in self._stream_request(model_name, prompt, max_output_tokens=1024, temperature=0.2):
+            accumulated += chunk
+            yield chunk
+        final = clean_model_output(accumulated)
+        if final:
+            self._remember(cache_key, final)
 
     def translate(
         self,
@@ -306,6 +361,60 @@ class GemmaTranslationProvider:
         self._record_call(model_name)
         with request.urlopen(req, timeout=25) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    def _stream_request(self, model_name: str, prompt: str, *, image_parts=None, max_output_tokens: int = 1024, temperature: float = 0.2):
+        """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
+        req_body = {
+            "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature, "topP": 0.9, "topK": 32, "maxOutputTokens": max_output_tokens},
+        }
+        req = request.Request(
+            GOOGLE_STREAM_ENDPOINT.format(model=model_name),
+            data=json.dumps(req_body).encode("utf-8"),
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.google_api_key},
+            method="POST",
+        )
+        self._record_call(model_name)
+        with request.urlopen(req, timeout=30) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                try:
+                    chunk_data = json.loads(data_str)
+                    parts = chunk_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
+                    for part in parts:
+                        text = part.get("text", "")
+                        if text:
+                            yield text
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    pass
+
+    def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
+        """Generator: 串流翻譯，每次 yield 一個文字 chunk（打字機效果用）。"""
+        normalized = clean_model_output(text).strip() if text else ""
+        if not normalized:
+            return
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+        model_name = self._resolve_model()
+        if not self._can_call(model_name):
+            raise ValueError("gemma_rate_limited")
+        # 快取命中時直接 yield 完整結果
+        cache_key = ("gemma", model_name, normalized, target_lang or self.target_lang, self.gemma_prompt)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            yield str(cached)
+            return
+        prompt = self._build_prompt(normalized)
+        accumulated = ""
+        for chunk in self._stream_request(model_name, prompt, max_output_tokens=1024, temperature=0.2):
+            accumulated += chunk
+            yield chunk
+        final = clean_model_output(accumulated)
+        if final:
+            self._remember(cache_key, final)
 
     def translate(
         self,

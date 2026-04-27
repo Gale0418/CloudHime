@@ -288,3 +288,11 @@ cleaned=streamGenerateContent 使用 Server-Sent Events (SSE) 解析資料。
 [2026-04-28 05:02:36] [screenshot failed] model=gemma-3-27b-it
 last_raw=streamGenerateContent 使用 Server-Sent Events (SSE) 解析資料。
 
+[2026-04-28 06:18:28] [TRANSLATION] google batch hits=0/1 source_count=1
+
+[2026-04-28 06:18:43] [TRANSLATION] google batch hits=0/1 source_count=1
+
+[2026-04-28 06:29:24] [TRANSLATION] google batch hits=0/2 source_count=2
+
+[2026-04-28 06:29:37] [TRANSLATION] google batch hits=0/2 source_count=2
+

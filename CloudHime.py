@@ -275,6 +275,7 @@ def merge_horizontal_lines(items):
 # ==========================================
 class OCRWorker(QObject):
     finished = Signal(list)
+    streaming_update = Signal(list)  # [(partial_text, x, y, w, h)] 打字機效果用
     status_msg = Signal(str)
     hide_ui = Signal()
     show_ui = Signal()
@@ -2709,6 +2710,21 @@ class OverlayWindow(QWidget):
             b.deleteLater()
         self.bubbles = []
 
+    def update_bubble_text_only(self, results):
+        """串流更新：只更新現有氣泡的文字，不重建（打字機效果用）"""
+        if not self.bubbles or not results:
+            return
+        for i, (t, x, y, w, h) in enumerate(results):
+            if i < len(self.bubbles):
+                bubble = self.bubbles[i]
+                bubble.setText(str(t))
+                bubble.repaint()
+            else:
+                # 氣泡數量不足時，補建新氣泡
+                mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else REGION_RENDER_BUBBLE
+                region_rect = self.scan_region if (mode in (REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) and self.scan_mode == SCAN_MODE_REGION and self.scan_region) else None
+                self.bubbles.append(TransBubble(self, t, x, y, w, h, self.theme_mode, mode, self.relief_side, self.relief_font_pt, self.relief_opacity, self.relief_gap_px, region_rect))
+
     def _rect_overlap_area(self, first, second):
         ix1 = max(first.left(), second.left())
         iy1 = max(first.top(), second.top())
@@ -4524,6 +4540,7 @@ class Controller(QWidget):
         self.worker.moveToThread(self.ocr_thread)
         self.request_scan.connect(self.worker.run_scan_once)
         self.worker.finished.connect(self.on_scan_complete)
+        self.worker.streaming_update.connect(self.on_streaming_update)
         self.worker.status_msg.connect(self.update_status)
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
@@ -5302,6 +5319,22 @@ class Controller(QWidget):
         self.countdown_seconds -= 1
         if self.countdown_seconds < 0:
             self.display_timer.stop()
+
+    def on_streaming_update(self, partial_results):
+        """接收串流翻譯的中間結果，即時更新氣泡文字（打字機效果）"""
+        if not partial_results:
+            return
+        if not self.overlay.bubbles:
+            # 還沒建立氣泡時，先用 update_bubbles 建立框架
+            self.overlay.set_render_context(
+                self.scan_mode, self.region_render_mode, self.region_relief_side,
+                self.region_relief_font_pt, self.region_frame_opacity, self.region_relief_gap_px,
+                self.selected_region,
+            )
+            self.overlay.update_bubbles(partial_results)
+            self.overlay.raise_()
+        else:
+            self.overlay.update_bubble_text_only(partial_results)
 
     def on_scan_complete(self, results):
         self.scan_in_progress = False
