@@ -242,8 +242,8 @@ def clean_model_output(text: Any) -> str:
         candidates.sort(key=lambda item: (len(item), item))
         return candidates[0]
 
-        preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
-        return "\n".join(preferred or lines).strip()
+    preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
+    return "\n".join(preferred or lines).strip()
 
 
 def clean_model_output_multiline(text: Any) -> str:
