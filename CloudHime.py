@@ -327,12 +327,44 @@ class OCRWorker(QObject):
         # 狀態標記
         
         self.binary_threshold = 100 
+        self.last_scanned_img = None
+        self.last_scanned_offset = (0, 0)
+        self._bg_threshold_running = False  # 防止重複提交背景任務
+        self._bg_threshold_executor = ThreadPoolExecutor(max_workers=1)
+        
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         self._refresh_translation_registry()
         startup_log(
             "OCRWorker.__init__ done",
             f"backends={len(self.ocr_backends)} registry={'ready' if self.translation_registry else 'none'}",
         )
+
+    def trigger_background_threshold_refresh(self, img, offset_x, offset_y, mode):
+        # 這是掃描結束後呼叫的觸發器
+        if not self.auto_threshold_enabled or self._bg_threshold_running:
+            return
+        
+        now_ms = time.monotonic() * 1000.0
+        if self.last_auto_threshold_refresh_ms > 0 and (now_ms - self.last_auto_threshold_refresh_ms) < self.auto_threshold_refresh_interval_ms:
+            return
+
+        self._bg_threshold_running = True
+        candidates_count = len(AUTO_THRESHOLD_CANDIDATES)
+        print(f"[BG閥值] 🔍 觸發背景自動校正，測試 {candidates_count} 個候選閥值...", flush=True)
+        self._bg_threshold_executor.submit(self._run_background_threshold, img.copy(), offset_x, offset_y, mode)
+
+    def _run_background_threshold(self, img, offset_x, offset_y, mode):
+        t0 = time.perf_counter()
+        try:
+            best_threshold, best_items = self.run_ocr_with_best_threshold(img, offset_x, offset_y, silent=True, force_bg_refresh=True)
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            print(f"[BG閥值] ✅ 校正完成！最佳閥值={best_threshold}，找到 {len(best_items)} 段文字，耗時 {elapsed_ms:.0f}ms", flush=True)
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            print(f"[BG閥值] ❌ 校正失敗：{type(exc).__name__}: {exc}，耗時 {elapsed_ms:.0f}ms", flush=True)
+        finally:
+            # 無論成功或失敗，一定要清掉 flag，否則背景永遠不會再觸發
+            self._bg_threshold_running = False
 
     def normalize_ocr_backend_chain(self, chain):
         if chain is None:
@@ -1813,16 +1845,10 @@ class OCRWorker(QObject):
         self.remember_translation(cache_key, best_threshold)
         return best_threshold
 
-    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None):
+    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False):
         base_threshold = int(self.binary_threshold)
         now_ms = time.monotonic() * 1000.0
-        should_refresh_auto_threshold = (
-            self.auto_threshold_enabled
-            and (
-                self.last_auto_threshold_refresh_ms <= 0.0
-                or (now_ms - self.last_auto_threshold_refresh_ms) >= self.auto_threshold_refresh_interval_ms
-            )
-        )
+        should_refresh_auto_threshold = force_bg_refresh
 
         def evaluate_thresholds(threshold_values, current_best_threshold, current_best_items, current_best_score):
             candidate_results = []
@@ -1946,11 +1972,8 @@ class OCRWorker(QObject):
         if candidate_thresholds:
             candidates = [int(value) for value in candidate_thresholds if value is not None]
         elif should_refresh_auto_threshold:
-            # 框選模式：圖小且有目標，只試 3 個代表性閥值就夠，大幅減少 refresh 耗時
-            if self.scan_mode == SCAN_MODE_REGION:
-                candidates = [90, 140, 190]
-            else:
-                candidates = list(AUTO_THRESHOLD_CANDIDATES)
+            # 因為已經在背景偷算了，我們不怕慢，直接恢復成完整的 AUTO_THRESHOLD_CANDIDATES
+            candidates = list(AUTO_THRESHOLD_CANDIDATES)
         else:
             candidates = [base_threshold]
         candidates = sorted({max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, value)) for value in candidates})
@@ -1972,7 +1995,7 @@ class OCRWorker(QObject):
                 for offset in AUTO_THRESHOLD_LOCAL_OFFSETS
             })
             if len(local_candidates) > 1:
-                self.status_msg.emit("🔎 局部微調閥值中...")
+                if not silent: self.status_msg.emit("🔎 局部微調閥值中...")
                 local_results, best_threshold, best_items, best_score = evaluate_thresholds(
                     local_candidates,
                     best_threshold,
@@ -1984,7 +2007,7 @@ class OCRWorker(QObject):
         if self.auto_threshold_enabled and self.google_api_key and should_refresh_auto_threshold:
             top_candidates = sorted(candidate_results, key=lambda item: item["score"], reverse=True)[:3]
             if len(top_candidates) >= 2:
-                self.status_msg.emit("🧠 句子完整度複判中...")
+                if not silent: self.status_msg.emit("🧠 句子完整度複判中...")
                 try:
                     llm_threshold = self.choose_threshold_with_llm(top_candidates)
                 except Exception:
@@ -2043,6 +2066,8 @@ class OCRWorker(QObject):
         _log("開始 - hide_ui")
         try:
             img, offset_x, offset_y = self.capture_scan_area()
+            self.last_scanned_img = img.copy()
+            self.last_scanned_offset = (offset_x, offset_y)
             _log("① 截圖完成")
         except Exception as exc:
             self.status_msg.emit(f"\u274c 擷取螢幕失敗：{type(exc).__name__}")
@@ -2132,7 +2157,8 @@ class OCRWorker(QObject):
             # 框選模式先尊重原始方向，英文/一般網頁多半就是 0 度。
             # 真的抓不到再走後面的旋轉重試，避免平白多花時間。
             ocr_orientations = [0]
-        self.status_msg.emit("🔍 自動調整清晰度中...")
+        
+        self.status_msg.emit("🔍 掃描與翻譯中...")
         _log("② 開始 OCR")
 
         try:
@@ -2231,6 +2257,7 @@ class OCRWorker(QObject):
         # 🌟 邏輯修正：畫面靜止且無翻譯升級需求時才跳過
         if current_combined_text == self.last_combined_text and not is_upgrade_needed:
             self.status_msg.emit("♻️ 畫面靜止")
+            self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
             self.finished.emit(self.last_results) 
             return
 
@@ -2331,6 +2358,7 @@ class OCRWorker(QObject):
             self.last_results = final_results
             _log(f"⑩ 全部完成！共 {len(final_results)} 筆結果")
             self.status_msg.emit("✅ 翻譯完成")
+            self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
             self.finished.emit(final_results)
 
         except Exception as e:
@@ -4573,6 +4601,12 @@ class Controller(QWidget):
 
     def enable_hotkey(self):
         self.hotkey_filter.register_hotkey(self.winId())
+        # 讓主視窗在截圖時隱形 (WDA_EXCLUDEFROMCAPTURE = 0x11)
+        # 如此一來掃描時就不需要再 hide/show 視窗，消除閃爍
+        try:
+            ctypes.windll.user32.SetWindowDisplayAffinity(int(self.winId()), 0x00000011)
+        except Exception:
+            pass
 
     def schedule_save_settings(self):
         if hasattr(self, "save_timer"):
@@ -5436,18 +5470,12 @@ class Controller(QWidget):
             self.charge_bar.set_progress(0, "Google")
 
     def hide_ui_for_scan(self):
-        self.overlay.setVisible(False)
-        if self.isMinimized():
-            self.was_minimized = True
-        else:
-            self.was_minimized = False
-            self.setVisible(False) 
+        # SetWindowDisplayAffinity 已讓本視窗和 overlay 在截圖中隱形
+        # 不需要再 hide/show，消除閃爍與重繪開銷
+        pass
 
     def show_ui_after_scan(self):
-        self.overlay.setVisible(True)
-        if not self.was_minimized:
-            self.setVisible(True)
-            self.showNormal() 
+        pass
 
     def toggle_theme(self):
         self.set_theme_mode("dark" if not self.is_dark_mode else "light")
