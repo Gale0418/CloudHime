@@ -925,19 +925,12 @@ class OCRWorker(QObject):
     def _choose_better_ocr_candidate(self, local_text, google_text):
         local_norm = normalize_ocr_text(local_text)
         google_norm = normalize_ocr_text(google_text)
-        if not local_norm:
-            return google_norm
         if not google_norm:
             return local_norm
-        if local_norm == google_norm:
-            return local_norm
-        local_score = self._score_ocr_candidate_text(local_norm)
-        google_score = self._score_ocr_candidate_text(google_norm)
-        if google_score >= local_score + 1:
+        if not local_norm:
             return google_norm
-        if len(google_norm) > len(local_norm) and google_score >= local_score:
-            return google_norm
-        return local_norm
+        # 既然使用者開啟了 Google OCR，就無腦相信它比較準！
+        return google_norm
 
     def log_ai_debug(self, message):
         try:
@@ -2064,6 +2057,8 @@ class OCRWorker(QObject):
 
         self.hide_ui.emit()
         _log("開始 - hide_ui")
+        # 挑戰肉眼極限：只等 30 毫秒（約 2 個畫面影格）
+        time.sleep(0.03)
         try:
             img, offset_x, offset_y = self.capture_scan_area()
             self.last_scanned_img = img.copy()
@@ -2072,8 +2067,10 @@ class OCRWorker(QObject):
         except Exception as exc:
             self.status_msg.emit(f"\u274c 擷取螢幕失敗：{type(exc).__name__}")
             self.finished.emit([])
-            self.show_ui.emit()
             return
+        finally:
+            # 截完圖立刻讓舊字幕回來，達成無縫翻譯效果
+            self.show_ui.emit()
 
         # 截圖後立刻預取 Google OCR（與本地 OCR 並列進行）
         # 注意：多模態 AI 翻譯已包含看圖能力，可代替 Google OCR refine，故不重複呼叫
@@ -2384,7 +2381,7 @@ class TransBubble(QLabel):
                  relief_side=RELIEF_SIDE_AUTO, relief_font_pt=18, relief_opacity=40, relief_gap_px=10, region_rect=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.text_padding = 8
+        self.text_padding = 0
         self.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
         self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
         self.relief_side = relief_side if relief_side in {opt[1] for opt in RELIEF_SIDE_OPTIONS} else RELIEF_SIDE_AUTO
@@ -2443,11 +2440,15 @@ class TransBubble(QLabel):
         font = self.font()
         font.setFamily("Microsoft JhengHei")
         font.setBold(True)
+        # 扣掉 Padding，確保文字有足夠的內縮空間不會被截斷
+        text_w = max(1, w - self.text_padding * 2)
+        text_h = max(1, h - self.text_padding * 2)
+        
         # Google Lens 風格：從氣泡高度推算起始字型大小 (1px ≈ 0.75pt)
-        start_size = max(MIN_BUBBLE_FONT_PT, min(int(h * 0.75), 72))
+        start_size = max(MIN_BUBBLE_FONT_PT, min(int(text_h * 0.75), 72))
         for size in range(start_size, MIN_BUBBLE_FONT_PT - 1, -1):
             font.setPointSizeF(float(size))
-            if QFontMetrics(font).boundingRect(0, 0, max(1, w), 0, Qt.TextWordWrap, text).height() <= max(1, h):
+            if QFontMetrics(font).boundingRect(0, 0, text_w, 0, Qt.TextWordWrap, text).height() <= text_h:
                 return float(size)
         return float(MIN_BUBBLE_FONT_PT)
 
@@ -5411,7 +5412,7 @@ class Controller(QWidget):
     def trigger_scan_sequence(self):
         self.scan_in_progress = True
         self.display_timer.stop()
-        self.overlay.setVisible(False)
+        # 截圖隱身術已啟用，不需要在掃描時隱藏 UI，保留舊字幕達成無縫更新
         QTimer.singleShot(50, self._emit_scan_signal)
 
     def _emit_scan_signal(self):
@@ -5470,12 +5471,14 @@ class Controller(QWidget):
             self.charge_bar.set_progress(0, "Google")
 
     def hide_ui_for_scan(self):
-        # SetWindowDisplayAffinity 已讓本視窗和 overlay 在截圖中隱形
-        # 不需要再 hide/show，消除閃爍與重繪開銷
-        pass
+        # 由於部分環境下截圖 API 仍可能無視 DisplayAffinity 拍到氣泡，
+        # 在這裡做毫秒級的瞬間隱藏，截完圖立刻恢復。
+        self.overlay.hide()
+        QApplication.processEvents()
 
     def show_ui_after_scan(self):
-        pass
+        self.overlay.show()
+        QApplication.processEvents()
 
     def toggle_theme(self):
         self.set_theme_mode("dark" if not self.is_dark_mode else "light")
