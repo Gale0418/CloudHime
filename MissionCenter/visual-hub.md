@@ -1,15 +1,22 @@
 # 視覺指揮中心
 
-helper-roster 指揮中心現在會追蹤主程式 1 人 roster，並放在本機 HTML 檔裡。
+這個 HUD 現在跟著 `MissionCenter/tasks.md` 走，不再把 `active-agents.json` 當真相。
+任務由上到下排序，前 10 個非 `Done` 任務會顯示；`Done` 會進休息區，總可見不超過 15。
+背景監控器會盯著任務檔與進度檔，資料一變就自動重跑同步。
 
-## 主要畫面
+## 入口
 
-- 開啟 HUD：[command-center.html](./command-center.html)
+- [開啟 HUD](./command-center.html)
 
-## 候選視覺素材
+## 顯示規則
 
-- 主畫面截圖：任務進度與目前活躍 lane。
-- 基地底圖截圖：只有主程式圍繞核心。
-- 設定截圖：動作切換與路徑控制。
-- 前後對照：純文字任務板 vs 視覺指揮中心。
-- 30 秒 demo GIF：1-role roster 在基地周圍循環。
+- 任務短標題就是小人名稱。
+- `Intake` = 任務已存在但還沒接。
+- `In Progress` = 正在做。
+- `Blocked` = 下一步是 smoke test。
+- `Review` = 下一步是 review。
+- `Done` = 完成並進休息區。
+- `Done` 不算前十。
+- 可見角色超過 15 時，最早完成的 `Done` 先退場。
+- 區域內保留慢速漂移，不使用瞬移。
+- HUD 會每 5 秒讀一次最新 `visual-state.json`，所以同步完後會自動刷新。

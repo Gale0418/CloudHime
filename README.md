@@ -1,101 +1,90 @@
-# ☁️ 雲朵翻譯姬 (CloudHime)
-### Windows Native Screen OCR Translator
+# CloudHime
 
-> "It ain't perfect, but it's honest work."( ´・ω・`)a
+CloudHime is a Windows-native screen OCR translator. It captures text from the screen, runs OCR, and sends the result into the translation flow used by the app.
 
-## 📖 Introduction
-這是一個基於 **Windows 原生 OCR** 的螢幕即時翻譯小工具。  
-功能只有將螢幕上的英文與日文翻譯成中文。  
-一個類似Google鏡頭的翻譯功能吧~ 
-適用範圍嘛...啃生肉漫畫或是玩沒有文字 Hook 的日文遊戲吧。
-(ヾﾉ･ω･`)漫畫原本還有點問題，不過現在萌大奶了!!我又放一個截圖翻譯功能。
-具體來說就是你框選的範圍會整張圖片被扔給AI，我真她喵機智(   ´∀｀)。
-
-### (ﾟ∀。) 誠實聲明 (Honest Disclaimer)
-請不要對它抱有過高的期待，這不是那種高端的 Hook + GPT 翻譯神器：
-1.  **準確度大約 87%**：WinOCR 已經很努力了，但背景複雜或是字體太藝術時，經常會漏字或看錯，這是正常的。
-2.  **機翻極限**：背後接的是 Google 翻譯 (｀・ω・´)σㄛ改成gemma就順多了 這就是AI的拋瓦嗎?
-3.  **依賴環境**：因為是用視覺辨識，請確保遊戲/漫畫的字體夠清晰。
+This release is intentionally lightweight: the packaged build ships with Windows OCR as the default backend, while optional OCR engines can be installed later from inside the app.
 
 ---
 
-## 🖼️ 實際畫面預覽 (Screenshots)
+## What it does
 
-> (｀・ω・´)σ 戰犯尋找，有雲朵出來卻翻譯很爛->Google鍋，直接沒雲朵->WinORC眼殘看不到。
+- Screen and region OCR
+- Live translation workflow
+- Automatic rescanning for dynamic content
+- Optional Google API key support for Google OCR refine and Gemini-based translation modes
+- Optional OCR backend switching from the Settings panel
 
-**1. 漫畫閱讀**  
-大致上差強人意就是了吶。  
-![Manga Example](https://pimg.1px.tw/blog/gale/album/101348418/848177067123312065.png)
+## Packaged build
 
-**2. 遊戲介面 (UI)**  
-通常沒HOOK的地方可以用用，不過這邊通常日文很簡單的吧。  
-![Game UI Example](https://pimg.1px.tw/blog/gale/album/101348418/848177072458466684.png)
+The release build created by `build_exe.bat` is a PyInstaller `--onedir --windowed` package for Windows.
 
-**3. 遊戲內對話**  
-一般的 AVG/RPG 對話框簡單的小遊戲效果還好。  
-![Game Dialogue Example](https://pimg.1px.tw/blog/gale/album/101348418/848177076325617017.png)
+It includes:
 
----
+- the CloudHime application entry point
+- the WinRT imports required by Windows OCR
+- a zip archive of the final `dist\CloudHime` folder
 
-## ⚙️ How it Works
-1.  **截圖**：抓取螢幕畫面。
-2.  **OCR**：丟給 Windows 內建的日文辨識引擎。
-3.  **翻譯**：丟給 Google 翻譯 (如果 Google 關門了會切換 Argos 離線翻譯)。
-4.  **顯示**：把翻譯結果直接貼在原文上。
+It does not bundle the optional OCR stacks, because the app already installs and manages them on demand:
 
-## 🎮 控制面板與防 Ban 須知 (Controls)
+- Tesseract
+- EasyOCR
+- RapidOCR
 
-為了避免太快被 Google 判定為機器人而封鎖 IP，請務必詳閱以下按鈕功能：
+## OCR backends
 
-### 1. ⚡ 立即 (Instant)
-*   **功能**：單次掃描，按一下掃一次，快捷鍵 "~"。
-*   **注意**：**有冷卻時間**。
-*   **警告**：請不要手賤一直狂點，雖然有冷卻，但頻率太高還是會被 Google 踢出來 (429 Error)或者gemma帳單爆炸。
+### Built in
 
-### 2. 🎲 N~X s (隨機慢速)
-*   **功能**：自動每 **N ~ X 秒** 隨機掃描一次。
-*   **用途**：慢節奏掃描。
-*   **安全性**：中，因為時間不固定，比較像人類的操作，大約能用三小時。
-*   **更新**：現在可以自定義時間了，不過不建議調太低不然螢幕會一直閃喔~。
+- **Windows OCR**: the default backend and the one used by the release bundle
 
-> (｀・ω・´)旦 **小提醒**：這個程式在不能使用Google的地區是不能用的。
+### Optional
 
-## 🚀 Getting Started
+- **Tesseract**: requires the `pytesseract` Python package and a local `tesseract.exe`
+- **EasyOCR**: requires `easyocr`, `torch`, and `torchvision`
+- **RapidOCR**: requires `rapidocr-onnxruntime`
 
-### 1. Prerequisites (環境要求)
-*   Windows 10 或 Windows 11。
-*   **必須安裝「日文」語言套件⚠️⚠️ヾ(･∀･`)非常重要⚠️⚠️**
-    *   *設定 > 時間與語言 > 語言與地區 > 新增語言 > 日本語*
-    *   (如果不裝這個，Windows OCR 會看不懂日文，直接瞎掉)
+If an optional backend is not installed, CloudHime still works with Windows OCR.
 
-### 2. Installation
-需安裝 Python 3.10+，然後執行：
+## Requirements
 
-    pip install -r requirements.txt
+- Windows 10 or Windows 11
+- Python 3.10+ for running from source
+- The Windows OCR component available on the system
+- `pip` access to install the Python dependencies listed in `requirements.txt`
 
-### 3. Launch
+Optional features:
 
-    python CloudHime.py
+- Google API key for Google OCR refine or Gemini multimodal translation
+- Optional OCR backends if you want to use anything beyond Windows OCR
 
-### 0. \_(:3 」∠ )\_ 或是右邊Release下載exe檔案...
----
-(｀・ω・´)ゞ Enjoy your slightly-broken-but-readable translations!
+## Quick start from source
 
----
+```bash
+pip install -r requirements.txt
+python CloudHime.py
+```
 
-## 更新一下
+## Build a release
 
-### 2026/04/07
+Before building, install the runtime dependencies plus PyInstaller:
 
-這次我把整個翻譯流程又往前推了一大步，雖然中間有幾次差點把自己搞到懷疑人生就是了 (＝_＝;)
+```bash
+python -m pip install pyinstaller -r requirements.txt
+```
 
-- 新增 `準確AI翻譯`，現在可以用 Gemma 3 / Gemma 4 走多模態翻譯。
-- 把原本那個難用的 Argos 離線翻譯拆掉了，現在主線比較乾淨。
-- `全螢幕翻譯` 跟 `框選翻譯` 都有做，框選模式也比較不會翻一翻就自己疊成一坨。
-- 設定頁改成比較像樣的樣子了，不會再像 Win95 時代偷跑出來的工具窗。
-- `Google API KEY`、Gemma 模型、亮暗主題、OCR 閥值都收進設定裡，關掉再開也會記得。
-- `Gemma` 額度有做保護，快爆的時候會自己亮黃、滿了會直接鎖住，不會讓你一直燒下去。
-- 泡泡現在會盡量自己避開彼此，至少不用再看四條翻譯疊成一顆大湯圓了啦。
-- (´･ω･`)目前增加了多種翻譯器
-- 掃描過程變成了 掃描->圖片切十份進行二質化->多OCR輪流掃描->扔到線上翻譯->重組回原位。
-*   **注意**：OCR開越多掃描流程越慢，有幾個還在拖後腿例如`Tesseract`如果不是WIN才需要用到它吧...。
+Then run:
+
+```bat
+build_exe.bat
+```
+
+The script will:
+
+1. remove any previous `dist\CloudHime` folder and `dist\CloudHime.zip`
+2. build a fresh Windows release with PyInstaller
+3. compress the release folder into `dist\CloudHime.zip`
+
+## Notes for users
+
+- The app starts with Windows OCR because it is the smallest and most reliable packaging target.
+- Optional OCR engines can be enabled later in Settings after installation.
+- Google OCR is an extra refinement path, not a requirement for the core OCR flow.

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import translation_helpers as translation_tools
 from themes import resolve_theme
 
 
@@ -38,8 +39,8 @@ class TranslationSettingsPanel(QWidget):
         translate_layout.setContentsMargins(18, 18, 18, 18)
         translate_layout.setSpacing(10)
 
-        self.lbl_translate = QLabel("翻譯功能")
-        self.lbl_translate_hint = QLabel("Google 翻譯可以直接使用，AI 模式才需要 API KEY。")
+        self.lbl_translate = QLabel("")
+        self.lbl_translate_hint = QLabel("")
         self.lbl_translate_hint.setWordWrap(True)
         self.lbl_translate_hint.setVisible(True)
         self.lbl_translate_summary = QLabel("")
@@ -58,14 +59,14 @@ class TranslationSettingsPanel(QWidget):
         mode_buttons_layout.setContentsMargins(0, 0, 0, 0)
         mode_buttons_layout.setSpacing(8)
 
-        self.btn_translate_google = QPushButton("Google 翻譯")
+        self.btn_translate_google = QPushButton("")
         self.btn_translate_google.setCheckable(True)
         self.btn_translate_google.setCursor(Qt.PointingHandCursor)
         self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
         self.translate_mode_group.addButton(self.btn_translate_google)
         self.btn_translate_google.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        self.btn_translate_ai = QPushButton("Gemma AI 翻譯")
+        self.btn_translate_ai = QPushButton("")
         self.btn_translate_ai.setCheckable(True)
         self.btn_translate_ai.setCursor(Qt.PointingHandCursor)
         self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
@@ -86,19 +87,19 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_advanced_hint = QLabel("")
         self.lbl_advanced_hint.setVisible(False)
 
-        self.lbl_api_key = QLabel("Google API KEY")
+        self.lbl_api_key = QLabel("")
         self.lbl_api_key.setVisible(False)
         advanced_layout.addWidget(self.lbl_api_key)
         self.input_api_key = QLineEdit()
         self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
-        self.input_api_key.setPlaceholderText("輸入 API KEY")
+        self.input_api_key.setPlaceholderText("")
         self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
         advanced_layout.addWidget(self.input_api_key)
 
         self.separator = QFrame()
         advanced_layout.addWidget(self.separator)
 
-        self.lbl_ai_model = QLabel("AI 模型")
+        self.lbl_ai_model = QLabel("")
         advanced_layout.addWidget(self.lbl_ai_model)
         self.cmb_ai_model = QComboBox()
         for label, model_name in self.supported_ai_models:
@@ -106,19 +107,20 @@ class TranslationSettingsPanel(QWidget):
         self.cmb_ai_model.currentIndexChanged.connect(self.on_ai_model_changed)
         advanced_layout.addWidget(self.cmb_ai_model)
 
-        self.lbl_gemma_prompt = QLabel("Gemma Prompt")
+        self.lbl_gemma_prompt = QLabel("")
         advanced_layout.addWidget(self.lbl_gemma_prompt)
         self.input_gemma_prompt = QPlainTextEdit()
-        self.input_gemma_prompt.setPlaceholderText("輸入自訂的 AI 翻譯提示詞...")
+        self.input_gemma_prompt.setPlaceholderText("")
         self.input_gemma_prompt.setTabChangesFocus(True)
         self.input_gemma_prompt.setMinimumHeight(122)
         self.input_gemma_prompt.textChanged.connect(self.on_gemma_prompt_changed)
         advanced_layout.addWidget(self.input_gemma_prompt)
 
-        self.chk_auto_switch = QCheckBox("自動切換")
+        self.chk_auto_switch = QCheckBox("")
         self.chk_auto_switch.toggled.connect(self.on_auto_switch_toggled)
         self.chk_auto_switch.setVisible(False)
 
+        self.refresh_localized_texts()
         translate_layout.addWidget(self.advanced_translate_frame)
         outer.addWidget(self.card_translate)
 
@@ -158,6 +160,24 @@ class TranslationSettingsPanel(QWidget):
         if hasattr(self.controller, "on_gemma_prompt_changed"):
             self.controller.on_gemma_prompt_changed(self.input_gemma_prompt.toPlainText())
 
+    def _ui_language(self):
+        return translation_tools.get_ui_language(self.controller)
+
+    def refresh_localized_texts(self):
+        lang = self._ui_language()
+        self.lbl_translate.setText(translation_tools.ui_text(lang, "translation_panel_title"))
+        self.lbl_translate_hint.setText(translation_tools.ui_text(lang, "translation_panel_hint"))
+        self.btn_translate_google.setText(translation_tools.ui_text(lang, "translation_mode_google"))
+        self.btn_translate_ai.setText(translation_tools.ui_text(lang, "translation_mode_ai"))
+        self.lbl_api_key.setText(translation_tools.ui_text(lang, "translation_api_key"))
+        self.input_api_key.setPlaceholderText(translation_tools.ui_text(lang, "translation_api_key_placeholder"))
+        self.lbl_ai_model.setText(translation_tools.ui_text(lang, "translation_ai_model"))
+        self.lbl_gemma_prompt.setText(translation_tools.ui_text(lang, "translation_gemma_prompt"))
+        self.input_gemma_prompt.setPlaceholderText(
+            translation_tools.ui_text(lang, "translation_gemma_prompt_placeholder")
+        )
+        self.chk_auto_switch.setText(translation_tools.ui_text(lang, "translation_auto_switch"))
+
     def set_translate_mode(self, use_ai):
         self.btn_translate_google.blockSignals(True)
         self.btn_translate_ai.blockSignals(True)
@@ -185,6 +205,7 @@ class TranslationSettingsPanel(QWidget):
         self.chk_auto_switch.setEnabled(enabled)
 
     def sync_from_controller(self):
+        self.refresh_localized_texts()
         ai_enabled = bool(getattr(self.controller.worker, "use_gemma_translation", False))
         if ai_enabled:
             self._ai_requested = True
@@ -220,6 +241,7 @@ class TranslationSettingsPanel(QWidget):
 
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
+        self.refresh_localized_texts()
         self.card_translate.setStyleSheet(theme.panel_qss("subtle", radius=16))
         self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
 

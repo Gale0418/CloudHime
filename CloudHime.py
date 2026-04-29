@@ -63,6 +63,7 @@ from ocr_quality import (
 )
 from ocr_backend_installer import detect_backend_state
 import translation_helpers as translation_tools
+import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from settings_store import (
@@ -71,6 +72,7 @@ from settings_store import (
     load_settings_data,
     normalize_settings_payload,
     resolve_region_opacity,
+    resolve_ui_language,
     save_settings_data,
     should_migrate_to_appdata,
 )
@@ -154,34 +156,60 @@ class GlobalHotKeyFilter(QAbstractNativeEventFilter):
         self.callback = callback
         self.hotkey_id = 101  # 自定義 ID
         self.is_registered = False
+        self.registered_vk = None
+        self.registered_label = None
 
     def register_hotkey(self, hwnd):
         if self.is_registered:
             return
-        
-        # 使用 0xC0 代表 `~` 鍵
-        VK_OEM_3 = 0xC0 
-        
-        # MOD_NOREPEAT (0x4000) 防止長按連發
-        success = ctypes.windll.user32.RegisterHotKey(
-            int(hwnd), 
-            self.hotkey_id, 
-            0x4000, # 無修飾鍵
-            VK_OEM_3 
-        )
-        
-        if success:
-            print(f"[Hotkey] Registered [~] successfully (HWND: {hwnd})")
-            self.is_registered = True
-        else:
-            err = ctypes.GetLastError()
-            print(f"[Hotkey] Registration failed (Error: {err})")
+
+        user32 = ctypes.windll.user32
+        modifiers_no_repeat = 0x4000
+        vk_candidates = [
+            (0xC0, "~"),
+            (0x78, "F9"),
+            (0x77, "F8"),
+        ]
+
+        for vk, label in vk_candidates:
+            success = user32.RegisterHotKey(
+                int(hwnd),
+                self.hotkey_id,
+                modifiers_no_repeat,
+                vk,
+            )
+            if success:
+                self.is_registered = True
+                self.registered_vk = vk
+                self.registered_label = label
+                print(f"[Hotkey] Registered [{label}] successfully (HWND: {hwnd})")
+                return
+
+        for vk, label in vk_candidates:
+            success = user32.RegisterHotKey(
+                int(hwnd),
+                self.hotkey_id,
+                0,
+                vk,
+            )
+            if success:
+                self.is_registered = True
+                self.registered_vk = vk
+                self.registered_label = label
+                print(f"[Hotkey] Registered [{label}] without MOD_NOREPEAT (HWND: {hwnd})")
+                return
+
+        err = ctypes.GetLastError()
+        print(f"[Hotkey] Registration failed after fallbacks (Error: {err})")
 
     def unregister_hotkey(self, hwnd):
         if self.is_registered:
             ctypes.windll.user32.UnregisterHotKey(int(hwnd), self.hotkey_id)
             print("[Hotkey] Unregistered.")
             print("🛑 快捷鍵已解除註冊")
+        self.is_registered = False
+        self.registered_vk = None
+        self.registered_label = None
 
     def nativeEventFilter(self, eventType, message):
         # 攔截 Windows 系統消息
@@ -298,12 +326,13 @@ class OCRWorker(QObject):
         self._translation_registry_batch_depth = 0
         self._translation_registry_batch_dirty = False
         self._pending_gemma_prompt = ""
-        self.google_translation_provider = GoogleTranslationProvider(target_lang=translation_tools.GOOGLE_TARGET_LANG)
+        self.translation_target_lang = localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE)
+        self.google_translation_provider = GoogleTranslationProvider(target_lang=self.translation_target_lang)
         self.gemma_translation_provider = GemmaTranslationProvider(
             google_api_key="",
             gemma_model=DEFAULT_GEMMA_MODEL,
             gemma_prompt="",
-            target_lang=translation_tools.GOOGLE_TARGET_LANG,
+            target_lang=self.translation_target_lang,
             auto_switch_enabled=False,
             supported_models=SUPPORTED_GEMMA_MODEL_NAMES,
         )
@@ -419,6 +448,7 @@ class OCRWorker(QObject):
             screenshot_gemma_prompt=self.screenshot_gemma_prompt,
             gemma_enabled=self.use_gemma_translation,
             gemma_auto_switch_enabled=self.gemma_auto_switch_enabled,
+            target_lang=self.translation_target_lang,
         )
 
     def _refresh_translation_registry(self):
@@ -443,6 +473,13 @@ class OCRWorker(QObject):
             ])
         except Exception:
             self.translation_registry = None
+
+    def set_translation_target_lang(self, target_lang):
+        normalized = localization.get_translation_target_lang(target_lang)
+        if normalized == getattr(self, "translation_target_lang", localization.DEFAULT_UI_LANGUAGE):
+            return
+        self.translation_target_lang = normalized
+        self._refresh_translation_registry()
 
     def begin_translation_registry_batch(self):
         self._translation_registry_batch_depth += 1
@@ -742,6 +779,7 @@ class OCRWorker(QObject):
             text,
             self.translators,
             self.translation_cache,
+            target_lang=self.translation_target_lang,
             cache_limit=TRANSLATION_CACHE_LIMIT,
         )
 
@@ -773,6 +811,7 @@ class OCRWorker(QObject):
             source_texts,
             self.translators,
             self.translation_cache,
+            target_lang=self.translation_target_lang,
             cache_limit=TRANSLATION_CACHE_LIMIT,
         )
 
@@ -1089,7 +1128,7 @@ class OCRWorker(QObject):
             results = provider.translate_multimodal(
                 source_texts,
                 image_parts,
-                target_lang=translation_tools.GOOGLE_TARGET_LANG,
+                target_lang=self.translation_target_lang,
             )
             if results:
                 provider_model = self.normalize_gemma_model(results[0].model or self.gemma_model)
@@ -1168,7 +1207,7 @@ class OCRWorker(QObject):
         if provider is not None:
             result = provider.translate_screenshot(
                 image_parts,
-                target_lang=translation_tools.GOOGLE_TARGET_LANG,
+                target_lang=self.translation_target_lang,
                 source_text_hint=source_text_hint,
                 debug_log=self.log_ai_debug,
             )
@@ -3194,7 +3233,7 @@ class SettingsWindow(QWidget):
     def __init__(self, controller):
         super().__init__()
         self.controller = controller
-        self.setWindowTitle("設定頁面")
+        self.setWindowTitle(translation_tools.ui_text(self.controller, "settings_title"))
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.old_pos = None
@@ -3420,7 +3459,7 @@ class SettingsWindow(QWidget):
         side_row.addWidget(self.lbl_relief_side)
         side_row.addStretch()
         self.cmb_relief_side = QComboBox()
-        for label, value in RELIEF_SIDE_OPTIONS:
+        for label, value in translation_tools.relief_side_options(self.controller):
             self.cmb_relief_side.addItem(label, value)
         self.cmb_relief_side.currentIndexChanged.connect(self.on_relief_setting_changed)
         side_row.addWidget(self.cmb_relief_side)
@@ -3818,8 +3857,8 @@ class SettingsWindowRevamp(QWidget):
         top_row.setSpacing(12)
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        self.lbl_page_title = QLabel("設定頁面")
-        self.lbl_page_subtitle = QLabel("一共四種OCR翻譯機制，開啟越多翻譯越準確，相對的翻譯速度會變慢")
+        self.lbl_page_title = QLabel("")
+        self.lbl_page_subtitle = QLabel("")
         title_box.addWidget(self.lbl_page_title)
         title_box.addWidget(self.lbl_page_subtitle)
         top_row.addLayout(title_box)
@@ -3837,13 +3876,35 @@ class SettingsWindowRevamp(QWidget):
         self.ocr_backend_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         chip_row.addWidget(self.ocr_backend_panel)
         chip_row.addStretch()
+        theme_chip = QWidget()
+        theme_chip_layout = QHBoxLayout(theme_chip)
+        theme_chip_layout.setContentsMargins(0, 0, 0, 0)
+        theme_chip_layout.setSpacing(4)
+        self.lbl_theme_mode = QLabel("🎨")
+        self.lbl_theme_mode.setFixedWidth(24)
+        self.lbl_theme_mode.setAlignment(Qt.AlignCenter)
+        theme_chip_layout.addWidget(self.lbl_theme_mode)
         self.cmb_theme_mode_chip = QComboBox()
-        for theme in ThemeRegistry.available():
-            self.cmb_theme_mode_chip.addItem(theme.label, theme.key)
         self.cmb_theme_mode_chip.setCursor(Qt.PointingHandCursor)
-        self.cmb_theme_mode_chip.setMinimumWidth(132)
+        self.cmb_theme_mode_chip.setMinimumWidth(118)
         self.cmb_theme_mode_chip.currentIndexChanged.connect(self.on_theme_mode_changed)
-        chip_row.addWidget(self.cmb_theme_mode_chip)
+        theme_chip_layout.addWidget(self.cmb_theme_mode_chip)
+        chip_row.addWidget(theme_chip)
+
+        language_chip = QWidget()
+        language_chip_layout = QHBoxLayout(language_chip)
+        language_chip_layout.setContentsMargins(0, 0, 0, 0)
+        language_chip_layout.setSpacing(4)
+        self.lbl_ui_language = QLabel("🌐")
+        self.lbl_ui_language.setFixedWidth(24)
+        self.lbl_ui_language.setAlignment(Qt.AlignCenter)
+        language_chip_layout.addWidget(self.lbl_ui_language)
+        self.cmb_ui_language_chip = QComboBox()
+        self.cmb_ui_language_chip.setCursor(Qt.PointingHandCursor)
+        self.cmb_ui_language_chip.setMinimumWidth(144)
+        self.cmb_ui_language_chip.currentIndexChanged.connect(self.on_ui_language_changed)
+        language_chip_layout.addWidget(self.cmb_ui_language_chip)
+        chip_row.addWidget(language_chip)
         top.addLayout(chip_row)
 
         self.shell_panel = QFrame()
@@ -4082,6 +4143,7 @@ class SettingsWindowRevamp(QWidget):
         main.addWidget(body)
 
         self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.refresh_localized_texts()
 
     def on_translate_mode_clicked(self, use_ai):
         self.translation_panel.on_translate_mode_clicked(use_ai)
@@ -4126,6 +4188,91 @@ class SettingsWindowRevamp(QWidget):
         )
         self.update_relief_summary()
 
+    def _current_ui_language(self):
+        return translation_tools.get_ui_language(self.controller)
+
+    def _sync_theme_mode_combo(self):
+        current_theme = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
+        lang = self._current_ui_language()
+        self.cmb_theme_mode_chip.blockSignals(True)
+        self.cmb_theme_mode_chip.clear()
+        for theme in ThemeRegistry.available():
+            self.cmb_theme_mode_chip.addItem(translation_tools.theme_label(theme.key, lang), theme.key)
+        index = self.cmb_theme_mode_chip.findData(current_theme)
+        if index < 0:
+            index = 0
+        self.cmb_theme_mode_chip.setCurrentIndex(index)
+        self.cmb_theme_mode_chip.blockSignals(False)
+
+    def _sync_ui_language_combo(self):
+        current_language = self._current_ui_language()
+        self.cmb_ui_language_chip.blockSignals(True)
+        self.cmb_ui_language_chip.clear()
+        for label, code in translation_tools.ui_language_options(current_language):
+            self.cmb_ui_language_chip.addItem(label, code)
+        index = self.cmb_ui_language_chip.findData(current_language)
+        if index < 0:
+            index = 0
+        self.cmb_ui_language_chip.setCurrentIndex(index)
+        self.cmb_ui_language_chip.blockSignals(False)
+
+    def _sync_relief_side_combo(self):
+        lang = self._current_ui_language()
+        current_side = self.cmb_relief_side.currentData()
+        if not current_side:
+            current_side = getattr(self.controller, "region_relief_side", RELIEF_SIDE_AUTO)
+        self.cmb_relief_side.blockSignals(True)
+        self.cmb_relief_side.clear()
+        for label, value in translation_tools.relief_side_options(lang):
+            self.cmb_relief_side.addItem(label, value)
+        index = self.cmb_relief_side.findData(current_side)
+        if index < 0:
+            index = 0
+        self.cmb_relief_side.setCurrentIndex(index)
+        self.cmb_relief_side.blockSignals(False)
+
+    def refresh_localized_texts(self):
+        lang = self._current_ui_language()
+        self.setWindowTitle(translation_tools.ui_text(lang, "settings_title"))
+        self.lbl_page_title.setText(translation_tools.ui_text(lang, "settings_title"))
+        self.lbl_page_subtitle.setText(translation_tools.ui_text(lang, "settings_subtitle"))
+        self.btn_close.setToolTip(translation_tools.ui_text(lang, "settings_close"))
+        self.btn_close.setText("✕")
+        self.lbl_theme_mode.setText("🎨")
+        self.lbl_theme_mode.setToolTip(translation_tools.ui_text(lang, "settings_theme_mode"))
+        self.lbl_ui_language.setText("🌐")
+        self.lbl_ui_language.setToolTip(translation_tools.ui_text(lang, "settings_ui_language"))
+        self.lbl_ocr.setText(translation_tools.ui_text(lang, "settings_ocr_title"))
+        self.lbl_ocr_hint.setText(translation_tools.ui_text(lang, "settings_ocr_hint"))
+        self.chk_region_pass_through.setText(translation_tools.ui_text(lang, "settings_pass_through"))
+        self.lbl_auto_scan.setText(translation_tools.ui_text(lang, "settings_auto_scan_title"))
+        self.lbl_auto_scan_hint.setText(translation_tools.ui_text(lang, "settings_auto_scan_hint"))
+        self.lbl_random_scan_center.setText(translation_tools.ui_text(lang, "settings_random_scan_center"))
+        self.lbl_random_scan_jitter.setText(translation_tools.ui_text(lang, "settings_random_scan_jitter"))
+        self.lbl_auto_threshold_refresh.setText(translation_tools.ui_text(lang, "settings_threshold_refresh"))
+        self.lbl_region_render.setText(translation_tools.ui_text(lang, "settings_region_render_title"))
+        self.lbl_region_render_hint.setText(translation_tools.ui_text(lang, "settings_region_render_hint"))
+        self.lbl_region_render_mode.setText(translation_tools.ui_text(lang, "settings_region_render_mode"))
+        self.btn_render_bubble.setText(translation_tools.ui_text(lang, "settings_render_bubble"))
+        self.btn_render_relief.setText(translation_tools.ui_text(lang, "settings_render_relief"))
+        self.btn_render_screenshot.setText(translation_tools.ui_text(lang, "settings_render_screenshot"))
+        self.input_screenshot_gemma_prompt.setPlaceholderText(
+            translation_tools.ui_text(lang, "settings_screenshot_prompt_placeholder")
+        )
+        self.lbl_relief.setText(translation_tools.ui_text(lang, "settings_relief_title"))
+        self.lbl_relief_hint.setText(translation_tools.ui_text(lang, "settings_relief_hint"))
+        self.lbl_relief_side.setText(translation_tools.ui_text(lang, "settings_relief_side"))
+        self.lbl_relief_font.setText(translation_tools.ui_text(lang, "settings_relief_font"))
+        self.lbl_relief_gap.setText(translation_tools.ui_text(lang, "settings_relief_gap"))
+        self.lbl_relief_opacity.setText(translation_tools.ui_text(lang, "settings_relief_opacity"))
+        self._sync_theme_mode_combo()
+        self._sync_ui_language_combo()
+        self._sync_relief_side_combo()
+        self.update_random_scan_summary()
+        self.update_auto_threshold_refresh_summary()
+        self.update_region_render_summary()
+        self.update_relief_summary()
+
     def on_theme_mode_changed(self, index):
         combo = self.sender()
         if combo is None or not hasattr(combo, "itemData"):
@@ -4135,6 +4282,19 @@ class SettingsWindowRevamp(QWidget):
             return
         self.controller.set_theme_mode(theme_mode)
 
+    def on_ui_language_changed(self, index):
+        combo = self.sender()
+        if combo is None or not hasattr(combo, "itemData"):
+            return
+        language_code = combo.itemData(index)
+        if not language_code:
+            return
+        if hasattr(self.controller, "set_ui_language"):
+            self.controller.set_ui_language(language_code)
+        else:
+            self.controller.ui_language = localization.normalize_ui_language(language_code)
+            self.refresh_localized_texts()
+
     def eventFilter(self, obj, event):
         return super().eventFilter(obj, event)
 
@@ -4142,39 +4302,64 @@ class SettingsWindowRevamp(QWidget):
         self.translation_panel.set_translate_advanced_visible(visible)
 
     def update_random_scan_summary(self):
+        lang = self._current_ui_language()
         center = max(1, int(self.spin_random_scan_center.value()))
         jitter = max(0, int(self.spin_random_scan_jitter.value()))
         spread = max(0, int(round(center * jitter / 100.0)))
         low = max(1, center - spread)
         high = max(low, center + spread)
-        self.lbl_random_scan_summary.setText(f"目前：{center}s 附近 · 約 {low} ~ {high} 秒")
+        self.lbl_random_scan_summary.setText(
+            translation_tools.ui_text(lang, "settings_random_scan_summary").format(
+                center=center,
+                low=low,
+                high=high,
+            )
+        )
 
     def update_auto_threshold_refresh_summary(self):
+        lang = self._current_ui_language()
         minutes = max(1, int(self.spin_auto_threshold_refresh_minutes.value()))
-        self.lbl_auto_threshold_refresh_summary.setText(f"目前：每 {minutes} 分鐘重新評估一次閥值")
+        self.lbl_auto_threshold_refresh_summary.setText(
+            translation_tools.ui_text(lang, "settings_auto_threshold_refresh_summary").format(minutes=minutes)
+        )
 
     def update_region_render_summary(self):
+        lang = self._current_ui_language()
         mode = self.controller.region_render_mode
         if mode == REGION_RENDER_RELIEF:
-            self.lbl_region_render_summary.setText("目前：浮離模式 · 文字貼近原文")
+            self.lbl_region_render_summary.setText(
+                translation_tools.ui_text(lang, "settings_region_render_summary_relief")
+            )
             self.update_relief_state(True)
             self.input_screenshot_gemma_prompt.setVisible(False)
         elif mode == REGION_RENDER_SCREENSHOT:
-            self.lbl_region_render_summary.setText("目前：截圖模式 · 整塊區域一起理解")
+            self.lbl_region_render_summary.setText(
+                translation_tools.ui_text(lang, "settings_region_render_summary_screenshot")
+            )
             self.update_relief_state(False)
             self.input_screenshot_gemma_prompt.setVisible(True)
         else:
-            self.lbl_region_render_summary.setText("目前：氣泡模式 · 保留原本泡泡")
+            self.lbl_region_render_summary.setText(
+                translation_tools.ui_text(lang, "settings_region_render_summary_bubble")
+            )
             self.update_relief_state(False)
 
     def update_relief_summary(self):
+        lang = self._current_ui_language()
         side = self.cmb_relief_side.itemText(self.cmb_relief_side.currentIndex())
         font_pt = int(self.spin_relief_font.value())
         gap_px = int(self.slider_relief_gap.value())
         opacity = int(self.slider_relief_opacity.value())
         self.lbl_relief_gap_value.setText(f"{gap_px} px")
         self.lbl_relief_opacity_value.setText(f"{opacity}%")
-        self.lbl_relief_summary.setText(f"目前：{side} · {font_pt} pt · {gap_px}px · {opacity}%")
+        self.lbl_relief_summary.setText(
+            translation_tools.ui_text(lang, "settings_relief_summary").format(
+                side=side,
+                font_pt=font_pt,
+                gap_px=gap_px,
+                opacity=opacity,
+            )
+        )
 
     def update_translate_summary(self):
         self.translation_panel.update_translate_summary()
@@ -4196,6 +4381,7 @@ class SettingsWindowRevamp(QWidget):
 
     def sync_from_controller(self):
         theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
+        self.refresh_localized_texts()
         ocr_backend_panel = getattr(self, "ocr_backend_panel", None)
         if ocr_backend_panel is not None:
             ocr_backend_panel.sync_from_controller()
@@ -4262,6 +4448,7 @@ class SettingsWindowRevamp(QWidget):
 
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
+        self.refresh_localized_texts()
         self.setStyleSheet(
             theme.base_qss()
             + f"\nQWidget#settingsWindowRevamp {{ background: transparent; }}"
@@ -4407,6 +4594,7 @@ class Controller(QWidget):
         self.selected_region = None
         self.last_scan_results = []
         self.settings_data = {}
+        self.ui_language = localization.DEFAULT_UI_LANGUAGE
         self.cooldown_total_ms = 5000
         self.cooldown_end_time = 0.0
         self.scan_in_progress = False
@@ -4559,6 +4747,7 @@ class Controller(QWidget):
         inner_layout.addLayout(btn_layout)
 
         self.update_frame_style()
+        self.refresh_main_ui_texts()
 
     def setup_worker(self):
         worker_t0 = time.perf_counter()
@@ -4602,6 +4791,7 @@ class Controller(QWidget):
 
     def enable_hotkey(self):
         self.hotkey_filter.register_hotkey(self.winId())
+        self.refresh_hotkey_button_text()
         # 讓主視窗在截圖時隱形 (WDA_EXCLUDEFROMCAPTURE = 0x11)
         # 如此一來掃描時就不需要再 hide/show 視窗，消除閃爍
         try:
@@ -4609,9 +4799,68 @@ class Controller(QWidget):
         except Exception:
             pass
 
+    def get_hotkey_button_text(self):
+        label = getattr(self.hotkey_filter, "registered_label", None) or "~"
+        return f"⚡ {self._tr('controller.button.now', fallback='Translate Now')} ({label})"
+
+    def refresh_hotkey_button_text(self):
+        if hasattr(self, "btn_now"):
+            self.btn_now.setText(self.get_hotkey_button_text())
+
     def schedule_save_settings(self):
         if hasattr(self, "save_timer"):
             self.save_timer.start(250)
+
+    def _tr(self, key, fallback=None, **params):
+        return localization.tr(key, self.ui_language, fallback=fallback, **params)
+
+    def _set_status_text(self, key, fallback=None, **params):
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.setText(self._tr(key, fallback=fallback, **params))
+
+    def get_ui_language(self):
+        return localization.normalize_ui_language(self.ui_language)
+
+    def set_ui_language(self, language, *, persist=True, refresh=True):
+        normalized = localization.normalize_ui_language(language)
+        changed = normalized != getattr(self, "ui_language", localization.DEFAULT_UI_LANGUAGE)
+        self.ui_language = normalized
+        if hasattr(self, "worker") and hasattr(self.worker, "set_translation_target_lang"):
+            self.worker.set_translation_target_lang(localization.get_translation_target_lang(normalized))
+        if refresh and hasattr(self, "lbl_title"):
+            self.refresh_main_ui_texts()
+        if self.settings_window is not None:
+            self.settings_window.refresh_localized_texts()
+            if refresh:
+                self.settings_window.sync_from_controller()
+        if persist and changed:
+            self.schedule_save_settings()
+
+    def refresh_main_ui_texts(self):
+        if hasattr(self, "setWindowTitle"):
+            self.setWindowTitle(self._tr("controller.window_title", fallback="CloudHime"))
+        if hasattr(self, "lbl_title"):
+            self.lbl_title.setText(self._tr("controller.title", fallback="CloudHime v3.0"))
+        if hasattr(self, "input_api_key"):
+            self.input_api_key.setPlaceholderText(
+                self._tr("controller.placeholder.google_api_key", fallback="Google API KEY")
+            )
+        if hasattr(self, "btn_ai_mode"):
+            self.btn_ai_mode.setText(self._tr("controller.button.ai_translation", fallback="AI 翻譯"))
+        if hasattr(self, "btn_mode_full"):
+            self.btn_mode_full.setText(self._tr("controller.button.fullscreen", fallback="全螢幕翻譯"))
+        if hasattr(self, "btn_mode_region"):
+            self.btn_mode_region.setText(self._tr("controller.button.region", fallback="區域翻譯"))
+        if hasattr(self, "btn_stop"):
+            self.btn_stop.setText(self._tr("controller.button.stop", fallback="停止"))
+        if hasattr(self, "btn_theme"):
+            self.btn_theme.setToolTip(self._tr("controller.tooltip.settings", fallback="設定"))
+        if hasattr(self, "btn_30"):
+            self.btn_30.setText(
+                f"{self._tr('controller.button.random_scan_prefix', fallback='隨機')} {int(self.random_scan_center_seconds)}s~"
+            )
+        if hasattr(self, "btn_now"):
+            self.btn_now.setText(self._tr("controller.button.now", fallback="立即翻譯"))
 
     def get_settings_payload(self):
         payload = {
@@ -4637,8 +4886,9 @@ class Controller(QWidget):
             "is_dark_mode": self.is_dark_mode,
             "theme_mode": self.theme_mode,
             "binary_threshold": int(self.worker.binary_threshold),
+            "ui_language": self.get_ui_language(),
         }
-        return normalize_settings_payload(payload, int(self.region_frame_opacity))
+        return normalize_settings_payload(payload, int(self.region_frame_opacity), self.get_ui_language())
 
     def save_settings(self):
         try:
@@ -4663,6 +4913,7 @@ class Controller(QWidget):
         settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
         self.settings_data = settings
         self.worker.begin_translation_registry_batch()
+        self.set_ui_language(resolve_ui_language(settings, self.ui_language), persist=False, refresh=True)
 
         def safe_int(value, fallback, lower=None, upper=None):
             try:
@@ -4817,9 +5068,13 @@ class Controller(QWidget):
                 self.settings_window.chk_auto_switch.blockSignals(False)
             self.update_random_scan_button_text()
             if use_gemma_translation and api_key:
-                self.lbl_status.setText(f"AI模型: {self.cmb_ai_model.currentText()}")
+                self._set_status_text(
+                    "controller.status.ai_model_ready",
+                    fallback="AI model: {model}",
+                    model=self.cmb_ai_model.currentText(),
+                )
             else:
-                self.lbl_status.setText("歡迎回來，雲朵已就緒 (*´▽`*)")
+                self._set_status_text("controller.status.ready", fallback="Ready and waiting (*´▽`*)")
             self.overlay.set_render_context(
                 self.scan_mode,
                 self.region_render_mode,
@@ -4829,6 +5084,7 @@ class Controller(QWidget):
                 self.region_relief_gap_px,
                 self.selected_region,
             )
+            self.refresh_main_ui_texts()
             if should_migrate_to_appdata(SETTINGS_PATHS, loaded_from_path):
                 self.save_settings()
             if legacy_api_key:
@@ -4900,15 +5156,15 @@ class Controller(QWidget):
 
     def update_mode_status_text(self):
         if self.scan_mode == SCAN_MODE_FULLSCREEN:
-            self.lbl_status.setText("🖥 目前模式：全螢幕")
+            self._set_status_text("controller.mode.fullscreen", fallback="🖥 Mode: Full screen")
             return
 
         if self.region_render_mode == REGION_RENDER_RELIEF:
-            self.lbl_status.setText("🧩 目前模式：浮雕")
+            self._set_status_text("controller.mode.relief", fallback="🧩 Mode: Relief")
         elif self.region_render_mode == REGION_RENDER_SCREENSHOT:
-            self.lbl_status.setText("🖼 目前模式：截圖")
+            self._set_status_text("controller.mode.screenshot", fallback="🖼 Mode: Screenshot")
         else:
-            self.lbl_status.setText("💬 目前模式：氣泡")
+            self._set_status_text("controller.mode.bubble", fallback="💬 Mode: Bubble")
 
     def on_region_relief_settings_changed(self, side, font_pt, gap_px, opacity):
         side = str(side or RELIEF_SIDE_AUTO)
@@ -5184,7 +5440,11 @@ class Controller(QWidget):
         self.btn_mode_region.setChecked(True)
         self.set_scan_mode(SCAN_MODE_REGION)
         x, y, w, h = rect
-        self.lbl_status.setText(f"框選區域已設定：{w}x{h}")
+        self._set_status_text(
+            "controller.status.region_ready",
+            fallback="Scan region set: {size}",
+            size=f"{w}x{h}",
+        )
         self.refresh_overlay_from_last_results()
         self.schedule_save_settings()
 
@@ -5283,35 +5543,35 @@ class Controller(QWidget):
             print("[Hotkey] Cooldown active, please wait")
             return
         if self.scan_mode == SCAN_MODE_REGION and not self.selected_region:
-            self.lbl_status.setText("請先設定框選區域")
+            self._set_status_text("controller.status.need_region", fallback="Please set a scan region first")
             self.begin_region_selection()
             return
         self.display_timer.stop()
-        self.lbl_status.setText("⚡ 立即掃描中...")
+        self._set_status_text("controller.status.immediate_scanning", fallback="⚡ Scanning now...")
         self.worker.last_auto_threshold_refresh_ms = 0.0
         self.trigger_scan_sequence()
         self.btn_now.setEnabled(False)
-        self.btn_now.setText("⚡ 充電中 0%")
+        self.btn_now.setText(self._tr("controller.status.cold_down", fallback="⚡ Cooling down..."))
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = time.monotonic() + (self.cooldown_total_ms / 1000.0)
         self.cooldown_progress_timer.start()
         self.cooldown_timer.start(self.cooldown_total_ms)
-        self.lbl_status.setText("⚡ 冷卻充電中...")
+        self._set_status_text("controller.status.cold_down", fallback="⚡ Cooling down...")
 
     def reset_immediate_btn(self):
         self.cooldown_progress_timer.stop()
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = 0.0
         self.btn_now.setEnabled(True)
-        self.btn_now.setText("⚡ 立即 (~)")
+        self.refresh_hotkey_button_text()
         status_text = self.lbl_status.text()
         if not self.scan_in_progress:
             # 截圖模式的完成訊息要保留，不要被冷卻結束直接蓋掉
             if any(token in status_text for token in ("截圖", "翻譯", "完成")):
                 return
             self.update_mode_status_text()
-        elif "截圖" in status_text:
-            self.lbl_status.setText("🖼 截圖翻譯進行中...")
+        elif "截圖" in status_text or "Screenshot" in status_text:
+            self._set_status_text("controller.status.capture_running", fallback="🖼 Screenshot translation running...")
 
     def update_cooldown_progress(self):
         if self.cooldown_end_time <= 0:
@@ -5321,18 +5581,22 @@ class Controller(QWidget):
         progress = int(round((1.0 - (remaining / (self.cooldown_total_ms / 1000.0))) * 100))
         progress = max(0, min(100, progress))
         self.btn_now.set_cooldown_progress(progress)
-        self.btn_now.setText(f"⚡ 充電中 {progress}%")
-        self.lbl_status.setText("⚡ 冷卻充電中...")
+        self.btn_now.setText(f"⚡ {progress}%")
+        self._set_status_text("controller.status.cold_down", fallback="⚡ Cooling down...")
 
     def start_auto_scan(self, checked=False, base_interval=None):
         if self.scan_mode == SCAN_MODE_REGION and not self.selected_region:
-            self.lbl_status.setText("請先設定框選區域")
+            self._set_status_text("controller.status.need_region", fallback="Please set a scan region first")
             self.begin_region_selection()
             return
         if base_interval is None:
             base_interval = max(1000, int(self.random_scan_center_seconds) * 1000)
         self.current_auto_interval = base_interval
-        self.lbl_status.setText(f"{self.get_random_scan_button_text()}自動掃描中")
+        self._set_status_text(
+            "controller.status.auto_scanning",
+            fallback="{prefix} auto-scanning",
+            prefix=self.get_random_scan_button_text(),
+        )
         self.schedule_next_scan()
 
     def schedule_next_scan(self):
@@ -5406,7 +5670,7 @@ class Controller(QWidget):
         self.auto_group.setExclusive(False)
         self.btn_30.setChecked(False)
         self.auto_group.setExclusive(True)
-        self.lbl_status.setText("⏸ 自動已停止")
+        self._set_status_text("controller.status.auto_stopped", fallback="⏸ Auto stopped")
         self.overlay.clear_all()
 
     def trigger_scan_sequence(self):
@@ -5451,13 +5715,23 @@ class Controller(QWidget):
                 colors = build_charge_bar_colors(theme, "warning")
                 self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
                 self.charge_bar.set_progress(100, f"{current_label} {used}/{limit} -> {backup_label} {backup_used}/{backup_limit}")
-                self.lbl_status.setText(f"{current_label} 已滿，下一次會自動切到 {backup_label}")
+                self._set_status_text(
+                    "controller.status.ai_model_full_switch",
+                    fallback="{current} is full; next run will switch to {backup}",
+                    current=current_label,
+                    backup=backup_label,
+                )
                 return
             if used >= limit:
                 colors = build_charge_bar_colors(theme, "danger")
                 self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
                 self.charge_bar.set_progress(100, f"{current_label} {used}/{limit}")
-                self.lbl_status.setText(f"{current_label} 已滿 {limit}/{limit}，先改用 Google")
+                self._set_status_text(
+                    "controller.status.ai_model_full_google",
+                    fallback="{current} is full {limit}/{limit}; using Google for now",
+                    current=current_label,
+                    limit=limit,
+                )
                 return
             if used >= 10:
                 colors = build_charge_bar_colors(theme, "warning")

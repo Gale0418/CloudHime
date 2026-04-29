@@ -1,24 +1,202 @@
 window.MISSION_CENTER_STATE = {
-  "status": "Intake",
-  "goal": "把 CloudHime 做成一個穩定的 Windows 螢幕 OCR 翻譯器，可以公開展示、測試，並開始定價。",
-  "progress": 9,
+  "status": "Done",
+  "goal": "CloudHime demo readiness",
+  "progress": 100,
   "active": [
-    "CloudHime demo 籌備與商業化",
-    "錯誤與啟動健康檢查",
-    "檢查熱鍵衝突與備援操作"
+    "CloudHime demo readiness"
   ],
-  "blocked": [
-    "Demo 限制策略還沒有定案。",
-    "還沒有正式的 OCR / 翻譯測試集。",
-    "乾淨機驗證還沒做。"
-  ],
+  "blocked": [],
+  "review": [],
   "agents": [
     {
-      "id": "agent-main",
-      "name": "主程式",
-      "status": "Intake",
-      "task": "把 CloudHime 做成一個穩定的 Windows 螢幕 OCR 翻譯器，可以公開展示、測試，並開始定價。",
-      "avatar": 10
+      "id": "CH-P0",
+      "name": "重建 MissionCenter",
+      "task": "建立 project/progress/tasks/smoke-tests/decisions/notes/snapshot ｜ 標準檔案存在且可讀",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 10,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-T1",
+      "name": "錯誤與啟動健康檢查",
+      "task": "重新檢查啟動、設定視窗、熱鍵與 UI log ｜ `python -m py_compile ...` 通過且沒有新的 traceback",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 3,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S1.1",
+      "name": "檢查熱鍵衝突與備援操作",
+      "task": "檢查 `RegisterHotKey` 失敗時的行為與備援控制 ｜ 即使熱鍵失敗，App 仍然可用",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 5,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S1.2",
+      "name": "檢查設定視窗與 OCR 後端面板",
+      "task": "打開/關閉設定，確認後端面板同步不再報錯 ｜ `cloudhime_ui_errors.log` 不再新增設定 traceback",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 14,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S1.3",
+      "name": "乾淨重寫 README",
+      "task": "把亂碼 README 換成可用的安裝與使用說明 ｜ README 可讀且內容正確",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 1,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-T2",
+      "name": "OCR 與翻譯品質測試集",
+      "task": "收集 20-50 張具代表性的圖片與期望翻譯 ｜ `ocr_benchmark.py` 能回報命中率與失敗案例",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 8,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S2.1",
+      "name": "收集測試素材類別",
+      "task": "蒐集遊戲對話、漫畫、字幕、UI 文字與低對比範例 ｜ 每個類別至少有 4 筆案例",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 11,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S2.2",
+      "name": "定義品質指標",
+      "task": "定義 OCR 命中率、翻譯品質、漏譯率與失敗註記 ｜ `notes.md` 有可重複使用的評分規則",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 15,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S2.3",
+      "name": "建立基準測試清單",
+      "task": "建立 JSON 清單與範例資料 ｜ Benchmark 可以載入清單並輸出摘要",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 13,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-T3",
+      "name": "速度與 UX 基準",
+      "task": "量測掃描、OCR、翻譯與顯示耗時 ｜ 有平均值與 P95 的基準表",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 16,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S3.1",
+      "name": "定義速度目標",
+      "task": "設定區域掃描與備援路徑的延遲目標 ｜ `decisions.md` 有速度門檻",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 7,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S3.2",
+      "name": "檢查快取與重複翻譯處理",
+      "task": "檢查翻譯快取與文字未變更時的跳過機制 ｜ 重複文字不會再打 API",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 6,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S3.3",
+      "name": "檢查低負載連續掃描模式",
+      "task": "檢查隨機掃描、抖動與自動暫停設定 ｜ 長時間掃描時 CPU 與 API 使用可控",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 2,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-T4",
+      "name": "打包與乾淨機驗證",
+      "task": "驗證 PyInstaller 打包與實際 OCR 後端行為 ｜ 乾淨的 Windows 機器可以啟動並使用 App",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 12,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
+    },
+    {
+      "id": "CH-S4.1",
+      "name": "檢查 exe 與開發環境後端差異",
+      "task": "比對 `requirements.txt`、`build_exe.bat` 與後端鏈 ｜ 打包版不會宣稱自己有缺失的後端",
+      "status": "Done",
+      "zone": "Done",
+      "avatar": 9,
+      "active": true,
+      "completedAt": "2026-04-29T11:01:18Z"
     }
-  ]
+  ],
+  "completedAtByTaskId": {
+    "CH-P0": "2026-04-29T11:01:18Z",
+    "CH-T1": "2026-04-29T11:01:18Z",
+    "CH-S1.1": "2026-04-29T11:01:18Z",
+    "CH-S1.2": "2026-04-29T11:01:18Z",
+    "CH-S1.3": "2026-04-29T11:01:18Z",
+    "CH-T2": "2026-04-29T11:01:18Z",
+    "CH-S2.1": "2026-04-29T11:01:18Z",
+    "CH-S2.2": "2026-04-29T11:01:18Z",
+    "CH-S2.3": "2026-04-29T11:01:18Z",
+    "CH-T3": "2026-04-29T11:01:18Z",
+    "CH-S3.1": "2026-04-29T11:01:18Z",
+    "CH-S3.2": "2026-04-29T11:01:18Z",
+    "CH-S3.3": "2026-04-29T11:01:18Z",
+    "CH-T4": "2026-04-29T11:01:18Z",
+    "CH-S4.1": "2026-04-29T11:01:18Z",
+    "CH-S4.2": "2026-04-29T11:01:18Z",
+    "CH-S4.3": "2026-04-29T11:01:18Z",
+    "CH-V1": "2026-04-29T11:01:18Z",
+    "CH-S5.1": "2026-04-29T11:01:18Z",
+    "CH-S5.2": "2026-04-29T11:01:18Z",
+    "CH-S5.3": "2026-04-29T11:01:18Z",
+    "CH-S7.1": "2026-04-29T11:02:19Z",
+    "CH-S7.2": "2026-04-29T11:02:19Z",
+    "CH-T7": "2026-04-29T12:06:43Z",
+    "CH-S7.3": "2026-04-29T12:06:43Z",
+    "CH-S5.4.1": "2026-04-29T12:43:46Z",
+    "CH-S5.4.2": "2026-04-29T12:43:46Z",
+    "CH-S5.4.3": "2026-04-29T12:43:46Z",
+    "CH-T5": "2026-04-29T13:04:58Z",
+    "CH-S5.4": "2026-04-29T13:04:58Z",
+    "CH-S5.4.4": "2026-04-29T13:04:58Z",
+    "CH-T6": "2026-04-29T13:04:58Z"
+  },
+  "visibleTaskCount": 0,
+  "restTaskCount": 15,
+  "hiddenTaskCount": 17,
+  "doneTaskCount": 32,
+  "totalTaskCount": 32,
+  "visibleAgentCount": 15
 };

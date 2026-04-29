@@ -1,31 +1,33 @@
 # Notes
 
-## Intake Council
+## 目前觀察
 
-- Product: 使用者想要的是「不用複製文字也能看懂畫面」；最強場景是遊戲、VN、漫畫、影片字幕、軟體 UI。
-- Technical: 目前有 Windows OCR、多 OCR 後端設定、Gemma/Google 翻譯、區域掃描、打包腳本，但主程式仍很大，需小心改動。
-- Verification: 已確認主要 Python 檔可語法編譯；後續要補 GUI 啟動、設定視窗、掃描、翻譯、打包版 smoke tests。
-- Risk: Hotkey 失敗、設定視窗舊錯誤、README 亂碼、打包後 OCR 後端落差，都是商業化前要解掉的信任問題。
-- Operations: 需要可回報 bug 的 log 位置、版本號、診斷步驟；不然賣出去後支援會很痛。
-- Efficiency: 先建立測試集與 baseline，再優化速度與品質，避免盲修。
-- Wild idea: 可以把 CloudHime 定位成「給遊戲/VN/漫畫玩家的桌面鏡頭」，不要硬碰 Google Lens 全場景。
+- `CloudHime.py` 的 `subtext` 設定窗 bug 已修。
+- `ocr_benchmark.py` 已能跑 `benchmark_manifest.example.json`，而且會顯示 `category/source/note/timing_ms`。
+- `build_exe.bat` 與 `README.md` 已整理成較接近對外版本。
+- 目前對外策略可以先視為「繁中優先、英文 fallback」，避免在 demo 與上架文案上臨時改方向。
+- MissionCenter HUD 現在改吃 `tasks.md`，任務短標題會變成小人名稱，前 10 個非 `Done` 會先上場。
+- `watch_visual_state.py` 會盯著 `project.md`、`progress.md`、`tasks.md`，變更就自動跑同步。
+- `Done` 會待在休息區，總可見超過 15 時，最早完成的 `Done` 先退場。
+- 多語 UI smoke test 已完成，`English / 繁中` 下拉能同步主視窗與翻譯目標。
 
-## Current Observations
+## 待補
 
-- `MissionCenter/` 已重建為乾淨工作區。
-- `README.md` 有亂碼問題，應列為 P1 前置信任修復。
-- `_launch_stdout.txt` 曾出現 `[Hotkey] Registration failed (Error: 1409)`。
-- `cloudhime_ui_errors.log` 有舊設定視窗錯誤，需確認是否已被主人近期修復。
-- `build_exe.bat` 排除 easyocr/rapidocr/tesseract，但設定檔 OCR chain 包含 rapidocr/tesseract，需確認打包版行為。
+- 更完整的 OCR / 翻譯代表測試集。
+- 乾淨 Windows 機驗證。
+- 各通路素材要分開整理：GitHub Releases 的下載說明、Microsoft Store 的商店描述、Steam 的頁面文案。
 
-## Candidate Positioning
+## 商業化清單
 
-CloudHime: Windows screen OCR translator for games, manga, videos, and hard-to-copy UI text.
+- Demo：功能限制，不做時間鎖。
+- 定價：先以單次買斷為預設，之後再看回饋調整。
+- 通路：外部直下載 / GitHub Releases -> Microsoft Store -> Steam。
+- 素材：截圖、短影片、功能清單、FAQ、隱私說明。
+- 語言：`zh-TW` 預設，`en` fallback。
 
-核心賣點應該是：
-
-- 打開就能掃描指定區域。
-- 翻譯直接出現在畫面附近。
-- 低干擾、可長時間掛著。
-- 支援本機 OCR，雲端 AI 作為可選精修。
-- 有 Demo 可試，不強迫使用者一開始就掏錢。
+## 進度更新
+- CH-T1 已以 python -m py_compile 與現有程式碼狀態確認可收尾
+- CH-T2 已以 python ocr_benchmark.py .\\benchmark_manifest.example.json 驗證通過
+- CH-T3 已補上 avg / P95 基準與快取、連掃 smoke tests
+- MissionCenter HUD 已改成任務驅動，並以 `tasks.md` 生成任務小人、休息區與溢出退場
+- 商業化、多語策略與任務 HUD 規則已同步寫入 project / decisions / notes 三份核心文件，之後可直接接著拆 UI 與發佈任務

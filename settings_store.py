@@ -6,8 +6,10 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any
 
+import localization
 
-SETTINGS_SCHEMA_VERSION = 2
+
+SETTINGS_SCHEMA_VERSION = 3
 SETTINGS_FILENAME = "cloudhime_settings.json"
 SETTINGS_APP_DIR = "CloudHime"
 
@@ -102,10 +104,22 @@ def resolve_region_opacity(settings: dict[str, Any], fallback: int = 40) -> int:
     return clamp_percent(fallback, fallback)
 
 
-def normalize_settings_payload(payload: dict[str, Any], region_opacity: int) -> dict[str, Any]:
+def resolve_ui_language(settings: dict[str, Any], fallback: str = localization.DEFAULT_UI_LANGUAGE) -> str:
+    return localization.normalize_ui_language(settings.get("ui_language", fallback), fallback=fallback)
+
+
+def normalize_settings_payload(
+    payload: dict[str, Any],
+    region_opacity: int,
+    ui_language: str | None = None,
+) -> dict[str, Any]:
     normalized = dict(payload)
     normalized["schema_version"] = SETTINGS_SCHEMA_VERSION
     opacity = clamp_percent(region_opacity, 40)
     normalized["region_relief_opacity"] = opacity
     normalized["region_frame_opacity"] = opacity
+    normalized["ui_language"] = localization.normalize_ui_language(
+        ui_language if ui_language is not None else normalized.get("ui_language", localization.DEFAULT_UI_LANGUAGE),
+        fallback=localization.DEFAULT_UI_LANGUAGE,
+    )
     return normalized
