@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy
+from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QMessageBox, QPushButton, QSizePolicy
 
 from ocr_backend_catalog import BACKEND_SPECS, optional_backend_names, summarize_backend_chain
 from ocr_backend_installer import detect_backend_state, install_backend_packages
@@ -37,26 +37,27 @@ class OcrBackendSettingsPanel(QFrame):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setStyleSheet("QFrame { background: transparent; border: none; }")
 
-        outer = QHBoxLayout(self)
+        outer = QGridLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(8)
+        outer.setHorizontalSpacing(6)
+        outer.setVerticalSpacing(6)
 
         self.lbl_title = QLabel("")
         self.lbl_title.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        outer.addWidget(self.lbl_title)
+        outer.addWidget(self.lbl_title, 0, 0, 1, 4)
 
         self.lbl_windows = QLabel("")
         self.lbl_windows.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
-        outer.addWidget(self.lbl_windows)
+        outer.addWidget(self.lbl_windows, 1, 0)
 
         self.btn_google_ocr = QPushButton("")
         self.btn_google_ocr.setCheckable(True)
         self.btn_google_ocr.setCursor(Qt.PointingHandCursor)
         self.btn_google_ocr.clicked.connect(self.on_google_ocr_toggled)
         self.btn_google_ocr.setMinimumHeight(28)
-        outer.addWidget(self.btn_google_ocr)
+        outer.addWidget(self.btn_google_ocr, 1, 1)
 
-        for backend_name in optional_backend_names():
+        for index, backend_name in enumerate(optional_backend_names()):
             spec = BACKEND_SPECS[backend_name]
             button = QPushButton(spec.label)
             button.setCheckable(True)
@@ -64,9 +65,7 @@ class OcrBackendSettingsPanel(QFrame):
             button.clicked.connect(lambda checked=False, name=backend_name: self.on_backend_toggled(name, checked))
             button.setMinimumHeight(28)
             self._backend_buttons[backend_name] = button
-            outer.addWidget(button)
-
-        outer.addStretch()
+            outer.addWidget(button, 2, index)
         self.refresh_localized_texts()
 
     def _backend_chain(self):

@@ -1,15 +1,11 @@
 # Closeout
 
-MissionCenter closeout complete.
+已 closeout。
 
-## Completion Gate
+CloudHime 設定面板已依 image2 mockup 改為寬版三欄：
 
-- CH-S5.4.1~CH-S5.4.4 全部完成
-- CH-T5 完成
-- CH-T6 完成
-- CH-T7 與 HUD smoke test 完成
+- Translation
+- OCR
+- Rendering
 
-## 結論
-
-CloudHime demo 的 MissionCenter 已經收束為可重開快照，HUD、任務表、進度、smoke tests 與 closeout 都已對齊。
-目前不再有未完成的 MissionCenter 任務。
+已完成 py_compile、PySide6 建立視窗 smoke test、雙語文字檢查與截圖可視檢查。
