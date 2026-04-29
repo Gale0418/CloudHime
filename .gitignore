@@ -8,3 +8,5 @@ dist/
 _launch_*.txt
 _tmp_*.py
 cloudhime_ui_errors.log
+.worktrees/
+worktrees/
