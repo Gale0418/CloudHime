@@ -120,7 +120,7 @@ def extract_goal(project_text: str) -> str:
     fallback = "CloudHime demo readiness"
     for line in project_text.splitlines():
         stripped = line.strip()
-        if stripped.startswith(("- Goal:", "Goal:", "- 目標:", "目標:")):
+        if stripped.startswith(("- Goal:", "Goal:", "- 目標:", "目標:", "- 目標：", "目標：")):
             value = split_value(stripped)
             return value or fallback
     return fallback
@@ -279,7 +279,12 @@ def build_task_state(project_text: str, tasks_text: str, previous_state: dict[st
     blocked_items = [f"{agent['name']}：{agent['task']}" for agent in visible_non_done if agent["status"] == "Blocked"]
     review_items = [f"{agent['name']}：{agent['task']}" for agent in visible_non_done if agent["status"] == "Review"]
 
-    completed_history = dict(previous_completed)
+    current_ids = {task["id"] for task in work_items}
+    completed_history = {
+        task_id: completed_at
+        for task_id, completed_at in previous_completed.items()
+        if task_id in current_ids
+    }
     completed_history.update(done_history)
     for task in work_items:
         if task_display_status(task) != "Done":

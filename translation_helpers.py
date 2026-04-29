@@ -24,30 +24,61 @@ UI_LANGUAGE_ALIASES = {
     "en-gb": "en",
     "english": "en",
 }
+
+
+def normalize_target_lang(target_lang: Any, fallback: str = GOOGLE_TARGET_LANG) -> str:
+    candidate = str(target_lang or "").strip()
+    if not candidate:
+        candidate = fallback
+    normalized = UI_LANGUAGE_ALIASES.get(candidate.lower(), candidate)
+    if normalized in UI_LANGUAGE_ORDER:
+        return normalized
+    if normalized.lower().startswith("zh"):
+        return "zh-TW"
+    if normalized.lower().startswith("en"):
+        return "en"
+    return fallback
+
+
+def target_lang_instruction(target_lang: Any) -> str:
+    normalized = normalize_target_lang(target_lang)
+    if normalized == "en":
+        return "natural English"
+    return "natural Traditional Chinese used in Taiwan"
+
+
+def target_lang_system_prompt(target_lang: Any) -> str:
+    target = target_lang_instruction(target_lang)
+    return (
+        "You are a game and manga translation assistant."
+        f"Translate the input into {target}."
+        "Preserve the original line breaks and sentence order."
+        "Do not add explanations, notes, bullets, romanization, or the original text."
+    )
 UI_TEXTS = {
     "settings_title": {
         "zh-TW": "設定頁面",
         "en": "Settings",
     },
     "settings_subtitle": {
-        "zh-TW": "集中管理翻譯、OCR、外觀與掃描行為。",
-        "en": "Manage translation, OCR, appearance, and scan behavior in one place.",
+        "zh-TW": "翻譯 / OCR 設定",
+        "en": "Translation / OCR Settings",
     },
     "settings_ocr_title": {
-        "zh-TW": "自動掃描",
-        "en": "Auto Scan",
+        "zh-TW": "OCR",
+        "en": "OCR",
     },
     "settings_ocr_hint": {
-        "zh-TW": "你可以隨意修改自動掃描的秒數以及偏移幅度",
-        "en": "Adjust the scan interval and jitter range here.",
+        "zh-TW": "管理 OCR 後端、滑鼠穿透與掃描節奏。",
+        "en": "Manage OCR backends, passthrough, and scan timing.",
     },
     "settings_pass_through": {
         "zh-TW": "允許滑鼠穿透框選區 (點擊背景遊戲)",
         "en": "Allow mouse passthrough on region selection (click through to the game)",
     },
     "settings_auto_scan_title": {
-        "zh-TW": "掃描設定",
-        "en": "Scan Settings",
+        "zh-TW": "自動掃描",
+        "en": "Auto-scan",
     },
     "settings_auto_scan_hint": {
         "zh-TW": "中心秒數與偏移幅度會同步到主畫面",
@@ -172,6 +203,18 @@ UI_TEXTS = {
     "settings_close": {
         "zh-TW": "關閉",
         "en": "Close",
+    },
+    "settings_reset_defaults": {
+        "zh-TW": "重設預設值",
+        "en": "Reset to Defaults",
+    },
+    "settings_cancel": {
+        "zh-TW": "取消",
+        "en": "Cancel",
+    },
+    "settings_save": {
+        "zh-TW": "儲存",
+        "en": "Save",
     },
     "settings_autosave": {
         "zh-TW": "自動儲存",
@@ -452,10 +495,11 @@ def translate_text_google_batch(
     return [line or "" for line in translated]
 
 
-def build_gemma_prompt(text: Any) -> str:
+def build_gemma_prompt(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
+    target = target_lang_instruction(target_lang)
     return (
         "You are a game and manga translation assistant.\n"
-        "Translate the input into natural Traditional Chinese used in Taiwan.\n"
+        f"Translate the input into {target}.\n"
         "Preserve the original line breaks and sentence order.\n"
         "Do not add explanations, notes, bullets, romanization, or the original text.\n"
         "If the source contains dialogue, keep it conversational and concise.\n\n"
@@ -474,10 +518,11 @@ def extract_gemma_text(payload: dict[str, Any]) -> str:
     return ""
 
 
-def build_gemma_prompt_v2(text: Any) -> str:
+def build_gemma_prompt_v2(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
+    target = target_lang_instruction(target_lang)
     return (
         "You are a game and manga translation assistant. "
-        "Translate the input into natural Traditional Chinese used in Taiwan. "
+        f"Translate the input into {target}. "
         "Preserve the original line breaks and sentence order. "
         "Do not add explanations, notes, bullets, romanization, or the original text. "
         "If the source contains dialogue, keep it conversational and concise.\n\n"
@@ -492,13 +537,14 @@ def build_segmented_ocr_payload(source_texts: Sequence[Any]) -> str:
     return "\n".join(rows)
 
 
-def build_gemma_multimodal_prompt(source_texts: Sequence[Any]) -> str:
+def build_gemma_multimodal_prompt(source_texts: Sequence[Any], target_lang: str = GOOGLE_TARGET_LANG) -> str:
     indexed_ocr = build_segmented_ocr_payload(source_texts)
+    target = target_lang_instruction(target_lang)
     return (
         "You are a multimodal UI, game, and manga translation assistant.\n"
         "You will receive one screenshot and OCR lines extracted from that same screenshot.\n"
         "Use the screenshot to understand context, UI meaning, title, speaker tone, and ambiguous words.\n"
-        "Translate every OCR line into natural Traditional Chinese used in Taiwan.\n"
+        f"Translate every OCR line into {target}.\n"
         "Keep one output item for every input item.\n"
         "Do not skip items. Do not merge items. Do not explain anything.\n"
         "Return JSON only in this exact shape:\n"
@@ -511,8 +557,8 @@ def build_gemma_multimodal_prompt(source_texts: Sequence[Any]) -> str:
     )
 
 
-def build_gemma_screenshot_prompt(source_text_hint: Any = None) -> str:
-    return build_screenshot_prompt_with_override(source_text_hint, custom_prompt='')
+def build_gemma_screenshot_prompt(source_text_hint: Any = None, target_lang: str = GOOGLE_TARGET_LANG) -> str:
+    return build_screenshot_prompt_with_override(source_text_hint, custom_prompt='', target_lang=target_lang)
 
 
 def split_translated_lines(translated_text: Any, expected_count: int) -> list[str]:
@@ -674,11 +720,25 @@ DEFAULT_SCREENSHOT_SYSTEM_PROMPT = (
 )
 
 
-def build_gemma_screenshot_prompt_v3(source_text_hint: Any = None, retry_note: str | None = None) -> str:
-    return build_screenshot_prompt_with_override(source_text_hint, retry_note, custom_prompt="")
+def build_gemma_screenshot_prompt_v3(
+    source_text_hint: Any = None,
+    retry_note: str | None = None,
+    target_lang: str = GOOGLE_TARGET_LANG,
+) -> str:
+    return build_screenshot_prompt_with_override(
+        source_text_hint,
+        retry_note,
+        custom_prompt="",
+        target_lang=target_lang,
+    )
 
 
-def build_screenshot_prompt_with_override(source_text_hint: Any = None, retry_note: str | None = None, custom_prompt: str = "") -> str:
+def build_screenshot_prompt_with_override(
+    source_text_hint: Any = None,
+    retry_note: str | None = None,
+    custom_prompt: str = "",
+    target_lang: str = GOOGLE_TARGET_LANG,
+) -> str:
     hint_block = ""
     if source_text_hint:
         hint_text = clean_model_output_multiline(str(source_text_hint)).strip()
@@ -692,10 +752,14 @@ def build_screenshot_prompt_with_override(source_text_hint: Any = None, retry_no
     if retry_note:
         retry_block = (
             "\nPrevious answer was too literal or contained analysis.\n"
-            f"Rewrite it as a natural Taiwanese translation only: {retry_note.strip()}\n"
+            f"Rewrite it as {target_lang_instruction(target_lang)} only: {retry_note.strip()}\n"
         )
 
-    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else DEFAULT_SCREENSHOT_SYSTEM_PROMPT
+    default_system = (
+        "Please help me translate the text in the image directly into "
+        f"{target_lang_instruction(target_lang)}."
+    )
+    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else default_system
 
     return (
         f"{system}\n"
@@ -704,7 +768,11 @@ def build_screenshot_prompt_with_override(source_text_hint: Any = None, retry_no
     )
 
 
-def build_gemma_screenshot_prompt_v2(retry_note: str | None = None) -> str:
+def build_gemma_screenshot_prompt_v2(
+    retry_note: str | None = None,
+    target_lang: str = GOOGLE_TARGET_LANG,
+) -> str:
+    target = target_lang_instruction(target_lang)
     retry_block = ""
     if retry_note:
         retry_block = (
@@ -713,18 +781,17 @@ def build_gemma_screenshot_prompt_v2(retry_note: str | None = None) -> str:
         )
     return (
         "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
-        "Translate the screenshot into natural Traditional Chinese used in Taiwan.\n"
-        "Focus only on the actual Chinese translation, not dictionary notes or analysis.\n"
+        f"Translate the screenshot into {target}.\n"
+        "Focus only on the actual translation, not dictionary notes or analysis.\n"
         "Return exactly one JSON object and nothing else:\n"
         "{\"translation\":\"...\"}\n"
         "Rules:\n"
-        "- The translation value must contain only the translated Chinese text.\n"
+        "- The translation value must contain only the translated text.\n"
         "- Do not include romanization, pinyin, furigana, meaning, context, notes, labels, or explanations.\n"
         "- Do not repeat the source text.\n"
         "- Do not add markdown, code fences, bullets, or extra keys.\n"
         "- Preserve line breaks inside the translation string when they help readability.\n"
-        "- For spatial or context words, choose the most natural Taiwanese phrasing for the scene.\n"
-        "- If the screenshot already contains Traditional Chinese, lightly normalize it only if needed.\n"
+        "- For spatial or context words, choose the most natural phrasing for the scene.\n"
         "- If you produce anything other than the translation, the answer is invalid.\n"
         "If you cannot comply, output {\"translation\":\"\"}."
         f"{retry_block}"
@@ -794,24 +861,23 @@ def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH
     return encoded.tobytes() if success else b""
 
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a game translation assistant."
-    "Translate the input into natural Traditional Chinese used in Taiwan."
-    "Preserve the original line breaks and sentence order."
-    "Do not add explanations, notes, bullets, romanization, or the original text."
-)
+DEFAULT_SYSTEM_PROMPT = target_lang_system_prompt(GOOGLE_TARGET_LANG)
 
 
-def build_gemma_prompt_conservative(text: Any) -> str:
+def build_gemma_prompt_conservative(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
     return (
-        f"{DEFAULT_SYSTEM_PROMPT}\n\n"
+        f"{target_lang_system_prompt(target_lang)}\n\n"
         f"Source text:\n{text}"
     )
 
 
-def build_gemma_prompt_with_override(text: Any, custom_prompt: str = "") -> str:
+def build_gemma_prompt_with_override(
+    text: Any,
+    custom_prompt: str = "",
+    target_lang: str = GOOGLE_TARGET_LANG,
+) -> str:
     """Return the default prompt unless the user provides an override."""
-    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else DEFAULT_SYSTEM_PROMPT
+    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else target_lang_system_prompt(target_lang)
     return (
         f"{system}\n\n"
         f"Source text:\n{text}"

@@ -38,6 +38,7 @@ class TranslationSettingsPanel(QWidget):
         translate_layout = QVBoxLayout(self.card_translate)
         translate_layout.setContentsMargins(18, 18, 18, 18)
         translate_layout.setSpacing(10)
+        translate_layout.setAlignment(Qt.AlignTop)
 
         self.lbl_translate = QLabel("")
         self.lbl_translate_hint = QLabel("")
@@ -193,7 +194,7 @@ class TranslationSettingsPanel(QWidget):
         self.update_translate_summary()
 
     def set_translate_advanced_visible(self, visible):
-        self.advanced_translate_frame.setVisible(bool(visible))
+        self.advanced_translate_frame.setVisible(True)
 
     def update_translate_summary(self):
         self.lbl_translate_summary.setText("")
