@@ -1,0 +1,388 @@
+{
+  "suite": "CH-T2 / CH-T3",
+  "version": 1,
+  "description": "Minimal reusable benchmark manifest template for OCR quality and timing observation.",
+  "cases": [
+    {
+      "id": "CH-T2-001",
+      "category": "CH-T2",
+      "sample_source": "dialogue",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "?????",
+      "actual": [
+        {
+          "text": "?????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-002",
+      "category": "CH-T2",
+      "sample_source": "ui",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "??",
+      "actual": [
+        {
+          "text": "??",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-003",
+      "category": "CH-T2",
+      "sample_source": "menu",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-004",
+      "category": "CH-T2",
+      "sample_source": "subtitle",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "?????",
+      "actual": [
+        {
+          "text": "?????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-005",
+      "category": "CH-T2",
+      "sample_source": "warning",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "??????",
+      "actual": [
+        {
+          "text": "??????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-006",
+      "category": "CH-T2",
+      "sample_source": "inventory",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-007",
+      "category": "CH-T2",
+      "sample_source": "dialogue",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-008",
+      "category": "CH-T2",
+      "sample_source": "status",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "?????",
+      "actual": [
+        {
+          "text": "?????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-009",
+      "category": "CH-T2",
+      "sample_source": "map",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "??",
+      "actual": [
+        {
+          "text": "??",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-010",
+      "category": "CH-T2",
+      "sample_source": "tooltip",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "???????",
+      "actual": [
+        {
+          "text": "???????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-011",
+      "category": "CH-T2",
+      "sample_source": "dialogue",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "???",
+      "actual": [
+        {
+          "text": "???",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-012",
+      "category": "CH-T2",
+      "sample_source": "quest",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-013",
+      "category": "CH-T2",
+      "sample_source": "settings",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-014",
+      "category": "CH-T2",
+      "sample_source": "shop",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-015",
+      "category": "CH-T2",
+      "sample_source": "combat",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "????",
+      "actual": [
+        {
+          "text": "????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-016",
+      "category": "CH-T2",
+      "sample_source": "notification",
+      "note": "????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "???",
+      "actual": [
+        {
+          "text": "???",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-017",
+      "category": "CH-T2",
+      "sample_source": "tutorial",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "?????",
+      "actual": [
+        {
+          "text": "?????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-018",
+      "category": "CH-T2",
+      "sample_source": "label",
+      "note": "?????",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "??",
+      "actual": [
+        {
+          "text": "??",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T2-019",
+      "category": "CH-T2",
+      "sample_source": "credits",
+      "note": "?? / ???",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "??????",
+      "actual": [
+        {
+          "text": "??????",
+          "x": 12,
+          "y": 20,
+          "w": 96,
+          "h": 28,
+          "confidence": 0.98
+        }
+      ]
+    },
+    {
+      "id": "CH-T3-001",
+      "category": "CH-T3",
+      "sample_source": "synthetic",
+      "note": "Timing sample for repeatable speed observation.",
+      "backend": "windows_ocr",
+      "preprocess": "baseline",
+      "expected": "??",
+      "actual": [
+        {
+          "text": "??",
+          "x": 16,
+          "y": 18,
+          "w": 44,
+          "h": 26,
+          "confidence": 0.93
+        }
+      ],
+      "timing_ms": 14.8
+    }
+  ]
+}

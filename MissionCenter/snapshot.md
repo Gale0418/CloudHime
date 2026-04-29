@@ -1,22 +1,28 @@
-# 快照
+# Snapshot
 
-- 日期：2026-04-29
-- 專案：CloudHime demo 籌備與商業化
-- 狀態：Intake
-- 進度：9%
+- Date: 2026-04-29
+- Project: CloudHime demo 與 MissionCenter 收尾
+- Status: Done
+- Progress: 100%
 
-## 目前狀態
+## 概要
 
-MissionCenter 現在會把視覺 HUD 對齊到主程式 1 人 roster。helper avatar 池仍然是 16 種外觀，但目前只有主程式在畫面上，因為沒有活躍子 AGENT。
+MissionCenter 的 HUD 已完全改成 `tasks.md` 驅動，並完成多語 UI smoke test。
+`CH-T5`、`CH-S5.4`、`CH-T6` 都已收束，設定頁的 `English / 繁中` 下拉可正常切換，主視窗按鈕與翻譯目標語言也會同步更新。
 
-## 重新開啟指引
+## 驗證重點
 
-1. 先讀 `MissionCenter/progress.md` 看目前活躍任務。
-2. 再讀 `MissionCenter/tasks.md` 找下一個 Ready 項目。
-3. 開始動手前，先把對應任務的狀態更新好。
-4. 任務完成前，記得新增或更新 smoke test。
-5. Scope 有變動時，先記錄到 `decisions.md` 或 `notes.md`。
+- 以 PySide6 + Windows plugin 啟動 `Controller`
+- 建立 `SettingsWindowRevamp`
+- 語言下拉顯示 `English / Traditional Chinese`
+- 切到 `繁中` 後：
+  - `ctrl.get_ui_language()` = `zh-TW`
+  - `btn_now` = `立即翻譯`
+  - `btn_30` = `隨機 3s~`
+  - `lbl_page_title` = `設定頁面`
+  - `lbl_ui_language` = `UI 語言`
 
-## 下一個最佳動作
+## 收尾
 
-在內建瀏覽器打開 `MissionCenter/command-center.html`，確認 1-role roster、版面與控制按鈕都正常。
+- MissionCenter closeout 已完成
+- 目前狀態可直接作為重開 checkpoint

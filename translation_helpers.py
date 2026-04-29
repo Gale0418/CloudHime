@@ -14,6 +14,333 @@ from ocr_quality import HAS_CJK_PATTERN, normalize_ocr_text
 
 GOOGLE_TARGET_LANG = "zh-TW"
 DEFAULT_AI_IMAGE_MAX_WIDTH = 1536
+UI_LANGUAGE_ORDER = ("en", "zh-TW")
+UI_LANGUAGE_ALIASES = {
+    "zh": "zh-TW",
+    "zh-tw": "zh-TW",
+    "zh_tw": "zh-TW",
+    "tw": "zh-TW",
+    "en-us": "en",
+    "en-gb": "en",
+    "english": "en",
+}
+UI_TEXTS = {
+    "settings_title": {
+        "zh-TW": "設定頁面",
+        "en": "Settings",
+    },
+    "settings_subtitle": {
+        "zh-TW": "集中管理翻譯、OCR、外觀與掃描行為。",
+        "en": "Manage translation, OCR, appearance, and scan behavior in one place.",
+    },
+    "settings_ocr_title": {
+        "zh-TW": "自動掃描",
+        "en": "Auto Scan",
+    },
+    "settings_ocr_hint": {
+        "zh-TW": "你可以隨意修改自動掃描的秒數以及偏移幅度",
+        "en": "Adjust the scan interval and jitter range here.",
+    },
+    "settings_pass_through": {
+        "zh-TW": "允許滑鼠穿透框選區 (點擊背景遊戲)",
+        "en": "Allow mouse passthrough on region selection (click through to the game)",
+    },
+    "settings_auto_scan_title": {
+        "zh-TW": "掃描設定",
+        "en": "Scan Settings",
+    },
+    "settings_auto_scan_hint": {
+        "zh-TW": "中心秒數與偏移幅度會同步到主畫面",
+        "en": "The interval and jitter are synced to the main window.",
+    },
+    "settings_random_scan_center": {
+        "zh-TW": "中心秒數",
+        "en": "Center seconds",
+    },
+    "settings_random_scan_jitter": {
+        "zh-TW": "偏移幅度",
+        "en": "Jitter range",
+    },
+    "settings_threshold_refresh": {
+        "zh-TW": "閥值刷新",
+        "en": "Threshold refresh",
+    },
+    "settings_region_render_title": {
+        "zh-TW": "文字模式",
+        "en": "Text mode",
+    },
+    "settings_region_render_hint": {
+        "zh-TW": "在框選模式下才會啟用，一共有三種文字顯示方式可以切換",
+        "en": "Only applies in region mode. You can switch between three text display styles.",
+    },
+    "settings_region_render_mode": {
+        "zh-TW": "顯示方式",
+        "en": "Display mode",
+    },
+    "settings_render_bubble": {
+        "zh-TW": "氣泡模式",
+        "en": "Bubble",
+    },
+    "settings_render_relief": {
+        "zh-TW": "浮離模式",
+        "en": "Relief",
+    },
+    "settings_render_screenshot": {
+        "zh-TW": "截圖模式",
+        "en": "Screenshot",
+    },
+    "settings_screenshot_prompt_placeholder": {
+        "zh-TW": "這裡放截圖模式專用提示詞；留空就會使用預設提示詞。",
+        "en": "Optional prompt for screenshot mode. Leave blank to use the default prompt.",
+    },
+    "settings_relief_title": {
+        "zh-TW": "浮離細節",
+        "en": "Relief details",
+    },
+    "settings_relief_hint": {
+        "zh-TW": "只在浮離模式才啟用，位移 0 會對齊原位",
+        "en": "Only available in Relief mode; a gap of 0 keeps text aligned with the source.",
+    },
+    "settings_relief_side": {
+        "zh-TW": "文字方向",
+        "en": "Text side",
+    },
+    "settings_relief_font": {
+        "zh-TW": "文字大小",
+        "en": "Font size",
+    },
+    "settings_relief_gap": {
+        "zh-TW": "浮離位移",
+        "en": "Offset",
+    },
+    "settings_relief_opacity": {
+        "zh-TW": "選區框透明度",
+        "en": "Region opacity",
+    },
+    "settings_random_scan_summary": {
+        "zh-TW": "目前：{center}s 附近 · 約 {low} ~ {high} 秒",
+        "en": "Current: around {center}s · about {low} ~ {high} seconds",
+    },
+    "settings_auto_threshold_refresh_summary": {
+        "zh-TW": "目前：每 {minutes} 分鐘重新評估一次閥值",
+        "en": "Current: re-evaluate threshold every {minutes} minutes",
+    },
+    "settings_region_render_summary_bubble": {
+        "zh-TW": "目前：氣泡模式 · 保留原本泡泡",
+        "en": "Current: Bubble mode · keep the original bubble style",
+    },
+    "settings_region_render_summary_relief": {
+        "zh-TW": "目前：浮離模式 · 文字貼近原文",
+        "en": "Current: Relief mode · keep text close to the source",
+    },
+    "settings_region_render_summary_screenshot": {
+        "zh-TW": "目前：截圖模式 · 整塊區域一起理解",
+        "en": "Current: Screenshot mode · interpret the whole region together",
+    },
+    "settings_relief_summary": {
+        "zh-TW": "目前：{side} · {font_pt} pt · {gap_px}px · {opacity}%",
+        "en": "Current: {side} · {font_pt} pt · {gap_px}px · {opacity}%",
+    },
+    "settings_relief_side_auto": {
+        "zh-TW": "自動",
+        "en": "Auto",
+    },
+    "settings_relief_side_top": {
+        "zh-TW": "上方",
+        "en": "Top",
+    },
+    "settings_relief_side_bottom": {
+        "zh-TW": "下方",
+        "en": "Bottom",
+    },
+    "settings_relief_side_left": {
+        "zh-TW": "左側",
+        "en": "Left",
+    },
+    "settings_relief_side_right": {
+        "zh-TW": "右側",
+        "en": "Right",
+    },
+    "settings_appearance": {
+        "zh-TW": "外觀",
+        "en": "Appearance",
+    },
+    "settings_dark_mode": {
+        "zh-TW": "深色模式",
+        "en": "Dark mode",
+    },
+    "settings_close": {
+        "zh-TW": "關閉",
+        "en": "Close",
+    },
+    "settings_autosave": {
+        "zh-TW": "自動儲存",
+        "en": "Autosave",
+    },
+    "settings_synced": {
+        "zh-TW": "已同步",
+        "en": "Synced",
+    },
+    "settings_theme_mode": {
+        "zh-TW": "顏色模式",
+        "en": "Theme",
+    },
+    "settings_ui_language": {
+        "zh-TW": "UI 語言",
+        "en": "UI Language",
+    },
+    "translation_panel_title": {
+        "zh-TW": "翻譯功能",
+        "en": "Translation",
+    },
+    "translation_panel_hint": {
+        "zh-TW": "Google 翻譯可直接使用；AI 模式才需要 API Key 與模型。",
+        "en": "Google translation works out of the box; AI mode needs an API key and model.",
+    },
+    "translation_mode_google": {
+        "zh-TW": "🌐 Google 翻譯",
+        "en": "🌐 Google Translate",
+    },
+    "translation_mode_ai": {
+        "zh-TW": "🧠 Gemma AI 翻譯",
+        "en": "🧠 Gemma AI",
+    },
+    "translation_api_key": {
+        "zh-TW": "Google API KEY",
+        "en": "Google API Key",
+    },
+    "translation_api_key_placeholder": {
+        "zh-TW": "輸入 API KEY",
+        "en": "Enter API key",
+    },
+    "translation_ai_model": {
+        "zh-TW": "AI 模型",
+        "en": "AI Model",
+    },
+    "translation_gemma_prompt": {
+        "zh-TW": "Gemma Prompt",
+        "en": "Gemma Prompt",
+    },
+    "translation_gemma_prompt_placeholder": {
+        "zh-TW": "輸入自訂 Gemma 提示詞...",
+        "en": "Enter a custom Gemma prompt...",
+    },
+    "translation_auto_switch": {
+        "zh-TW": "自動切換",
+        "en": "Auto switch",
+    },
+    "ocr_backend_title": {
+        "zh-TW": "OCR",
+        "en": "OCR",
+    },
+    "ocr_backend_windows": {
+        "zh-TW": "Windows OCR",
+        "en": "Windows OCR",
+    },
+    "ocr_backend_google": {
+        "zh-TW": "Google OCR",
+        "en": "Google OCR",
+    },
+    "ocr_backend_google_tooltip_ai": {
+        "zh-TW": "翻譯前會先用 Gemma 截圖 OCR 協助辨識。",
+        "en": "Uses Gemma screenshot OCR assistance before translation.",
+    },
+    "ocr_backend_google_tooltip_basic": {
+        "zh-TW": "需要 Gemma AI 與 Google API KEY 才能使用。",
+        "en": "Requires Gemma AI and a Google API key.",
+    },
+    "ui_language_zh_tw": {
+        "zh-TW": "繁體中文",
+        "en": "Traditional Chinese",
+    },
+    "ui_language_en": {
+        "zh-TW": "英文",
+        "en": "English",
+    },
+}
+THEME_TEXTS = {
+    "light": {
+        "zh-TW": "淺色模式",
+        "en": "Light",
+    },
+    "dark": {
+        "zh-TW": "深色模式",
+        "en": "Dark",
+    },
+    "high_contrast": {
+        "zh-TW": "高對比模式",
+        "en": "High Contrast",
+    },
+}
+
+
+def get_ui_language(source: Any = None, fallback: str = "en") -> str:
+    if source is None:
+        candidate = fallback
+    elif isinstance(source, str):
+        candidate = source
+    elif hasattr(source, "get_ui_language"):
+        try:
+            candidate = source.get_ui_language()
+        except Exception:
+            candidate = None
+    else:
+        candidate = (
+            getattr(source, "ui_language", None)
+            or getattr(source, "ui_locale", None)
+            or getattr(source, "language", None)
+        )
+    normalized = str(candidate or fallback).strip()
+    lowered = normalized.lower().replace("_", "-")
+    normalized = UI_LANGUAGE_ALIASES.get(lowered, normalized)
+    if normalized not in UI_LANGUAGE_ORDER:
+        if lowered.startswith("en"):
+            normalized = "en"
+        elif lowered.startswith("zh"):
+            normalized = "zh-TW"
+        else:
+            normalized = fallback if fallback in UI_LANGUAGE_ORDER else "zh-TW"
+    return normalized
+
+
+def ui_text(source: Any, key: str, default: str = "") -> str:
+    lang = get_ui_language(source)
+    entry = UI_TEXTS.get(key)
+    if not entry:
+        return default or key
+    return entry.get(lang) or entry.get("zh-TW") or entry.get("en") or default or key
+
+
+def theme_label(theme_key: Any, source: Any = None) -> str:
+    lang = get_ui_language(source)
+    normalized = str(theme_key or "").strip().lower()
+    if normalized in {"system", "default", "light_mode"}:
+        normalized = "light"
+    entry = THEME_TEXTS.get(normalized)
+    if not entry:
+        return normalized or "light"
+    return entry.get(lang) or entry.get("zh-TW") or entry.get("en") or normalized
+
+
+def ui_language_label(language_code: Any, source: Any = None) -> str:
+    lang = get_ui_language(source)
+    normalized = get_ui_language(language_code)
+    key = f"ui_language_{normalized.replace('-', '_').lower()}"
+    return ui_text(lang, key, default=normalized)
+
+
+def ui_language_options(source: Any = None) -> list[tuple[str, str]]:
+    return [(ui_language_label(code, source), code) for code in UI_LANGUAGE_ORDER]
+
+
+def relief_side_options(source: Any = None) -> list[tuple[str, str]]:
+    return [
+        (ui_text(source, "settings_relief_side_auto"), "auto"),
+        (ui_text(source, "settings_relief_side_top"), "top"),
+        (ui_text(source, "settings_relief_side_bottom"), "bottom"),
+        (ui_text(source, "settings_relief_side_left"), "left"),
+        (ui_text(source, "settings_relief_side_right"), "right"),
+    ]
 
 
 def detect_source_language(text: Any) -> str:

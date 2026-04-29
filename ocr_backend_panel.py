@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QPushBut
 
 from ocr_backend_catalog import BACKEND_SPECS, optional_backend_names, summarize_backend_chain
 from ocr_backend_installer import detect_backend_state, install_backend_packages
+import translation_helpers as translation_tools
 from themes import resolve_theme
 
 
@@ -40,15 +41,15 @@ class OcrBackendSettingsPanel(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(8)
 
-        self.lbl_title = QLabel("OCR")
+        self.lbl_title = QLabel("")
         self.lbl_title.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         outer.addWidget(self.lbl_title)
 
-        self.lbl_windows = QLabel("Windows OCR")
+        self.lbl_windows = QLabel("")
         self.lbl_windows.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
         outer.addWidget(self.lbl_windows)
 
-        self.btn_google_ocr = QPushButton("GoogleOCR")
+        self.btn_google_ocr = QPushButton("")
         self.btn_google_ocr.setCheckable(True)
         self.btn_google_ocr.setCursor(Qt.PointingHandCursor)
         self.btn_google_ocr.clicked.connect(self.on_google_ocr_toggled)
@@ -66,6 +67,7 @@ class OcrBackendSettingsPanel(QFrame):
             outer.addWidget(button)
 
         outer.addStretch()
+        self.refresh_localized_texts()
 
     def _backend_chain(self):
         chain = []
@@ -78,6 +80,7 @@ class OcrBackendSettingsPanel(QFrame):
         return chain
 
     def _refresh_summary(self):
+        lang = translation_tools.get_ui_language(self.controller)
         chain_text = summarize_backend_chain(self._backend_chain())
         if getattr(self.controller, "google_ocr_enabled", False):
             chain_text = f"{chain_text} + GoogleOCR"
@@ -85,9 +88,9 @@ class OcrBackendSettingsPanel(QFrame):
         self.lbl_windows.setToolTip(chain_text)
         has_ai = bool(getattr(getattr(self.controller, "worker", None), "has_multimodal_ai", lambda: False)())
         if has_ai:
-            tooltip = "Use Gemma screenshot OCR assist before translation."
+            tooltip = translation_tools.ui_text(lang, "ocr_backend_google_tooltip_ai")
         else:
-            tooltip = "Requires Gemma AI + Google API KEY to work."
+            tooltip = translation_tools.ui_text(lang, "ocr_backend_google_tooltip_basic")
         self.btn_google_ocr.setToolTip(tooltip)
 
     def on_google_ocr_toggled(self, checked):
@@ -184,6 +187,7 @@ class OcrBackendSettingsPanel(QFrame):
             QMessageBox.warning(self, title, body)
 
     def sync_from_controller(self):
+        self.refresh_localized_texts()
         chain = set(self._backend_chain())
         google_ocr_enabled = bool(getattr(self.controller, "google_ocr_enabled", False))
         has_ai = bool(getattr(getattr(self.controller, "worker", None), "has_multimodal_ai", lambda: False)())
@@ -209,6 +213,7 @@ class OcrBackendSettingsPanel(QFrame):
 
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
+        self.refresh_localized_texts()
         self.lbl_title.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {theme.subtext};")
         self.lbl_windows.setStyleSheet(
             f"color: {theme.accent}; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; "
@@ -232,3 +237,13 @@ class OcrBackendSettingsPanel(QFrame):
             if button is not None:
                 button.setStyleSheet(button_style)
         self._refresh_summary()
+
+    def refresh_localized_texts(self):
+        lang = translation_tools.get_ui_language(self.controller)
+        self.lbl_title.setText(translation_tools.ui_text(lang, "ocr_backend_title"))
+        self.lbl_windows.setText(translation_tools.ui_text(lang, "ocr_backend_windows"))
+        self.btn_google_ocr.setText(translation_tools.ui_text(lang, "ocr_backend_google"))
+        for backend_name in optional_backend_names():
+            button = self._backend_buttons.get(backend_name)
+            if button is not None:
+                button.setText(BACKEND_SPECS[backend_name].label)
