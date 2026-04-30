@@ -396,3 +396,370 @@ source_text_hint_len=0
 
 [2026-04-30 08:44:01] [TRANSLATION] google batch hits=0/4 source_count=4
 
+[2026-04-30 20:08:21] [TRANSLATION] google batch hits=0/2 source_count=2
+
+[2026-04-30 23:23:42] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:23:44] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:23:45] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:23:48] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:23:52] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:23:56] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:23:59] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:03] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:06] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:09] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:11] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:16] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:30] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:24:44] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:25:02] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:25:15] [screenshot attempt 1] model=gemma-4-31b-it
+valid=False
+raw=*   Input: An image containing the text "Gemini API Rate Limit".
+    *   Task: Translate this text into natural Traditional Chinese as used in Taiwan.
+
+    *   "Gemini": This is a proper noun (the name of Google's AI model). In Taiwan, proper nouns like this are usually kept in English.
+    *   "API": Application Programming Interface. This is a technical term. In Taiwan, "API" is almost always kept as "API" in technical contexts.
+    *   "Rate Limit": This refers to the restriction on the number of requests a user can make to an API within a certain timeframe.
+        *   "Rate": 速率, 頻率, 速率.
+        *   "Limit": 限制.
+        *   Common technical translations in Taiwan: "速率限制" or "頻率限制". "速率限制" is very common for "rate limit".
+
+    *   Option 1: Gemini API 速率限制 (Very standard, technical).
+    *   Option 2: Gemini API 頻率限制 (Also common, emphasizes the frequency of requests).
+    *   Option 3: Gemini API 的速率限制 (Adding "的" makes it a bit more like a sentence/phrase, but for a title/header, it's usually omitted).
+
+    *   In a technical context (like documentation or a dashboard), "Gemini API 速率限制" is the most natural and direct translation.
+
+    *   Direct translation: Gemini API 速率限制.Gemini API 速率限制
+cleaned=*   "Rate": 速率, 頻率, 速率.
+*   "Limit": 限制.
+*   Common technical translations in Taiwan: "速率限制" or "頻率限制". "速率限制" is very common for "rate limit".
+*   Option 1: Gemini API 速率限制 (Very standard, technical).
+*   Option 2: Gemini API 頻率限制 (Also common, emphasizes the frequency of requests).
+*   Option 3: Gemini API 的速率限制 (Adding "的" makes it a bit more like a sentence/phrase, but for a title/header, it's usually omitted).
+*   In a technical context (like documentation or a dashboard), "Gemini API 速率限制" is the most natural and direct translation.
+*   Direct translation: Gemini API 速率限制.Gemini API 速率限制
+
+[2026-04-30 23:25:21] [screenshot attempt 2] model=gemma-4-31b-it
+valid=False
+raw=*   Input image text: "Gemini API Rate Limit"
+    *   Target language: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translation, no explanation.
+
+    *   "Gemini": Proper noun, keep as "Gemini".
+    *   "API": Technical term, keep as "API".
+    *   "Rate Limit": In Taiwan's tech context, this is commonly translated as "速率限制" or "頻率限制". "速率限制" is very common for network/API contexts.
+
+    *   Option 1: Gemini API 速率限制 (Very standard)
+    *   Option 2: Gemini API 頻率限制 (Also common)
+
+    *   "Gemini API 速率限制" is the most natural and professional translation for this specific technical term in Taiwan.Gemini API 速率限制
+cleaned=*   "Rate Limit": In Taiwan's tech context, this is commonly translated as "速率限制" or "頻率限制". "速率限制" is very common for network/API contexts.
+*   Option 1: Gemini API 速率限制 (Very standard)
+*   Option 2: Gemini API 頻率限制 (Also common)
+*   "Gemini API 速率限制" is the most natural and professional translation for this specific technical term in Taiwan.Gemini API 速率限制
+
+[2026-04-30 23:25:27] [screenshot attempt 3] model=gemma-4-31b-it
+valid=False
+raw=*   Input image text: "Gemini API Rate Limit"
+    *   Target language: Natural Traditional Chinese (Taiwan).
+    *   Constraint: Translation only. No analysis, no literal translation, no explanation.
+
+    *   "Gemini": Proper noun (keep as is).
+    *   "API": Technical term (keep as is).
+    *   "Rate Limit": In Taiwan's technical context, "速率限制" or "頻率限制" are used. "速率限制" is the standard translation for "rate limit" in API documentation.
+
+    *   Gemini API 速率限制Gemini API 速率限制
+cleaned=*   "Rate Limit": In Taiwan's technical context, "速率限制" or "頻率限制" are used. "速率限制" is the standard translation for "rate limit" in API documentation.
+*   Gemini API 速率限制Gemini API 速率限制
+
+[2026-04-30 23:25:27] [screenshot failed] model=gemma-4-31b-it
+last_raw=*   Input image text: "Gemini API Rate Limit"
+    *   Target language: Natural Traditional Chinese (Taiwan).
+    *   Constraint: Translation only. No analysis, no literal translation, no explanation.
+
+    *   "Gemini": Proper noun (keep as is).
+    *   "API": Technical term (keep as is).
+    *   "Rate Limit": In Taiwan's technical context, "速率限制" or "頻率限制" are used. "速率限制" is the standard translation for "rate limit" in API documentation.
+
+    *   Gemini API 速率限制Gemini API 速率限制
+
+[2026-04-30 23:25:27] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:25:41] [screenshot attempt 1] model=gemma-4-31b-it
+valid=False
+raw=*   Image contains a document icon and the text "Rate Limit Docs".
+    *   Target language: Traditional Chinese (Taiwan).
+    *   Context: Likely a link or a button in a software interface, API documentation, or a technical dashboard.
+
+    *   "Rate Limit": In a technical context (API, networking), this refers to the restriction on the number of requests a user can make within a certain timeframe.
+    *   "Docs": Short for "Documentation".
+
+    *   *Rate Limit*:
+        *   Literal: 速率限制 (Sùlǜ xiànzhì) - Common, but "Rate" in this context is often translated as "頻率" (frequency) or "速率".
+        *   Technical standard in Taiwan: 速率限制 or 頻率限制. "速率限制" is very common for "Rate Limit".
+    *   *Docs*:
+        *   Literal: 文件 (Wénjiàn) - Standard for "documentation" or "documents".
+        *   Alternative: 說明文件 (Shuōmíng wénjiàn) - More explicit.
+
+    *   Option 1: 速率限制文件 (Sùlǜ xiànzhì wénjiàn) - Direct and professional.
+    *   Option 2: 頻率限制文件 (Pínlǜ xiànzhì wénjiàn) - Also common, focusing on the frequency of requests.
+    *   Option 3: 速率限制說明 (Sùlǜ xiànzhì shuōmíng) - "Rate Limit Instructions/Explanation", sounds natural for a link.
+
+    *   In Taiwan's tech industry, "Rate Limit" is most frequently translated as "速率限制".
+    *   "Docs" is almost always "文件".
+
+    *   Final translation: 速率限制文件.這張圖片中的文字「Rate Limit Docs」翻譯成台灣常用的繁體中文為：
+
+**速率限制文件**
+cleaned=*   Literal: 速率限制 (Sùlǜ xiànzhì) - Common, but "Rate" in this context is often translated as "頻率" (frequency) or "速率".
+*   Technical standard in Taiwan: 速率限制 or 頻率限制. "速率限制" is very common for "Rate Limit".
+*   Literal: 文件 (Wénjiàn) - Standard for "documentation" or "documents".
+*   Alternative: 說明文件 (Shuōmíng wénjiàn) - More explicit.
+*   Option 1: 速率限制文件 (Sùlǜ xiànzhì wénjiàn) - Direct and professional.
+*   Option 2: 頻率限制文件 (Pínlǜ xiànzhì wénjiàn) - Also common, focusing on the frequency of requests.
+*   Option 3: 速率限制說明 (Sùlǜ xiànzhì shuōmíng) - "Rate Limit Instructions/Explanation", sounds natural for a link.
+*   In Taiwan's tech industry, "Rate Limit" is most frequently translated as "速率限制".
+*   "Docs" is almost always "文件".
+*   Final translation: 速率限制文件.這張圖片中的文字「Rate Limit Docs」翻譯成台灣常用的繁體中文為：
+**速率限制文件**
+
+[2026-04-30 23:25:49] [screenshot attempt 2] model=gemma-4-31b-it
+valid=False
+raw=*   Input: An image containing a document icon and the text "Rate Limit Docs".
+    *   Target: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translations, no explanations.
+
+    *   "Rate Limit": In technical contexts (API, software), this is usually translated as "速率限制" or "頻率限制". In Taiwan, "速率限制" is very common for network/API rate limiting.
+    *   "Docs": Short for "Documentation". In Taiwan, this is translated as "文件" or "說明文件".
+
+    *   Option 1: 速率限制文件 (Standard, professional)
+    *   Option 2: 頻率限制文件 (Also common, but "速率" is more standard for "Rate Limit")
+    *   Option 3: 速率限制說明 (More natural for a link/button)
+
+    *   "速率限制文件" is the most direct and natural translation for "Rate Limit Docs" in a technical UI context in Taiwan.速率限制文件
+cleaned=*   "Rate Limit": In technical contexts (API, software), this is usually translated as "速率限制" or "頻率限制". In Taiwan, "速率限制" is very common for network/API rate limiting.
+*   "Docs": Short for "Documentation". In Taiwan, this is translated as "文件" or "說明文件".
+*   Option 1: 速率限制文件 (Standard, professional)
+*   Option 2: 頻率限制文件 (Also common, but "速率" is more standard for "Rate Limit")
+*   Option 3: 速率限制說明 (More natural for a link/button)
+*   "速率限制文件" is the most direct and natural translation for "Rate Limit Docs" in a technical UI context in Taiwan.速率限制文件
+
+[2026-04-30 23:25:57] [screenshot attempt 3] model=gemma-4-31b-it
+valid=False
+raw=*   Input: An image with a document icon and the text "Rate Limit Docs".
+    *   Target Language: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translations, no explanations.
+
+    *   "Rate Limit": In a technical/API context, this refers to the maximum number of requests a user can make in a given timeframe.
+    *   "Docs": Short for "Documentation".
+
+    *   "Rate Limit" $\rightarrow$ 速率限制 (Sùlǜ xiànzhì) or 頻率限制 (Pínlǜ xiànzhì). "速率限制" is very standard in Taiwan for technical documentation.
+    *   "Docs" $\rightarrow$ 文件 (Wénjiàn) or 說明文件 (Shuōmíng wénjiàn). "文件" is the most natural short form.
+
+    *   "速率限制文件" (Rate Limit Documentation)
+    *   "頻率限制文件" (Frequency Limit Documentation)
+
+    *   "速率限制文件" is the most natural and professional translation for "Rate Limit Docs" in a software/API context in Taiwan.速率限制文件
+cleaned=*   "Rate Limit" $\rightarrow$ 速率限制 (Sùlǜ xiànzhì) or 頻率限制 (Pínlǜ xiànzhì). "速率限制" is very standard in Taiwan for technical documentation.
+*   "Docs" $\rightarrow$ 文件 (Wénjiàn) or 說明文件 (Shuōmíng wénjiàn). "文件" is the most natural short form.
+*   "速率限制文件" (Rate Limit Documentation)
+*   "頻率限制文件" (Frequency Limit Documentation)
+*   "速率限制文件" is the most natural and professional translation for "Rate Limit Docs" in a software/API context in Taiwan.速率限制文件
+
+[2026-04-30 23:25:57] [screenshot failed] model=gemma-4-31b-it
+last_raw=*   Input: An image with a document icon and the text "Rate Limit Docs".
+    *   Target Language: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translations, no explanations.
+
+    *   "Rate Limit": In a technical/API context, this refers to the maximum number of requests a user can make in a given timeframe.
+    *   "Docs": Short for "Documentation".
+
+    *   "Rate Limit" $\rightarrow$ 速率限制 (Sùlǜ xiànzhì) or 頻率限制 (Pínlǜ xiànzhì). "速率限制" is very standard in Taiwan for technical documentation.
+    *   "Docs" $\rightarrow$ 文件 (Wénjiàn) or 說明文件 (Shuōmíng wénjiàn). "文件" is the most natural short form.
+
+    *   "速率限制文件" (Rate Limit Documentation)
+    *   "頻率限制文件" (Frequency Limit Documentation)
+
+    *   "速率限制文件" is the most natural and professional translation for "Rate Limit Docs" in a software/API context in Taiwan.速率限制文件
+
+[2026-04-30 23:25:57] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-04-30 23:26:08] [screenshot attempt 1] model=gemma-4-31b-it
+valid=False
+raw=*   Image contains an icon of a document and the text "Rate Limit Docs".
+    *   Target language: Traditional Chinese (Taiwan).
+    *   Context: Likely a link or a button in a software interface, API documentation, or a technical dashboard.
+
+    *   "Rate Limit": In technical contexts (API, networking), this refers to the restriction on the number of requests a user can make within a certain timeframe.
+        *   Common translations: 速率限制 (sù lǜ xiàn zhì), 頻率限制 (pín lǜ xiàn zhì).
+        *   In Taiwan, "速率限制" or "頻率限制" are both used, but "速率限制" is very common for "rate limit".
+    *   "Docs": Short for "Documentation".
+        *   Common translations: 文件 (wén jiàn), 說明文件 (shuō míng wén jiàn).
+
+    *   Option 1: 速率限制文件 (Literal, clear)
+    *   Option 2: 頻率限制文件 (Also common, focuses on frequency)
+    *   Option 3: 速率限制說明文件 (More formal)
+
+    *   In a UI context, brevity is key. "速率限制文件" is the most direct and natural translation for "Rate Limit Docs".
+
+    *   Direct translation: 速率限制文件.這張圖片中的文字「Rate Limit Docs」翻譯成台灣常用的繁體中文為：
+
+**速率限制文件**
+cleaned=*   Common translations: 速率限制 (sù lǜ xiàn zhì), 頻率限制 (pín lǜ xiàn zhì).
+*   In Taiwan, "速率限制" or "頻率限制" are both used, but "速率限制" is very common for "rate limit".
+*   Common translations: 文件 (wén jiàn), 說明文件 (shuō míng wén jiàn).
+*   Option 1: 速率限制文件 (Literal, clear)
+*   Option 2: 頻率限制文件 (Also common, focuses on frequency)
+*   Option 3: 速率限制說明文件 (More formal)
+*   In a UI context, brevity is key. "速率限制文件" is the most direct and natural translation for "Rate Limit Docs".
+*   Direct translation: 速率限制文件.這張圖片中的文字「Rate Limit Docs」翻譯成台灣常用的繁體中文為：
+**速率限制文件**
+
+[2026-04-30 23:26:15] [screenshot attempt 2] model=gemma-4-31b-it
+valid=False
+raw=*   Input: An image containing a document icon and the text "Rate Limit Docs".
+    *   Target: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translation, no explanation.
+
+    *   "Rate Limit": Technical term for limiting the number of requests. In Taiwan, "速率限制" or "頻率限制" are used. "速率限制" is standard for "Rate Limit".
+    *   "Docs": Short for "Documentation". In Taiwan, this is typically translated as "文件" or "說明文件".
+
+    *   Option 1: 速率限制文件 (Direct, technical)
+    *   Option 2: 速率限制說明文件 (More formal)
+    *   Option 3: 頻率限制文件 (Also common)
+
+    *   In a UI context (which this looks like), "速率限制文件" is the most natural and concise translation.
+
+    *   The user specifically asked for *translation only*.速率限制文件
+cleaned=*   "Rate Limit": Technical term for limiting the number of requests. In Taiwan, "速率限制" or "頻率限制" are used. "速率限制" is standard for "Rate Limit".
+*   "Docs": Short for "Documentation". In Taiwan, this is typically translated as "文件" or "說明文件".
+*   Option 1: 速率限制文件 (Direct, technical)
+*   Option 2: 速率限制說明文件 (More formal)
+*   Option 3: 頻率限制文件 (Also common)
+*   In a UI context (which this looks like), "速率限制文件" is the most natural and concise translation.
+*   The user specifically asked for *translation only*.速率限制文件
+
+[2026-04-30 23:26:22] [screenshot attempt 3] model=gemma-4-31b-it
+valid=False
+raw=*   Input: An image with a document icon and the text "Rate Limit Docs".
+    *   Target Language: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translation, no explanation.
+
+    *   "Rate Limit": In a technical context (API, networking), this refers to limiting the number of requests. In Taiwan, the common terms are "速率限制" or "頻率限制". "速率限制" is very common for "Rate Limit".
+    *   "Docs": Short for "Documentation". In Taiwan, this is "文件" or "說明文件".
+
+    *   "速率限制文件" (Standard, concise)
+    *   "速率限制說明文件" (More descriptive)
+
+    *   The user wants "natural Traditional Chinese used in Taiwan".
+    *   For a UI element or a link (which this looks like), "速率限制文件" is the most natural and concise translation.
+
+    *   Translation only. No other text.速率限制文件
+cleaned=*   "Rate Limit": In a technical context (API, networking), this refers to limiting the number of requests. In Taiwan, the common terms are "速率限制" or "頻率限制". "速率限制" is very common for "Rate Limit".
+*   "Docs": Short for "Documentation". In Taiwan, this is "文件" or "說明文件".
+*   "速率限制文件" (Standard, concise)
+*   "速率限制說明文件" (More descriptive)
+*   For a UI element or a link (which this looks like), "速率限制文件" is the most natural and concise translation.
+*   Translation only. No other text.速率限制文件
+
+[2026-04-30 23:26:22] [screenshot failed] model=gemma-4-31b-it
+last_raw=*   Input: An image with a document icon and the text "Rate Limit Docs".
+    *   Target Language: Natural Traditional Chinese used in Taiwan.
+    *   Constraint: Translation only. No analysis, no literal translation, no explanation.
+
+    *   "Rate Limit": In a technical context (API, networking), this refers to limiting the number of requests. In Taiwan, the common terms are "速率限制" or "頻率限制". "速率限制" is very common for "Rate Limit".
+    *   "Docs": Short for "Documentation". In Taiwan, this is "文件" or "說明文件".
+
+    *   "速率限制文件" (Standard, concise)
+    *   "速率限制說明文件" (More descriptive)
+
+    *   The user wants "natural Traditional Chinese used in Taiwan".
+    *   For a UI element or a link (which this looks like), "速率限制文件" is the most natural and concise translation.
+
+    *   Translation only. No other text.速率限制文件
+

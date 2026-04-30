@@ -135,6 +135,11 @@ class TranslationSettingsPanel(QWidget):
         self.cmb_ai_model.currentIndexChanged.connect(self.on_ai_model_changed)
         advanced_layout.addWidget(self.cmb_ai_model)
 
+        self.lbl_ai_model_notes = QLabel("")
+        self.lbl_ai_model_notes.setWordWrap(True)
+        self.lbl_ai_model_notes.setVisible(True)
+        advanced_layout.addWidget(self.lbl_ai_model_notes)
+
         self.lbl_gemma_prompt = QLabel("")
         advanced_layout.addWidget(self.lbl_gemma_prompt)
         self.input_gemma_prompt = QPlainTextEdit()
@@ -211,6 +216,23 @@ class TranslationSettingsPanel(QWidget):
             translation_tools.ui_text(lang, "translation_gemma_prompt_placeholder")
         )
         self.chk_auto_switch.setText(translation_tools.ui_text(lang, "translation_auto_switch"))
+        if lang == "en":
+            notes = [
+                "Notes:",
+                "1. Gemma 3 1B - fastest",
+                "2. Gemma 3 27B - best",
+                "3. Gemma 4 31B - latest",
+                "4. Gemini 2.5 Pro - paid",
+            ]
+        else:
+            notes = [
+                "備註：",
+                "1. Gemma 3 1B - 最快",
+                "2. Gemma 3 27B - 最佳",
+                "3. Gemma 4 31B - 最新",
+                "4. Gemini 2.5 Pro - 要錢",
+            ]
+        self.lbl_ai_model_notes.setText("\n".join(notes))
 
     def set_translate_mode(self, use_ai):
         self.btn_translate_google.blockSignals(True)
@@ -283,8 +305,8 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate.setStyleSheet(
             f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;"
         )
-        icon_bg = "rgba(65, 150, 255, 0.20)" if theme.key != "light" else "rgba(80, 165, 255, 0.18)"
-        icon_border = "rgba(93, 155, 255, 0.62)" if theme.key != "light" else "rgba(90, 167, 247, 0.54)"
+        icon_bg = "rgba(65, 150, 255, 51)" if theme.key != "light" else "rgba(80, 165, 255, 46)"
+        icon_border = "rgba(93, 155, 255, 158)" if theme.key != "light" else "rgba(90, 167, 247, 138)"
         icon_text = "#8FC4FF" if theme.key != "light" else "#3A8BDA"
         self.lbl_translate_icon.setStyleSheet(
             f"font-size: 19px; font-weight: 900; color: {icon_text}; background-color: {icon_bg}; "
@@ -312,6 +334,10 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_api_key.setStyleSheet(field_label_style)
         self.lbl_ai_model.setStyleSheet(accent_label_style)
         self.lbl_gemma_prompt.setStyleSheet(accent_label_style)
+        self.lbl_ai_model_notes.setStyleSheet(
+            f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none; "
+            "line-height: 1.35; margin-top: 2px;"
+        )
 
         self.mode_buttons.setStyleSheet(
             f"QWidget {{ background-color: {theme.input_bg}; border: 1px solid {theme.border}; border-radius: 12px; }}"

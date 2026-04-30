@@ -32,7 +32,7 @@ from translation_helpers import (
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GOOGLE_STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
-SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-3-27b-it", "gemma-4-31b-it")
+SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-3-1b-it", "gemma-3-27b-it", "gemma-4-31b-it", "gemini-2.5-pro")
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 TRANSLATION_CACHE_LIMIT = 512
