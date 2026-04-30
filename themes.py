@@ -96,8 +96,9 @@ class ThemeDefinition:
         return (
             f"QPushButton {{ background-color: {self.control_bg}; color: {self.control_fg}; "
             f"border-radius: {int(radius)}px; padding: 8px; font-weight: bold; border: none; }}"
-            f" QPushButton:hover:!checked {{ background-color: {self.control_hover}; }}"
+            f" QPushButton:hover {{ background-color: {self.control_hover}; }}"
             f" QPushButton:checked {{ background-color: {self.control_checked}; color: white; }}"
+            f" QPushButton:disabled {{ background-color: {self.control_disabled_bg}; color: {self.control_disabled_fg}; }}"
         )
 
     def combo_qss(self, radius: int = 8) -> str:
@@ -117,7 +118,7 @@ class ThemeDefinition:
 
     def bubble_qss(self, relief: bool = False) -> str:
         if relief:
-            return f"QLabel {{ background: transparent; color: {self.bubble_relief_fg}; font-weight: bold; border: none; padding: 0px; }}"
+            return f"QLabel {{ background: transparent; color: {self.bubble_relief_fg}; font-weight: 400; border: none; padding: 0px; }}"
         return (
             f"QLabel {{ background-color: {self.bubble_bg}; color: {self.bubble_fg}; font-weight: bold; "
             f"border-radius: 12px; border: 1px solid {self.bubble_border}; padding: 2px; }}"
@@ -142,7 +143,7 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             subtext="#6C8A9D",
             border="#9DDCF2",
             accent="#4FC3F7",
-            accent_soft="rgba(79, 195, 247, 0.16)",
+            accent_soft="rgba(79, 195, 247, 41)",
             input_bg="#FFFFFF",
             control_bg="#E0F7FA",
             control_fg="#444444",
@@ -198,7 +199,7 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             subtext="#B7CCD9",
             border="#5B6B78",
             accent="#55C7F3",
-            accent_soft="rgba(85, 199, 243, 0.18)",
+            accent_soft="rgba(85, 199, 243, 46)",
             input_bg="#2F3942",
             control_bg="#424242",
             control_fg="#E0E0E0",
@@ -355,7 +356,7 @@ def build_bubble_style(theme: ThemeDefinition, relief: bool = False) -> dict:
         return {
             "stylesheet": (
                 f"QLabel {{ background: transparent; color: {theme['bubble_relief_fg']}; "
-                "font-weight: bold; border: none; padding: 0px; }}"
+                "font-weight: 400; border: none; padding: 0px; }}"
             ),
             "fill": theme["bubble_relief_fg"],
             "outline": theme["bubble_relief_outline"],
@@ -493,8 +494,9 @@ def build_window_styles(
     styles["button_qss"] = (
         f"QPushButton {{ background-color: {styles['button_bg']}; color: {styles['button_fg']}; "
         f"border-radius: {control_radius}px; padding: 8px; font-weight: bold; border: none; }}"
-        f" QPushButton:hover:!checked {{ background-color: {styles['button_hover']}; }}"
+        f" QPushButton:hover {{ background-color: {styles['button_hover']}; }}"
         f" QPushButton:checked {{ background-color: {styles['button_checked']}; color: white; }}"
+        f" QPushButton:disabled {{ background-color: {styles['button_disabled_bg']}; color: {styles['button_disabled_fg']}; }}"
     )
     styles["auto_button_qss"] = styles["button_qss"]
     styles["danger_button_qss"] = (

@@ -362,6 +362,7 @@ class OCRWorker(QObject):
         self.last_scanned_offset = (0, 0)
         self._bg_threshold_running = False  # 防止重複提交背景任務
         self._bg_threshold_executor = ThreadPoolExecutor(max_workers=1)
+        self.force_bg_threshold_refresh_once = False
         
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         self._refresh_translation_registry()
@@ -2099,6 +2100,8 @@ class OCRWorker(QObject):
     def run_scan_once(self):
         is_screenshot_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT
         is_relief_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_RELIEF
+        force_bg_refresh = bool(self.force_bg_threshold_refresh_once)
+        self.force_bg_threshold_refresh_once = False
         _t0 = time.perf_counter()
         def _log(label):
             if is_relief_mode:
@@ -2215,7 +2218,15 @@ class OCRWorker(QObject):
         _log("② 開始 OCR")
 
         try:
-            used_threshold, filtered_items = self.run_ocr_with_best_threshold(img, offset_x, offset_y, ocr_regions, None, ocr_orientations)
+            used_threshold, filtered_items = self.run_ocr_with_best_threshold(
+                img,
+                offset_x,
+                offset_y,
+                ocr_regions,
+                None,
+                ocr_orientations,
+                force_bg_refresh=force_bg_refresh,
+            )
             _log(f"③ OCR 完成 (找到 {len(filtered_items)} 段)")
         except Exception:
             self.status_msg.emit("❌ 辨識錯誤")
@@ -2236,6 +2247,10 @@ class OCRWorker(QObject):
                     offset_x,
                     offset_y,
                     [(0, 0, img.shape[1], img.shape[0])],
+                    None,
+                    None,
+                    False,
+                    force_bg_refresh,
                 )
             except Exception:
                 filtered_items = []
@@ -2258,6 +2273,8 @@ class OCRWorker(QObject):
                         retry_regions,
                         retry_thresholds,
                         [0, 90, 270],
+                        False,
+                        force_bg_refresh,
                     )
                 except Exception:
                     filtered_items = []
@@ -2281,6 +2298,8 @@ class OCRWorker(QObject):
                         tile_regions,
                         fallback_thresholds,
                         ocr_orientations,
+                        False,
+                        force_bg_refresh,
                     )
                 except Exception:
                     filtered_items = []
@@ -2461,7 +2480,7 @@ class TransBubble(QLabel):
         font = self.font()
         font.setFamily("Microsoft JhengHei")
         font.setPointSizeF(best_size)
-        font.setBold(True)
+        font.setBold(False)
         self.setFont(font)
         self.setGeometry(bubble_rect)
         self.show()
@@ -4786,18 +4805,10 @@ class SettingsWindowRevamp(QWidget):
         self.translation_panel.update_theme(theme_mode)
         self.card_translate.setStyleSheet(card_style(translation_border))
         self.lbl_translate.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {translation_accent}; background: transparent; border: none;")
-        footer_button_style = (
-            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
-            "border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 700; }}"
-            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
-        )
+        footer_button_style = theme.button_qss(radius=8)
         self.btn_reset_defaults.setStyleSheet(footer_button_style)
         self.btn_cancel.setStyleSheet(footer_button_style)
-        self.btn_save.setStyleSheet(
-            f"QPushButton {{ color: #FFFFFF; background-color: {theme.accent}; border: 1px solid {theme.accent}; "
-            "border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 800; }}"
-            f"QPushButton:hover {{ background-color: {theme.control_checked}; }}"
-        )
+        self.btn_save.setStyleSheet(footer_button_style)
         self.update_relief_state(self.controller.region_render_mode == REGION_RENDER_RELIEF)
 
     def mousePressEvent(self, event):
@@ -5829,6 +5840,7 @@ class Controller(QWidget):
         self.display_timer.stop()
         self._set_status_text("controller.status.immediate_scanning", fallback="⚡ Scanning now...")
         self.worker.last_auto_threshold_refresh_ms = 0.0
+        self.worker.force_bg_threshold_refresh_once = True
         self.trigger_scan_sequence()
         self.btn_now.setEnabled(False)
         self.btn_now.setText(self._tr("controller.status.cold_down", fallback="⚡ Cooling down..."))

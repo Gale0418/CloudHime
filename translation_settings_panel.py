@@ -355,11 +355,7 @@ class TranslationSettingsPanel(QWidget):
             f"background-color: {theme.card_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
             f"border-radius: 6px; padding: 7px; font-size: 13px;"
         )
-        self.btn_api_key_visible.setStyleSheet(
-            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
-            "border-radius: 8px; font-size: 14px; }}"
-            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
-        )
+        self.btn_api_key_visible.setStyleSheet(theme.button_qss(radius=8))
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
         self.input_gemma_prompt.setStyleSheet(
             f"QPlainTextEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
