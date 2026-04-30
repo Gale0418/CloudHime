@@ -55,6 +55,19 @@ def target_lang_system_prompt(target_lang: Any) -> str:
         "Preserve the original line breaks and sentence order."
         "Do not add explanations, notes, bullets, romanization, or the original text."
     )
+
+
+def source_lang_instruction(source_lang: Any) -> str:
+    candidate = str(source_lang or "").strip().lower().replace("_", "-")
+    if candidate.startswith("ja"):
+        return "Japanese"
+    if candidate.startswith("en"):
+        return "English"
+    if candidate.startswith("zh"):
+        return "Traditional Chinese"
+    if candidate == "auto":
+        return "the source language"
+    return str(source_lang or "the source language")
 UI_TEXTS = {
     "settings_title": {
         "zh-TW": "設定頁面",
@@ -540,10 +553,12 @@ def build_segmented_ocr_payload(source_texts: Sequence[Any]) -> str:
 def build_gemma_multimodal_prompt(source_texts: Sequence[Any], target_lang: str = GOOGLE_TARGET_LANG) -> str:
     indexed_ocr = build_segmented_ocr_payload(source_texts)
     target = target_lang_instruction(target_lang)
+    source_lang = source_lang_instruction(detect_source_language("\n".join(str(text or "") for text in source_texts)))
     return (
         "You are a multimodal UI, game, and manga translation assistant.\n"
         "You will receive one screenshot and OCR lines extracted from that same screenshot.\n"
         "Use the screenshot to understand context, UI meaning, title, speaker tone, and ambiguous words.\n"
+        f"Source language hint: {source_lang}.\n"
         f"Translate every OCR line into {target}.\n"
         "Keep one output item for every input item.\n"
         "Do not skip items. Do not merge items. Do not explain anything.\n"
@@ -743,7 +758,9 @@ def build_screenshot_prompt_with_override(
     if source_text_hint:
         hint_text = clean_model_output_multiline(str(source_text_hint)).strip()
         if hint_text:
+            source_lang = source_lang_instruction(detect_source_language(hint_text))
             hint_block = (
+                f"\nSource language hint: {source_lang}.\n"
                 "\nOCR hint (may be imperfect, trust the image more):\n"
                 f"{hint_text[:1200]}\n"
             )
@@ -755,11 +772,14 @@ def build_screenshot_prompt_with_override(
             f"Rewrite it as {target_lang_instruction(target_lang)} only: {retry_note.strip()}\n"
         )
 
-    default_system = (
-        "Please help me translate the text in the image directly into "
-        f"{target_lang_instruction(target_lang)}."
-    )
-    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else default_system
+    default_system = target_lang_system_prompt(target_lang)
+    custom = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else ""
+    system = default_system
+    if custom:
+        system = (
+            f"{default_system}\n"
+            f"User instructions (highest priority):\n{custom}"
+        )
 
     return (
         f"{system}\n"
@@ -877,9 +897,18 @@ def build_gemma_prompt_with_override(
     target_lang: str = GOOGLE_TARGET_LANG,
 ) -> str:
     """Return the default prompt unless the user provides an override."""
-    system = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else target_lang_system_prompt(target_lang)
+    custom = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else ""
+    default_system = target_lang_system_prompt(target_lang)
+    source_lang = source_lang_instruction(detect_source_language(text))
+    system = default_system
+    if custom:
+        system = (
+            f"{default_system}\n\n"
+            f"User instructions (highest priority):\n{custom}"
+        )
     return (
-        f"{system}\n\n"
+        f"{system}\n"
+        f"Source language hint: {source_lang}\n\n"
         f"Source text:\n{text}"
     )
 

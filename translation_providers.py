@@ -152,7 +152,12 @@ class GoogleTranslationProvider:
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, from_cache=True)
         translator = self._get_translator(source_lang)
-        translated = translator.translate(normalized).strip()
+        translated_raw = translator.translate(normalized)
+        if not isinstance(translated_raw, str):
+            raise ValueError("empty_google_translation")
+        translated = translated_raw.strip()
+        if not translated:
+            raise ValueError("empty_google_translation")
         self._remember(cache_key, translated)
         return TranslationResult(text=translated, provider=self.name)
 
@@ -186,7 +191,12 @@ class GoogleTranslationProvider:
             if batch_result is None:
                 translator = self._get_translator(batch_source_lang)
                 combined_source = "\n".join(group_texts)
-                combined_translated = translator.translate(combined_source).strip()
+                combined_translated_raw = translator.translate(combined_source)
+                if not isinstance(combined_translated_raw, str):
+                    return []
+                combined_translated = combined_translated_raw.strip()
+                if not combined_translated:
+                    return []
                 batch_result = split_translated_lines(combined_translated, len(group_texts))
                 if len(batch_result) != len(group_texts):
                     return []
@@ -322,6 +332,17 @@ class GemmaTranslationProvider:
         self._prune_timestamps(model_name)
         self._call_timestamps.setdefault(model_name, []).append(time.monotonic())
 
+    def _request_timeout_seconds(self, model_name: str) -> int:
+        model_name = (model_name or "").strip().lower()
+        if model_name in {"gemma-4-31b-it", "gemini-2.5-pro"}:
+            return 60
+        return 30
+
+    def _should_retry_request(self, exc: Exception) -> bool:
+        if isinstance(exc, error.HTTPError):
+            return exc.code in {429, 500, 503, 504}
+        return isinstance(exc, (TimeoutError, error.URLError))
+
     def _resolve_model(self) -> str:
         model = self.normalize_gemma_model(self.gemma_model)
         if self._can_call(model):
@@ -358,9 +379,22 @@ class GemmaTranslationProvider:
             },
             method="POST",
         )
-        self._record_call(model_name)
-        with request.urlopen(req, timeout=25) as response:
-            return json.loads(response.read().decode("utf-8"))
+        timeout_seconds = self._request_timeout_seconds(model_name)
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                self._record_call(model_name)
+                with request.urlopen(req, timeout=timeout_seconds) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 2 and self._should_retry_request(exc):
+                    time.sleep(0.8 * (attempt + 1))
+                    continue
+                raise
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("request_failed")
 
     def _stream_request(self, model_name: str, prompt: str, *, image_parts=None, max_output_tokens: int = 1024, temperature: float = 0.2):
         """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
@@ -561,17 +595,37 @@ class GemmaTranslationProvider:
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
             prompt = build_screenshot_prompt_with_override(source_text_hint, retry_note, self.screenshot_gemma_prompt)
-            payload = self._request(
-                model_name,
-                prompt,
-                image_parts=image_parts,
-                max_output_tokens=2048,
-                temperature=0.0 if attempt_index else 0.1,
-                # gemma-3-27b-it does not support JSON mode for screenshot requests.
-                # Keep the prompt JSON-shaped, but let the model answer in plain text so
-                # the existing cleaner can extract JSON or fallback text safely.
-                response_mime_type="text/plain",
-            )
+            try:
+                payload = self._request(
+                    model_name,
+                    prompt,
+                    image_parts=image_parts,
+                    max_output_tokens=2048,
+                    temperature=0.0 if attempt_index else 0.1,
+                    # gemma-3-27b-it does not support JSON mode for screenshot requests.
+                    # Keep the prompt JSON-shaped, but let the model answer in plain text so
+                    # the existing cleaner can extract JSON or fallback text safely.
+                    response_mime_type="text/plain",
+                )
+            except error.HTTPError as exc:
+                body = ""
+                try:
+                    body = exc.read().decode("utf-8", errors="replace")
+                except Exception:
+                    body = ""
+                if "Image input modality is not enabled" in body and source_text_hint:
+                    return self.translate(source_text_hint, target_lang=target_lang)
+                if exc.code in {429, 500, 503, 504} and attempt_index < 2:
+                    time.sleep(0.8 * (attempt_index + 1))
+                    continue
+                raise
+            except (TimeoutError, error.URLError):
+                if source_text_hint:
+                    break
+                if attempt_index < 2:
+                    time.sleep(0.8 * (attempt_index + 1))
+                    continue
+                raise
             last_raw_text = extract_gemma_text(payload)
             translated = clean_screenshot_translation_output(last_raw_text)
             is_valid = is_valid_screenshot_translation(translated)
@@ -588,6 +642,11 @@ class GemmaTranslationProvider:
                 break
             translated = ""
         if not translated:
+            if source_text_hint:
+                try:
+                    translated = self.translate(source_text_hint, target_lang=target_lang).text
+                except Exception:
+                    translated = ""
             if debug_log is not None:
                 debug_log(
                     "\n".join([
