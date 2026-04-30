@@ -1119,3 +1119,555 @@ last_raw=**合輯 - 【空之境界 第五章 預告媒體…**
 
 **合輯是 YouTube 幫你整理的播放清單**
 
+[2026-05-01 00:17:38] [screenshot start]
+scan_mode=fullscreen
+region_render_mode=bubble
+image_parts=1
+source_text_hint_len=15
+
+[2026-05-01 00:17:48] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=Okay, here's the translation of the Japanese text into natural Traditional Chinese used in Taiwan, along with a breakdown:
+
+**Japanese Text:** 過ぎた街並は終わり の 愛 と 遠くへ
+
+**Literal Translation:**  Past cityscapes are to a distant love and far away. (This is a bit awkward in both languages)
+
+**Natural Traditional Chinese (Taiwan):**  逝去的街景，伴隨著逝去的愛，漸行漸遠。
+
+**Explanation of Choices:**
+
+*   **過ぎた (Sugita):**  Translated as 逝去的 (shìqù de) - "passed," "gone by," "vanished."  This conveys the sense of something in the past.
+*   **街並 (Machinami):** Translated as 街景 (jiējǐng) - "cityscape," "street scene."
+*   **終わり (Owari):** Translated as 逝去的 (shìqù de) - "passed," "gone by," "vanished."  This conveys the sense of something in the past.
+*   **の (No):**  Used as a possessive particle, translated as "的 (de)" to connect the phrases.
+*   **愛 (Ai):** Translated as 愛 (ài) - "love."
+*   **と (To):** Translated as 伴隨著 (bànsuízhe) - "accompanied by."
+*   **遠くへ (Tooku e):** Translated as 漸行漸遠 (jiànxíng jiànyuǎn) - "gradually going further and further away." This is a more poetic and natural way to express the idea of distance and fading.
+
+**Why this translation is good for Taiwan:**
+
+*   **Word Choice:** The vocabulary used (街景, 逝去的, 漸行漸遠) is common and natural in Taiwanese Mandarin.
+*   **Flow:** The sentence structure is smooth and reads well in Traditional Chinese.
+*   **Poetic Tone:** The original Japanese has a slightly melancholic and poetic feel, and this translation attempts to preserve that.
+cleaned=**Natural Traditional Chinese (Taiwan):**  逝去的街景，伴隨著逝去的愛，漸行漸遠。
+*   **街並 (Machinami):** Translated as 街景 (jiējǐng) - "cityscape," "street scene."
+*   **愛 (Ai):** Translated as 愛 (ài) - "love."
+*   **Word Choice:** The vocabulary used (街景, 逝去的, 漸行漸遠) is common and natural in Taiwanese Mandarin.
+
+[2026-05-01 00:17:50] [screenshot attempt 2] model=gemma-3-27b-it
+valid=True
+raw=逝去的街景，伴隨著逝去的愛，漸行漸遠。
+cleaned=逝去的街景，伴隨著逝去的愛，漸行漸遠。
+
+[2026-05-01 00:19:11] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:19:17] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=Here's the translation of the Japanese text into natural Traditional Chinese used in Taiwan:
+
+**過去的街並は、終わりに愛と遠くへ**
+
+**Translation:**
+
+**過去的街景，終將走向愛與遠方** 
+
+**Explanation of choices to make it sound natural in Taiwan:**
+
+*   **街並 (Machinami)** is translated as **街景 (jiē jǐng)**, which is the most common and natural way to say "streetscape" or "townscape" in Taiwanese Mandarin.
+*   **終わり (Owari)** is translated as **終將 (zhōng jiāng)**, meaning "eventually" or "in the end." This sounds more poetic and fitting for the overall tone.
+*   **愛 (Ai)** is directly translated as **愛 (ài)**, as it's the same character and meaning.
+*   **遠く (Tooku)** is translated as **遠方 (yuǎn fāng)**, meaning "distant place" or "faraway."
+*   The overall sentence structure is adjusted to flow more naturally in Chinese.
+cleaned=**過去的街景，終將走向愛與遠方**
+*   **街並 (Machinami)** is translated as **街景 (jiē jǐng)**, which is the most common and natural way to say "streetscape" or "townscape" in Taiwanese Mandarin.
+*   **愛 (Ai)** is directly translated as **愛 (ài)**, as it's the same character and meaning.
+
+[2026-05-01 00:19:18] [screenshot attempt 2] model=gemma-3-27b-it
+valid=True
+raw=過去的街景，終將走向愛與遠方。
+cleaned=過去的街景，終將走向愛與遠方。
+
+[2026-05-01 00:30:25] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:30:27] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空の境界 第五章 預備螺旋…
+合輯是 YouTube 專為你打造的播放清單
+cleaned=合輯是 YouTube 專為你打造的播放清單
+
+[2026-05-01 00:30:29] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 預備螺旋…
+合輯是 YouTube 專為你推薦的播放清單
+cleaned=合輯 - 【空之境界 第五章 預備螺旋…
+合輯是 YouTube 專為你推薦的播放清單
+
+[2026-05-01 00:30:31] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 預備螺旋…
+合輯是 YouTube 推薦給你的播放清單
+cleaned=合輯 - 【空之境界 第五章 預備螺旋…
+合輯是 YouTube 推薦給你的播放清單
+
+[2026-05-01 00:30:31] [screenshot failed] model=gemma-3-27b-it
+last_raw=合輯 - 【空之境界 第五章 預備螺旋…
+合輯是 YouTube 推薦給你的播放清單
+
+[2026-05-01 00:31:00] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:03] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=迴診後，街並是以終わり の愛と遠くへ
+cleaned=<empty>
+
+[2026-05-01 00:31:05] [screenshot attempt 2] model=gemma-3-27b-it
+valid=True
+raw=迴診後，街景充滿了逝去的愛與遠方。
+cleaned=迴診後，街景充滿了逝去的愛與遠方。
+
+[2026-05-01 00:31:08] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:11] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:15] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:19] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=迴診後，街並是以終わり の愛と遠くへ
+cleaned=<empty>
+
+[2026-05-01 00:31:20] [screenshot attempt 2] model=gemma-3-27b-it
+valid=True
+raw=迴診後，街景充滿了逝去的愛與遠方。
+cleaned=迴診後，街景充滿了逝去的愛與遠方。
+
+[2026-05-01 00:31:24] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:27] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空の境界 第五章 予盾螺旋…】
+合輯是 YouTube 專為你打造的播放清單
+cleaned=合輯是 YouTube 專為你打造的播放清單
+
+[2026-05-01 00:31:29] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 替你客製的播放清單
+cleaned=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 替你客製的播放清單
+
+[2026-05-01 00:31:31] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+cleaned=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+
+[2026-05-01 00:31:31] [screenshot failed] model=gemma-3-27b-it
+last_raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+
+[2026-05-01 00:31:33] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:35] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空の境界 第五章 予盾螺旋…】
+合輯是 YouTube 專為你打造的播放清單
+cleaned=合輯是 YouTube 專為你打造的播放清單
+
+[2026-05-01 00:31:37] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 替你客製的播放清單
+cleaned=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 替你客製的播放清單
+
+[2026-05-01 00:31:39] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+cleaned=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+
+[2026-05-01 00:31:39] [screenshot failed] model=gemma-3-27b-it
+last_raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+
+[2026-05-01 00:31:41] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:31:43] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空の境界 第五章 予盾螺旋…】
+合輯是 YouTube 專為你打造的播放清單
+cleaned=合輯是 YouTube 專為你打造的播放清單
+
+[2026-05-01 00:31:45] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 替你客製的播放清單
+cleaned=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 替你客製的播放清單
+
+[2026-05-01 00:31:47] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+cleaned=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+
+[2026-05-01 00:31:47] [screenshot failed] model=gemma-3-27b-it
+last_raw=合輯 - 【空之境界 第五章 予盾螺旋…】
+合輯是 YouTube 幫你打造的播放清單
+
+[2026-05-01 00:31:56] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:32:01] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=一開始就沒想過會這麼順利呢。
+比起 2000 年的自己，現在的我，
+變得更成熟了吧？
+嗯… 果然還是有點緊張呢。
+但沒關係，
+我會沒問題的。
+因為有大家在。
+cleaned=一開始就沒想過會這麼順利呢。
+比起 2000 年的自己，現在的我，
+變得更成熟了吧？
+嗯… 果然還是有點緊張呢。
+但沒關係，
+我會沒問題的。
+因為有大家在。
+
+[2026-05-01 00:32:14] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:32:18] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=@EmmaAlouette < 3 小時前
+
+一航哥的宅宅氣息太可愛了！るりちゃん！！すごく嬉しい！！るりちゃんの声、本当に癒しになる💜✨
+cleaned=@EmmaAlouette < 3 小時前
+
+[2026-05-01 00:32:20] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=@EmmaAlouette < 3 小時前
+
+一航哥的宅宅氣息好可愛！るり醬！！超開心的！！るり醬的聲音，真的好療癒💜✨
+cleaned=@EmmaAlouette < 3 小時前
+
+[2026-05-01 00:32:22] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=@EmmaAlouette < 3 小時前
+
+一航哥的宅宅氣息好可愛！るり醬！！真的好開心！！るり醬的聲音，真是太療癒了💜✨
+cleaned=@EmmaAlouette < 3 小時前
+
+[2026-05-01 00:32:22] [screenshot failed] model=gemma-3-27b-it
+last_raw=@EmmaAlouette < 3 小時前
+
+一航哥的宅宅氣息好可愛！るり醬！！真的好開心！！るり醬的聲音，真是太療癒了💜✨
+
+[2026-05-01 00:33:18] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:33:21] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=過去的軌跡啊，是[音樂]般的愛與被吸入[音樂]般的虛無吧？
+過去的街景啊[音樂]，是否還有愛與溫暖可尋[音樂]呢？
+cleaned=過去的軌跡啊，是[音樂]般的愛與被吸入[音樂]般的虛無吧？
+過去的街景啊[音樂]，是否還有愛與溫暖可尋[音樂]呢？
+
+[2026-05-01 00:33:31] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:33:34] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章】
+合輯是 YouTube 專為你打造的播放清單
+cleaned=合輯 - 【空之境界 第五章】
+合輯是 YouTube 專為你打造的播放清單
+
+[2026-05-01 00:33:36] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章】
+合輯是 YouTube 專為你推薦的播放清單
+cleaned=合輯 - 【空之境界 第五章】
+合輯是 YouTube 專為你推薦的播放清單
+
+[2026-05-01 00:33:37] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=合輯 - 【空之境界 第五章】
+合輯是 YouTube 推薦給你的播放清單
+cleaned=合輯 - 【空之境界 第五章】
+合輯是 YouTube 推薦給你的播放清單
+
+[2026-05-01 00:33:37] [screenshot failed] model=gemma-3-27b-it
+last_raw=合輯 - 【空之境界 第五章】
+合輯是 YouTube 推薦給你的播放清單
+
+[2026-05-01 00:33:50] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:33:52] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=三星瓦礫的淘氣轉生經營 #15
+cleaned=三星瓦礫的淘氣轉生經營 #15
+
+[2026-05-01 00:34:09] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:34:12] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:34:16] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:34:18] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:34:49] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:34:52] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=＋建立
+cleaned=＋建立
+
+[2026-05-01 00:35:07] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:35:11] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=TWO POINT MUSEUM：創造獨一無二的博物館！成就 number 72
+cleaned=TWO POINT MUSEUM：創造獨一無二的博物館！成就 number 72
+
+[2026-05-01 00:35:14] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=TWO POINT MUSEUM：打造獨一無二的博物館！成就 72
+cleaned=TWO POINT MUSEUM：打造獨一無二的博物館！成就 72
+
+[2026-05-01 00:35:15] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=TWO POINT MUSEUM：打造獨一無二的博物館！達成 72 項成就！
+cleaned=TWO POINT MUSEUM：打造獨一無二的博物館！達成 72 項成就！
+
+[2026-05-01 00:35:15] [screenshot failed] model=gemma-3-27b-it
+last_raw=TWO POINT MUSEUM：打造獨一無二的博物館！達成 72 項成就！
+
+[2026-05-01 00:35:50] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:35:54] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=ninelie - Aimer與chelly (EGOIST)
+cleaned=ninelie - Aimer與chelly (EGOIST)
+
+[2026-05-01 00:35:55] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=ninelie - Aimer與chelly (EGOIST)
+cleaned=ninelie - Aimer與chelly (EGOIST)
+
+[2026-05-01 00:35:57] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=ninelie - Aimer與chelly (EGOIST)
+cleaned=ninelie - Aimer與chelly (EGOIST)
+
+[2026-05-01 00:35:57] [screenshot failed] model=gemma-3-27b-it
+last_raw=ninelie - Aimer與chelly (EGOIST)
+
+[2026-05-01 00:36:18] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:37:01] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:37:04] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=聊天重播
+
+瞭解其他人對直播影片的看法
+cleaned=聊天重播
+瞭解其他人對直播影片的看法
+
+[2026-05-01 00:37:10] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:37:14] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=ninelie - 與Chely一同愛戀 (自戀者)
+cleaned=ninelie - 與Chely一同愛戀 (自戀者)
+
+[2026-05-01 00:37:15] [screenshot attempt 2] model=gemma-3-27b-it
+valid=False
+raw=ninelie - 與Chely相愛 (自戀者)
+cleaned=ninelie - 與Chely相愛 (自戀者)
+
+[2026-05-01 00:37:17] [screenshot attempt 3] model=gemma-3-27b-it
+valid=False
+raw=ninelie - 與Chely相愛 (自我中心者)
+cleaned=ninelie - 與Chely相愛 (自我中心者)
+
+[2026-05-01 00:37:17] [screenshot failed] model=gemma-3-27b-it
+last_raw=ninelie - 與Chely相愛 (自我中心者)
+
+[2026-05-01 00:37:55] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:37:57] [screenshot attempt 1] model=gemma-3-27b-it
+valid=False
+raw=過去的街並は終わり の 愛と遠いへ
+cleaned=<empty>
+
+[2026-05-01 00:37:59] [screenshot attempt 2] model=gemma-3-27b-it
+valid=True
+raw=過去的街景是終結的愛與遠方。
+cleaned=過去的街景是終結的愛與遠方。
+
+[2026-05-01 00:38:07] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:38:10] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=合輯 - [空之境界 第五章 預售爆就… ]
+cleaned=合輯 - [空之境界 第五章 預售爆就… ]
+
+[2026-05-01 00:38:23] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:38:26] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=合輯 - [空之境界 第五章 預備螺旋… ]
+cleaned=合輯 - [空之境界 第五章 預備螺旋… ]
+
+[2026-05-01 00:38:29] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:38:32] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:38:39] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:38:40] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=合輯 - [空之境界 第五章 預備螺旋… ]
+cleaned=合輯 - [空之境界 第五章 預備螺旋… ]
+
+[2026-05-01 00:38:54] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:39:05] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=0
+
+[2026-05-01 00:39:09] [screenshot attempt 1] model=gemma-3-27b-it
+valid=True
+raw=合輯 - [空之境界 第五章 預售爆…
+cleaned=合輯 - [空之境界 第五章 預售爆…
+
