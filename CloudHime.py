@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup,
                                QSlider, QLineEdit, QCheckBox, QComboBox, QPlainTextEdit,
                                QSpinBox, QSizePolicy, QSplitter, QScrollArea,
-                               QGraphicsOpacityEffect,
+                               QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
                                QGridLayout)
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
                             QAbstractNativeEventFilter, QEvent)
@@ -3813,9 +3813,13 @@ class SettingsWindow(QWidget):
         self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
         spinbox_style = (
             f"QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
-            f"border-radius: 8px; padding: 3px 8px; }} "
+            f"border-radius: 9px; padding: 4px 24px 4px 8px; font-weight: 700; }} "
             f"QSpinBox:focus {{ border: 2px solid {theme.accent}; }} "
-            "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }"
+            f"QSpinBox::up-button {{ width: 18px; border-left: 1px solid {theme.border}; border-top-right-radius: 8px; background: {theme.accent_soft}; }}"
+            f"QSpinBox::down-button {{ width: 18px; border-left: 1px solid {theme.border}; border-bottom-right-radius: 8px; background: {theme.accent_soft}; }}"
+            f"QSpinBox::up-button:hover, QSpinBox::down-button:hover {{ background: {theme.accent}; }}"
+            "QSpinBox::up-arrow { width: 0; height: 0; }"
+            "QSpinBox::down-arrow { width: 0; height: 0; }"
         )
         self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
         self.btn_close.setStyleSheet(theme.button_qss("ghost"))
@@ -3848,8 +3852,8 @@ class SettingsWindowRevamp(QWidget):
         self.old_pos = None
         self._ai_requested = False
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.setMinimumSize(1120, 720)
-        self.resize(1180, 740)
+        self.setMinimumSize(1180, 760)
+        self.resize(1280, 840)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -3871,9 +3875,10 @@ class SettingsWindowRevamp(QWidget):
 
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
-        self.lbl_brand_icon = QLabel("☁️")
+        self.lbl_brand_icon = QLabel("\u2601")
         self.lbl_brand_icon.setFixedSize(40, 40)
         self.lbl_brand_icon.setAlignment(Qt.AlignCenter)
+        self.lbl_brand_icon.setFont(QFont("Segoe UI Symbol", 16, QFont.Bold))
         top_row.addWidget(self.lbl_brand_icon)
         title_box = QHBoxLayout()
         title_box.setSpacing(18)
@@ -3885,10 +3890,11 @@ class SettingsWindowRevamp(QWidget):
         title_box.addWidget(self.lbl_page_subtitle)
         top_row.addLayout(title_box)
         top_row.addStretch()
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setText("✕")
+        self.btn_close = QPushButton("X")
+        self.btn_close.setText("X")
         self.btn_close.setFixedSize(36, 36)
         self.btn_close.setCursor(Qt.PointingHandCursor)
+        self.btn_close.setFont(QFont("Segoe UI Symbol", 12))
         self.btn_close.clicked.connect(self.hide)
         top_row.addWidget(self.btn_close)
         top.addLayout(top_row)
@@ -3902,9 +3908,10 @@ class SettingsWindowRevamp(QWidget):
         theme_chip_layout = QHBoxLayout(theme_chip)
         theme_chip_layout.setContentsMargins(0, 0, 0, 0)
         theme_chip_layout.setSpacing(4)
-        self.lbl_theme_mode = QLabel("🎨")
+        self.lbl_theme_mode = QLabel("\U0001F3A8")
         self.lbl_theme_mode.setFixedWidth(24)
         self.lbl_theme_mode.setAlignment(Qt.AlignCenter)
+        self.lbl_theme_mode.setFont(QFont("Segoe UI Emoji", 10, QFont.Bold))
         theme_chip_layout.addWidget(self.lbl_theme_mode)
         self.cmb_theme_mode_chip = QComboBox()
         self.cmb_theme_mode_chip.setCursor(Qt.PointingHandCursor)
@@ -3917,9 +3924,10 @@ class SettingsWindowRevamp(QWidget):
         language_chip_layout = QHBoxLayout(language_chip)
         language_chip_layout.setContentsMargins(0, 0, 0, 0)
         language_chip_layout.setSpacing(4)
-        self.lbl_ui_language = QLabel("🌐")
+        self.lbl_ui_language = QLabel("\U0001F310")
         self.lbl_ui_language.setFixedWidth(24)
         self.lbl_ui_language.setAlignment(Qt.AlignCenter)
+        self.lbl_ui_language.setFont(QFont("Segoe UI Emoji", 10, QFont.Bold))
         language_chip_layout.addWidget(self.lbl_ui_language)
         self.cmb_ui_language_chip = QComboBox()
         self.cmb_ui_language_chip.setCursor(Qt.PointingHandCursor)
@@ -3964,16 +3972,27 @@ class SettingsWindowRevamp(QWidget):
 
         self.card_ocr = QFrame()
         ocr = QVBoxLayout(self.card_ocr)
-        ocr.setContentsMargins(18, 10, 18, 10)
-        ocr.setSpacing(4)
+        ocr.setContentsMargins(20, 16, 20, 18)
+        ocr.setSpacing(8)
         ocr.setAlignment(Qt.AlignTop)
         self.lbl_ocr = QLabel("自動掃描")
+        self.lbl_ocr_icon = QLabel("OCR")
+        self.lbl_ocr_icon.setFixedSize(46, 46)
+        self.lbl_ocr_icon.setAlignment(Qt.AlignCenter)
         self.lbl_ocr_hint = QLabel("你可以隨意修改自動掃描的秒數以及偏移幅度")
         self.lbl_ocr_hint.setWordWrap(True)
         self.lbl_ocr_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_ocr.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.lbl_ocr.setMinimumHeight(46)
+        self.lbl_ocr.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_ocr.setStyleSheet("background: transparent; border: none;")
-        ocr.addWidget(self.lbl_ocr)
+        ocr_header = QHBoxLayout()
+        ocr_header.setContentsMargins(0, 0, 0, 0)
+        ocr_header.setSpacing(12)
+        ocr_header.addWidget(self.lbl_ocr_icon)
+        ocr_header.addWidget(self.lbl_ocr)
+        ocr_header.addStretch()
+        ocr.addLayout(ocr_header)
         ocr.addWidget(self.lbl_ocr_hint)
         ocr.addWidget(self.ocr_backend_panel)
         self.ocr_backend_panel.setVisible(True)
@@ -3982,6 +4001,18 @@ class SettingsWindowRevamp(QWidget):
         self.chk_region_pass_through.setChecked(getattr(self.controller, "region_pass_through", False))
         self.chk_region_pass_through.toggled.connect(self.controller.on_region_pass_through_changed)
         ocr.addWidget(self.chk_region_pass_through)
+
+        auto_threshold_row = QHBoxLayout()
+        auto_threshold_row.setSpacing(8)
+        self.lbl_auto_threshold_enabled = QLabel("Auto threshold")
+        auto_threshold_row.addWidget(self.lbl_auto_threshold_enabled)
+        auto_threshold_row.addStretch()
+        self.chk_auto_threshold = QCheckBox("")
+        self.chk_auto_threshold.setCursor(Qt.PointingHandCursor)
+        self.chk_auto_threshold.setChecked(getattr(self.controller.worker, "auto_threshold_enabled", True))
+        self.chk_auto_threshold.toggled.connect(self.controller.set_auto_threshold_mode)
+        auto_threshold_row.addWidget(self.chk_auto_threshold)
+        ocr.addLayout(auto_threshold_row)
 
         self.auto_scan_panel = QWidget()
         self.lbl_auto_scan = QLabel("掃描設定")
@@ -3999,6 +4030,12 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_center.valueChanged.connect(self.on_random_scan_settings_changed)
         center_row.addWidget(self.spin_random_scan_center)
         ocr.addLayout(center_row)
+        self.slider_random_scan_center = QSlider(Qt.Horizontal)
+        self.slider_random_scan_center.setRange(1, 300)
+        self.slider_random_scan_center.setTickPosition(QSlider.TicksBelow)
+        self.slider_random_scan_center.setTickInterval(60)
+        self.slider_random_scan_center.valueChanged.connect(self.spin_random_scan_center.setValue)
+        ocr.addWidget(self.slider_random_scan_center)
         jitter_row = QHBoxLayout()
         jitter_row.setSpacing(8)
         self.lbl_random_scan_jitter = QLabel("偏移幅度")
@@ -4010,6 +4047,12 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_jitter.valueChanged.connect(self.on_random_scan_settings_changed)
         jitter_row.addWidget(self.spin_random_scan_jitter)
         ocr.addLayout(jitter_row)
+        self.slider_random_scan_jitter = QSlider(Qt.Horizontal)
+        self.slider_random_scan_jitter.setRange(0, 100)
+        self.slider_random_scan_jitter.setTickPosition(QSlider.TicksBelow)
+        self.slider_random_scan_jitter.setTickInterval(25)
+        self.slider_random_scan_jitter.valueChanged.connect(self.spin_random_scan_jitter.setValue)
+        ocr.addWidget(self.slider_random_scan_jitter)
         self.lbl_random_scan_summary = QLabel("狀態：10s 附近 · 約 8 ~ 12 秒")
         self.lbl_random_scan_summary.setWordWrap(False)
         self.lbl_random_scan_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -4028,22 +4071,43 @@ class SettingsWindowRevamp(QWidget):
         self.spin_auto_threshold_refresh_minutes.valueChanged.connect(self.on_auto_threshold_refresh_changed)
         threshold_row.addWidget(self.spin_auto_threshold_refresh_minutes)
         ocr.addLayout(threshold_row)
+        self.slider_auto_threshold_refresh = QSlider(Qt.Horizontal)
+        self.slider_auto_threshold_refresh.setRange(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX,
+        )
+        self.slider_auto_threshold_refresh.setTickPosition(QSlider.TicksBelow)
+        self.slider_auto_threshold_refresh.setTickInterval(5)
+        self.slider_auto_threshold_refresh.valueChanged.connect(self.spin_auto_threshold_refresh_minutes.setValue)
+        ocr.addWidget(self.slider_auto_threshold_refresh)
         self.lbl_auto_threshold_refresh_summary = QLabel("狀態：每 10 分鐘重新評估一次閥值")
         self.lbl_auto_threshold_refresh_summary.setWordWrap(True)
         ocr.addWidget(self.lbl_auto_threshold_refresh_summary)
 
         self.card_region_render = QFrame()
         render = QVBoxLayout(self.card_region_render)
-        render.setContentsMargins(18, 10, 18, 10)
-        render.setSpacing(4)
+        render.setContentsMargins(20, 16, 20, 18)
+        render.setSpacing(8)
         render.setAlignment(Qt.AlignTop)
         self.lbl_region_render = QLabel("文字模式")
+        self.lbl_region_render_icon = QLabel("\U0001F5A5")
+        self.lbl_region_render_icon.setFixedSize(46, 46)
+        self.lbl_region_render_icon.setAlignment(Qt.AlignCenter)
+        self.lbl_region_render_icon.setFont(QFont("Segoe UI Symbol", 18, QFont.Bold))
         self.lbl_region_render_hint = QLabel("在框選模式下才會啟用，一共有三種文字顯示方式可以切換")
         self.lbl_region_render_hint.setWordWrap(True)
         self.lbl_region_render_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_region_render.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.lbl_region_render.setMinimumHeight(46)
+        self.lbl_region_render.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_region_render.setStyleSheet("background: transparent; border: none;")
-        render.addWidget(self.lbl_region_render)
+        render_header = QHBoxLayout()
+        render_header.setContentsMargins(0, 0, 0, 0)
+        render_header.setSpacing(12)
+        render_header.addWidget(self.lbl_region_render_icon)
+        render_header.addWidget(self.lbl_region_render)
+        render_header.addStretch()
+        render.addLayout(render_header)
         render.addWidget(self.lbl_region_render_hint)
         render_row = QHBoxLayout()
         render_row.setSpacing(8)
@@ -4077,6 +4141,9 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_region_render_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         render.addWidget(self.lbl_region_render_summary)
 
+        self.lbl_screenshot_prompt = QLabel("Screenshot Prompt")
+        self.lbl_screenshot_prompt.setStyleSheet("background: transparent; border: none; padding: 0px;")
+        render.addWidget(self.lbl_screenshot_prompt)
         self.input_screenshot_gemma_prompt = QPlainTextEdit()
         self.input_screenshot_gemma_prompt.setPlaceholderText("此為截圖模式專用的系統提示詞（選填）。\n如果不填，將使用預設的截圖翻譯指令。")
         self.input_screenshot_gemma_prompt.setTabChangesFocus(True)
@@ -4086,10 +4153,15 @@ class SettingsWindowRevamp(QWidget):
         render.addWidget(self.input_screenshot_gemma_prompt)
 
         self.card_relief = QFrame()
+        self.card_relief.setObjectName("settingsReliefInnerPanel")
         relief = QVBoxLayout(self.card_relief)
-        relief.setContentsMargins(18, 10, 18, 10)
+        relief.setContentsMargins(0, 12, 0, 0)
         relief.setSpacing(8)
         relief.setAlignment(Qt.AlignTop)
+        self.render_relief_separator = QFrame()
+        self.render_relief_separator.setObjectName("renderReliefSeparator")
+        self.render_relief_separator.setFixedHeight(1)
+        relief.addWidget(self.render_relief_separator)
         self.lbl_relief = QLabel("浮離細節")
         self.lbl_relief_hint = QLabel("只在浮離模式才啟用，位移 0 會對齊原位")
         self.lbl_relief_hint.setWordWrap(True)
@@ -4153,45 +4225,49 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_summary.setWordWrap(False)
         self.lbl_relief_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         relief.addWidget(self.lbl_relief_summary)
+        render.addWidget(self.card_relief)
         body = QWidget()
         body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         body_grid = QGridLayout(body)
         body_grid.setContentsMargins(0, 0, 0, 0)
-        body_grid.setHorizontalSpacing(14)
+        body_grid.setHorizontalSpacing(16)
         body_grid.setVerticalSpacing(14)
-        body_grid.setColumnStretch(0, 1)
-        body_grid.setColumnStretch(1, 1)
-        body_grid.setColumnStretch(2, 1)
+        body_grid.setColumnStretch(0, 96)
+        body_grid.setColumnStretch(1, 96)
+        body_grid.setColumnStretch(2, 112)
         body_grid.setRowStretch(0, 1)
         body_grid.setRowStretch(1, 1)
 
         self.card_translate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.card_ocr.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.card_region_render.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_relief.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.card_relief.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         body_grid.addWidget(self.translation_panel, 0, 0, 2, 1)
         body_grid.addWidget(self.card_ocr, 0, 1, 2, 1)
-        body_grid.addWidget(self.card_region_render, 0, 2)
-        body_grid.addWidget(self.card_relief, 1, 2)
+        body_grid.addWidget(self.card_region_render, 0, 2, 2, 1)
         main.addWidget(body)
 
         footer = QWidget()
         footer.setObjectName("settingsFooter")
+        footer.setAttribute(Qt.WA_StyledBackground, True)
+        self.footer_panel = footer
         footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(0, 16, 0, 0)
+        footer_layout.setContentsMargins(22, 12, 22, 14)
         footer_layout.setSpacing(10)
         footer_layout.addStretch()
-        self.btn_reset_defaults = QPushButton("↻")
+        self.btn_reset_defaults = QPushButton("")
         self.btn_reset_defaults.setCursor(Qt.PointingHandCursor)
         self.btn_reset_defaults.setMinimumWidth(170)
+        self.btn_reset_defaults.setFont(QFont("Segoe UI", 10))
         self.btn_reset_defaults.clicked.connect(self.on_reset_defaults_clicked)
         self.btn_cancel = QPushButton("")
         self.btn_cancel.setCursor(Qt.PointingHandCursor)
         self.btn_cancel.setMinimumWidth(110)
         self.btn_cancel.clicked.connect(self.hide)
-        self.btn_save = QPushButton("✓")
+        self.btn_save = QPushButton("")
         self.btn_save.setCursor(Qt.PointingHandCursor)
         self.btn_save.setMinimumWidth(120)
+        self.btn_save.setFont(QFont("Segoe UI", 10))
         self.btn_save.clicked.connect(self.on_save_clicked)
         footer_layout.addWidget(self.btn_reset_defaults)
         footer_layout.addWidget(self.btn_cancel)
@@ -4224,10 +4300,25 @@ class SettingsWindowRevamp(QWidget):
         self.translation_panel.set_translate_advanced_visible(visible)
 
     def on_random_scan_settings_changed(self, *_):
+        sender = self.sender()
+        if sender is self.spin_random_scan_center and hasattr(self, "slider_random_scan_center"):
+            if self.slider_random_scan_center.value() != self.spin_random_scan_center.value():
+                self.slider_random_scan_center.blockSignals(True)
+                self.slider_random_scan_center.setValue(self.spin_random_scan_center.value())
+                self.slider_random_scan_center.blockSignals(False)
+        if sender is self.spin_random_scan_jitter and hasattr(self, "slider_random_scan_jitter"):
+            if self.slider_random_scan_jitter.value() != self.spin_random_scan_jitter.value():
+                self.slider_random_scan_jitter.blockSignals(True)
+                self.slider_random_scan_jitter.setValue(self.spin_random_scan_jitter.value())
+                self.slider_random_scan_jitter.blockSignals(False)
         self.controller.on_random_scan_settings_changed(self.spin_random_scan_center.value(), self.spin_random_scan_jitter.value())
         self.update_random_scan_summary()
 
     def on_auto_threshold_refresh_changed(self, *_):
+        if hasattr(self, "slider_auto_threshold_refresh") and self.slider_auto_threshold_refresh.value() != self.spin_auto_threshold_refresh_minutes.value():
+            self.slider_auto_threshold_refresh.blockSignals(True)
+            self.slider_auto_threshold_refresh.setValue(self.spin_auto_threshold_refresh_minutes.value())
+            self.slider_auto_threshold_refresh.blockSignals(False)
         self.controller.set_auto_threshold_refresh_minutes(self.spin_auto_threshold_refresh_minutes.value())
         self.update_auto_threshold_refresh_summary()
 
@@ -4294,13 +4385,13 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_page_subtitle.setText(translation_tools.ui_text(lang, "settings_subtitle"))
         self.btn_close.setToolTip(translation_tools.ui_text(lang, "settings_close"))
         self.btn_close.setText("✕")
-        self.lbl_theme_mode.setText("🎨")
+        self.lbl_theme_mode.setText("\U0001F3A8")
         self.lbl_theme_mode.setToolTip(translation_tools.ui_text(lang, "settings_theme_mode"))
-        self.lbl_ui_language.setText("🌐")
+        self.lbl_ui_language.setText("\U0001F310")
         self.lbl_ui_language.setToolTip(translation_tools.ui_text(lang, "settings_ui_language"))
-        self.btn_reset_defaults.setText(f"↻  {translation_tools.ui_text(lang, 'settings_reset_defaults')}")
+        self.btn_reset_defaults.setText(translation_tools.ui_text(lang, "settings_reset_defaults"))
         self.btn_cancel.setText(translation_tools.ui_text(lang, "settings_cancel"))
-        self.btn_save.setText(f"✓  {translation_tools.ui_text(lang, 'settings_save')}")
+        self.btn_save.setText(translation_tools.ui_text(lang, "settings_save"))
         self.spin_random_scan_center.setSuffix(" sec" if lang == "en" else " 秒")
         self.spin_auto_threshold_refresh_minutes.setSuffix(" min" if lang == "en" else " 分鐘")
         self.lbl_ocr.setText(translation_tools.ui_text(lang, "settings_ocr_title"))
@@ -4317,6 +4408,7 @@ class SettingsWindowRevamp(QWidget):
         self.btn_render_bubble.setText(translation_tools.ui_text(lang, "settings_render_bubble"))
         self.btn_render_relief.setText(translation_tools.ui_text(lang, "settings_render_relief"))
         self.btn_render_screenshot.setText(translation_tools.ui_text(lang, "settings_render_screenshot"))
+        self.lbl_screenshot_prompt.setText("Screenshot Prompt" if lang == "en" else "\u622a\u5716\u63d0\u793a\u8a5e")
         self.input_screenshot_gemma_prompt.setPlaceholderText(
             translation_tools.ui_text(lang, "settings_screenshot_prompt_placeholder")
         )
@@ -4464,12 +4556,24 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_center.blockSignals(True)
         self.spin_random_scan_center.setValue(self.controller.random_scan_center_seconds)
         self.spin_random_scan_center.blockSignals(False)
+        self.slider_random_scan_center.blockSignals(True)
+        self.slider_random_scan_center.setValue(self.controller.random_scan_center_seconds)
+        self.slider_random_scan_center.blockSignals(False)
         self.spin_random_scan_jitter.blockSignals(True)
         self.spin_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
         self.spin_random_scan_jitter.blockSignals(False)
+        self.slider_random_scan_jitter.blockSignals(True)
+        self.slider_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
+        self.slider_random_scan_jitter.blockSignals(False)
         self.spin_auto_threshold_refresh_minutes.blockSignals(True)
         self.spin_auto_threshold_refresh_minutes.setValue(self.controller.auto_threshold_refresh_minutes)
         self.spin_auto_threshold_refresh_minutes.blockSignals(False)
+        self.slider_auto_threshold_refresh.blockSignals(True)
+        self.slider_auto_threshold_refresh.setValue(self.controller.auto_threshold_refresh_minutes)
+        self.slider_auto_threshold_refresh.blockSignals(False)
+        self.chk_auto_threshold.blockSignals(True)
+        self.chk_auto_threshold.setChecked(getattr(self.controller.worker, "auto_threshold_enabled", True))
+        self.chk_auto_threshold.blockSignals(False)
         self.cmb_relief_side.blockSignals(True)
         self.cmb_relief_side.setCurrentIndex(max(0, self.cmb_relief_side.findData(self.controller.region_relief_side)))
         self.cmb_relief_side.blockSignals(False)
@@ -4526,9 +4630,28 @@ class SettingsWindowRevamp(QWidget):
         theme = resolve_theme(theme_mode)
         is_dark = theme.key != "light"
         card_bg = "rgba(18, 31, 46, 214)" if is_dark else "rgba(255, 255, 255, 236)"
-        translation_border = "#3D8DFF" if is_dark else "#5AA7F7"
-        ocr_border = "#41B96F" if is_dark else "#50B86F"
-        render_border = "#8D5CF6" if is_dark else "#8D65D8"
+        card_glow = "rgba(255, 255, 255, 0.055)" if is_dark else "rgba(255, 255, 255, 0.75)"
+        translation_border = "rgba(93, 155, 255, 0.42)" if is_dark else "rgba(90, 167, 247, 0.46)"
+        ocr_border = "rgba(83, 210, 118, 0.42)" if is_dark else "rgba(80, 184, 111, 0.46)"
+        render_border = "rgba(179, 129, 255, 0.42)" if is_dark else "rgba(141, 101, 216, 0.46)"
+        translation_accent = "#6AAAFF" if is_dark else "#4195E4"
+        ocr_accent = "#4BD076" if is_dark else "#31A95A"
+        render_accent = "#A77CFF" if is_dark else "#8157D8"
+        footer_bg = "rgba(21, 35, 50, 182)" if is_dark else "rgba(255, 255, 255, 214)"
+        shadow_color = QColor(0, 0, 0, 145 if is_dark else 34)
+        def apply_shadow(widget, blur=28, y=10):
+            shadow = QGraphicsDropShadowEffect(widget)
+            shadow.setBlurRadius(blur)
+            shadow.setOffset(0, y)
+            shadow.setColor(shadow_color)
+            widget.setGraphicsEffect(shadow)
+        def card_style(border):
+            return (
+                "QFrame { "
+                f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {card_glow}, stop:0.18 {card_bg}, stop:1 {card_bg}); "
+                f"border: 1px solid {border}; border-radius: 14px; "
+                "}"
+            )
         self.refresh_localized_texts()
         self.setStyleSheet(
             theme.base_qss()
@@ -4544,24 +4667,42 @@ class SettingsWindowRevamp(QWidget):
             f"QFrame#settingsShellPanel {{ background: transparent; border: none; }}"
         )
         self.frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        self.footer_panel.setStyleSheet(
+            f"QWidget#settingsFooter {{ background-color: {footer_bg}; border-top: 1px solid {theme.border}; "
+            "border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }}"
+        )
         self.ocr_backend_panel.update_theme(theme_mode)
-        self.card_translate.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {translation_border}; border-radius: 14px; }}")
-        self.card_ocr.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {ocr_border}; border-radius: 14px; }}")
-        self.card_region_render.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {render_border}; border-radius: 14px; }}")
-        self.card_relief.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {render_border}; border-radius: 14px; }}")
+        self.card_translate.setStyleSheet(card_style(translation_border))
+        self.card_ocr.setStyleSheet(card_style(ocr_border))
+        self.card_region_render.setStyleSheet(card_style(render_border))
+        self.card_relief.setStyleSheet(
+            "QFrame#settingsReliefInnerPanel { background: transparent; border: none; }"
+        )
+        self.render_relief_separator.setStyleSheet(
+            f"QFrame#renderReliefSeparator {{ background-color: {theme.border}; border: none; }}"
+        )
+        for card in (self.card_translate, self.card_ocr, self.card_region_render):
+            apply_shadow(card)
         self.auto_scan_panel.setStyleSheet(theme.panel_qss("transparent"))
-        self.lbl_brand_icon.setStyleSheet(f"font-size: 24px; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 20px;")
+        self.lbl_brand_icon.setStyleSheet(f"font-size: 24px; color: {theme.accent}; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 20px;")
         self.lbl_page_title.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
         self.lbl_page_subtitle.setStyleSheet(f"font-size: 14px; color: {theme.subtext}; background: transparent; border: none;")
         self.btn_close.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.subtext}; border: none; font-size: 16px; font-weight: 900; }}"
             f"QPushButton:hover {{ background-color: {theme.accent_soft}; color: {theme.text}; border-radius: 15px; }}"
         )
-        self.lbl_ocr.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {ocr_border}; background: transparent; border: none;")
+        self.lbl_ocr.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {ocr_accent}; background: transparent; border: none;")
+        ocr_icon_bg = "rgba(77, 210, 118, 0.20)" if is_dark else "rgba(77, 210, 118, 0.18)"
+        ocr_icon_text = "#A7F7BD" if is_dark else "#278E4F"
+        self.lbl_ocr_icon.setStyleSheet(
+            f"font-size: 15px; font-weight: 900; color: {ocr_icon_text}; background-color: {ocr_icon_bg}; "
+            f"border: 1px solid {ocr_border}; border-radius: 13px;"
+        )
         self.lbl_ocr_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_auto_scan.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
         self.lbl_auto_scan_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_auto_threshold_refresh.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_auto_threshold_enabled.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {theme.text}; background: transparent; border: none; padding: 0px;")
         self.lbl_random_scan_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
             f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
@@ -4572,14 +4713,21 @@ class SettingsWindowRevamp(QWidget):
         )
         self.lbl_random_scan_center.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_region_render.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {render_border}; background: transparent; border: none;")
+        self.lbl_region_render.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {render_accent}; background: transparent; border: none;")
+        render_icon_bg = "rgba(179, 129, 255, 0.20)" if is_dark else "rgba(179, 129, 255, 0.17)"
+        render_icon_text = "#D7C4FF" if is_dark else "#734DCE"
+        self.lbl_region_render_icon.setStyleSheet(
+            f"font-size: 19px; font-weight: 900; color: {render_icon_text}; background-color: {render_icon_bg}; "
+            f"border: 1px solid {render_border}; border-radius: 13px;"
+        )
         self.lbl_region_render_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_region_render_mode.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_screenshot_prompt.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_region_render_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
             f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
         )
-        self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {render_border}; background: transparent; border: none;")
+        self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {render_accent}; background: transparent; border: none;")
         self.lbl_relief_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_relief_side.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_relief_font.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
@@ -4597,6 +4745,27 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_jitter.setStyleSheet(spinbox_style)
         self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
         self.spin_relief_font.setStyleSheet(spinbox_style)
+        slider_style = (
+            f"QSlider::groove:horizontal {{ height: 7px; background: {theme.input_bg}; border: 1px solid {theme.border}; border-radius: 4px; }}"
+            f"QSlider::sub-page:horizontal {{ background: {theme.accent}; border-radius: 4px; }}"
+            f"QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -6px 0; background: {theme.text}; border: 2px solid {theme.accent}; border-radius: 8px; }}"
+        )
+        for slider in (
+            self.slider_random_scan_center,
+            self.slider_random_scan_jitter,
+            self.slider_auto_threshold_refresh,
+            self.slider_relief_gap,
+            self.slider_relief_opacity,
+        ):
+            slider.setStyleSheet(slider_style)
+        switch_style = (
+            f"QCheckBox {{ color: {theme.text}; background: transparent; border: none; spacing: 8px; }}"
+            "QCheckBox::indicator { width: 42px; height: 22px; border-radius: 11px; }"
+            f"QCheckBox::indicator:unchecked {{ background-color: {theme.input_bg}; border: 1px solid {theme.border}; }}"
+            f"QCheckBox::indicator:checked {{ background-color: {theme.accent}; border: 1px solid {theme.accent}; }}"
+        )
+        self.chk_auto_threshold.setStyleSheet(switch_style)
+        self.chk_region_pass_through.setStyleSheet(switch_style)
         self.lbl_relief_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
             f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
@@ -4615,8 +4784,8 @@ class SettingsWindowRevamp(QWidget):
         self._sync_theme_mode(theme.key)
         self._sync_render_mode()
         self.translation_panel.update_theme(theme_mode)
-        self.card_translate.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {translation_border}; border-radius: 14px; }}")
-        self.lbl_translate.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {translation_border}; background: transparent; border: none;")
+        self.card_translate.setStyleSheet(card_style(translation_border))
+        self.lbl_translate.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {translation_accent}; background: transparent; border: none;")
         footer_button_style = (
             f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
             "border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 700; }}"
@@ -5155,7 +5324,7 @@ class Controller(QWidget):
             self.worker.set_gemma_enabled(use_gemma_translation)
             if self.settings_window is not None:
                 self.settings_window.set_translate_mode(use_gemma_translation)
-            self.google_ocr_enabled = bool(settings.get("google_ocr_enabled", False))
+            self.google_ocr_enabled = bool(settings.get("google_ocr_enabled", False)) or bool(use_gemma_translation)
             self.worker.google_ocr_enabled = self.google_ocr_enabled
             if self.settings_window is not None:
                 self.settings_window.ocr_backend_panel.sync_from_controller()
@@ -5493,6 +5662,7 @@ class Controller(QWidget):
             self.settings_window.set_translate_mode(desired_enabled)
             if hasattr(self.settings_window, "ocr_backend_panel"):
                 self.settings_window.ocr_backend_panel.sync_from_controller()
+        self.set_google_ocr_enabled(desired_enabled)
         if desired_enabled:
             self._set_status_text(
                 "controller.status.ai_model_ready",
