@@ -106,8 +106,10 @@ MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
 SUPPORTED_AI_MODELS = [
+    ("Gemma 3 1B", "gemma-3-1b-it"),
     ("Gemma 3 27B", "gemma-3-27b-it"),
     ("Gemma 4 31B", "gemma-4-31b-it"),
+    ("Gemini 2.5 Pro", "gemini-2.5-pro"),
 ]
 SUPPORTED_GEMMA_MODEL_NAMES = [model_name for _, model_name in SUPPORTED_AI_MODELS]
 SCAN_MODE_FULLSCREEN = "fullscreen"
@@ -3852,8 +3854,8 @@ class SettingsWindowRevamp(QWidget):
         self.old_pos = None
         self._ai_requested = False
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.setMinimumSize(1180, 760)
-        self.resize(1280, 840)
+        self.setMinimumSize(1180, 920)
+        self.resize(1280, 920)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -4630,14 +4632,13 @@ class SettingsWindowRevamp(QWidget):
         theme = resolve_theme(theme_mode)
         is_dark = theme.key != "light"
         card_bg = "rgba(18, 31, 46, 214)" if is_dark else "rgba(255, 255, 255, 236)"
-        card_glow = "rgba(255, 255, 255, 0.055)" if is_dark else "rgba(255, 255, 255, 0.75)"
-        translation_border = "rgba(93, 155, 255, 0.42)" if is_dark else "rgba(90, 167, 247, 0.46)"
-        ocr_border = "rgba(83, 210, 118, 0.42)" if is_dark else "rgba(80, 184, 111, 0.46)"
-        render_border = "rgba(179, 129, 255, 0.42)" if is_dark else "rgba(141, 101, 216, 0.46)"
+        card_glow = "rgba(255, 255, 255, 14)" if is_dark else "rgba(255, 255, 255, 191)"
+        translation_border = "rgba(93, 155, 255, 107)" if is_dark else "rgba(90, 167, 247, 117)"
+        ocr_border = "rgba(83, 210, 118, 107)" if is_dark else "rgba(80, 184, 111, 117)"
+        render_border = "rgba(179, 129, 255, 107)" if is_dark else "rgba(141, 101, 216, 117)"
         translation_accent = "#6AAAFF" if is_dark else "#4195E4"
         ocr_accent = "#4BD076" if is_dark else "#31A95A"
         render_accent = "#A77CFF" if is_dark else "#8157D8"
-        footer_bg = "rgba(21, 35, 50, 182)" if is_dark else "rgba(255, 255, 255, 214)"
         shadow_color = QColor(0, 0, 0, 145 if is_dark else 34)
         def apply_shadow(widget, blur=28, y=10):
             shadow = QGraphicsDropShadowEffect(widget)
@@ -4668,8 +4669,7 @@ class SettingsWindowRevamp(QWidget):
         )
         self.frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         self.footer_panel.setStyleSheet(
-            f"QWidget#settingsFooter {{ background-color: {footer_bg}; border-top: 1px solid {theme.border}; "
-            "border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }}"
+            f"QWidget#settingsFooter {{ background-color: {theme.header_bg}; border-top: 1px solid {theme.border}; }}"
         )
         self.ocr_backend_panel.update_theme(theme_mode)
         self.card_translate.setStyleSheet(card_style(translation_border))
@@ -4692,7 +4692,7 @@ class SettingsWindowRevamp(QWidget):
             f"QPushButton:hover {{ background-color: {theme.accent_soft}; color: {theme.text}; border-radius: 15px; }}"
         )
         self.lbl_ocr.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {ocr_accent}; background: transparent; border: none;")
-        ocr_icon_bg = "rgba(77, 210, 118, 0.20)" if is_dark else "rgba(77, 210, 118, 0.18)"
+        ocr_icon_bg = "rgba(77, 210, 118, 51)" if is_dark else "rgba(77, 210, 118, 46)"
         ocr_icon_text = "#A7F7BD" if is_dark else "#278E4F"
         self.lbl_ocr_icon.setStyleSheet(
             f"font-size: 15px; font-weight: 900; color: {ocr_icon_text}; background-color: {ocr_icon_bg}; "
@@ -4714,7 +4714,7 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_random_scan_center.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_region_render.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {render_accent}; background: transparent; border: none;")
-        render_icon_bg = "rgba(179, 129, 255, 0.20)" if is_dark else "rgba(179, 129, 255, 0.17)"
+        render_icon_bg = "rgba(179, 129, 255, 51)" if is_dark else "rgba(179, 129, 255, 43)"
         render_icon_text = "#D7C4FF" if is_dark else "#734DCE"
         self.lbl_region_render_icon.setStyleSheet(
             f"font-size: 19px; font-weight: 900; color: {render_icon_text}; background-color: {render_icon_bg}; "
@@ -5762,7 +5762,7 @@ class Controller(QWidget):
             self.settings_window.hide()
         else:
             self.settings_window.show()
-            self.settings_window.resize(1180, 740)
+            self.settings_window.resize(1180, 920)
             try:
                 screen = QApplication.primaryScreen().availableGeometry()
                 x = screen.left() + max(0, (screen.width() - self.settings_window.width()) // 2)

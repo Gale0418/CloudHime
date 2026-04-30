@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout
@@ -45,15 +45,11 @@ class OcrBackendSettingsPanel(QFrame):
         self.lbl_title.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         outer.addWidget(self.lbl_title)
 
-        self.lbl_windows = QLabel("")
-        self.lbl_windows.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
-
         self.segment_container = QFrame()
         self.segment_container.setObjectName("ocrBackendSegment")
         segment = QHBoxLayout(self.segment_container)
         segment.setContentsMargins(2, 2, 2, 2)
-        segment.setSpacing(0)
-        segment.addWidget(self.lbl_windows)
+        segment.setSpacing(4)
 
         for index, backend_name in enumerate(optional_backend_names()):
             spec = BACKEND_SPECS[backend_name]
@@ -78,12 +74,10 @@ class OcrBackendSettingsPanel(QFrame):
         return chain
 
     def _refresh_summary(self):
-        lang = translation_tools.get_ui_language(self.controller)
         chain_text = summarize_backend_chain(self._backend_chain())
         if getattr(self.controller, "google_ocr_enabled", False):
             chain_text = f"{chain_text} + GoogleOCR"
         self.setToolTip(chain_text)
-        self.lbl_windows.setToolTip(chain_text)
 
     def _set_controller_backend_enabled(self, backend_name, enabled):
         if hasattr(self.controller, "set_ocr_backend_enabled"):
@@ -196,21 +190,8 @@ class OcrBackendSettingsPanel(QFrame):
         theme = resolve_theme(theme_mode)
         self.refresh_localized_texts()
         self.lbl_title.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {theme.subtext};")
-        self.segment_container.setStyleSheet(
-            f"QFrame#ocrBackendSegment {{ background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
-            "border-radius: 11px; }}"
-        )
-        self.lbl_windows.setStyleSheet(
-            f"color: {theme.subtext}; background-color: transparent; border: none; border-right: 1px solid {theme.border}; "
-            "padding: 9px 12px; font-size: 12px; font-weight: 800;"
-        )
-        button_style = (
-            f"QPushButton {{ color: {theme.text}; background-color: transparent; border: none; border-right: 1px solid {theme.border}; "
-            "border-radius: 8px; padding: 9px 12px; font-size: 12px; font-weight: 800; }}"
-            f"QPushButton:hover {{ background-color: {theme.accent_soft}; }}"
-            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
-            f"QPushButton:disabled {{ color: {theme.subtext}; }}"
-        )
+        self.segment_container.setStyleSheet(theme.panel_qss("subtle", radius=11))
+        button_style = theme.button_qss(radius=8)
         for backend_name in optional_backend_names():
             button = self._backend_buttons.get(backend_name)
             if button is not None:
@@ -220,7 +201,6 @@ class OcrBackendSettingsPanel(QFrame):
     def refresh_localized_texts(self):
         lang = translation_tools.get_ui_language(self.controller)
         self.lbl_title.setText(translation_tools.ui_text(lang, "ocr_backend_title"))
-        self.lbl_windows.setText(translation_tools.ui_text(lang, "ocr_backend_windows"))
         for backend_name in optional_backend_names():
             button = self._backend_buttons.get(backend_name)
             if button is not None:

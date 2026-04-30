@@ -20,7 +20,7 @@ class TranslationProviderRegistryConfig:
     gemma_enabled: bool = False
     gemma_auto_switch_enabled: bool = False
     target_lang: str = "zh-TW"
-    supported_models: Sequence[str] = ("gemma-3-27b-it", "gemma-4-31b-it")
+    supported_models: Sequence[str] = ("gemma-3-1b-it", "gemma-3-27b-it", "gemma-4-31b-it", "gemini-2.5-pro")
 
 
 class TranslationProviderRegistry:
