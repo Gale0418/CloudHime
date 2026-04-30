@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -36,29 +37,41 @@ class TranslationSettingsPanel(QWidget):
         self.card_translate = QFrame()
         self.card_key = self.card_translate
         translate_layout = QVBoxLayout(self.card_translate)
-        translate_layout.setContentsMargins(18, 18, 18, 18)
+        translate_layout.setContentsMargins(20, 16, 20, 18)
         translate_layout.setSpacing(10)
         translate_layout.setAlignment(Qt.AlignTop)
 
+        self.lbl_translate_icon = QLabel("文")
+        self.lbl_translate_icon.setFixedSize(46, 46)
+        self.lbl_translate_icon.setAlignment(Qt.AlignCenter)
         self.lbl_translate = QLabel("")
+        self.lbl_translate.setMinimumHeight(46)
+        self.lbl_translate.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_translate_hint = QLabel("")
         self.lbl_translate_hint.setWordWrap(True)
         self.lbl_translate_hint.setVisible(True)
         self.lbl_translate_summary = QLabel("")
         self.lbl_translate_summary.setVisible(False)
         self.lbl_translate_mode = QLabel("")
-        self.lbl_translate_mode.setVisible(False)
+        self.lbl_translate_mode.setVisible(True)
 
-        translate_layout.addWidget(self.lbl_translate)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(12)
+        header_row.addWidget(self.lbl_translate_icon)
+        header_row.addWidget(self.lbl_translate)
+        header_row.addStretch()
+        translate_layout.addLayout(header_row)
         translate_layout.addWidget(self.lbl_translate_hint)
 
         self.translate_mode_group = QButtonGroup(self)
         self.translate_mode_group.setExclusive(True)
 
         mode_buttons = QWidget()
+        self.mode_buttons = mode_buttons
         mode_buttons_layout = QHBoxLayout(mode_buttons)
-        mode_buttons_layout.setContentsMargins(0, 0, 0, 0)
-        mode_buttons_layout.setSpacing(8)
+        mode_buttons_layout.setContentsMargins(3, 3, 3, 3)
+        mode_buttons_layout.setSpacing(3)
 
         self.btn_translate_google = QPushButton("")
         self.btn_translate_google.setCheckable(True)
@@ -66,6 +79,7 @@ class TranslationSettingsPanel(QWidget):
         self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
         self.translate_mode_group.addButton(self.btn_translate_google)
         self.btn_translate_google.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_translate_google.setFont(QFont("Segoe UI Emoji", 10))
 
         self.btn_translate_ai = QPushButton("")
         self.btn_translate_ai.setCheckable(True)
@@ -73,9 +87,11 @@ class TranslationSettingsPanel(QWidget):
         self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
         self.translate_mode_group.addButton(self.btn_translate_ai)
         self.btn_translate_ai.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn_translate_ai.setFont(QFont("Segoe UI Emoji", 10))
 
         mode_buttons_layout.addWidget(self.btn_translate_google)
         mode_buttons_layout.addWidget(self.btn_translate_ai)
+        translate_layout.addWidget(self.lbl_translate_mode)
         translate_layout.addWidget(mode_buttons)
 
         self.advanced_translate_frame = QFrame()
@@ -95,7 +111,18 @@ class TranslationSettingsPanel(QWidget):
         self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
         self.input_api_key.setPlaceholderText("")
         self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
-        advanced_layout.addWidget(self.input_api_key)
+        api_key_row = QHBoxLayout()
+        api_key_row.setContentsMargins(0, 0, 0, 0)
+        api_key_row.setSpacing(6)
+        api_key_row.addWidget(self.input_api_key)
+        self.btn_api_key_visible = QPushButton("V")
+        self.btn_api_key_visible.setCursor(Qt.PointingHandCursor)
+        self.btn_api_key_visible.setFixedSize(34, 34)
+        self.btn_api_key_visible.setFont(QFont("Segoe UI", 10))
+        self.btn_api_key_visible.setToolTip("Show / hide API key")
+        self.btn_api_key_visible.clicked.connect(self.toggle_api_key_visible)
+        api_key_row.addWidget(self.btn_api_key_visible)
+        advanced_layout.addLayout(api_key_row)
 
         self.separator = QFrame()
         advanced_layout.addWidget(self.separator)
@@ -149,6 +176,11 @@ class TranslationSettingsPanel(QWidget):
             self.controller.toggle_ai_translation(True)
         self.update_translate_summary()
 
+    def toggle_api_key_visible(self):
+        visible = self.input_api_key.echoMode() != QLineEdit.Normal
+        self.input_api_key.setEchoMode(QLineEdit.Normal if visible else QLineEdit.PasswordEchoOnEdit)
+        self.btn_api_key_visible.setText("H" if visible else "V")
+
     def on_ai_model_changed(self, index):
         self.controller.on_ai_model_changed(index)
         self.update_translate_summary()
@@ -168,6 +200,7 @@ class TranslationSettingsPanel(QWidget):
         lang = self._ui_language()
         self.lbl_translate.setText(translation_tools.ui_text(lang, "translation_panel_title"))
         self.lbl_translate_hint.setText(translation_tools.ui_text(lang, "translation_panel_hint"))
+        self.lbl_translate_mode.setText("Provider" if lang == "en" else "\u7ffb\u8b6f\u4f86\u6e90")
         self.btn_translate_google.setText(translation_tools.ui_text(lang, "translation_mode_google"))
         self.btn_translate_ai.setText(translation_tools.ui_text(lang, "translation_mode_ai"))
         self.lbl_api_key.setText(translation_tools.ui_text(lang, "translation_api_key"))
@@ -201,6 +234,7 @@ class TranslationSettingsPanel(QWidget):
 
     def update_key_state(self, enabled):
         self.input_api_key.setEnabled(enabled)
+        self.btn_api_key_visible.setEnabled(enabled)
         self.cmb_ai_model.setEnabled(enabled)
         self.input_gemma_prompt.setEnabled(enabled)
         self.chk_auto_switch.setEnabled(enabled)
@@ -247,10 +281,20 @@ class TranslationSettingsPanel(QWidget):
         self.advanced_translate_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
 
         self.lbl_translate.setStyleSheet(
-            f"font-size: 17px; font-weight: 800; color: {theme.text}; background: transparent; border: none;"
+            f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;"
+        )
+        icon_bg = "rgba(65, 150, 255, 0.20)" if theme.key != "light" else "rgba(80, 165, 255, 0.18)"
+        icon_border = "rgba(93, 155, 255, 0.62)" if theme.key != "light" else "rgba(90, 167, 247, 0.54)"
+        icon_text = "#8FC4FF" if theme.key != "light" else "#3A8BDA"
+        self.lbl_translate_icon.setStyleSheet(
+            f"font-size: 19px; font-weight: 900; color: {icon_text}; background-color: {icon_bg}; "
+            f"border: 1px solid {icon_border}; border-radius: 13px;"
         )
         self.lbl_translate_hint.setStyleSheet(
             f"font-size: 12px; color: {theme.subtext}; background: transparent; border: none;"
+        )
+        self.lbl_translate_mode.setStyleSheet(
+            f"font-size: 12px; font-weight: 800; color: {theme.subtext}; background: transparent; border: none; margin-top: 2px;"
         )
         self.lbl_translate_summary.setStyleSheet("background: transparent; border: none; color: transparent;")
         self.lbl_advanced_translate.setStyleSheet("background: transparent; border: none; color: transparent;")
@@ -269,10 +313,14 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_ai_model.setStyleSheet(accent_label_style)
         self.lbl_gemma_prompt.setStyleSheet(accent_label_style)
 
+        self.mode_buttons.setStyleSheet(
+            f"QWidget {{ background-color: {theme.input_bg}; border: 1px solid {theme.border}; border-radius: 12px; }}"
+        )
         button_style = (
-            f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
-            f"border-radius: 10px; padding: 7px 12px; font-size: 14px; }}"
-            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
+            f"QPushButton {{ color: {theme.subtext}; background-color: transparent; border: none; "
+            f"border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 800; }}"
+            f"QPushButton:hover {{ color: {theme.text}; background-color: {theme.accent_soft}; }}"
+            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; }}"
         )
         self.btn_translate_google.setStyleSheet(button_style)
         self.btn_translate_ai.setStyleSheet(button_style)
@@ -280,6 +328,11 @@ class TranslationSettingsPanel(QWidget):
         self.input_api_key.setStyleSheet(
             f"background-color: {theme.card_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
             f"border-radius: 6px; padding: 7px; font-size: 13px;"
+        )
+        self.btn_api_key_visible.setStyleSheet(
+            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
+            "border-radius: 8px; font-size: 14px; }}"
+            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
         )
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
         self.input_gemma_prompt.setStyleSheet(

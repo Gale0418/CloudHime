@@ -73,8 +73,8 @@ UI_TEXTS = {
         "en": "Manage OCR backends, passthrough, and scan timing.",
     },
     "settings_pass_through": {
-        "zh-TW": "允許滑鼠穿透框選區 (點擊背景遊戲)",
-        "en": "Allow mouse passthrough on region selection (click through to the game)",
+        "zh-TW": "滑鼠穿透框選區",
+        "en": "Mouse passthrough",
     },
     "settings_auto_scan_title": {
         "zh-TW": "自動掃描",
@@ -97,8 +97,8 @@ UI_TEXTS = {
         "en": "Threshold refresh",
     },
     "settings_region_render_title": {
-        "zh-TW": "文字模式",
-        "en": "Text mode",
+        "zh-TW": "渲染設定",
+        "en": "Rendering",
     },
     "settings_region_render_hint": {
         "zh-TW": "在框選模式下才會啟用，一共有三種文字顯示方式可以切換",
@@ -241,12 +241,12 @@ UI_TEXTS = {
         "en": "Google translation works out of the box; AI mode needs an API key and model.",
     },
     "translation_mode_google": {
-        "zh-TW": "🌐 Google 翻譯",
-        "en": "🌐 Google Translate",
+        "zh-TW": "Google 翻譯",
+        "en": "Google Translate",
     },
     "translation_mode_ai": {
-        "zh-TW": "🧠 Gemma AI 翻譯",
-        "en": "🧠 Gemma AI",
+        "zh-TW": "Gemma AI 翻譯",
+        "en": "Gemma AI",
     },
     "translation_api_key": {
         "zh-TW": "Google API KEY",
