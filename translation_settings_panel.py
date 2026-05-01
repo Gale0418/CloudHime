@@ -208,20 +208,20 @@ class TranslationSettingsPanel(QWidget):
         lang = self._ui_language()
         notes = {
             "gemma-3-1b-it": {
-                "en": "Fastest, text-only. Screenshot mode falls back to OCR text.",
-                "zh-TW": "??????????????? OCR ?????",
+                "en": "Fast text-only model; screenshots fall back to OCR.",
+                "zh-TW": "快速純文字模型，截圖會回退 OCR。",
             },
             "gemma-3-27b-it": {
                 "en": "Best balance for screenshot translation.",
-                "zh-TW": "?????????????",
+                "zh-TW": "截圖翻譯的平衡首選。",
             },
             "gemma-4-31b-it": {
-                "en": "Latest large model. Can be slower on screenshots.",
-                "zh-TW": "????????????????",
+                "en": "Large model with stronger vision, but slower.",
+                "zh-TW": "更強的視覺能力，但速度較慢。",
             },
             "gemini-2.5-pro": {
-                "en": "Paid model. Strong, but may be slower or rate-limited.",
-                "zh-TW": "???????????????????",
+                "en": "Strong paid model; can be slower or rate-limited.",
+                "zh-TW": "付費強力模型，可能較慢或受限。",
             },
         }
         model_note = notes.get(model_name)
@@ -236,6 +236,7 @@ class TranslationSettingsPanel(QWidget):
         text = self._ai_model_note_text(current_model)
         self.lbl_ai_model_notes.setText(text)
         self.lbl_ai_model_notes.setVisible(bool(text))
+        self.lbl_ai_model_notes.setMaximumHeight(self.fontMetrics().height() + 6)
 
     def refresh_localized_texts(self):
         lang = self._ui_language()
