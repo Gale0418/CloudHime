@@ -942,7 +942,7 @@ class OCRWorker(QObject):
         if not best_items:
             return ""
         hint = quality_summarize_threshold_candidate(best_items, max_items=6, max_chars=180).strip()
-        if len(hint) < 8:
+        if len(hint) < 4:
             return ""
         return hint[:400]
 
@@ -1315,6 +1315,16 @@ class OCRWorker(QObject):
                 break
             translated = ""
         if not translated:
+            if source_text_hint:
+                try:
+                    translated = self.translate_text_google(source_text_hint)
+                except Exception:
+                    try:
+                        translated = self.translate_text_gemma(source_text_hint)
+                    except Exception:
+                        translated = ""
+            if translated:
+                return translated
             raise ValueError("empty_gemma_screenshot_response")
         if source_text_hint and (
             self._should_fallback_to_text_translation(source_text_hint, translated)

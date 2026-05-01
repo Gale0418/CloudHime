@@ -644,9 +644,16 @@ class GemmaTranslationProvider:
         if not translated:
             if source_text_hint:
                 try:
-                    translated = self.translate(source_text_hint, target_lang=target_lang).text
+                    translated_result = self.translate(source_text_hint, target_lang=target_lang)
+                    translated = translated_result.text if translated_result else ""
                 except Exception:
-                    translated = ""
+                    try:
+                        translated = GoogleTranslator(
+                            source=detect_source_language(source_text_hint),
+                            target=target_lang or self.target_lang,
+                        ).translate(clean_model_output(source_text_hint)).strip()
+                    except Exception:
+                        translated = ""
             if debug_log is not None:
                 debug_log(
                     "\n".join([
@@ -654,6 +661,9 @@ class GemmaTranslationProvider:
                         f"last_raw={last_raw_text if last_raw_text else '<empty>'}",
                     ])
                 )
+            if translated:
+                self._remember(cache_key, (translated, last_raw_text))
+                return TranslationResult(text=translated, provider=self.name, model=model_name, raw_text=last_raw_text)
             raise ValueError("empty_gemma_screenshot_response")
         if source_text_hint and self._should_fallback_to_text_translation(source_text_hint, translated):
             try:
