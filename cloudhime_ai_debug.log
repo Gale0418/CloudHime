@@ -1805,3 +1805,21 @@ source_text_hint_len=0
 
 [2026-05-01 13:59:01] [TRANSLATION] google batch hits=0/2 source_count=2
 
+[2026-05-01 14:07:34] [TRANSLATION] google batch hits=0/2 source_count=2
+
+[2026-05-01 14:08:44] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=36
+
+[2026-05-01 14:09:03] [TRANSLATION] google single miss source='Exclusive Invite: F Forbes\nWine Club'
+
+[2026-05-01 14:42:59] [screenshot start]
+scan_mode=region
+region_render_mode=screenshot
+image_parts=1
+source_text_hint_len=180
+
+[2026-05-01 14:43:19] [TRANSLATION] google single miss source='GP 下 5.5 works best when prompts define the\noutcome and leave 「00m forthe modelto\nchoose an efficient solution path. Compared\nWith earlier models, you can Often use shorter,\nmore o'
+
