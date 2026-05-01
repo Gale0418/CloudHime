@@ -847,65 +847,105 @@ class OCRWorker(QObject):
     def build_ai_image_parts(self, img_np):
         return translation_tools.build_ai_image_parts(img_np, max_width=AI_IMAGE_MAX_WIDTH)
 
+    def _collect_screenshot_hint_items(self, ocr_result, min_confidence=0.35):
+        raw_items = []
+        for line in getattr(ocr_result, "lines", []) or []:
+            text = normalize_ocr_text(getattr(line, "text", "") or "")
+            if not text:
+                continue
+            if any(
+                marker in text
+                for marker in (
+                    "?????",
+                    "??????",
+                    "?????",
+                    "????",
+                    "??",
+                    "??",
+                    "Gemma",
+                    "OCR",
+                    "v3.0",
+                    "5s",
+                )
+            ):
+                continue
+            confidence = getattr(line, "confidence", None)
+            try:
+                confidence = float(confidence) if confidence is not None else None
+            except Exception:
+                confidence = None
+            if confidence is not None and confidence < min_confidence:
+                continue
+            box = getattr(line, "box", None)
+            x = int(getattr(box, "x", 0) or 0)
+            y = int(getattr(box, "y", 0) or 0)
+            w = max(1, int(getattr(box, "w", 1) or 1))
+            h = max(1, int(getattr(box, "h", 1) or 1))
+            raw_items.append({
+                "text": self.convert_to_trad(text),
+                "x": x,
+                "y": y,
+                "w": w,
+                "h": h,
+                "confidence": confidence,
+            })
+        return raw_items
+
     def build_screenshot_text_hint(self, img_np):
         if not self.ocr_backends:
             return ""
         try:
-            img_for_ocr, scale_factor = self.build_ocr_image(img_np, self.binary_threshold, scale_factor=2.0)
-            ocr_result = self._recognize_with_backends(img_for_ocr)
+            h, w = img_np.shape[:2]
+            img_scaled = cv2.resize(img_np, (int(w * 2.0), int(h * 2.0)), interpolation=cv2.INTER_CUBIC)
+            gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+            _, binary = cv2.threshold(gray, self.binary_threshold, 255, cv2.THRESH_BINARY)
+            _, clahe_binary = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            adaptive = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                31,
+                11,
+            )
+            variants = [
+                ("color_scaled", img_scaled),
+                ("gray_scaled", cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)),
+                ("binary_invert", cv2.cvtColor(cv2.bitwise_not(binary), cv2.COLOR_GRAY2BGR)),
+                ("clahe_gray", cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR)),
+                ("clahe_otsu_invert", cv2.cvtColor(cv2.bitwise_not(clahe_binary), cv2.COLOR_GRAY2BGR)),
+                ("adaptive_invert", cv2.cvtColor(cv2.bitwise_not(adaptive), cv2.COLOR_GRAY2BGR)),
+            ]
         except Exception:
             return ""
-        if not ocr_result or not getattr(ocr_result, "lines", None):
+
+        best_items = []
+        best_score = -1
+        for _, variant_img in variants:
+            try:
+                ocr_result = self._recognize_with_backends(variant_img)
+            except Exception:
+                continue
+            if not ocr_result or not getattr(ocr_result, "lines", None):
+                continue
+            raw_items = self._collect_screenshot_hint_items(ocr_result, min_confidence=0.35)
+            if not raw_items:
+                continue
+            score, filtered_items = quality_score_ocr_items(raw_items)
+            if score > best_score:
+                best_score = score
+                best_items = filtered_items
+            if score >= 16 and filtered_items:
+                best_items = filtered_items
+                break
+        if not best_items:
             return ""
-        raw_items = []
-        for line in ocr_result.lines:
-            text = normalize_ocr_text(getattr(line, "text", "") or "")
-            if text:
-                if any(
-                    marker in text
-                    for marker in (
-                        "雲朵翻譯姬",
-                        "截圖翻譯完成",
-                        "全螢幕翻譯",
-                        "框選翻譯",
-                        "立即",
-                        "停止",
-                        "Gemma",
-                        "OCR",
-                        "v3.0",
-                        "5s",
-                    )
-                ):
-                    continue
-                confidence = getattr(line, "confidence", None)
-                try:
-                    confidence = float(confidence) if confidence is not None else None
-                except Exception:
-                    confidence = None
-                if confidence is not None and confidence < 0.55:
-                    continue
-                box = getattr(line, "box", None)
-                x = int(getattr(box, "x", 0) or 0)
-                y = int(getattr(box, "y", 0) or 0)
-                w = max(1, int(getattr(box, "w", 1) or 1))
-                h = max(1, int(getattr(box, "h", 1) or 1))
-                raw_items.append({
-                    "text": self.convert_to_trad(text),
-                    "x": x,
-                    "y": y,
-                    "w": w,
-                    "h": h,
-                    "confidence": confidence,
-                })
-        if not raw_items:
-            return ""
-        score, filtered_items = quality_score_ocr_items(raw_items)
-        if score < 18 or len(filtered_items) < 2:
-            return ""
-        hint = quality_summarize_threshold_candidate(filtered_items, max_items=6, max_chars=180).strip()
-        if len(hint) < 12:
+        hint = quality_summarize_threshold_candidate(best_items, max_items=6, max_chars=180).strip()
+        if len(hint) < 8:
             return ""
         return hint[:400]
+
 
     def _normalize_translation_compare_text(self, text):
         normalized = normalize_ocr_text(text)
