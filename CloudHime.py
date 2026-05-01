@@ -106,8 +106,10 @@ MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
 SUPPORTED_AI_MODELS = [
+    ("Gemma 3 1B", "gemma-3-1b-it"),
     ("Gemma 3 27B", "gemma-3-27b-it"),
     ("Gemma 4 31B", "gemma-4-31b-it"),
+    ("Gemini 2.5 Pro", "gemini-2.5-pro"),
 ]
 SUPPORTED_GEMMA_MODEL_NAMES = [model_name for _, model_name in SUPPORTED_AI_MODELS]
 SCAN_MODE_FULLSCREEN = "fullscreen"
@@ -3398,11 +3400,17 @@ class SettingsWindow(QWidget):
         center_row.addWidget(self.lbl_random_scan_center)
         center_row.addStretch()
         self.spin_random_scan_center = QSpinBox()
-        self.spin_random_scan_center.setRange(3, 300)
+        self.spin_random_scan_center.setRange(1, 300)
         self.spin_random_scan_center.setSuffix(" 秒")
         self.spin_random_scan_center.valueChanged.connect(self.on_random_scan_settings_changed)
         center_row.addWidget(self.spin_random_scan_center)
         auto_scan_layout.addLayout(center_row)
+        self.slider_random_scan_center = QSlider(Qt.Horizontal)
+        self.slider_random_scan_center.setRange(1, 300)
+        self.slider_random_scan_center.setTickPosition(QSlider.TicksBelow)
+        self.slider_random_scan_center.setTickInterval(60)
+        self.slider_random_scan_center.valueChanged.connect(self.spin_random_scan_center.setValue)
+        auto_scan_layout.addWidget(self.slider_random_scan_center)
 
         jitter_row = QHBoxLayout()
         self.lbl_random_scan_jitter = QLabel("偏移幅度")
@@ -3414,6 +3422,12 @@ class SettingsWindow(QWidget):
         self.spin_random_scan_jitter.valueChanged.connect(self.on_random_scan_settings_changed)
         jitter_row.addWidget(self.spin_random_scan_jitter)
         auto_scan_layout.addLayout(jitter_row)
+        self.slider_random_scan_jitter = QSlider(Qt.Horizontal)
+        self.slider_random_scan_jitter.setRange(0, 100)
+        self.slider_random_scan_jitter.setTickPosition(QSlider.TicksBelow)
+        self.slider_random_scan_jitter.setTickInterval(25)
+        self.slider_random_scan_jitter.valueChanged.connect(self.spin_random_scan_jitter.setValue)
+        auto_scan_layout.addWidget(self.slider_random_scan_jitter)
 
         threshold_row = QHBoxLayout()
         self.lbl_auto_threshold_refresh = QLabel("閥值刷新")
@@ -3428,6 +3442,15 @@ class SettingsWindow(QWidget):
         self.spin_auto_threshold_refresh_minutes.valueChanged.connect(self.on_auto_threshold_refresh_changed)
         threshold_row.addWidget(self.spin_auto_threshold_refresh_minutes)
         auto_scan_layout.addLayout(threshold_row)
+        self.slider_auto_threshold_refresh = QSlider(Qt.Horizontal)
+        self.slider_auto_threshold_refresh.setRange(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX,
+        )
+        self.slider_auto_threshold_refresh.setTickPosition(QSlider.TicksBelow)
+        self.slider_auto_threshold_refresh.setTickInterval(5)
+        self.slider_auto_threshold_refresh.valueChanged.connect(self.spin_auto_threshold_refresh_minutes.setValue)
+        auto_scan_layout.addWidget(self.slider_auto_threshold_refresh)
 
         self.lbl_random_scan_summary = QLabel("目前：10s 附近 · 約 8 ~ 12 秒")
         self.lbl_random_scan_summary.setWordWrap(True)
@@ -3691,14 +3714,23 @@ class SettingsWindow(QWidget):
         self.spin_random_scan_center.blockSignals(True)
         self.spin_random_scan_center.setValue(self.controller.random_scan_center_seconds)
         self.spin_random_scan_center.blockSignals(False)
+        self.slider_random_scan_center.blockSignals(True)
+        self.slider_random_scan_center.setValue(self.controller.random_scan_center_seconds)
+        self.slider_random_scan_center.blockSignals(False)
 
         self.spin_random_scan_jitter.blockSignals(True)
         self.spin_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
         self.spin_random_scan_jitter.blockSignals(False)
+        self.slider_random_scan_jitter.blockSignals(True)
+        self.slider_random_scan_jitter.setValue(self.controller.random_scan_jitter_percent)
+        self.slider_random_scan_jitter.blockSignals(False)
 
         self.spin_auto_threshold_refresh_minutes.blockSignals(True)
         self.spin_auto_threshold_refresh_minutes.setValue(self.controller.auto_threshold_refresh_minutes)
         self.spin_auto_threshold_refresh_minutes.blockSignals(False)
+        self.slider_auto_threshold_refresh.blockSignals(True)
+        self.slider_auto_threshold_refresh.setValue(self.controller.auto_threshold_refresh_minutes)
+        self.slider_auto_threshold_refresh.blockSignals(False)
 
         self.cmb_region_render_mode.blockSignals(True)
         if self.controller.region_render_mode == REGION_RENDER_RELIEF:
@@ -4000,11 +4032,17 @@ class SettingsWindowRevamp(QWidget):
         center_row.addWidget(self.lbl_random_scan_center)
         center_row.addStretch()
         self.spin_random_scan_center = QSpinBox()
-        self.spin_random_scan_center.setRange(3, 300)
+        self.spin_random_scan_center.setRange(1, 300)
         self.spin_random_scan_center.setSuffix(" 秒")
         self.spin_random_scan_center.valueChanged.connect(self.on_random_scan_settings_changed)
         center_row.addWidget(self.spin_random_scan_center)
         ocr.addLayout(center_row)
+        self.slider_random_scan_center = QSlider(Qt.Horizontal)
+        self.slider_random_scan_center.setRange(1, 300)
+        self.slider_random_scan_center.setTickPosition(QSlider.TicksBelow)
+        self.slider_random_scan_center.setTickInterval(60)
+        self.slider_random_scan_center.valueChanged.connect(self.spin_random_scan_center.setValue)
+        ocr.addWidget(self.slider_random_scan_center)
         jitter_row = QHBoxLayout()
         jitter_row.setSpacing(8)
         self.lbl_random_scan_jitter = QLabel("偏移幅度")
@@ -4016,6 +4054,12 @@ class SettingsWindowRevamp(QWidget):
         self.spin_random_scan_jitter.valueChanged.connect(self.on_random_scan_settings_changed)
         jitter_row.addWidget(self.spin_random_scan_jitter)
         ocr.addLayout(jitter_row)
+        self.slider_random_scan_jitter = QSlider(Qt.Horizontal)
+        self.slider_random_scan_jitter.setRange(0, 100)
+        self.slider_random_scan_jitter.setTickPosition(QSlider.TicksBelow)
+        self.slider_random_scan_jitter.setTickInterval(25)
+        self.slider_random_scan_jitter.valueChanged.connect(self.spin_random_scan_jitter.setValue)
+        ocr.addWidget(self.slider_random_scan_jitter)
         self.lbl_random_scan_summary = QLabel("狀態：10s 附近 · 約 8 ~ 12 秒")
         self.lbl_random_scan_summary.setWordWrap(False)
         self.lbl_random_scan_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -4034,6 +4078,15 @@ class SettingsWindowRevamp(QWidget):
         self.spin_auto_threshold_refresh_minutes.valueChanged.connect(self.on_auto_threshold_refresh_changed)
         threshold_row.addWidget(self.spin_auto_threshold_refresh_minutes)
         ocr.addLayout(threshold_row)
+        self.slider_auto_threshold_refresh = QSlider(Qt.Horizontal)
+        self.slider_auto_threshold_refresh.setRange(
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN,
+            AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX,
+        )
+        self.slider_auto_threshold_refresh.setTickPosition(QSlider.TicksBelow)
+        self.slider_auto_threshold_refresh.setTickInterval(5)
+        self.slider_auto_threshold_refresh.valueChanged.connect(self.spin_auto_threshold_refresh_minutes.setValue)
+        ocr.addWidget(self.slider_auto_threshold_refresh)
         self.lbl_auto_threshold_refresh_summary = QLabel("狀態：每 10 分鐘重新評估一次閥值")
         self.lbl_auto_threshold_refresh_summary.setWordWrap(True)
         ocr.addWidget(self.lbl_auto_threshold_refresh_summary)
@@ -4589,9 +4642,16 @@ class SettingsWindowRevamp(QWidget):
             f"QSpinBox:focus {{ border: 2px solid {theme.accent}; }} "
             "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }"
         )
+        slider_style = (
+            f"QSlider::groove:horizontal {{ height: 8px; border-radius: 4px; background: {theme.accent_soft}; }} "
+            f"QSlider::handle:horizontal {{ width: 18px; margin: -5px 0; border-radius: 9px; background: {theme.accent}; border: 2px solid white; }}"
+        )
         self.spin_random_scan_center.setStyleSheet(spinbox_style)
         self.spin_random_scan_jitter.setStyleSheet(spinbox_style)
         self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
+        self.slider_random_scan_center.setStyleSheet(slider_style)
+        self.slider_random_scan_jitter.setStyleSheet(slider_style)
+        self.slider_auto_threshold_refresh.setStyleSheet(slider_style)
         self.spin_relief_font.setStyleSheet(spinbox_style)
         self.lbl_relief_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
@@ -5051,7 +5111,7 @@ class Controller(QWidget):
                 f"chain={','.join(backend_chain) if backend_chain else 'none'}",
             )
 
-            center_seconds = safe_int(settings.get("random_scan_center_seconds", self.random_scan_center_seconds), self.random_scan_center_seconds, 3, 300)
+            center_seconds = safe_int(settings.get("random_scan_center_seconds", self.random_scan_center_seconds), self.random_scan_center_seconds, 1, 300)
             self.random_scan_center_seconds = center_seconds
 
             jitter_percent = safe_int(settings.get("random_scan_jitter_percent", self.random_scan_jitter_percent), self.random_scan_jitter_percent, 0, 100)
@@ -5198,7 +5258,7 @@ class Controller(QWidget):
         self.schedule_save_settings()
 
     def on_random_scan_settings_changed(self, center_seconds, jitter_percent):
-        self.random_scan_center_seconds = max(3, min(300, int(center_seconds)))
+        self.random_scan_center_seconds = max(1, min(300, int(center_seconds)))
         self.random_scan_jitter_percent = max(0, min(100, int(jitter_percent)))
         self.update_random_scan_button_text()
         if self.current_auto_interval > 0 and self.current_auto_interval != 5000:
@@ -5304,6 +5364,7 @@ class Controller(QWidget):
         if self.settings_window is not None:
             self.settings_window.update_translate_summary()
         self.schedule_save_settings()
+        self.save_settings()
 
     def get_ocr_backend_chain(self):
         chain = list(getattr(self.worker, "ocr_backend_chain", []) or [])
@@ -5377,6 +5438,10 @@ class Controller(QWidget):
     def on_ai_model_changed(self, index):
         model_name = self.cmb_ai_model.itemData(index)
         self.worker.set_gemma_model(model_name)
+        if self.cmb_ai_model.currentIndex() != index:
+            self.cmb_ai_model.blockSignals(True)
+            self.cmb_ai_model.setCurrentIndex(index)
+            self.cmb_ai_model.blockSignals(False)
         if self.settings_window is not None and self.settings_window.cmb_ai_model.currentIndex() != index:
             self.settings_window.cmb_ai_model.blockSignals(True)
             self.settings_window.cmb_ai_model.setCurrentIndex(index)

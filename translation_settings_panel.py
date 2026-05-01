@@ -136,8 +136,9 @@ class TranslationSettingsPanel(QWidget):
         advanced_layout.addWidget(self.cmb_ai_model)
 
         self.lbl_ai_model_notes = QLabel("")
-        self.lbl_ai_model_notes.setWordWrap(True)
-        self.lbl_ai_model_notes.setVisible(True)
+        self.lbl_ai_model_notes.setWordWrap(False)
+        self.lbl_ai_model_notes.setVisible(False)
+        self.lbl_ai_model_notes.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         advanced_layout.addWidget(self.lbl_ai_model_notes)
 
         self.lbl_gemma_prompt = QLabel("")
@@ -188,6 +189,7 @@ class TranslationSettingsPanel(QWidget):
 
     def on_ai_model_changed(self, index):
         self.controller.on_ai_model_changed(index)
+        self.update_ai_model_notes()
         self.update_translate_summary()
 
     def on_auto_switch_toggled(self, checked):
@@ -200,6 +202,40 @@ class TranslationSettingsPanel(QWidget):
 
     def _ui_language(self):
         return translation_tools.get_ui_language(self.controller)
+
+    def _ai_model_note_text(self, model_name):
+        model_name = (model_name or "").strip().lower()
+        lang = self._ui_language()
+        notes = {
+            "gemma-3-1b-it": {
+                "en": "Fastest, text-only. Screenshot mode falls back to OCR text.",
+                "zh-TW": "??????????????? OCR ?????",
+            },
+            "gemma-3-27b-it": {
+                "en": "Best balance for screenshot translation.",
+                "zh-TW": "?????????????",
+            },
+            "gemma-4-31b-it": {
+                "en": "Latest large model. Can be slower on screenshots.",
+                "zh-TW": "????????????????",
+            },
+            "gemini-2.5-pro": {
+                "en": "Paid model. Strong, but may be slower or rate-limited.",
+                "zh-TW": "???????????????????",
+            },
+        }
+        model_note = notes.get(model_name)
+        if not model_note:
+            return ""
+        return model_note.get(lang) or model_note.get("en") or ""
+
+    def update_ai_model_notes(self):
+        current_model = ""
+        if self.cmb_ai_model.count() > 0:
+            current_model = str(self.cmb_ai_model.currentData() or "")
+        text = self._ai_model_note_text(current_model)
+        self.lbl_ai_model_notes.setText(text)
+        self.lbl_ai_model_notes.setVisible(bool(text))
 
     def refresh_localized_texts(self):
         lang = self._ui_language()
@@ -274,6 +310,7 @@ class TranslationSettingsPanel(QWidget):
         self.cmb_ai_model.blockSignals(True)
         self.cmb_ai_model.setCurrentIndex(self.controller.cmb_ai_model.currentIndex())
         self.cmb_ai_model.blockSignals(False)
+        self.update_ai_model_notes()
 
         self.input_gemma_prompt.blockSignals(True)
         prompt_text = getattr(self.controller, "gemma_prompt", "") or self.controller.get_default_gemma_prompt()
@@ -336,7 +373,7 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_gemma_prompt.setStyleSheet(accent_label_style)
         self.lbl_ai_model_notes.setStyleSheet(
             f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none; "
-            "line-height: 1.35; margin-top: 2px;"
+            "line-height: 1.2; margin-top: 2px;"
         )
 
         self.mode_buttons.setStyleSheet(
