@@ -252,23 +252,7 @@ class TranslationSettingsPanel(QWidget):
             translation_tools.ui_text(lang, "translation_gemma_prompt_placeholder")
         )
         self.chk_auto_switch.setText(translation_tools.ui_text(lang, "translation_auto_switch"))
-        if lang == "en":
-            notes = [
-                "Notes:",
-                "1. Gemma 3 1B - fastest",
-                "2. Gemma 3 27B - best",
-                "3. Gemma 4 31B - latest",
-                "4. Gemini 2.5 Pro - paid",
-            ]
-        else:
-            notes = [
-                "備註：",
-                "1. Gemma 3 1B - 最快",
-                "2. Gemma 3 27B - 最佳",
-                "3. Gemma 4 31B - 最新",
-                "4. Gemini 2.5 Pro - 要錢",
-            ]
-        self.lbl_ai_model_notes.setText("\n".join(notes))
+        self.update_ai_model_notes()
 
     def set_translate_mode(self, use_ai):
         self.btn_translate_google.blockSignals(True)
