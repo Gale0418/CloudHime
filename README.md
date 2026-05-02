@@ -1,90 +1,79 @@
-# CloudHime
+# ☁️ 雲朵翻譯姬 (CloudHime)
+### Windows-native Screen OCR Translator
 
-CloudHime is a Windows-native screen OCR translator. It captures text from the screen, runs OCR, and sends the result into the translation flow used by the app.
-
-This release is intentionally lightweight: the packaged build ships with Windows OCR as the default backend, while optional OCR engines can be installed later from inside the app.
+> 「雖然不完美，但這是我能給你最誠實的輔助了。」 ( ´・ω・`)a
 
 ---
 
-## What it does
+## 📖 這是什麼？
 
-- Screen and region OCR
-- Live translation workflow
-- Automatic rescanning for dynamic content
-- Optional Google API key support for Google OCR refine and Gemini-based translation modes
-- Optional OCR backend switching from the Settings panel
+**CloudHime** 是一個專為 Windows 打造的螢幕即時翻譯工具。它的誕生不是為了取代專業翻譯，而是為了讓你在面對「生肉」漫畫、遊戲 UI 或日文對話框時，不再感到那麼無助。
 
-## Packaged build
+### ✨ 核心特色
 
-The release build created by `build_exe.bat` is a PyInstaller `--onedir --windowed` package for Windows.
+- **Windows 原生支援**：預設使用 Windows OCR 引擎，輕量、快速且不需要額外安裝龐大的套件。
+- **靈活辨識**：支援「全螢幕掃描」與「區域框選」，哪裡不會點哪裡。
+- **多樣化翻譯**：內建 Google 翻譯與 Gemini AI 模式，支援繁體中文流暢輸出。
+- **按需擴充**：主程式保持極致輕量，只有在你需要時，才會導引安裝 Tesseract, EasyOCR 或 RapidOCR 等進階引擎。
 
-It includes:
+---
 
-- the CloudHime application entry point
-- the WinRT imports required by Windows OCR
-- a zip archive of the final `dist\CloudHime` folder
+## 🖼️ 實際畫面預覽
 
-It does not bundle the optional OCR stacks, because the app already installs and manages them on demand:
+> (｀・ω・´)σ 總之先看圖，辨識效果好不好，圖片會說話。
 
-- Tesseract
-- EasyOCR
-- RapidOCR
+**1. 漫畫閱讀 (Manga)**  
+![Manga Example](https://pimg.1px.tw/blog/gale/album/101348418/848177067123312065.png)
 
-## OCR backends
+**2. 遊戲介面 (UI)**  
+![Game UI Example](https://pimg.1px.tw/blog/gale/album/101348418/848177072458466684.png)
 
-### Built in
+**3. 遊戲內對話 (Dialogue)**  
+![Game Dialogue Example](https://pimg.1px.tw/blog/gale/album/101348418/848177076325617017.png)
 
-- **Windows OCR**: the default backend and the one used by the release bundle
+---
 
-### Optional
+## ⚠️ 誠實聲明 (ﾟ∀。)
 
-- **Tesseract**: requires the `pytesseract` Python package and a local `tesseract.exe`
-- **EasyOCR**: requires `easyocr`, `torch`, and `torchvision`
-- **RapidOCR**: requires `rapidocr-onnxruntime`
+在使用之前，請先讀過這幾點，免得你對它有不切實際的幻想：
 
-If an optional backend is not installed, CloudHime still works with Windows OCR.
+1. **辨識率不是 100%**：背景太雜、字體太藝術、或是字太小，OCR 都會擺爛。這不是程式壞了，這是目前的科技瓶頸 (눈_눈)。
+2. **機器翻譯僅供參考**：不管是 Google 還是 Gemini，它們有時候會胡說八道，請發揮你的想像力來補足語境。
+3. **環境設定很重要**：螢幕縮放比 (DPI)、字體清晰度都會影響辨識。
 
-## Requirements
+---
 
-- Windows 10 or Windows 11
-- Python 3.10+ for running from source
-- The Windows OCR component available on the system
-- `pip` access to install the Python dependencies listed in `requirements.txt`
+## ⚙️ 運作流程
 
-Optional features:
+1. **擷取**：抓取指定區域的畫面。
+2. **辨識**：交給 Windows OCR 或你額外安裝的引擎處理。
+3. **翻譯**：送往 Google API 或 Gemini AI 進行轉換。
+4. **顯示**：將結果以透明泡泡的形式貼回螢幕。
 
-- Google API key for Google OCR refine or Gemini multimodal translation
-- Optional OCR backends if you want to use anything beyond Windows OCR
+---
 
-## Quick start from source
+## 📦 如何開始？
 
-```bash
-pip install -r requirements.txt
-python CloudHime.py
-```
+### 直接執行 (Release)
+如果你是下載打包好的版本，請直接執行 `dist/CloudHime/CloudHime.exe`。
 
-## Build a release
+### 從原始碼運行 (Source)
+1. 確保你有 Python 3.10+ 環境。
+2. 安裝依賴：`pip install -r requirements.txt`
+3. 執行：`python CloudHime.py`
 
-Before building, install the runtime dependencies plus PyInstaller:
+---
 
-```bash
-python -m pip install pyinstaller -r requirements.txt
-```
+## 🛠️ 開發說明
 
-Then run:
+- **打包**：使用 `build_exe.bat` 進行 PyInstaller 打包。
+- **擴充**：支援透過 `ocr_backend_installer.py` 動態安裝額外的 OCR 堆疊。
+- **隱私**：請勿將你的 `google_api_key` 或個人設定檔推送到公開倉庫。
 
-```bat
-build_exe.bat
-```
+---
 
-The script will:
+## 📝 小結
 
-1. remove any previous `dist\CloudHime` folder and `dist\CloudHime.zip`
-2. build a fresh Windows release with PyInstaller
-3. compress the release folder into `dist\CloudHime.zip`
+CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中發現了 Bug，或者有更好的想法，歡迎回饋（雖然開發者可能正在忙著玩遊戲就是了）。
 
-## Notes for users
-
-- The app starts with Windows OCR because it is the smallest and most reliable packaging target.
-- Optional OCR engines can be enabled later in Settings after installation.
-- Google OCR is an extra refinement path, not a requirement for the core OCR flow.
+祝你能愉快地啃完那些想看很久的生肉！加油吧！(*´▽`*)

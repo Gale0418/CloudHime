@@ -4703,6 +4703,8 @@ class SettingsWindowRevamp(QWidget):
         self.slider_random_scan_jitter.setStyleSheet(slider_style)
         self.slider_auto_threshold_refresh.setStyleSheet(slider_style)
         self.spin_relief_font.setStyleSheet(spinbox_style)
+        self.slider_relief_gap.setStyleSheet(slider_style)
+        self.slider_relief_opacity.setStyleSheet(slider_style)
         self.lbl_relief_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
             f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
