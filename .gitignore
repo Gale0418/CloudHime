@@ -16,8 +16,12 @@ trigger.txt
 patch*.py
 .worktrees/
 worktrees/
+
+# 終極掃除清單
 CMD.BAT
 build_exe.bat
 skills/
 MissionCenter/
 docs/
+example/
+benchmark_manifest.example.json
