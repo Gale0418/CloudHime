@@ -511,12 +511,18 @@ def translate_text_google_batch(
 def build_gemma_prompt(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
     target = target_lang_instruction(target_lang)
     return (
-        "You are a game and manga translation assistant.\n"
-        f"Translate the input into {target}.\n"
-        "Preserve the original line breaks and sentence order.\n"
-        "Do not add explanations, notes, bullets, romanization, or the original text.\n"
-        "If the source contains dialogue, keep it conversational and concise.\n\n"
-        f"Source text:\n{text}"
+        "You are a professional translator specializing in games, manga, and UI text.\n"
+        f"Task: Translate the following text into {target}.\n"
+        "Requirements:\n"
+        "1. Translate ONLY the text content, no analysis or explanations\n"
+        "2. Preserve original line breaks and formatting\n"
+        "3. Keep natural, fluent style appropriate for the context\n"
+        "4. Do NOT add: explanations, notes, bullet points, romanization, or original text\n"
+        "5. For dialogue: keep conversational tone\n"
+        "6. For UI text: keep concise and clear\n"
+        "7. Output ONLY the translated text\n\n"
+        f"Text to translate:\n{text}\n\n"
+        "Translation:"
     )
 
 
