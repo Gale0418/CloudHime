@@ -145,7 +145,7 @@
       height: 24%;
     }
 
-    .zone-blocked {
+    .zone-smoketest {
       --zone-color: rgba(255, 186, 107, 0.16);
       left: 9%;
       top: 52%;
@@ -171,7 +171,8 @@
 
     .mission-panel[data-status="Intake"] .zone-intake,
     .mission-panel[data-status="In Progress"] .zone-progress,
-    .mission-panel[data-status="Blocked"] .zone-blocked,
+    .mission-panel[data-status="SmokeTest"] .zone-smoketest,
+    .mission-panel[data-status="Blocked"] .zone-smoketest,
     .mission-panel[data-status="Review"] .zone-review,
     .mission-panel[data-status="Done"] .zone-done {
       opacity: 0.32;
@@ -593,7 +594,7 @@
       <img class="stage-art" id="stageArt" src="mission-base-main.png" alt="">
       <div class="zone zone-intake" data-label="Intake Dispatch"></div>
       <div class="zone zone-progress" data-label="In Progress Office"></div>
-      <div class="zone zone-blocked" data-label="Blocked Repair"></div>
+      <div class="zone zone-smoketest" data-label="SmokeTest Dock"></div>
       <div class="zone zone-review" data-label="Review Archive"></div>
       <div class="zone zone-done" data-label="Done Nap Dock"></div>
       <div class="tech-prop dispatch-console"></div>
@@ -625,7 +626,7 @@
         <li>Workspace setup</li>
         <li>Task tree</li>
       </ul>
-      <p id="blockedText" style="margin-top: 8px;">Blocked: Smoke tests</p>
+      <p id="blockedText" style="margin-top: 8px;">SmokeTest: Waiting ｜ Review: Waiting</p>
     </section>
   </main>
   <!-- MISSION_CENTER_STATE_START -->
@@ -637,6 +638,7 @@
   "active": [
     "把目前的設定頁改成接近 image2 mockup 的漂亮商業化面板，並維持既有翻譯、OCR、渲染、語言切換與設定儲存功能。"
   ],
+  "smokeTest": [],
   "blocked": [],
   "review": [],
   "agents": [
@@ -646,7 +648,7 @@
       "task": "清掉舊亂碼任務並建立新任務樹 ｜ HUD 同步後只顯示本次 UI 改造任務",
       "status": "Done",
       "zone": "Done",
-      "avatar": 13,
+      "avatar": 11,
       "active": true,
       "completedAt": "2026-04-29T11:01:18Z"
     },
@@ -656,7 +658,7 @@
       "task": "建立 header、top chips、三欄內容與 footer ｜ PySide6 建立 SettingsWindowRevamp 不爆版",
       "status": "Done",
       "zone": "Done",
-      "avatar": 8,
+      "avatar": 16,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -666,7 +668,7 @@
       "task": "讓翻譯卡片接近 mockup 的層次與 spacing ｜ Google/AI 切換、API key、模型與 prompt 可用",
       "status": "Done",
       "zone": "Done",
-      "avatar": 12,
+      "avatar": 8,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -676,7 +678,7 @@
       "task": "將 OCR backend、滑鼠穿透、自動掃描與閥值刷新整理成同一欄 ｜ OCR backend 狀態、數值調整與摘要同步正常",
       "status": "Done",
       "zone": "Done",
-      "avatar": 7,
+      "avatar": 15,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -686,7 +688,7 @@
       "task": "整理文字模式、截圖 prompt 與浮離細節 ｜ Bubble/Relief/Screenshot 切換與浮離控制正常",
       "status": "Done",
       "zone": "Done",
-      "avatar": 16,
+      "avatar": 10,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -696,7 +698,7 @@
       "task": "驗證 en / zh-TW、暗色模式、設定值同步 ｜ py_compile、PySide6 smoke test、截圖或可見文字檢查通過",
       "status": "Done",
       "zone": "Done",
-      "avatar": 9,
+      "avatar": 7,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -706,7 +708,7 @@
       "task": "回寫進度、smoke-tests、snapshot 與 HUD ｜ visual-state.json 顯示收工狀態",
       "status": "Done",
       "zone": "Done",
-      "avatar": 4,
+      "avatar": 13,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     }
@@ -753,13 +755,15 @@
       Intake: "Intake",
       Ready: "Intake",
       "In Progress": "In Progress",
-      Blocked: "Blocked",
+      SmokeTest: "SmokeTest",
+      Blocked: "SmokeTest",
       Review: "Review",
       Waiting: "Done",
       Done: "Done"
     };
 
     const statusAvatarOverrides = {
+      SmokeTest: 6,
       Blocked: 6,
       Waiting: 2
     };
@@ -772,6 +776,7 @@
     const zoneBounds = {
       Intake: { x: 10, y: 23, width: 28, height: 16 },
       "In Progress": { x: 60, y: 23, width: 27, height: 23 },
+      SmokeTest: { x: 10, y: 52, width: 28, height: 16 },
       Blocked: { x: 10, y: 52, width: 28, height: 16 },
       Review: { x: 60, y: 52, width: 27, height: 16 },
       Done: { x: 31, y: 73, width: 37, height: 10 }
@@ -949,6 +954,9 @@
 
     function faceFrameForAgent(agent, motion, now) {
       const status = agent.status;
+      if (status === "SmokeTest") {
+        return 80;
+      }
       if (status === "Blocked") {
         return 100;
       }
@@ -1087,11 +1095,13 @@
       const hiddenCount = Math.max(0, activeItems.length - visibleItems.length);
       activeList.innerHTML = visibleItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
         + (hiddenCount ? `<li>+${hiddenCount} more</li>` : "");
+      const smokeTestItems = Array.isArray(state.smokeTest) && state.smokeTest.length ? state.smokeTest : [];
       const blockedItems = Array.isArray(state.blocked) && state.blocked.length ? state.blocked : [];
       const reviewItems = Array.isArray(state.review) && state.review.length ? state.review : [];
+      const smokeTestSummary = smokeTestItems.length ? smokeTestItems.join("、") : "None";
       const blockedSummary = blockedItems.length ? blockedItems.join("、") : "None";
       const reviewSummary = reviewItems.length ? reviewItems.join("、") : "None";
-      blockedText.textContent = `Blocked: ${blockedSummary} ｜ Review: ${reviewSummary}`;
+      blockedText.textContent = `SmokeTest: ${smokeTestSummary} ｜ Review: ${reviewSummary} ｜ Blocked: ${blockedSummary}`;
     }
 
     function updateSummary(state) {

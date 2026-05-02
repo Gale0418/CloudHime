@@ -5,6 +5,7 @@ window.MISSION_CENTER_STATE = {
   "active": [
     "把目前的設定頁改成接近 image2 mockup 的漂亮商業化面板，並維持既有翻譯、OCR、渲染、語言切換與設定儲存功能。"
   ],
+  "smokeTest": [],
   "blocked": [],
   "review": [],
   "agents": [
@@ -14,7 +15,7 @@ window.MISSION_CENTER_STATE = {
       "task": "清掉舊亂碼任務並建立新任務樹 ｜ HUD 同步後只顯示本次 UI 改造任務",
       "status": "Done",
       "zone": "Done",
-      "avatar": 13,
+      "avatar": 11,
       "active": true,
       "completedAt": "2026-04-29T11:01:18Z"
     },
@@ -24,7 +25,7 @@ window.MISSION_CENTER_STATE = {
       "task": "建立 header、top chips、三欄內容與 footer ｜ PySide6 建立 SettingsWindowRevamp 不爆版",
       "status": "Done",
       "zone": "Done",
-      "avatar": 8,
+      "avatar": 16,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -34,7 +35,7 @@ window.MISSION_CENTER_STATE = {
       "task": "讓翻譯卡片接近 mockup 的層次與 spacing ｜ Google/AI 切換、API key、模型與 prompt 可用",
       "status": "Done",
       "zone": "Done",
-      "avatar": 12,
+      "avatar": 8,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -44,7 +45,7 @@ window.MISSION_CENTER_STATE = {
       "task": "將 OCR backend、滑鼠穿透、自動掃描與閥值刷新整理成同一欄 ｜ OCR backend 狀態、數值調整與摘要同步正常",
       "status": "Done",
       "zone": "Done",
-      "avatar": 7,
+      "avatar": 15,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -54,7 +55,7 @@ window.MISSION_CENTER_STATE = {
       "task": "整理文字模式、截圖 prompt 與浮離細節 ｜ Bubble/Relief/Screenshot 切換與浮離控制正常",
       "status": "Done",
       "zone": "Done",
-      "avatar": 16,
+      "avatar": 10,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -64,7 +65,7 @@ window.MISSION_CENTER_STATE = {
       "task": "驗證 en / zh-TW、暗色模式、設定值同步 ｜ py_compile、PySide6 smoke test、截圖或可見文字檢查通過",
       "status": "Done",
       "zone": "Done",
-      "avatar": 9,
+      "avatar": 7,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     },
@@ -74,7 +75,7 @@ window.MISSION_CENTER_STATE = {
       "task": "回寫進度、smoke-tests、snapshot 與 HUD ｜ visual-state.json 顯示收工狀態",
       "status": "Done",
       "zone": "Done",
-      "avatar": 4,
+      "avatar": 13,
       "active": true,
       "completedAt": "2026-04-29T15:56:16Z"
     }
