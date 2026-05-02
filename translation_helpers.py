@@ -50,10 +50,10 @@ def target_lang_instruction(target_lang: Any) -> str:
 def target_lang_system_prompt(target_lang: Any) -> str:
     target = target_lang_instruction(target_lang)
     return (
-        "You are a game and manga translation assistant."
-        f"Translate the input into {target}."
-        "Preserve the original line breaks and sentence order."
-        "Do not add explanations, notes, bullets, romanization, or the original text."
+        "You are a professional translator for games, manga, and applications. "
+        f"Your task is to translate text into {target}. "
+        "CRITICAL RULES: 1) Output ONLY the translated text 2) No explanations or analysis "
+        "3) No original text or romanization 4) Preserve line breaks 5) Keep natural style"
     )
 
 
@@ -508,8 +508,28 @@ def translate_text_google_batch(
     return [line or "" for line in translated]
 
 
-def build_gemma_prompt(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
+def build_gemma_prompt(text: Any, target_lang: str = GOOGLE_TARGET_LANG, model_name: str = "gemma-3-27b-it") -> str:
     target = target_lang_instruction(target_lang)
+    
+    # 為1B模型使用簡化prompt
+    if model_name == "gemma-3-1b-it":
+        return (
+            f"Translate to {target}:\n"
+            f"{text}\n\n"
+            "Translation:"
+        )
+    
+    # 為4B模型使用嚴格限制prompt
+    if model_name == "gemma-4-31b-it":
+        return (
+            "RULES: Translate ONLY. NO analysis. NO explanations. NO notes.\n"
+            f"Task: Translate to {target}.\n"
+            "Output ONLY the translation text.\n\n"
+            f"Text: {text}\n\n"
+            "Translation:"
+        )
+    
+    # 標準prompt（適用於27B和其他模型）
     return (
         "You are a professional translator specializing in games, manga, and UI text.\n"
         f"Task: Translate the following text into {target}.\n"
@@ -561,20 +581,21 @@ def build_gemma_multimodal_prompt(source_texts: Sequence[Any], target_lang: str 
     target = target_lang_instruction(target_lang)
     source_lang = source_lang_instruction(detect_source_language("\n".join(str(text or "") for text in source_texts)))
     return (
-        "You are a multimodal UI, game, and manga translation assistant.\n"
-        "You will receive one screenshot and OCR lines extracted from that same screenshot.\n"
-        "Use the screenshot to understand context, UI meaning, title, speaker tone, and ambiguous words.\n"
-        f"Source language hint: {source_lang}.\n"
-        f"Translate every OCR line into {target}.\n"
-        "Keep one output item for every input item.\n"
-        "Do not skip items. Do not merge items. Do not explain anything.\n"
-        "Return JSON only in this exact shape:\n"
-        "{\"segments\":[{\"index\":0,\"translation\":\"...\"}]}\n"
-        "Rules:\n"
-        "- index must match the input index exactly\n"
-        "- translation must contain only the translated text\n"
-        "- no markdown, no code fence, no comments\n\n"
-        f"OCR lines:\n{indexed_ocr}"
+        "You are a professional translator specializing in game UI, manga, and application screenshots.\n"
+        "Task: Translate the visual content from the screenshot into accurate, natural text.\n"
+        "Instructions:\n"
+        "1. Examine the screenshot visually and cross-reference with OCR text\n"
+        "2. Correct any OCR errors based on what you see in the image\n"
+        "3. Translate ONLY the visible text content\n"
+        "4. Preserve original formatting, line breaks, and layout\n"
+        "5. Do NOT add explanations, notes, analysis, or original text\n"
+        "6. Keep the style natural and context-appropriate\n"
+        "7. Output ONLY the translated text in the same index format\n\n"
+        f"Source language: {source_lang}\n"
+        f"Target language: {target}\n\n"
+        "OCR extracted text (may contain errors):\n"
+        f"{indexed_ocr}\n\n"
+        "Translate and output in the same format:"
     )
 
 
@@ -596,48 +617,62 @@ def clean_model_output(text: Any) -> str:
     if not text:
         return ""
     text = str(text).strip().replace("```", "")
+    
+    # 移除markdown格式標記
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)  # 移除粗體
+    text = re.sub(r"\*(.*?)\*", r"\1", text)     # 移除斜體
+    
     lines = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        line = re.sub(r"^[*\-\s]+", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
+        line = re.sub(r"^[*\-\s\d\.]+", "", line)
+        if re.match(r"^(Input|Task|OCR text|Source text|Translation|Text|Output)\s*[:：]", line, re.IGNORECASE):
             continue
-        line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^(Translation|Output|Text)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
         lines.append(line)
 
     if not lines:
         return ""
 
+    # 單行處理
     if len(lines) == 1:
         line = lines[0]
-        line = re.sub(r"\s*\([^)]*(romanization|pinyin|direct translation)[^)]*\)", "", line, flags=re.IGNORECASE)
-        return line.strip(" \"'")
+        line = re.sub(r"\s*\([^)]*(romanization|pinyin|direct translation|meaning|note|explanation)[^)]*\)", "", line, flags=re.IGNORECASE)
+        line = line.strip(" \"'*")
+        return line
 
-    candidates = []
+    # 多行處理 - 尋找包含翻譯內容的行
+    translation_lines = []
     for line in lines:
-        quoted = re.findall(r'["“”\']([^"\n]+?)["“”\']', line)
-        if quoted:
-            candidates.extend(item.strip() for item in quoted if item.strip())
+        # 跳過明顯的標籤行
+        if re.match(r"^(Note|Explanation|Context|Analysis|Original|Source|Here's the translation)", line, re.IGNORECASE):
             continue
+        
+        # 清理行
+        cleaned = line.strip(" \"'*")
+        if cleaned and len(cleaned) > 1:
+            translation_lines.append(cleaned)
 
-        if re.search(r"(translated as|translation)", line, re.IGNORECASE):
-            parts = re.split(r"[:：]", line, maxsplit=1)
-            if len(parts) == 2 and HAS_CJK_PATTERN.search(parts[1]):
-                candidates.append(parts[1].strip(" \"'"))
-                continue
-
-        stripped = line.strip(" \"'")
-        if HAS_CJK_PATTERN.search(stripped):
-            candidates.append(stripped)
-
-    if candidates:
-        candidates.sort(key=lambda item: (len(item), item))
-        return candidates[0]
-
-    preferred = [line for line in lines if not re.match(r"^(Input|Task|Context|Constraints|Original)", line, re.IGNORECASE)]
-    return "\n".join(preferred or lines).strip()
+    # 如果有多行，嘗試組合或選擇最佳行
+    if translation_lines:
+        # 優先選擇包含中文的行
+        chinese_lines = [line for line in translation_lines if HAS_CJK_PATTERN.search(line)]
+        if chinese_lines:
+            # 如果有多行中文，檢查是否應該組合
+            if len(chinese_lines) > 1:
+                # 檢查是否為不完整的片段（如只有emoji或標點符號）
+                meaningful_lines = [line for line in chinese_lines if len(line.strip()) > 2]
+                if meaningful_lines:
+                    return "\n".join(meaningful_lines)
+            return max(chinese_lines, key=len)
+        else:
+            # 如果沒有中文，返回最長的行
+            return max(translation_lines, key=len)
+    
+    # 後備方案：返回最後一行
+    return lines[-1].strip()
 
 
 def clean_model_output_multiline(text: Any) -> str:
@@ -737,7 +772,10 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
 
 
 DEFAULT_SCREENSHOT_SYSTEM_PROMPT = (
-    "Please help me translate the text in the image directly into Traditional Chinese."
+    "You are a professional translator specializing in screenshots, UI, and visual content. "
+    "Task: Translate all visible text in the image accurately and naturally. "
+    "Requirements: 1) Translate ONLY the text content 2) Preserve formatting and layout 3) "
+    "Do NOT add explanations, notes, or analysis 4) Keep natural, fluent style 5) Output ONLY translation"
 )
 
 
@@ -825,9 +863,15 @@ def build_gemma_screenshot_prompt_v2(
 
 
 def clean_screenshot_translation_output(text: Any) -> str:
+    """
+    截圖翻譯輸出清理：極度寬鬆，只移除明顯的標籤
+    """
     if not text:
         return ""
+    
     candidate = str(text).strip().replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+    
+    # 嘗試解析JSON格式
     start = candidate.find("{")
     end = candidate.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -839,41 +883,45 @@ def clean_screenshot_translation_output(text: Any) -> str:
             for key in ("translation", "text", "result", "output"):
                 value = payload.get(key)
                 if isinstance(value, str) and value.strip():
-                    return clean_model_output_multiline(value).strip()
+                    return value.strip()
 
+    # 如果不是JSON，直接返回清理後的文本
+    # 只移除明顯的標籤行，保留所有其他內容
     lines = []
     for raw_line in candidate.splitlines():
         line = raw_line.strip()
         if not line:
             continue
+        
         lower = line.lower()
+        # 只移除明顯的標籤行
         if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lower):
             continue
         if re.match(r"^[A-Za-z\s]+:\s*$", line):
             continue
-        if re.search(r"[\u3040-\u30ff]", line):
-            continue
-        if re.search(r"[A-Za-z]{4,}", line) and not HAS_CJK_PATTERN.search(line):
-            continue
+            
+        # 保留所有其他內容，包括英文、日文、符號等
         lines.append(line)
-    return "\n".join(lines).strip()
+    
+    result = "\n".join(lines).strip()
+    return result if result else candidate  # 如果清理後為空，返回原始內容
 
 
 def is_valid_screenshot_translation(text: Any) -> bool:
+    """
+    截圖翻譯驗證：接受所有非空的有效輸出
+    因為截圖模式有專用prompt，應該信任AI模型的輸出
+    """
     if not text:
         return False
+    
     normalized = str(text).strip()
     if not normalized:
         return False
-    if re.search(r"[\u3040-\u30ff]", normalized):
-        return False
-    if re.search(r"[A-Za-z]", normalized):
-        return False
-    if not HAS_CJK_PATTERN.search(normalized):
-        return False
-    compact = re.sub(r"[\s\W_]+", "", normalized)
-    cjk_count = len(re.findall(r"[\u4e00-\u9fff]", compact))
-    return cjk_count >= 2 or len(compact) <= 2
+    
+    # 只要不是純空白，就認為有效
+    # emoji、符號、數字、任何字符都接受
+    return len(normalized) >= 1
 
 
 def encode_image_for_ai(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> bytes:
@@ -901,21 +949,23 @@ def build_gemma_prompt_with_override(
     text: Any,
     custom_prompt: str = "",
     target_lang: str = GOOGLE_TARGET_LANG,
+    model_name: str = "gemma-3-27b-it",
 ) -> str:
-    """Return the default prompt unless the user provides an override."""
+    """Return the model-specific prompt with user override if provided."""
     custom = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else ""
-    default_system = target_lang_system_prompt(target_lang)
-    source_lang = source_lang_instruction(detect_source_language(text))
-    system = default_system
-    if custom:
-        system = (
-            f"{default_system}\n\n"
-            f"User instructions (highest priority):\n{custom}"
-        )
+    
+    # 獲取模型特定的預設prompt
+    base_prompt = build_gemma_prompt(text, target_lang, model_name)
+    
+    # 如果沒有自訂prompt，直接返回模型特定prompt
+    if not custom:
+        return base_prompt
+    
+    # 如果有自訂prompt，將其添加到模型特定prompt前面
+    # 但需要確保不會重複內容
     return (
-        f"{system}\n"
-        f"Source language hint: {source_lang}\n\n"
-        f"Source text:\n{text}"
+        f"User instructions (highest priority):\n{custom}\n\n"
+        f"System instructions:\n{base_prompt}"
     )
 
 
