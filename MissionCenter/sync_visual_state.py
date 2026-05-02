@@ -11,7 +11,7 @@ from typing import Any
 HELPER_AVATAR_LIMIT = 16
 VISIBLE_TASK_LIMIT = 10
 VISIBLE_AGENT_LIMIT = 15
-VALID_STATUSES = {"Intake", "In Progress", "Blocked", "Review", "Waiting", "Done"}
+VALID_STATUSES = {"Intake", "In Progress", "SmokeTest", "Review", "Blocked", "Waiting", "Done"}
 TASK_TYPES_TO_SHOW = {"task", "subtask"}
 RNG = random.SystemRandom()
 
@@ -19,6 +19,7 @@ STATUS_ZONE_MAP = {
     "Intake": "Intake",
     "Ready": "Intake",
     "In Progress": "In Progress",
+    "SmokeTest": "SmokeTest",
     "Blocked": "Blocked",
     "Review": "Review",
     "Waiting": "Done",
@@ -41,6 +42,42 @@ TASK_STATUS_ALIASES = {
     "review": "Review",
     "waiting": "Done",
     "done": "Done",
+}
+
+TASK_COLUMN_ALIASES = {
+    "id": "id",
+    "編號": "id",
+    "title": "title",
+    "標題": "title",
+    "type": "type",
+    "類型": "type",
+    "parent": "parent",
+    "上層": "parent",
+    "priority": "priority",
+    "優先級": "priority",
+    "status": "status",
+    "狀態": "status",
+    "owner": "owner",
+    "負責人": "owner",
+    "blocked_by": "blocked_by",
+    "依賴": "blocked_by",
+    "next_action": "next_action",
+    "下一步": "next_action",
+    "verification": "verification",
+    "驗證": "verification",
+    "smoketest": "smoke_test",
+    "smoke test": "smoke_test",
+    "smoke_test": "smoke_test",
+    "煙測": "smoke_test",
+    "review": "review",
+    "審查": "review",
+    "review status": "review",
+    "estimate": "estimate",
+    "預估": "estimate",
+    "labels": "labels",
+    "標籤": "labels",
+    "comments": "comments",
+    "備註": "comments",
 }
 
 
@@ -101,6 +138,20 @@ def normalize_task_status(value: str | None) -> str:
     return TASK_STATUS_ALIASES.get(raw.lower(), normalize_status(raw))
 
 
+def normalize_check_state(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return "NO"
+    lowered = raw.lower()
+    if lowered in {"yes", "y", "true", "ok", "pass", "passed", "done", "complete", "completed"}:
+        return "YES"
+    if lowered in {"no", "n", "false", "fail", "failed", "pending", "todo", "to do", "waiting", "not run", "not started"}:
+        return "NO"
+    if lowered in {"n/a", "na", "none", "-", "skip", "skipped"}:
+        return "NO"
+    return "YES" if lowered not in {"0"} else "NO"
+
+
 def visual_zone_for_status(status: str) -> str:
     return STATUS_ZONE_MAP.get(status, "In Progress")
 
@@ -114,6 +165,10 @@ def sample_avatar(used_avatars: set[int]) -> int:
     avatar = RNG.choice(available) if available else RNG.randint(1, HELPER_AVATAR_LIMIT)
     used_avatars.add(avatar)
     return avatar
+
+
+def normalize_column_name(name: str) -> str:
+    return TASK_COLUMN_ALIASES.get(name.strip().lower(), name.strip().lower())
 
 
 def extract_goal(project_text: str) -> str:
@@ -140,28 +195,37 @@ def split_list_value(value: str) -> list[str]:
 
 def parse_markdown_table(tasks_text: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    headers: list[str] = []
     for raw_line in tasks_text.splitlines():
         line = raw_line.strip()
-        if not line.startswith("| CH-"):
+        if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) < 6:
+        if not headers:
+            headers = [normalize_column_name(cell) for cell in cells]
             continue
+        if set(cells) <= {"---", ""}:
+            continue
+        if not cells or not str(cells[0]).startswith("CH-"):
+            continue
+        row = {header: cells[index] if index < len(cells) else "" for index, header in enumerate(headers)}
         rows.append(
             {
-                "id": cells[0],
-                "title": cells[1],
-                "type": cells[2] if len(cells) > 2 else "",
-                "parent": cells[3] if len(cells) > 3 else "",
-                "priority": cells[4] if len(cells) > 4 else "",
-                "status": normalize_task_status(cells[5] if len(cells) > 5 else ""),
-                "owner": cells[6] if len(cells) > 6 else "",
-                "blocked_by": cells[7] if len(cells) > 7 else "",
-                "next_action": cells[8] if len(cells) > 8 else "",
-                "verification": cells[9] if len(cells) > 9 else "",
-                "estimate": cells[10] if len(cells) > 10 else "",
-                "labels": cells[11] if len(cells) > 11 else "",
-                "comments": cells[12] if len(cells) > 12 else "",
+                "id": row.get("id", ""),
+                "title": row.get("title", ""),
+                "type": row.get("type", ""),
+                "parent": row.get("parent", ""),
+                "priority": row.get("priority", ""),
+                "status": normalize_task_status(row.get("status", "")),
+                "owner": row.get("owner", ""),
+                "blocked_by": row.get("blocked_by", ""),
+                "next_action": row.get("next_action", ""),
+                "verification": row.get("verification", ""),
+                "smoke_test": normalize_check_state(row.get("smoke_test", "")),
+                "review": normalize_check_state(row.get("review", "")),
+                "estimate": row.get("estimate", ""),
+                "labels": row.get("labels", ""),
+                "comments": row.get("comments", ""),
             }
         )
     return rows
@@ -178,13 +242,25 @@ def task_title(task: dict[str, Any]) -> str:
 def task_note(task: dict[str, Any]) -> str:
     next_action = str(task.get("next_action") or "").strip()
     verification = str(task.get("verification") or "").strip()
-    if next_action and verification:
-        return f"{next_action} ｜ {verification}"
-    return next_action or verification or task_title(task)
+    smoke_test = normalize_check_state(str(task.get("smoke_test") or ""))
+    review = normalize_check_state(str(task.get("review") or ""))
+    parts = [part for part in [next_action, verification] if part]
+    for label, value in (("SmokeTest", smoke_test), ("Review", review)):
+        if value and value != "YES":
+            parts.append(f"{label}: {value}")
+    return " ｜ ".join(parts) if parts else task_title(task)
 
 
 def task_display_status(task: dict[str, Any]) -> str:
     status = str(task.get("status") or "Intake")
+    if status == "Done":
+        return "Done"
+    smoke_test = normalize_check_state(str(task.get("smoke_test") or ""))
+    review = normalize_check_state(str(task.get("review") or ""))
+    if smoke_test != "YES":
+        return "SmokeTest"
+    if review != "YES":
+        return "Review"
     return status if status in VALID_STATUSES else normalize_task_status(status)
 
 
@@ -276,8 +352,9 @@ def build_task_state(project_text: str, tasks_text: str, previous_state: dict[st
     done_count = len(done_candidates)
     progress = round((done_count / len(work_items)) * 100) if work_items else 0
     active_items = [agent["name"] for agent in visible_non_done] or [goal]
-    blocked_items = [f"{agent['name']}：{agent['task']}" for agent in visible_non_done if agent["status"] == "Blocked"]
+    smoke_test_items = [f"{agent['name']}：{agent['task']}" for agent in visible_non_done if agent["status"] == "SmokeTest"]
     review_items = [f"{agent['name']}：{agent['task']}" for agent in visible_non_done if agent["status"] == "Review"]
+    blocked_items = [f"{agent['name']}：{agent['task']}" for agent in visible_non_done if agent["status"] == "Blocked"]
 
     current_ids = {task["id"] for task in work_items}
     completed_history = {
@@ -295,6 +372,7 @@ def build_task_state(project_text: str, tasks_text: str, previous_state: dict[st
         "goal": goal,
         "progress": progress,
         "active": active_items,
+        "smokeTest": smoke_test_items,
         "blocked": blocked_items,
         "review": review_items,
         "agents": agents,
@@ -454,6 +532,7 @@ def legacy_task_state(project_text: str, progress_text: str, roster: list[dict[s
         "goal": goal,
         "progress": progress,
         "active": active_items,
+        "smokeTest": [],
         "blocked": blocked,
         "agents": agents,
         "completedAtByTaskId": {},
