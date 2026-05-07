@@ -510,39 +510,19 @@ def translate_text_google_batch(
 
 def build_gemma_prompt(text: Any, target_lang: str = GOOGLE_TARGET_LANG, model_name: str = "gemma-3-27b-it") -> str:
     target = target_lang_instruction(target_lang)
-    
-    # 為1B模型使用簡化prompt
+    source_lang = source_lang_instruction(detect_source_language(text))
+    model_name = (model_name or "").strip().lower()
     if model_name == "gemma-3-1b-it":
-        return (
-            f"Translate to {target}:\n"
-            f"{text}\n\n"
-            "Translation:"
-        )
-    
-    # 為4B模型使用嚴格限制prompt
-    if model_name == "gemma-4-31b-it":
-        return (
-            "RULES: Translate ONLY. NO analysis. NO explanations. NO notes.\n"
-            f"Task: Translate to {target}.\n"
-            "Output ONLY the translation text.\n\n"
-            f"Text: {text}\n\n"
-            "Translation:"
-        )
-    
-    # 標準prompt（適用於27B和其他模型）
+        model_hint = "This model is text-only. Use OCR text or plain source text, not image understanding."
+    elif model_name == "gemma-4-31b-it":
+        model_hint = "Use screenshot context when available, but output translation only."
+    else:
+        model_hint = "Use OCR and screenshot context when available, but output translation only."
     return (
-        "You are a professional translator specializing in games, manga, and UI text.\n"
-        f"Task: Translate the following text into {target}.\n"
-        "Requirements:\n"
-        "1. Translate ONLY the text content, no analysis or explanations\n"
-        "2. Preserve original line breaks and formatting\n"
-        "3. Keep natural, fluent style appropriate for the context\n"
-        "4. Do NOT add: explanations, notes, bullet points, romanization, or original text\n"
-        "5. For dialogue: keep conversational tone\n"
-        "6. For UI text: keep concise and clear\n"
-        "7. Output ONLY the translated text\n\n"
-        f"Text to translate:\n{text}\n\n"
-        "Translation:"
+        f"{target_lang_system_prompt(target_lang)}\n"
+        f"Model hint: {model_hint}\n"
+        f"Source language hint: {source_lang}\n"
+        f"Source text:\n{text}"
     )
 
 
@@ -558,15 +538,7 @@ def extract_gemma_text(payload: dict[str, Any]) -> str:
 
 
 def build_gemma_prompt_v2(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
-    target = target_lang_instruction(target_lang)
-    return (
-        "You are a game and manga translation assistant. "
-        f"Translate the input into {target}. "
-        "Preserve the original line breaks and sentence order. "
-        "Do not add explanations, notes, bullets, romanization, or the original text. "
-        "If the source contains dialogue, keep it conversational and concise.\n\n"
-        f"Source text:\n{text}"
-    )
+    return build_gemma_prompt(text, target_lang=target_lang)
 
 
 def build_segmented_ocr_payload(source_texts: Sequence[Any]) -> str:
@@ -581,21 +553,19 @@ def build_gemma_multimodal_prompt(source_texts: Sequence[Any], target_lang: str 
     target = target_lang_instruction(target_lang)
     source_lang = source_lang_instruction(detect_source_language("\n".join(str(text or "") for text in source_texts)))
     return (
-        "You are a professional translator specializing in game UI, manga, and application screenshots.\n"
-        "Task: Translate the visual content from the screenshot into accurate, natural text.\n"
-        "Instructions:\n"
-        "1. Examine the screenshot visually and cross-reference with OCR text\n"
-        "2. Correct any OCR errors based on what you see in the image\n"
-        "3. Translate ONLY the visible text content\n"
-        "4. Preserve original formatting, line breaks, and layout\n"
-        "5. Do NOT add explanations, notes, analysis, or original text\n"
-        "6. Keep the style natural and context-appropriate\n"
-        "7. Output ONLY the translated text in the same index format\n\n"
+        f"{target_lang_system_prompt(target_lang)}\n"
+        "You will receive one screenshot and OCR lines extracted from that same screenshot.\n"
+        "Use the screenshot to understand context, UI meaning, title, speaker tone, and ambiguous words.\n"
         f"Source language: {source_lang}\n"
         f"Target language: {target}\n\n"
         "OCR extracted text (may contain errors):\n"
         f"{indexed_ocr}\n\n"
-        "Translate and output in the same format:"
+        "Return JSON only in this exact shape:\n"
+        "{\"segments\":[{\"index\":0,\"translation\":\"...\"}]}\n"
+        "Rules:\n"
+        "- index must match the input index exactly\n"
+        "- translation must contain only the translated text\n"
+        "- no markdown, no code fence, no comments"
     )
 
 
@@ -821,8 +791,8 @@ def build_screenshot_prompt_with_override(
     system = default_system
     if custom:
         system = (
-            f"{default_system}\n"
-            f"User instructions (highest priority):\n{custom}"
+            f"User instructions (highest priority):\n{custom}\n\n"
+            f"System instructions:\n{default_system}"
         )
 
     return (
@@ -836,7 +806,6 @@ def build_gemma_screenshot_prompt_v2(
     retry_note: str | None = None,
     target_lang: str = GOOGLE_TARGET_LANG,
 ) -> str:
-    target = target_lang_instruction(target_lang)
     retry_block = ""
     if retry_note:
         retry_block = (
@@ -844,8 +813,7 @@ def build_gemma_screenshot_prompt_v2(
             f"Do not repeat this mistake: {retry_note.strip()}\n"
         )
     return (
-        "You are a Japanese screenshot translation engine for manga pages, game UI, and dialogue screenshots.\n"
-        f"Translate the screenshot into {target}.\n"
+        f"{target_lang_system_prompt(target_lang)}\n"
         "Focus only on the actual translation, not dictionary notes or analysis.\n"
         "Return exactly one JSON object and nothing else:\n"
         "{\"translation\":\"...\"}\n"
@@ -885,22 +853,23 @@ def clean_screenshot_translation_output(text: Any) -> str:
                 if isinstance(value, str) and value.strip():
                     return value.strip()
 
-    # 如果不是JSON，直接返回清理後的文本
-    # 只移除明顯的標籤行，保留所有其他內容
+    # 如果不是JSON，移除明顯的提示詞/分析/標籤行，保留可能的翻譯內容
     lines = []
     for raw_line in candidate.splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        
+
         lower = line.lower()
-        # 只移除明顯的標籤行
-        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lower):
+        if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization|role|task|source text|source language hint|ocr hint|instructions|rules|draft|refined translation|final translation|check rules|self-correction)\s*[:：]", lower):
             continue
         if re.match(r"^[A-Za-z\s]+:\s*$", line):
             continue
-            
-        # 保留所有其他內容，包括英文、日文、符號等
+        if lower.startswith(("* ", "- ", "1. ", "2. ", "3. ", "4. ", "5. ")):
+            continue
+        if lower.startswith(("wait,", "let's", "check rules", "self-correction", "final translation", "refined translation")):
+            continue
+
         lines.append(line)
     
     result = "\n".join(lines).strip()
@@ -918,9 +887,19 @@ def is_valid_screenshot_translation(text: Any) -> bool:
     normalized = str(text).strip()
     if not normalized:
         return False
-    
-    # 只要不是純空白，就認為有效
-    # emoji、符號、數字、任何字符都接受
+    lowered = normalized.lower()
+    if any(marker in lowered for marker in (
+        "source language hint",
+        "ocr hint",
+        "user instructions",
+        "system instructions",
+        "refined translation",
+        "final translation",
+        "draft 1",
+        "self-correction",
+        "check rules",
+    )):
+        return False
     return len(normalized) >= 1
 
 
