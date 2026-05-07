@@ -1,4 +1,4 @@
-# ==========================================
+﻿# ==========================================
 # 🌟 雲朵翻譯姬 v3.0 - 螢幕 OCR 即時翻譯工具 (邏輯修正版) (｀・ω・´)ゞ
 # ==========================================
 # 核心引擎: Windows OCR 優先、可選 OCR 後端
@@ -353,6 +353,8 @@ class OCRWorker(QObject):
         self.auto_threshold_enabled = True
         self.auto_threshold_refresh_interval_ms = DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES * 60 * 1000
         self.last_auto_threshold_refresh_ms = 0.0
+        self.last_successful_threshold = 100
+        self.auto_threshold_failure_count = 0
         self.translation_registry = None
         
         # 狀態標記
@@ -371,10 +373,10 @@ class OCRWorker(QObject):
         )
 
     def trigger_background_threshold_refresh(self, img, offset_x, offset_y, mode):
-        # 這是掃描結束後呼叫的觸發器
+        # full refresh: used after repeated failures or explicit refresh triggers
         if not self.auto_threshold_enabled or self._bg_threshold_running:
             return
-        
+
         now_ms = time.monotonic() * 1000.0
         if self.last_auto_threshold_refresh_ms > 0 and (now_ms - self.last_auto_threshold_refresh_ms) < self.auto_threshold_refresh_interval_ms:
             return
@@ -383,6 +385,42 @@ class OCRWorker(QObject):
         candidates_count = len(AUTO_THRESHOLD_CANDIDATES)
         print(f"[BG閥值] 🔍 觸發背景自動校正，測試 {candidates_count} 個候選閥值...", flush=True)
         self._bg_threshold_executor.submit(self._run_background_threshold, img.copy(), offset_x, offset_y, mode)
+
+    def trigger_background_threshold_tweak(self, img, offset_x, offset_y, mode):
+        # first failure: quick local tweak around the last known good threshold
+        if not self.auto_threshold_enabled or self._bg_threshold_running:
+            return
+
+        self._bg_threshold_running = True
+        base_threshold = int(getattr(self, "last_successful_threshold", self.binary_threshold))
+        print(f"[BG閥值] 🔎 觸發小範圍微調，基準閥值={base_threshold}...", flush=True)
+        self._bg_threshold_executor.submit(self._run_background_threshold_tweak, img.copy(), offset_x, offset_y, mode)
+
+    def record_auto_threshold_success(self, threshold=None):
+        if threshold is not None:
+            threshold = int(threshold)
+            self.last_successful_threshold = threshold
+            self.binary_threshold = threshold
+        self.auto_threshold_failure_count = 0
+
+    def record_auto_threshold_failure(self, img=None, offset_x=0, offset_y=0, mode=None):
+        if not self.auto_threshold_enabled:
+            return
+        self.auto_threshold_failure_count = int(getattr(self, "auto_threshold_failure_count", 0)) + 1
+        if self.auto_threshold_failure_count == 1:
+            if img is None:
+                img = getattr(self, "last_scanned_img", None)
+            if img is not None:
+                self.trigger_background_threshold_tweak(img, offset_x, offset_y, mode if mode is not None else self.scan_mode)
+            return
+        if self.auto_threshold_failure_count < 2:
+            return
+        self.auto_threshold_failure_count = 0
+        if img is None:
+            img = getattr(self, "last_scanned_img", None)
+        if img is None:
+            return
+        self.trigger_background_threshold_refresh(img, offset_x, offset_y, mode if mode is not None else self.scan_mode)
 
     def _run_background_threshold(self, img, offset_x, offset_y, mode):
         t0 = time.perf_counter()
@@ -394,7 +432,31 @@ class OCRWorker(QObject):
             elapsed_ms = (time.perf_counter() - t0) * 1000
             print(f"[BG閥值] ❌ 校正失敗：{type(exc).__name__}: {exc}，耗時 {elapsed_ms:.0f}ms", flush=True)
         finally:
-            # 無論成功或失敗，一定要清掉 flag，否則背景永遠不會再觸發
+            self._bg_threshold_running = False
+
+    def _run_background_threshold_tweak(self, img, offset_x, offset_y, mode):
+        t0 = time.perf_counter()
+        try:
+            base_threshold = int(getattr(self, "last_successful_threshold", self.binary_threshold))
+            tweak_candidates = sorted({
+                max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, base_threshold + offset))
+                for offset in AUTO_THRESHOLD_LOCAL_OFFSETS
+            })
+            best_threshold, best_items = self.run_ocr_with_best_threshold(
+                img,
+                offset_x,
+                offset_y,
+                candidate_thresholds=tweak_candidates,
+                orientation_candidates=[0, 90, 270] if mode == SCAN_MODE_REGION else [0],
+                silent=True,
+                force_bg_refresh=False,
+            )
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            print(f"[BG閥值] ✅ 小範圍微調完成！最佳閥值={best_threshold}，找到 {len(best_items)} 段文字，耗時 {elapsed_ms:.0f}ms", flush=True)
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            print(f"[BG閥值] ❌ 小範圍微調失敗：{type(exc).__name__}: {exc}，耗時 {elapsed_ms:.0f}ms", flush=True)
+        finally:
             self._bg_threshold_running = False
 
     def normalize_ocr_backend_chain(self, chain):
@@ -571,6 +633,7 @@ class OCRWorker(QObject):
         self.auto_threshold_enabled = bool(enabled)
         if not self.auto_threshold_enabled:
             self.last_auto_threshold_refresh_ms = 0.0
+            self.auto_threshold_failure_count = 0
 
     def set_auto_threshold_refresh_interval_minutes(self, minutes):
         minutes = max(
@@ -1247,24 +1310,36 @@ class OCRWorker(QObject):
         )
         provider = self._get_translation_provider("gemma")
         if provider is not None:
-            result = provider.translate_screenshot(
-                image_parts,
-                target_lang=self.translation_target_lang,
-                source_text_hint=source_text_hint,
-                debug_log=self.log_ai_debug,
-            )
-            provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
-            self.active_gemma_model = provider_model
-            self.sync_gemma_call_timestamps_from_provider(provider)
-            translated = self.convert_to_trad(result.text)
-            if source_text_hint and (
-                self._should_fallback_to_text_translation(source_text_hint, translated)
-                or self._is_suspiciously_short_translation(source_text_hint, translated)
-            ):
-                fallback = self.translate_text_gemma(source_text_hint)
-                if fallback:
-                    return fallback
-            return translated
+            try:
+                result = provider.translate_screenshot(
+                    image_parts,
+                    target_lang=self.translation_target_lang,
+                    source_text_hint=source_text_hint,
+                    debug_log=self.log_ai_debug,
+                )
+                provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
+                self.active_gemma_model = provider_model
+                self.sync_gemma_call_timestamps_from_provider(provider)
+                translated = self.convert_to_trad(result.text)
+                if source_text_hint and (
+                    self._should_fallback_to_text_translation(source_text_hint, translated)
+                    or self._is_suspiciously_short_translation(source_text_hint, translated)
+                ):
+                    fallback = self.translate_text_gemma(source_text_hint)
+                    if fallback:
+                        return fallback
+                return translated
+            except Exception as exc:
+                if source_text_hint:
+                    self.log_ai_debug(f"[screenshot fallback] provider failed: {type(exc).__name__}: {exc}")
+                    for fallback_fn in (self.translate_text_gemma, self.translate_text_google):
+                        try:
+                            fallback = fallback_fn(source_text_hint)
+                        except Exception:
+                            fallback = ""
+                        if fallback:
+                            return fallback
+                raise
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
@@ -1281,7 +1356,10 @@ class OCRWorker(QObject):
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            prompt = translation_tools.build_gemma_screenshot_prompt_v2(retry_note)
+            prompt = translation_tools.build_gemma_screenshot_prompt_v2(
+                retry_note,
+                target_lang=self.translation_target_lang,
+            )
             req_body = {
                 "contents": [{
                     "parts": [*image_parts, {"text": prompt}]
@@ -1930,7 +2008,7 @@ class OCRWorker(QObject):
         return best_threshold
 
     def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False):
-        base_threshold = int(self.binary_threshold)
+        base_threshold = int(getattr(self, "last_successful_threshold", self.binary_threshold))
         now_ms = time.monotonic() * 1000.0
         should_refresh_auto_threshold = force_bg_refresh
 
@@ -2106,9 +2184,11 @@ class OCRWorker(QObject):
                         best_score = candidate["score"]
                         break
 
-        if best_threshold != self.binary_threshold:
+        if best_items and best_threshold != self.binary_threshold:
             self.binary_threshold = best_threshold
             self.threshold_suggested.emit(best_threshold)
+        if best_items:
+            self.record_auto_threshold_success(best_threshold)
         if should_refresh_auto_threshold:
             self.last_auto_threshold_refresh_ms = now_ms
         return best_threshold, best_items
@@ -2478,10 +2558,19 @@ class OCRWorker(QObject):
             self.finished.emit(fallback)
 
     def handle_empty(self, message="💤 畫面無文字"):
+        self.status_msg.emit(message)
         if self.last_combined_text != "":
-            self.status_msg.emit(message)
             self.last_combined_text = ""
             self.last_results = []
+        try:
+            self.record_auto_threshold_failure(
+                getattr(self, "last_scanned_img", None),
+                self.last_scanned_offset[0],
+                self.last_scanned_offset[1],
+                self.scan_mode,
+            )
+        except Exception:
+            pass
         self.finished.emit([])
         self.show_ui.emit()
 
@@ -5138,6 +5227,7 @@ class Controller(QWidget):
         try:
             threshold = safe_int(settings.get("binary_threshold", self.worker.binary_threshold), self.worker.binary_threshold, AUTO_THRESHOLD_MIN, AUTO_THRESHOLD_MAX)
             self.worker.binary_threshold = threshold
+            self.worker.last_successful_threshold = threshold
             self.update_threshold(threshold)
 
             self.worker.set_auto_threshold_enabled(bool(settings.get("auto_threshold_enabled", self.worker.auto_threshold_enabled)))
@@ -5303,10 +5393,12 @@ class Controller(QWidget):
 
     def update_threshold(self, val):
         self.worker.binary_threshold = val
+        self.worker.last_successful_threshold = val
         self.schedule_save_settings()
 
     def apply_auto_threshold(self, val):
         self.worker.binary_threshold = val
+        self.worker.last_successful_threshold = val
         self.schedule_save_settings()
 
     def on_random_scan_settings_changed(self, center_seconds, jitter_percent):
@@ -6072,3 +6164,4 @@ if __name__ == "__main__":
     ctrl.show()
     startup_log("Controller shown")
     sys.exit(app.exec())
+

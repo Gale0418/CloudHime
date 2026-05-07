@@ -35,8 +35,12 @@ GOOGLE_STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/model
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
 SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-3-1b-it", "gemma-3-27b-it", "gemma-4-31b-it", "gemini-2.5-pro")
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
-GEMMA_RATE_LIMIT_MAX_CALLS = 15
-GEMMA_RATE_LIMIT_BUFFER_CALLS = 2  # 緩衝，避免觸發限制
+GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
+    "gemma-3-1b-it": 30,
+    "gemma-3-27b-it": 30,
+    "gemma-4-31b-it": 15,
+    "gemini-2.5-pro": 15,
+}
 TRANSLATION_CACHE_LIMIT = 512
 
 
@@ -328,10 +332,14 @@ class GemmaTranslationProvider:
         cutoff = time.monotonic() - GEMMA_RATE_LIMIT_WINDOW_SEC
         self._call_timestamps[model_name] = [ts for ts in self._call_timestamps.get(model_name, []) if ts >= cutoff]
 
+    def _max_calls_for_model(self, model_name: str) -> int:
+        model_name = (model_name or "").strip().lower()
+        return GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL.get(model_name, 15)
+
     def _can_call(self, model_name: str) -> bool:
         self._prune_timestamps(model_name)
         current_calls = len(self._call_timestamps.get(model_name, []))
-        return current_calls < (GEMMA_RATE_LIMIT_MAX_CALLS - GEMMA_RATE_LIMIT_BUFFER_CALLS)
+        return current_calls < self._max_calls_for_model(model_name)
 
     def _record_call(self, model_name: str) -> None:
         self._prune_timestamps(model_name)
@@ -342,7 +350,7 @@ class GemmaTranslationProvider:
         self._prune_timestamps(model_name)
         timestamps = self._call_timestamps.get(model_name, [])
         
-        if len(timestamps) >= (GEMMA_RATE_LIMIT_MAX_CALLS - GEMMA_RATE_LIMIT_BUFFER_CALLS):
+        if len(timestamps) >= self._max_calls_for_model(model_name):
             # 計算需要等待的時間
             oldest_timestamp = timestamps[0]
             wait_time = GEMMA_RATE_LIMIT_WINDOW_SEC - (time.monotonic() - oldest_timestamp)
@@ -635,6 +643,8 @@ class GemmaTranslationProvider:
                     body = ""
                 if "Image input modality is not enabled" in body and source_text_hint:
                     return self.translate(source_text_hint, target_lang=target_lang)
+                if exc.code == 404 and source_text_hint:
+                    break
                 if exc.code in {429, 500, 503, 504} and attempt_index < 2:
                     time.sleep(0.8 * (attempt_index + 1))
                     continue
