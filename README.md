@@ -21,9 +21,7 @@
 ## 🖼️ 實際畫面預覽
 
 > (｀・ω・´)σ 總之先看圖，辨識效果好不好，圖片會說話。
-UI here
 
-https://pbs.twimg.com/media/HH-L9b4aQAAy9Mm?format=jpg&name=900x900
 **1. 漫畫閱讀 (Manga)**  
 ![Manga Example](https://pimg.1px.tw/blog/gale/album/101348418/848177067123312065.png)
 
