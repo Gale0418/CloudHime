@@ -65,12 +65,13 @@ from ocr_backend_installer import detect_backend_state
 import translation_helpers as translation_tools
 import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
-from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
+from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
     load_settings_data,
     normalize_settings_payload,
+    resolve_relief_offsets,
     resolve_region_opacity,
     resolve_ui_language,
     save_settings_data,
@@ -110,6 +111,7 @@ SUPPORTED_AI_MODELS = [
     ("Gemma 3 27B", "gemma-3-27b-it"),
     ("Gemma 4 31B", "gemma-4-31b-it"),
     ("Gemini 2.5 Pro", "gemini-2.5-pro"),
+    ("TranslateGemma (Local)", "translategemma-4b-it-local"),
 ]
 SUPPORTED_GEMMA_MODEL_NAMES = [model_name for _, model_name in SUPPORTED_AI_MODELS]
 SCAN_MODE_FULLSCREEN = "fullscreen"
@@ -117,18 +119,7 @@ SCAN_MODE_REGION = "region"
 REGION_RENDER_BUBBLE = "bubble"
 REGION_RENDER_RELIEF = "relief"
 REGION_RENDER_SCREENSHOT = "screenshot"
-RELIEF_SIDE_AUTO = "auto"
-RELIEF_SIDE_TOP = "top"
-RELIEF_SIDE_BOTTOM = "bottom"
-RELIEF_SIDE_LEFT = "left"
-RELIEF_SIDE_RIGHT = "right"
-RELIEF_SIDE_OPTIONS = [
-    ("自動", RELIEF_SIDE_AUTO),
-    ("上方", RELIEF_SIDE_TOP),
-    ("下方", RELIEF_SIDE_BOTTOM),
-    ("左側", RELIEF_SIDE_LEFT),
-    ("右側", RELIEF_SIDE_RIGHT),
-]
+
 GOOGLE_BATCH_SIZE = 12
 SMART_FULLSCREEN_MAX_REGIONS = 3
 SMART_FULLSCREEN_MIN_AREA_RATIO = 0.015
@@ -139,7 +130,7 @@ AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 RELIEF_BUBBLE_OPACITY = 40
-RELIEF_MAX_GAP_PX = 500
+RELIEF_MAX_OFFSET_PX = 500
 
 
 def startup_log(stage, detail=""):
@@ -306,6 +297,7 @@ def merge_horizontal_lines(items):
 class OCRWorker(QObject):
     finished = Signal(list)
     streaming_update = Signal(list)  # [(partial_text, x, y, w, h)] 打字機效果用
+    translation_stream_update = Signal(int, str, str, int, int, int, int)  # (index, partial_text, provider, x, y, w, h) 串流翻譯用
     status_msg = Signal(str)
     hide_ui = Signal()
     show_ui = Signal()
@@ -337,6 +329,14 @@ class OCRWorker(QObject):
             target_lang=self.translation_target_lang,
             auto_switch_enabled=False,
             supported_models=SUPPORTED_GEMMA_MODEL_NAMES,
+        )
+        import os
+        local_model_path = os.path.abspath("models/translategemma-4b-it.Q2_K.gguf")
+        self.local_gemma_provider = LocalGemmaProvider(
+            model_path=local_model_path,
+            gemma_prompt="",
+            target_lang=self.translation_target_lang,
+            enabled=False
         )
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
@@ -460,6 +460,8 @@ class OCRWorker(QObject):
         try:
             config = self._build_translation_registry_config()
             self.google_translation_provider.set_target_lang(config.target_lang)
+            
+            # API Provider config
             self.gemma_translation_provider.update_config(
                 google_api_key=config.google_api_key,
                 gemma_model=config.gemma_model,
@@ -469,8 +471,19 @@ class OCRWorker(QObject):
                 auto_switch_enabled=config.gemma_auto_switch_enabled,
                 supported_models=config.supported_models,
             )
+            
+            # Local Provider config
+            self.local_gemma_provider.update_config(
+                gemma_prompt=config.gemma_prompt,
+                target_lang=config.target_lang,
+                gemma_enabled=config.gemma_enabled
+            )
+            
+            active_gemma = self.local_gemma_provider if config.gemma_model == "translategemma-4b-it-local" else self.gemma_translation_provider
+            active_gemma.name = "gemma"
+            
             self.translation_registry = TranslationProviderRegistry([
-                self.gemma_translation_provider,
+                active_gemma,
                 self.google_translation_provider,
             ])
         except Exception:
@@ -1429,7 +1442,7 @@ class OCRWorker(QObject):
                 return parsed
         return self.translate_items_in_batches(source_texts, batch_size=GOOGLE_BATCH_SIZE if not self.has_multimodal_ai() else 8)
 
-    def translate_items_with_ai_and_providers(self, source_texts, image_parts):
+    def translate_items_with_ai_and_providers(self, source_texts, image_parts, merged_items=None):
         if not source_texts:
             return [], []
         if self.has_multimodal_ai() and image_parts:
@@ -1437,6 +1450,21 @@ class OCRWorker(QObject):
             parsed = self.parse_segmented_translation_json(translated, len(source_texts))
             if parsed:
                 return parsed, [self.get_current_ai_provider()] * len(parsed)
+        if len(source_texts) == 1 and merged_items is not None:
+            provider_name = self.get_current_ai_provider() if (self.use_gemma_translation and self.google_api_key) else "google"
+            provider_obj = self._get_translation_provider(provider_name)
+            if hasattr(provider_obj, "translate_stream"):
+                try:
+                    accumulated = ""
+                    item = merged_items[0]
+                    for chunk in provider_obj.translate_stream(source_texts[0]):
+                        accumulated += chunk
+                        self.translation_stream_update.emit(0, accumulated, provider_name, int(item['x']), int(item['y']), int(item['w']), int(item['h']))
+                    return [accumulated], [provider_name]
+                except Exception as exc:
+                    print(f"Streaming translation failed: {exc}")
+                    pass
+
         return self.translate_items_in_batches_with_providers(
             source_texts,
             batch_size=GOOGLE_BATCH_SIZE if not self.has_multimodal_ai() else 8,
@@ -2210,6 +2238,7 @@ class OCRWorker(QObject):
                     translated_text = self.translate_screenshot_gemma(ai_image_parts, screenshot_text_hint).strip()
                     current_provider = self.get_current_ai_provider()
                 except Exception as exc:
+                    self.log_ai_debug(f"MULTIMODAL FAILED: {exc}")
                     if screenshot_text_hint:
                         self.status_msg.emit("🖼 截圖模式失敗，改走文字翻譯...")
                         try:
@@ -2408,9 +2437,10 @@ class OCRWorker(QObject):
                     ai_image_parts = self.build_ai_image_parts(img)
                     _log("⑦ build_ai_image_parts 完成")
                 _log("⑧ 開始 translate_items_with_ai_and_providers")
-                translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts)
+                translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts, merged_items)
                 _log(f"⑨ 翻譯完成 (共 {len(translated_list)} 段)")
-            except Exception:
+            except Exception as exc:
+                self.log_ai_debug(f"MULTIMODAL BATCH FAILED: {exc}")
                 translated_list = []
                 provider_list = []
 
@@ -2490,16 +2520,16 @@ class OCRWorker(QObject):
 # ==========================================
 class TransBubble(QLabel):
     def __init__(self, parent, text, x, y, w, h, is_dark_mode=False, render_mode=REGION_RENDER_BUBBLE,
-                 relief_side=RELIEF_SIDE_AUTO, relief_font_pt=18, relief_opacity=40, relief_gap_px=10, region_rect=None):
+                 relief_offset_x=0, relief_offset_y=0, relief_font_pt=18, relief_opacity=40, region_rect=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.text_padding = 0
         self.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
         self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
-        self.relief_side = relief_side if relief_side in {opt[1] for opt in RELIEF_SIDE_OPTIONS} else RELIEF_SIDE_AUTO
+        self.relief_offset_x = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(relief_offset_x)))
+        self.relief_offset_y = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(relief_offset_y)))
         self.relief_font_pt = max(MIN_BUBBLE_FONT_PT, int(relief_font_pt))
         self.relief_opacity = max(0, min(100, int(relief_opacity)))
-        self.relief_gap_px = max(0, min(RELIEF_MAX_GAP_PX, int(relief_gap_px)))
         # 浮雕模式定位用的掃描框（若有，以整體掃描大框為 anchor）
         self.region_rect = QRect(int(region_rect[0]), int(region_rect[1]), max(1, int(region_rect[2])), max(1, int(region_rect[3]))) if region_rect else None
         self.setText(text)
@@ -2638,7 +2668,6 @@ class TransBubble(QLabel):
 
     def compute_relief_layout(self, text, x, y, w, h):
         parent_rect = self.parent().rect()
-        gap = max(0, int(self.relief_gap_px))
         font_size = float(self.relief_font_pt)
 
         # 單行量測：用實際字型寬度決定氣泡大小，不換行
@@ -2657,44 +2686,8 @@ class TransBubble(QLabel):
         top = int(round(source_center_y - bubble_h / 2))
         left = max(0, min(left, parent_rect.width() - bubble_w))
         top = max(0, min(top, parent_rect.height() - bubble_h))
-        base_rect = QRect(left, top, bubble_w, bubble_h)
-
-        if gap == 0:
-            return base_rect, font_size
-
-        if self.relief_side == RELIEF_SIDE_TOP:
-            dx, dy = 0, -gap
-        elif self.relief_side == RELIEF_SIDE_BOTTOM:
-            dx, dy = 0, gap
-        elif self.relief_side == RELIEF_SIDE_LEFT:
-            dx, dy = -gap, 0
-        elif self.relief_side == RELIEF_SIDE_RIGHT:
-            dx, dy = gap, 0
-        else:
-            candidates = [(0, -gap), (0, gap), (-gap, 0), (gap, 0)]
-            best_rect = QRect(base_rect)
-            best_score = None
-            for cand_dx, cand_dy in candidates:
-                cand = QRect(base_rect)
-                cand.translate(cand_dx, cand_dy)
-                cand = QRect(
-                    max(0, min(cand.x(), parent_rect.width() - cand.width())),
-                    max(0, min(cand.y(), parent_rect.height() - cand.height())),
-                    cand.width(),
-                    cand.height(),
-                )
-                offscreen_penalty = 0
-                if cand.left() <= 0 or cand.top() <= 0 or cand.right() >= parent_rect.right() or cand.bottom() >= parent_rect.bottom():
-                    offscreen_penalty = 3000
-                center_distance = abs(cand.center().x() - base_rect.center().x()) + abs(cand.center().y() - base_rect.center().y())
-                score = (offscreen_penalty, center_distance)
-                if best_score is None or score < best_score:
-                    best_score = score
-                    best_rect = cand
-            return best_rect, font_size
-
-        cand = QRect(base_rect)
-        cand.translate(dx, dy)
+        cand = QRect(left, top, bubble_w, bubble_h)
+        cand.translate(self.relief_offset_x, self.relief_offset_y)
         cand = QRect(
             max(0, min(cand.x(), parent_rect.width() - cand.width())),
             max(0, min(cand.y(), parent_rect.height() - cand.height())),
@@ -2708,7 +2701,7 @@ class TransBubble(QLabel):
         anchor = self.region_rect if self.region_rect is not None else QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
         base_rect, base_size = self.compute_bubble_layout(text, x, y, w, h)
         base_rect = QRect(base_rect)
-        gap = max(14, min(RELIEF_MAX_GAP_PX, max(14, int(min(anchor.width(), anchor.height()) * 0.1))))
+        gap = max(14, min(RELIEF_MAX_OFFSET_PX, max(14, int(min(anchor.width(), anchor.height()) * 0.1))))
 
         candidates: list[QRect] = []
         centered_y = int(round(anchor.center().y() - base_rect.height() / 2))
@@ -2782,10 +2775,10 @@ class OverlayWindow(QWidget):
         self.theme_mode = "light"
         self.scan_mode = SCAN_MODE_FULLSCREEN
         self.render_mode = REGION_RENDER_BUBBLE
-        self.relief_side = RELIEF_SIDE_AUTO
+        self.relief_offset_x = 0
+        self.relief_offset_y = 0
         self.relief_font_pt = 18
         self.relief_opacity = RELIEF_BUBBLE_OPACITY
-        self.relief_gap_px = 10
         self.scan_region = None  # 浮雕模式定位用的掃描框
         try:
             ctypes.windll.user32.SetWindowDisplayAffinity(int(self.winId()), 0x00000011)
@@ -2805,17 +2798,17 @@ class OverlayWindow(QWidget):
         self.update()
         self.repaint()
 
-    def set_render_context(self, scan_mode, render_mode, relief_side=None, relief_font_pt=None, relief_opacity=None, relief_gap_px=None, scan_region=None):
+    def set_render_context(self, scan_mode, render_mode, relief_offset_x=None, relief_offset_y=None, relief_font_pt=None, relief_opacity=None, scan_region=None):
         self.scan_mode = scan_mode if scan_mode in (SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION) else SCAN_MODE_FULLSCREEN
         self.render_mode = render_mode if render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) else REGION_RENDER_BUBBLE
-        if relief_side in {opt[1] for opt in RELIEF_SIDE_OPTIONS}:
-            self.relief_side = relief_side
+        if relief_offset_x is not None:
+            self.relief_offset_x = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(relief_offset_x)))
+        if relief_offset_y is not None:
+            self.relief_offset_y = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(relief_offset_y)))
         if relief_font_pt is not None:
             self.relief_font_pt = max(MIN_BUBBLE_FONT_PT, int(relief_font_pt))
         if relief_opacity is not None:
             self.relief_opacity = max(0, min(100, int(relief_opacity)))
-        if relief_gap_px is not None:
-            self.relief_gap_px = max(0, min(RELIEF_MAX_GAP_PX, int(relief_gap_px)))
         self.scan_region = scan_region if (scan_region and len(scan_region) == 4) else None
 
     def update_bubbles(self, results):
@@ -2834,10 +2827,10 @@ class OverlayWindow(QWidget):
                     h,
                     self.theme_mode,
                     mode,
-                    self.relief_side,
+                    self.relief_offset_x,
                     self.relief_font_pt,
                     self.relief_opacity,
-                    self.relief_gap_px,
+                    self.relief_offset_y,
                     region_rect,
                 )
             )
@@ -2850,6 +2843,41 @@ class OverlayWindow(QWidget):
         for b in self.bubbles:
             b.deleteLater()
         self.bubbles = []
+
+    def update_translation_stream(self, index, partial_text, provider, x, y, w, h):
+        if not self.isVisible():
+            self.show()
+            self.raise_()
+        
+        mode = self.render_mode if self.scan_mode == 1 else 0 # fallback
+        region_rect = self.scan_region if getattr(self, "scan_region", None) else None
+
+        while len(self.bubbles) <= index:
+            from CloudHime import TransBubble
+            self.bubbles.append(TransBubble(self, "", x, y, w, h, self.theme_mode, mode, self.relief_offset_x, self.relief_offset_y, self.relief_font_pt, self.relief_opacity, region_rect))
+            
+        bubble = self.bubbles[index]
+        bubble.setText(str(partial_text))
+        bubble.source_rect = __import__("PySide6.QtCore", fromlist=["QRect"]).QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
+        
+        if mode == 1: # RELIEF
+            if hasattr(bubble, 'compute_relief_layout'):
+                bubble_rect, best_size = bubble.compute_relief_layout(partial_text, x, y, w, h)
+            else:
+                bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
+        elif mode == 2: # SCREENSHOT
+            if hasattr(bubble, 'compute_screenshot_layout'):
+                bubble_rect, best_size = bubble.compute_screenshot_layout(partial_text, x, y, w, h)
+            else:
+                bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
+        else:
+            bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
+            
+        font = bubble.font()
+        font.setPointSizeF(best_size)
+        bubble.setFont(font)
+        bubble.setGeometry(bubble_rect)
+        bubble.repaint()
 
     def update_bubble_text_only(self, results):
         """串流更新：只更新現有氣泡的文字，不重建（打字機效果用）"""
@@ -2864,7 +2892,7 @@ class OverlayWindow(QWidget):
                 # 氣泡數量不足時，補建新氣泡
                 mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else REGION_RENDER_BUBBLE
                 region_rect = self.scan_region if (mode in (REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) and self.scan_mode == SCAN_MODE_REGION and self.scan_region) else None
-                self.bubbles.append(TransBubble(self, t, x, y, w, h, self.theme_mode, mode, self.relief_side, self.relief_font_pt, self.relief_opacity, self.relief_gap_px, region_rect))
+                self.bubbles.append(TransBubble(self, t, x, y, w, h, self.theme_mode, mode, self.relief_offset_x, self.relief_offset_y, self.relief_font_pt, self.relief_opacity, region_rect))
 
     def _rect_overlap_area(self, first, second):
         ix1 = max(first.left(), second.left())
@@ -3543,21 +3571,23 @@ class SettingsWindow(QWidget):
         relief_layout.setSpacing(10)
         self.lbl_relief = QLabel("浮雕細節")
         self.lbl_relief.setStyleSheet("font-weight: bold;")
-        self.lbl_relief_hint = QLabel("只在浮雕模式啟用，位移 0 會對齊原位")
+        self.lbl_relief_hint = QLabel("只在浮雕模式啟用，X 與 Y 為 0 會對齊原位")
         self.lbl_relief_hint.setWordWrap(True)
         relief_layout.addWidget(self.lbl_relief)
         relief_layout.addWidget(self.lbl_relief_hint)
 
-        side_row = QHBoxLayout()
-        self.lbl_relief_side = QLabel("文字方向")
-        side_row.addWidget(self.lbl_relief_side)
-        side_row.addStretch()
-        self.cmb_relief_side = QComboBox()
-        for label, value in translation_tools.relief_side_options(self.controller):
-            self.cmb_relief_side.addItem(label, value)
-        self.cmb_relief_side.currentIndexChanged.connect(self.on_relief_setting_changed)
-        side_row.addWidget(self.cmb_relief_side)
-        relief_layout.addLayout(side_row)
+        offset_x_row = QHBoxLayout()
+        self.lbl_relief_offset_x = QLabel("X 軸位移")
+        offset_x_row.addWidget(self.lbl_relief_offset_x)
+        self.slider_relief_offset_x = QSlider(Qt.Horizontal)
+        self.slider_relief_offset_x.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
+        self.slider_relief_offset_x.valueChanged.connect(self.on_relief_setting_changed)
+        offset_x_row.addWidget(self.slider_relief_offset_x)
+        self.lbl_relief_offset_x_value = QLabel("+0 px")
+        self.lbl_relief_offset_x_value.setFixedWidth(58)
+        self.lbl_relief_offset_x_value.setAlignment(Qt.AlignCenter)
+        offset_x_row.addWidget(self.lbl_relief_offset_x_value)
+        relief_layout.addLayout(offset_x_row)
 
         font_row = QHBoxLayout()
         self.lbl_relief_font = QLabel("文字大小")
@@ -3570,18 +3600,18 @@ class SettingsWindow(QWidget):
         font_row.addWidget(self.spin_relief_font)
         relief_layout.addLayout(font_row)
 
-        gap_row = QHBoxLayout()
-        self.lbl_relief_gap = QLabel("浮雕位移")
-        gap_row.addWidget(self.lbl_relief_gap)
-        self.slider_relief_gap = QSlider(Qt.Horizontal)
-        self.slider_relief_gap.setRange(0, RELIEF_MAX_GAP_PX)
-        self.slider_relief_gap.valueChanged.connect(self.on_relief_setting_changed)
-        gap_row.addWidget(self.slider_relief_gap)
-        self.lbl_relief_gap_value = QLabel("10 px")
-        self.lbl_relief_gap_value.setFixedWidth(58)
-        self.lbl_relief_gap_value.setAlignment(Qt.AlignCenter)
-        gap_row.addWidget(self.lbl_relief_gap_value)
-        relief_layout.addLayout(gap_row)
+        offset_y_row = QHBoxLayout()
+        self.lbl_relief_offset_y = QLabel("Y 軸位移")
+        offset_y_row.addWidget(self.lbl_relief_offset_y)
+        self.slider_relief_offset_y = QSlider(Qt.Horizontal)
+        self.slider_relief_offset_y.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
+        self.slider_relief_offset_y.valueChanged.connect(self.on_relief_setting_changed)
+        offset_y_row.addWidget(self.slider_relief_offset_y)
+        self.lbl_relief_offset_y_value = QLabel("+0 px")
+        self.lbl_relief_offset_y_value.setFixedWidth(58)
+        self.lbl_relief_offset_y_value.setAlignment(Qt.AlignCenter)
+        offset_y_row.addWidget(self.lbl_relief_offset_y_value)
+        relief_layout.addLayout(offset_y_row)
 
         opacity_row = QHBoxLayout()
         self.lbl_relief_opacity = QLabel("選區框透明度")
@@ -3696,9 +3726,9 @@ class SettingsWindow(QWidget):
 
     def on_relief_setting_changed(self, *_):
         self.controller.on_region_relief_settings_changed(
-            self.cmb_relief_side.itemData(self.cmb_relief_side.currentIndex()),
+            self.slider_relief_offset_x.value(),
+            self.slider_relief_offset_y.value(),
             self.spin_relief_font.value(),
-            self.slider_relief_gap.value(),
             self.slider_relief_opacity.value(),
         )
         self.update_relief_summary()
@@ -3734,14 +3764,14 @@ class SettingsWindow(QWidget):
         self.adjustSize()
 
     def update_relief_summary(self):
-        side = self.cmb_relief_side.itemText(self.cmb_relief_side.currentIndex())
         font_pt = int(self.spin_relief_font.value())
-        gap_px = int(self.slider_relief_gap.value())
+        offset_x = int(self.slider_relief_offset_x.value())
+        offset_y = int(self.slider_relief_offset_y.value())
         opacity = int(self.slider_relief_opacity.value())
-        self.lbl_relief_gap_value.setText(f"{gap_px} px")
+        self.lbl_relief_offset_x_value.setText(f"{offset_x:+d} px")
+        self.lbl_relief_offset_y_value.setText(f"{offset_y:+d} px")
         self.lbl_relief_opacity_value.setText(f"{opacity}%")
-        self.lbl_relief_summary.setText(f"狀態：{side} · {font_pt} pt · {gap_px}px · {opacity}%")
-
+        self.lbl_relief_summary.setText(f"狀態：{font_pt} pt · X {offset_x:+d}px · Y {offset_y:+d}px · {opacity}%")
     def update_translate_summary(self):
         use_ai = self.btn_translate_ai.isChecked()
         model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
@@ -3792,17 +3822,17 @@ class SettingsWindow(QWidget):
         self.cmb_region_render_mode.setCurrentIndex(render_index)
         self.cmb_region_render_mode.blockSignals(False)
 
-        self.cmb_relief_side.blockSignals(True)
-        self.cmb_relief_side.setCurrentIndex(max(0, self.cmb_relief_side.findData(self.controller.region_relief_side)))
-        self.cmb_relief_side.blockSignals(False)
+        self.slider_relief_offset_x.blockSignals(True)
+        self.slider_relief_offset_x.setValue(self.controller.region_relief_offset_x)
+        self.slider_relief_offset_x.blockSignals(False)
 
         self.spin_relief_font.blockSignals(True)
         self.spin_relief_font.setValue(self.controller.region_relief_font_pt)
         self.spin_relief_font.blockSignals(False)
 
-        self.slider_relief_gap.blockSignals(True)
-        self.slider_relief_gap.setValue(self.controller.region_relief_gap_px)
-        self.slider_relief_gap.blockSignals(False)
+        self.slider_relief_offset_y.blockSignals(True)
+        self.slider_relief_offset_y.setValue(self.controller.region_relief_offset_y)
+        self.slider_relief_offset_y.blockSignals(False)
 
         self.slider_relief_opacity.blockSignals(True)
         self.slider_relief_opacity.setValue(self.controller.region_frame_opacity)
@@ -3863,7 +3893,13 @@ class SettingsWindow(QWidget):
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
         self.setStyleSheet(theme.base_qss())
-        self.frame.setStyleSheet(theme.window_qss(radius=20, border_width=2))
+        import os
+        is_dark = theme.key != "light"
+        bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
+        bg_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), bg_image)).replace("\\", "/")
+        base_style = theme.window_qss(radius=20, border_width=2).strip().rstrip('}')
+        style_with_bg = base_style + f" background-image: url({bg_image_path}); background-position: center; background-repeat: no-repeat; }}"
+        self.frame.setStyleSheet(style_with_bg)
         self.header_panel.setStyleSheet(theme.header_qss(radius=16))
         self.card_translate.setStyleSheet(theme.panel_qss("primary", radius=16))
         self.card_ocr.setStyleSheet(theme.panel_qss("subtle", radius=16))
@@ -3883,11 +3919,11 @@ class SettingsWindow(QWidget):
         self.lbl_region_render_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
         self.lbl_relief_hint.setStyleSheet(f"color: {theme.subtext};")
-        self.lbl_relief_side.setStyleSheet(f"color: {theme.text};")
+        self.lbl_relief_offset_x.setStyleSheet(f"color: {theme.text};")
         self.lbl_relief_font.setStyleSheet(f"color: {theme.text};")
-        self.lbl_relief_gap.setStyleSheet(f"color: {theme.text};")
+        self.lbl_relief_offset_y.setStyleSheet(f"color: {theme.text};")
         self.lbl_relief_opacity.setStyleSheet(f"color: {theme.text};")
-        self.lbl_relief_gap_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
+        self.lbl_relief_offset_y_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
         self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
         self.lbl_translate.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
@@ -3936,8 +3972,8 @@ class SettingsWindowRevamp(QWidget):
         self.old_pos = None
         self._ai_requested = False
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.setMinimumSize(1120, 720)
-        self.resize(1180, 740)
+        self.setMinimumSize(1400, 780)
+        self.resize(1422, 800)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -4168,7 +4204,7 @@ class SettingsWindowRevamp(QWidget):
         self.btn_render_bubble.clicked.connect(lambda: self.on_region_render_mode_clicked(REGION_RENDER_BUBBLE))
         self.render_mode_group.addButton(self.btn_render_bubble)
         render_row.addWidget(self.btn_render_bubble)
-        self.btn_render_relief = QPushButton("浮離模式")
+        self.btn_render_relief = QPushButton("浮雕模式")
         self.btn_render_relief.setCheckable(True)
         self.btn_render_relief.setCursor(Qt.PointingHandCursor)
         self.btn_render_relief.clicked.connect(lambda: self.on_region_render_mode_clicked(REGION_RENDER_RELIEF))
@@ -4199,8 +4235,8 @@ class SettingsWindowRevamp(QWidget):
         relief.setContentsMargins(18, 10, 18, 10)
         relief.setSpacing(8)
         relief.setAlignment(Qt.AlignTop)
-        self.lbl_relief = QLabel("浮離細節")
-        self.lbl_relief_hint = QLabel("只在浮離模式才啟用，位移 0 會對齊原位")
+        self.lbl_relief = QLabel("浮雕細節")
+        self.lbl_relief_hint = QLabel("只在浮雕模式才啟用，X 與 Y 為 0 會對齊原位")
         self.lbl_relief_hint.setWordWrap(True)
         self.lbl_relief_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_relief.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -4208,17 +4244,19 @@ class SettingsWindowRevamp(QWidget):
         relief.addWidget(self.lbl_relief)
         relief.addWidget(self.lbl_relief_hint)
 
-        side_row = QHBoxLayout()
-        self.lbl_relief_side = QLabel("文字方向")
-        self.lbl_relief_side.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        side_row.addWidget(self.lbl_relief_side)
-        side_row.addStretch()
-        self.cmb_relief_side = QComboBox()
-        for label, value in RELIEF_SIDE_OPTIONS:
-            self.cmb_relief_side.addItem(label, value)
-        self.cmb_relief_side.currentIndexChanged.connect(self.on_relief_setting_changed)
-        side_row.addWidget(self.cmb_relief_side)
-        relief.addLayout(side_row)
+        offset_x_row = QHBoxLayout()
+        self.lbl_relief_offset_x = QLabel("X 軸位移")
+        self.lbl_relief_offset_x.setStyleSheet("background: transparent; border: none; padding: 0px;")
+        offset_x_row.addWidget(self.lbl_relief_offset_x)
+        self.lbl_relief_offset_x_value = QLabel("+0 px")
+        offset_x_row.addWidget(self.lbl_relief_offset_x_value)
+        offset_x_row.addStretch()
+        self.slider_relief_offset_x = QSlider(Qt.Horizontal)
+        self.slider_relief_offset_x.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
+        self.slider_relief_offset_x.setFixedWidth(130)
+        self.slider_relief_offset_x.valueChanged.connect(self.on_relief_setting_changed)
+        offset_x_row.addWidget(self.slider_relief_offset_x)
+        relief.addLayout(offset_x_row)
 
         font_row = QHBoxLayout()
         self.lbl_relief_font = QLabel("文字大小")
@@ -4231,19 +4269,19 @@ class SettingsWindowRevamp(QWidget):
         font_row.addWidget(self.spin_relief_font)
         relief.addLayout(font_row)
 
-        gap_row = QHBoxLayout()
-        self.lbl_relief_gap = QLabel("浮離位移")
-        self.lbl_relief_gap.setStyleSheet("background: transparent; border: none; padding: 0px;")
-        gap_row.addWidget(self.lbl_relief_gap)
-        self.lbl_relief_gap_value = QLabel("10 px")
-        gap_row.addWidget(self.lbl_relief_gap_value)
-        gap_row.addStretch()
-        self.slider_relief_gap = QSlider(Qt.Horizontal)
-        self.slider_relief_gap.setRange(0, RELIEF_MAX_GAP_PX)
-        self.slider_relief_gap.setFixedWidth(130)
-        self.slider_relief_gap.valueChanged.connect(self.on_relief_setting_changed)
-        gap_row.addWidget(self.slider_relief_gap)
-        relief.addLayout(gap_row)
+        offset_y_row = QHBoxLayout()
+        self.lbl_relief_offset_y = QLabel("Y 軸位移")
+        self.lbl_relief_offset_y.setStyleSheet("background: transparent; border: none; padding: 0px;")
+        offset_y_row.addWidget(self.lbl_relief_offset_y)
+        self.lbl_relief_offset_y_value = QLabel("+0 px")
+        offset_y_row.addWidget(self.lbl_relief_offset_y_value)
+        offset_y_row.addStretch()
+        self.slider_relief_offset_y = QSlider(Qt.Horizontal)
+        self.slider_relief_offset_y.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
+        self.slider_relief_offset_y.setFixedWidth(130)
+        self.slider_relief_offset_y.valueChanged.connect(self.on_relief_setting_changed)
+        offset_y_row.addWidget(self.slider_relief_offset_y)
+        relief.addLayout(offset_y_row)
 
         opacity_row = QHBoxLayout()
         self.lbl_relief_opacity = QLabel("邊框透明度")
@@ -4271,6 +4309,7 @@ class SettingsWindowRevamp(QWidget):
         body_grid.setColumnStretch(0, 1)
         body_grid.setColumnStretch(1, 1)
         body_grid.setColumnStretch(2, 1)
+        body_grid.setColumnStretch(3, 1)
         body_grid.setRowStretch(0, 1)
         body_grid.setRowStretch(1, 1)
 
@@ -4345,9 +4384,9 @@ class SettingsWindowRevamp(QWidget):
 
     def on_relief_setting_changed(self, *_):
         self.controller.on_region_relief_settings_changed(
-            self.cmb_relief_side.itemData(self.cmb_relief_side.currentIndex()),
+            self.slider_relief_offset_x.value(),
+            self.slider_relief_offset_y.value(),
             self.spin_relief_font.value(),
-            self.slider_relief_gap.value(),
             self.slider_relief_opacity.value(),
         )
         self.update_relief_summary()
@@ -4379,21 +4418,6 @@ class SettingsWindowRevamp(QWidget):
             index = 0
         self.cmb_ui_language_chip.setCurrentIndex(index)
         self.cmb_ui_language_chip.blockSignals(False)
-
-    def _sync_relief_side_combo(self):
-        lang = self._current_ui_language()
-        current_side = self.cmb_relief_side.currentData()
-        if not current_side:
-            current_side = getattr(self.controller, "region_relief_side", RELIEF_SIDE_AUTO)
-        self.cmb_relief_side.blockSignals(True)
-        self.cmb_relief_side.clear()
-        for label, value in translation_tools.relief_side_options(lang):
-            self.cmb_relief_side.addItem(label, value)
-        index = self.cmb_relief_side.findData(current_side)
-        if index < 0:
-            index = 0
-        self.cmb_relief_side.setCurrentIndex(index)
-        self.cmb_relief_side.blockSignals(False)
 
     def refresh_localized_texts(self):
         lang = self._current_ui_language()
@@ -4430,13 +4454,12 @@ class SettingsWindowRevamp(QWidget):
         )
         self.lbl_relief.setText(translation_tools.ui_text(lang, "settings_relief_title"))
         self.lbl_relief_hint.setText(translation_tools.ui_text(lang, "settings_relief_hint"))
-        self.lbl_relief_side.setText(translation_tools.ui_text(lang, "settings_relief_side"))
+        self.lbl_relief_offset_x.setText(translation_tools.ui_text(lang, "settings_relief_offset_x"))
         self.lbl_relief_font.setText(translation_tools.ui_text(lang, "settings_relief_font"))
-        self.lbl_relief_gap.setText(translation_tools.ui_text(lang, "settings_relief_gap"))
+        self.lbl_relief_offset_y.setText(translation_tools.ui_text(lang, "settings_relief_offset_y"))
         self.lbl_relief_opacity.setText(translation_tools.ui_text(lang, "settings_relief_opacity"))
         self._sync_theme_mode_combo()
         self._sync_ui_language_combo()
-        self._sync_relief_side_combo()
         self.update_random_scan_summary()
         self.update_auto_threshold_refresh_summary()
         self.update_region_render_summary()
@@ -4521,17 +4544,18 @@ class SettingsWindowRevamp(QWidget):
 
     def update_relief_summary(self):
         lang = self._current_ui_language()
-        side = self.cmb_relief_side.itemText(self.cmb_relief_side.currentIndex())
         font_pt = int(self.spin_relief_font.value())
-        gap_px = int(self.slider_relief_gap.value())
+        offset_x = int(self.slider_relief_offset_x.value())
+        offset_y = int(self.slider_relief_offset_y.value())
         opacity = int(self.slider_relief_opacity.value())
-        self.lbl_relief_gap_value.setText(f"{gap_px} px")
+        self.lbl_relief_offset_x_value.setText(f"{offset_x:+d} px")
+        self.lbl_relief_offset_y_value.setText(f"{offset_y:+d} px")
         self.lbl_relief_opacity_value.setText(f"{opacity}%")
         self.lbl_relief_summary.setText(
             translation_tools.ui_text(lang, "settings_relief_summary").format(
-                side=side,
                 font_pt=font_pt,
-                gap_px=gap_px,
+                offset_x=offset_x,
+                offset_y=offset_y,
                 opacity=opacity,
             )
         )
@@ -4544,9 +4568,9 @@ class SettingsWindowRevamp(QWidget):
 
     def update_relief_state(self, enabled):
         self.card_relief.setEnabled(enabled)
-        self.cmb_relief_side.setEnabled(enabled)
+        self.slider_relief_offset_x.setEnabled(enabled)
         self.spin_relief_font.setEnabled(enabled)
-        self.slider_relief_gap.setEnabled(enabled)
+        self.slider_relief_offset_y.setEnabled(enabled)
         self.slider_relief_opacity.setEnabled(enabled)
         effect = None
         if not enabled:
@@ -4569,15 +4593,15 @@ class SettingsWindowRevamp(QWidget):
         self.spin_auto_threshold_refresh_minutes.blockSignals(True)
         self.spin_auto_threshold_refresh_minutes.setValue(self.controller.auto_threshold_refresh_minutes)
         self.spin_auto_threshold_refresh_minutes.blockSignals(False)
-        self.cmb_relief_side.blockSignals(True)
-        self.cmb_relief_side.setCurrentIndex(max(0, self.cmb_relief_side.findData(self.controller.region_relief_side)))
-        self.cmb_relief_side.blockSignals(False)
+        self.slider_relief_offset_x.blockSignals(True)
+        self.slider_relief_offset_x.setValue(self.controller.region_relief_offset_x)
+        self.slider_relief_offset_x.blockSignals(False)
         self.spin_relief_font.blockSignals(True)
         self.spin_relief_font.setValue(self.controller.region_relief_font_pt)
         self.spin_relief_font.blockSignals(False)
-        self.slider_relief_gap.blockSignals(True)
-        self.slider_relief_gap.setValue(self.controller.region_relief_gap_px)
-        self.slider_relief_gap.blockSignals(False)
+        self.slider_relief_offset_y.blockSignals(True)
+        self.slider_relief_offset_y.setValue(self.controller.region_relief_offset_y)
+        self.slider_relief_offset_y.blockSignals(False)
         self.slider_relief_opacity.blockSignals(True)
         self.slider_relief_opacity.setValue(self.controller.region_frame_opacity)
         self.slider_relief_opacity.blockSignals(False)
@@ -4624,7 +4648,7 @@ class SettingsWindowRevamp(QWidget):
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
         is_dark = theme.key != "light"
-        card_bg = "rgba(18, 31, 46, 214)" if is_dark else "rgba(255, 255, 255, 236)"
+        card_bg = "rgba(18, 31, 46, 127)" if is_dark else "rgba(255, 255, 255, 127)"
         translation_border = "#3D8DFF" if is_dark else "#5AA7F7"
         ocr_border = "#41B96F" if is_dark else "#50B86F"
         render_border = "#8D5CF6" if is_dark else "#8D65D8"
@@ -4633,8 +4657,12 @@ class SettingsWindowRevamp(QWidget):
             theme.base_qss()
             + f"\nQWidget#settingsWindowRevamp {{ background: transparent; }}"
         )
+        import os
+        bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
+        bg_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), bg_image)).replace("\\", "/")
         self.backdrop_panel.setStyleSheet(
-            f"QFrame#settingsBackdropPanel {{ background-color: {theme.shell_bg}; border: 2px solid {theme.shell_border}; border-radius: 20px; }}"
+            f"QFrame#settingsBackdropPanel {{ background-color: {theme.shell_bg}; border: 2px solid {theme.shell_border}; border-radius: 20px; "
+            f"background-image: url('assets/{'bg_dark.jpg' if is_dark else 'bg_light.jpg'}'); background-position: center; background-repeat: no-repeat; }}"
         )
         self.top_panel.setStyleSheet(
             f"QWidget#settingsTopPanel {{ background: transparent; border: none; }}"
@@ -4680,11 +4708,11 @@ class SettingsWindowRevamp(QWidget):
         )
         self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {render_border}; background: transparent; border: none;")
         self.lbl_relief_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
-        self.lbl_relief_side.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_offset_x.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_relief_font.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_gap.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_offset_y.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_relief_opacity.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_gap_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
+        self.lbl_relief_offset_y_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
         self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
         spinbox_style = (
             f"QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
@@ -4703,7 +4731,7 @@ class SettingsWindowRevamp(QWidget):
         self.slider_random_scan_jitter.setStyleSheet(slider_style)
         self.slider_auto_threshold_refresh.setStyleSheet(slider_style)
         self.spin_relief_font.setStyleSheet(spinbox_style)
-        self.slider_relief_gap.setStyleSheet(slider_style)
+        self.slider_relief_offset_y.setStyleSheet(slider_style)
         self.slider_relief_opacity.setStyleSheet(slider_style)
         self.lbl_relief_summary.setStyleSheet(
             f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
@@ -4711,7 +4739,7 @@ class SettingsWindowRevamp(QWidget):
         )
         self.cmb_theme_mode_chip.setStyleSheet(theme.combo_qss(radius=6))
         self.cmb_ui_language_chip.setStyleSheet(theme.combo_qss(radius=6))
-        self.cmb_relief_side.setStyleSheet(theme.combo_qss(radius=6))
+        self.slider_relief_offset_x.setStyleSheet(slider_style)
         render_button_style = (
             f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
             f"border-radius: 10px; padding: 6px 10px; }}"
@@ -4788,9 +4816,9 @@ class Controller(QWidget):
         self.random_scan_jitter_percent = 20
         self.auto_threshold_refresh_minutes = DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES
         self.region_render_mode = REGION_RENDER_BUBBLE
-        self.region_relief_side = RELIEF_SIDE_AUTO
+        self.region_relief_offset_x = 0
+        self.region_relief_offset_y = 0
         self.region_relief_font_pt = 18
-        self.region_relief_gap_px = 8
         self.region_frame_opacity = 40
         self.region_pass_through = False
         self.gemma_prompt = ""
@@ -4964,6 +4992,7 @@ class Controller(QWidget):
         self.request_scan.connect(self.worker.run_scan_once)
         self.worker.finished.connect(self.on_scan_complete)
         self.worker.streaming_update.connect(self.on_streaming_update)
+        self.worker.translation_stream_update.connect(self.on_translation_stream_update)
         self.worker.status_msg.connect(self.update_status)
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
@@ -5083,9 +5112,9 @@ class Controller(QWidget):
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
             "region_pass_through": getattr(self, "region_pass_through", False),
             "region_render_mode": self.region_render_mode,
-            "region_relief_side": self.region_relief_side,
+            "region_relief_offset_x": int(self.region_relief_offset_x),
+            "region_relief_offset_y": int(self.region_relief_offset_y),
             "region_relief_font_pt": int(self.region_relief_font_pt),
-            "region_relief_gap_px": int(self.region_relief_gap_px),
             "scan_mode": self.scan_mode,
             "selected_region": list(self.selected_region) if self.selected_region else None,
             "is_dark_mode": self.is_dark_mode,
@@ -5178,13 +5207,8 @@ class Controller(QWidget):
             )
             self.worker.set_region_render_mode(self.region_render_mode)
 
-            self.region_relief_side = safe_choice(
-                settings.get("region_relief_side", RELIEF_SIDE_AUTO),
-                RELIEF_SIDE_AUTO,
-                *(opt[1] for opt in RELIEF_SIDE_OPTIONS),
-            )
+            self.region_relief_offset_x, self.region_relief_offset_y = resolve_relief_offsets(settings)
             self.region_relief_font_pt = safe_int(settings.get("region_relief_font_pt", self.region_relief_font_pt), self.region_relief_font_pt, MIN_BUBBLE_FONT_PT, 48)
-            self.region_relief_gap_px = safe_int(settings.get("region_relief_gap_px", self.region_relief_gap_px), self.region_relief_gap_px, 0, RELIEF_MAX_GAP_PX)
             self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
             env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
@@ -5283,10 +5307,10 @@ class Controller(QWidget):
             self.overlay.set_render_context(
                 self.scan_mode,
                 self.region_render_mode,
-                self.region_relief_side,
+                self.region_relief_offset_x,
+                self.region_relief_offset_y,
                 self.region_relief_font_pt,
                 self.region_frame_opacity,
-                self.region_relief_gap_px,
                 self.selected_region,
             )
             self.refresh_main_ui_texts()
@@ -5348,10 +5372,10 @@ class Controller(QWidget):
         self.overlay.set_render_context(
             self.scan_mode,
             self.region_render_mode,
-            self.region_relief_side,
+            self.region_relief_offset_x,
+            self.region_relief_offset_y,
             self.region_relief_font_pt,
             self.region_frame_opacity,
-            self.region_relief_gap_px,
             self.selected_region,
         )
         if self.settings_window is not None:
@@ -5371,28 +5395,24 @@ class Controller(QWidget):
         else:
             self._set_status_text("controller.mode.bubble", fallback="💬 Mode: Bubble")
 
-    def on_region_relief_settings_changed(self, side, font_pt, gap_px, opacity):
-        side = str(side or RELIEF_SIDE_AUTO)
-        if side not in {opt[1] for opt in RELIEF_SIDE_OPTIONS}:
-            side = RELIEF_SIDE_AUTO
-        self.region_relief_side = side
+    def on_region_relief_settings_changed(self, offset_x, offset_y, font_pt, opacity):
+        self.region_relief_offset_x = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(offset_x)))
+        self.region_relief_offset_y = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(offset_y)))
         self.region_relief_font_pt = max(MIN_BUBBLE_FONT_PT, min(48, int(font_pt)))
-        self.region_relief_gap_px = max(0, min(RELIEF_MAX_GAP_PX, int(gap_px)))
         self.region_frame_opacity = max(0, min(100, int(opacity)))
         self.region_frame.set_theme_mode(self.theme_mode)
         self.region_frame.set_frame_opacity(self.region_frame_opacity)
         self.overlay.set_render_context(
             self.scan_mode,
             self.region_render_mode,
-            self.region_relief_side,
+            self.region_relief_offset_x,
+            self.region_relief_offset_y,
             self.region_relief_font_pt,
             self.region_frame_opacity,
-            self.region_relief_gap_px,
             self.selected_region,
         )
         self.refresh_overlay_from_last_results()
         self.schedule_save_settings()
-
     def set_auto_threshold_mode(self, enabled):
         self.worker.set_auto_threshold_enabled(enabled)
         self.schedule_save_settings()
@@ -5607,10 +5627,10 @@ class Controller(QWidget):
         self.overlay.set_render_context(
             self.scan_mode,
             self.region_render_mode,
-            self.region_relief_side,
+            self.region_relief_offset_x,
+            self.region_relief_offset_y,
             self.region_relief_font_pt,
             self.region_frame_opacity,
-            self.region_relief_gap_px,
             self.selected_region,
         )
         if scan_mode == SCAN_MODE_FULLSCREEN:
@@ -5676,10 +5696,10 @@ class Controller(QWidget):
         self.overlay.set_render_context(
             self.scan_mode,
             self.region_render_mode,
-            self.region_relief_side,
+            self.region_relief_offset_x,
+            self.region_relief_offset_y,
             self.region_relief_font_pt,
             self.region_frame_opacity,
-            self.region_relief_gap_px,
             self.selected_region,
         )
         self.overlay.update_bubbles(self.last_scan_results)
@@ -5829,6 +5849,10 @@ class Controller(QWidget):
         if self.countdown_seconds < 0:
             self.display_timer.stop()
 
+    def on_translation_stream_update(self, index, partial_text, provider, x, y, w, h):
+        if getattr(self, "overlay", None):
+            self.overlay.update_translation_stream(index, partial_text, provider, x, y, w, h)
+
     def on_streaming_update(self, partial_results):
         """接收串流翻譯的中間結果，即時更新氣泡文字（打字機效果）"""
         if not partial_results:
@@ -5836,8 +5860,8 @@ class Controller(QWidget):
         if not self.overlay.bubbles:
             # 還沒建立氣泡時，先用 update_bubbles 建立框架
             self.overlay.set_render_context(
-                self.scan_mode, self.region_render_mode, self.region_relief_side,
-                self.region_relief_font_pt, self.region_frame_opacity, self.region_relief_gap_px,
+                self.scan_mode, self.region_render_mode, self.region_relief_offset_x,
+                self.region_relief_offset_y, self.region_relief_font_pt, self.region_frame_opacity,
                 self.selected_region,
             )
             self.overlay.update_bubbles(partial_results)
@@ -5851,10 +5875,10 @@ class Controller(QWidget):
         self.overlay.set_render_context(
             self.scan_mode,
             self.region_render_mode,
-            self.region_relief_side,
+            self.region_relief_offset_x,
+            self.region_relief_offset_y,
             self.region_relief_font_pt,
             self.region_frame_opacity,
-            self.region_relief_gap_px,
             self.selected_region,
         )
         display_results = list(results) if results else []

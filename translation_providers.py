@@ -5,6 +5,7 @@ import hashlib
 import difflib
 import re
 import time
+import os
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
@@ -727,3 +728,152 @@ class GemmaTranslationProvider:
             raise ValueError("empty_gemma_ocr_response")
         self._remember(cache_key, (transcription, raw_text))
         return TranslationResult(text=transcription, provider=self.name, model=model_name, raw_text=raw_text)
+
+class LocalGemmaProvider:
+    name = "local_gemma"
+
+    def __init__(
+        self,
+        *,
+        model_path: str = "",
+        gemma_prompt: str = "",
+        target_lang: str = "zh-TW",
+        enabled: bool = False,
+    ):
+        self.model_path = model_path
+        self.target_lang = target_lang
+        self.enabled = bool(enabled)
+        self.gemma_prompt = (gemma_prompt or "").strip()
+        self._llm = None
+        self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
+        self._load_model()
+
+    def update_config(
+        self,
+        *,
+        model_path: str | None = None,
+        gemma_prompt: str | None = None,
+        target_lang: str | None = None,
+        enabled: bool | None = None,
+        **kwargs
+    ) -> None:
+        reload_needed = False
+        if model_path is not None and model_path != self.model_path:
+            self.model_path = model_path
+            reload_needed = True
+        if gemma_prompt is not None:
+            self.gemma_prompt = (gemma_prompt or "").strip()
+        if target_lang is not None:
+            self.target_lang = (target_lang or "").strip() or self.target_lang
+        if enabled is not None:
+            self.enabled = bool(enabled)
+        if "gemma_enabled" in kwargs and kwargs["gemma_enabled"] is not None:
+            self.enabled = bool(kwargs["gemma_enabled"])
+            
+        if reload_needed and self.enabled:
+            self._load_model()
+
+    def _load_model(self):
+        if not self.enabled or not self.model_path or not os.path.exists(self.model_path):
+            self._llm = None
+            return
+        try:
+            # We import locally to avoid requiring it if not enabled
+            from llama_cpp import Llama
+            self._llm = Llama(
+                model_path=self.model_path,
+                n_ctx=2048,
+                n_gpu_layers=-1, # Offload all to GPU
+                verbose=False
+            )
+        except Exception as e:
+            print(f"Failed to load local model: {e}")
+            self._llm = None
+
+    def available(self) -> bool:
+        return self.enabled and self._llm is not None
+
+    def _get_cached(self, cache_key: Any):
+        cached = self._translation_cache.get(cache_key)
+        if cached is not None:
+            self._translation_cache.move_to_end(cache_key)
+        return cached
+
+    def _remember(self, cache_key: Any, translated_text: Any) -> None:
+        self._translation_cache[cache_key] = translated_text
+        self._translation_cache.move_to_end(cache_key)
+        if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
+            self._translation_cache.popitem(last=False)
+
+    def _build_prompt(self, text: str) -> str:
+        return build_gemma_prompt_with_override(text, self.gemma_prompt)
+
+    def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
+        if not self.available() or not self._llm:
+            raise ValueError("local_model_unavailable")
+        normalized = clean_model_output(text).strip() if text else ""
+        if not normalized:
+            return
+
+        cache_key = ("local_gemma", self.model_path, normalized, target_lang or self.target_lang, self.gemma_prompt)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            yield str(cached)
+            return
+
+        prompt = self._build_prompt(normalized)
+        
+        stream = self._llm.create_completion(
+            prompt,
+            max_tokens=1024,
+            temperature=0.2,
+            stream=True
+        )
+        
+        accumulated = ""
+        for chunk in stream:
+            chunk_text = chunk["choices"][0].get("text", "")
+            if chunk_text:
+                accumulated += chunk_text
+                yield chunk_text
+
+        final = clean_model_output(accumulated)
+        if final:
+            self._remember(cache_key, final)
+
+    def translate(
+        self,
+        text: str,
+        *,
+        source_lang: str = "auto",
+        target_lang: str = "zh-TW",
+    ) -> TranslationResult:
+        normalized = clean_model_output(text).strip() if text else ""
+        if not normalized:
+            return TranslationResult(text="", provider=self.name, model="local")
+        if not self.available() or not self._llm:
+            raise ValueError("local_model_unavailable")
+
+        cache_key = (
+            "local_gemma",
+            self.model_path,
+            normalized,
+            target_lang or self.target_lang,
+            self.gemma_prompt,
+        )
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return TranslationResult(text=str(cached), provider=self.name, model="local", from_cache=True)
+
+        prompt = self._build_prompt(normalized)
+        response = self._llm.create_completion(
+            prompt,
+            max_tokens=1024,
+            temperature=0.2,
+        )
+        raw_text = response["choices"][0]["text"]
+        translated = clean_model_output(raw_text)
+        if not translated:
+            raise ValueError("empty_local_response")
+        self._remember(cache_key, translated)
+        return TranslationResult(text=translated, provider=self.name, model="local", raw_text=raw_text)

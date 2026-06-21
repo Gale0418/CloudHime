@@ -9,9 +9,11 @@ from typing import Any
 import localization
 
 
-SETTINGS_SCHEMA_VERSION = 3
+SETTINGS_SCHEMA_VERSION = 4
 SETTINGS_FILENAME = "cloudhime_settings.json"
 SETTINGS_APP_DIR = "CloudHime"
+RELIEF_OFFSET_MIN = -500
+RELIEF_OFFSET_MAX = 500
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,21 @@ def clamp_percent(value: Any, fallback: int = 40) -> int:
     return max(0, min(100, numeric))
 
 
+def clamp_relief_offset(value: Any, fallback: int = 0) -> int:
+    try:
+        numeric = int(value)
+    except Exception:
+        numeric = int(fallback)
+    return max(RELIEF_OFFSET_MIN, min(RELIEF_OFFSET_MAX, numeric))
+
+
+def resolve_relief_offsets(settings: dict[str, Any]) -> tuple[int, int]:
+    return (
+        clamp_relief_offset(settings.get("region_relief_offset_x", 0)),
+        clamp_relief_offset(settings.get("region_relief_offset_y", 0)),
+    )
+
+
 def resolve_region_opacity(settings: dict[str, Any], fallback: int = 40) -> int:
     # Canonical: region_relief_opacity. Legacy alias: region_frame_opacity.
     if "region_relief_opacity" in settings:
@@ -116,6 +133,11 @@ def normalize_settings_payload(
     normalized = dict(payload)
     normalized["schema_version"] = SETTINGS_SCHEMA_VERSION
     opacity = clamp_percent(region_opacity, 40)
+    offset_x, offset_y = resolve_relief_offsets(normalized)
+    normalized["region_relief_offset_x"] = offset_x
+    normalized["region_relief_offset_y"] = offset_y
+    normalized.pop("region_relief_side", None)
+    normalized.pop("region_relief_gap_px", None)
     normalized["region_relief_opacity"] = opacity
     normalized["region_frame_opacity"] = opacity
     normalized["ui_language"] = localization.normalize_ui_language(
