@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import json
@@ -126,7 +126,7 @@ UI_TEXTS = {
         "en": "Bubble",
     },
     "settings_render_relief": {
-        "zh-TW": "浮離模式",
+        "zh-TW": "浮雕模式",
         "en": "Relief",
     },
     "settings_render_screenshot": {
@@ -138,24 +138,24 @@ UI_TEXTS = {
         "en": "Optional prompt for screenshot mode. Leave blank to use the default prompt.",
     },
     "settings_relief_title": {
-        "zh-TW": "浮離細節",
+        "zh-TW": "浮雕細節",
         "en": "Relief details",
     },
     "settings_relief_hint": {
-        "zh-TW": "只在浮離模式才啟用，位移 0 會對齊原位",
-        "en": "Only available in Relief mode; a gap of 0 keeps text aligned with the source.",
+        "zh-TW": "只在浮雕模式才啟用，X 與 Y 為 0 會對齊原位",
+        "en": "Only available in Relief mode; X and Y offsets of 0 keep text aligned with the source.",
     },
-    "settings_relief_side": {
-        "zh-TW": "文字方向",
-        "en": "Text side",
+    "settings_relief_offset_x": {
+        "zh-TW": "X 軸位移",
+        "en": "X offset",
     },
     "settings_relief_font": {
         "zh-TW": "文字大小",
         "en": "Font size",
     },
-    "settings_relief_gap": {
-        "zh-TW": "浮離位移",
-        "en": "Offset",
+    "settings_relief_offset_y": {
+        "zh-TW": "Y 軸位移",
+        "en": "Y offset",
     },
     "settings_relief_opacity": {
         "zh-TW": "選區框透明度",
@@ -174,7 +174,7 @@ UI_TEXTS = {
         "en": "Current: Bubble mode · keep the original bubble style",
     },
     "settings_region_render_summary_relief": {
-        "zh-TW": "目前：浮離模式 · 文字貼近原文",
+        "zh-TW": "目前：浮雕模式 · 文字貼近原文",
         "en": "Current: Relief mode · keep text close to the source",
     },
     "settings_region_render_summary_screenshot": {
@@ -182,28 +182,8 @@ UI_TEXTS = {
         "en": "Current: Screenshot mode · interpret the whole region together",
     },
     "settings_relief_summary": {
-        "zh-TW": "目前：{side} · {font_pt} pt · {gap_px}px · {opacity}%",
-        "en": "Current: {side} · {font_pt} pt · {gap_px}px · {opacity}%",
-    },
-    "settings_relief_side_auto": {
-        "zh-TW": "自動",
-        "en": "Auto",
-    },
-    "settings_relief_side_top": {
-        "zh-TW": "上方",
-        "en": "Top",
-    },
-    "settings_relief_side_bottom": {
-        "zh-TW": "下方",
-        "en": "Bottom",
-    },
-    "settings_relief_side_left": {
-        "zh-TW": "左側",
-        "en": "Left",
-    },
-    "settings_relief_side_right": {
-        "zh-TW": "右側",
-        "en": "Right",
+        "zh-TW": "目前：{font_pt} pt · X {offset_x:+d}px · Y {offset_y:+d}px · {opacity}%",
+        "en": "Current: {font_pt} pt · X {offset_x:+d}px · Y {offset_y:+d}px · {opacity}%",
     },
     "settings_appearance": {
         "zh-TW": "外觀",
@@ -387,16 +367,6 @@ def ui_language_label(language_code: Any, source: Any = None) -> str:
 
 def ui_language_options(source: Any = None) -> list[tuple[str, str]]:
     return [(ui_language_label(code, source), code) for code in UI_LANGUAGE_ORDER]
-
-
-def relief_side_options(source: Any = None) -> list[tuple[str, str]]:
-    return [
-        (ui_text(source, "settings_relief_side_auto"), "auto"),
-        (ui_text(source, "settings_relief_side_top"), "top"),
-        (ui_text(source, "settings_relief_side_bottom"), "bottom"),
-        (ui_text(source, "settings_relief_side_left"), "left"),
-        (ui_text(source, "settings_relief_side_right"), "right"),
-    ]
 
 
 def detect_source_language(text: Any) -> str:

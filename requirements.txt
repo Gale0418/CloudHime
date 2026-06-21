@@ -8,3 +8,4 @@ mss
 opencv-python
 numpy
 deep-translator
+llama-cpp-python
