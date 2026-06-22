@@ -175,8 +175,6 @@ def needs_cjk_tight_join(left_text, right_text):
     right_char = right_text[0]
     return bool(HAS_CJK_PATTERN.search(left_char) or HAS_CJK_PATTERN.search(right_char) or left_char in "「『（([" or right_char in "」』），。！？：；、)]")
 
-    return text
-
 def merge_horizontal_lines(items):
     if not items:
         return []

@@ -544,9 +544,9 @@ class OverlayWindow(QWidget):
                     self.theme_mode,
                     mode,
                     self.relief_offset_x,
+                    self.relief_offset_y,
                     self.relief_font_pt,
                     self.relief_opacity,
-                    self.relief_offset_y,
                     region_rect,
                 )
             )
@@ -565,23 +565,22 @@ class OverlayWindow(QWidget):
             self.show()
             self.raise_()
         
-        mode = self.render_mode if self.scan_mode == 1 else 0 # fallback
+        mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else 0 # fallback
         region_rect = self.scan_region if getattr(self, "scan_region", None) else None
 
         while len(self.bubbles) <= index:
-            from CloudHime import TransBubble
             self.bubbles.append(TransBubble(self, "", x, y, w, h, self.theme_mode, mode, self.relief_offset_x, self.relief_offset_y, self.relief_font_pt, self.relief_opacity, region_rect))
             
         bubble = self.bubbles[index]
         bubble.setText(str(partial_text))
-        bubble.source_rect = __import__("PySide6.QtCore", fromlist=["QRect"]).QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
+        bubble.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
         
-        if mode == 1: # RELIEF
+        if mode == REGION_RENDER_RELIEF: # RELIEF
             if hasattr(bubble, 'compute_relief_layout'):
                 bubble_rect, best_size = bubble.compute_relief_layout(partial_text, x, y, w, h)
             else:
                 bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
-        elif mode == 2: # SCREENSHOT
+        elif mode == REGION_RENDER_SCREENSHOT: # SCREENSHOT
             if hasattr(bubble, 'compute_screenshot_layout'):
                 bubble_rect, best_size = bubble.compute_screenshot_layout(partial_text, x, y, w, h)
             else:

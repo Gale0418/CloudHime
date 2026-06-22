@@ -153,6 +153,7 @@ def startup_log(stage, detail=""):
 # 🛡️ 核心：Windows 原生熱鍵過濾器
 # ==========================================
 from cloudhime_core import is_valid_content, needs_cjk_tight_join, merge_horizontal_lines
+from ocr_text_processing import normalize_ocr_text
 
 class OCRWorker(QObject):
     finished = Signal(list)
@@ -519,6 +520,11 @@ class OCRWorker(QObject):
 
     def remember_translation(self, cache_key, translated_text):
         translation_tools.remember_translation(self.translation_cache, cache_key, translated_text, TRANSLATION_CACHE_LIMIT)
+
+
+    def cleanup(self):
+        if hasattr(self, '_bg_threshold_executor'):
+            self._bg_threshold_executor.shutdown(wait=True)
 
     def get_translation_provider_priority(self, provider):
         return translation_tools.get_translation_provider_priority(provider)
