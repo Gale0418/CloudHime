@@ -36,7 +36,8 @@ except ImportError:
     OPENCC_AVAILABLE = False
     logger.error("⚠️ 未安裝 opencc。")
 
-from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout, QMessageBox, QFileDialog,
+from PySide6.QtWidgets import (
+    QGraphicsDropShadowEffect,QApplication, QWidget, QLabel, QVBoxLayout, QMessageBox, QFileDialog,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup,
                                QSlider, QLineEdit, QCheckBox, QComboBox, QPlainTextEdit,
                                QSpinBox, QSizePolicy, QSplitter, QScrollArea,
@@ -959,14 +960,26 @@ class CooldownButton(QPushButton):
         self.disabled_bg = QColor("#888888")
         self.disabled_fg = QColor("#CCCCCC")
 
+    def _parse_color(self, c_str):
+        c_str = str(c_str).strip()
+        if c_str.startswith("rgba("):
+            try:
+                parts = c_str.replace("rgba(", "").replace(")", "").split(",")
+                r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
+                a = int(float(parts[3])) if len(parts) > 3 else 255
+                return QColor(r, g, b, a)
+            except:
+                pass
+        return QColor(c_str)
+
     def set_theme_colors(self, base_bg, base_fg, border_color, hover_bg, fill_color, disabled_bg, disabled_fg):
-        self.base_bg = QColor(base_bg)
-        self.base_fg = QColor(base_fg)
-        self.border_color = QColor(border_color)
-        self.hover_bg = QColor(hover_bg)
-        self.fill_color = QColor(fill_color)
-        self.disabled_bg = QColor(disabled_bg)
-        self.disabled_fg = QColor(disabled_fg)
+        self.base_bg = self._parse_color(base_bg)
+        self.base_fg = self._parse_color(base_fg)
+        self.border_color = self._parse_color(border_color)
+        self.hover_bg = self._parse_color(hover_bg)
+        self.fill_color = self._parse_color(fill_color)
+        self.disabled_bg = self._parse_color(disabled_bg)
+        self.disabled_fg = self._parse_color(disabled_fg)
         self.update()
 
     def set_cooldown_progress(self, progress):
@@ -1011,11 +1024,23 @@ class StatusChargeBar(QWidget):
         self.text_color = QColor("#3A5C72")
         self.setFixedHeight(18)
 
+    def _parse_color(self, c_str):
+        c_str = str(c_str).strip()
+        if c_str.startswith("rgba("):
+            try:
+                parts = c_str.replace("rgba(", "").replace(")", "").split(",")
+                r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
+                a = int(float(parts[3])) if len(parts) > 3 else 255
+                return QColor(r, g, b, a)
+            except:
+                pass
+        return QColor(c_str)
+
     def set_theme_colors(self, base_bg, border_color, fill_color, text_color):
-        self.base_bg = QColor(base_bg)
-        self.border_color = QColor(border_color)
-        self.fill_color = QColor(fill_color)
-        self.text_color = QColor(text_color)
+        self.base_bg = self._parse_color(base_bg)
+        self.border_color = self._parse_color(border_color)
+        self.fill_color = self._parse_color(fill_color)
+        self.text_color = self._parse_color(text_color)
         self.update()
 
     def set_progress(self, progress, label=""):
@@ -1697,6 +1722,13 @@ class SettingsWindowRevamp(QWidget):
         self.backdrop_panel = QFrame()
         self.backdrop_panel.setObjectName("settingsBackdropPanel")
         self.backdrop_panel.setAttribute(Qt.WA_StyledBackground, True)
+        
+        # Apple-style subtle drop shadow
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setColor(QColor(0, 0, 0, 60))
+        shadow.setOffset(0, 10)
+        self.backdrop_panel.setGraphicsEffect(shadow)
         backdrop = QVBoxLayout(self.backdrop_panel)
         backdrop.setContentsMargins(0, 0, 0, 0)
         backdrop.setSpacing(12)
@@ -2947,6 +2979,17 @@ class Controller(QWidget):
             self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
             env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
+            
+            # Manually parse .env as fallback since python-dotenv is not used
+            if not env_api_key:
+                env_path = os.path.join(os.path.dirname(__file__), ".env")
+                if os.path.exists(env_path):
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.startswith(f"{API_KEY_ENV_VAR}="):
+                                env_api_key = line.strip().split("=", 1)[1].strip()
+                                break
+
             legacy_api_key = str(settings.get("google_api_key", "") or "").strip()
             api_key = env_api_key or legacy_api_key
             self.worker.set_google_api_key(api_key)
@@ -2985,6 +3028,10 @@ class Controller(QWidget):
                 self.settings_window.input_gemma_prompt.blockSignals(True)
                 self.settings_window.input_gemma_prompt.setPlainText(self.gemma_prompt)
                 self.settings_window.input_gemma_prompt.blockSignals(False)
+
+            self.local_gemma_temperature = float(settings.get("local_gemma_temperature", 0.2))
+            self.local_gemma_repeat_penalty = float(settings.get("local_gemma_repeat_penalty", 1.15))
+            self.worker.set_local_gemma_params(self.local_gemma_temperature, self.local_gemma_repeat_penalty)
 
             saved_theme_mode = str(settings.get("theme_mode", "") or "").strip()
             if not saved_theme_mode:
@@ -3228,6 +3275,24 @@ class Controller(QWidget):
 
     def on_api_key_changed(self, text):
         self.worker.set_google_api_key(text)
+        
+        # Save to .env
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        try:
+            env_vars = {}
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if "=" in line:
+                            k, v = line.strip().split("=", 1)
+                            env_vars[k] = v
+            env_vars[API_KEY_ENV_VAR] = text.strip()
+            with open(env_path, "w", encoding="utf-8") as f:
+                for k, v in env_vars.items():
+                    f.write(f"{k}={v}\\n")
+        except Exception as e:
+            logger.error(f"Failed to save API key to .env: {e}")
+
         if self.input_api_key.text() != text:
             self.input_api_key.blockSignals(True)
             self.input_api_key.setText(text)
@@ -3262,6 +3327,16 @@ class Controller(QWidget):
         self._pending_gemma_prompt = self.gemma_prompt
         if hasattr(self, "gemma_prompt_timer"):
             self.gemma_prompt_timer.start(350)
+
+    def on_local_gemma_temp_changed(self, value):
+        self.local_gemma_temperature = value
+        self.worker.set_local_gemma_params(self.local_gemma_temperature, getattr(self, "local_gemma_repeat_penalty", 1.15))
+        self.push_settings()
+
+    def on_local_gemma_repeat_changed(self, value):
+        self.local_gemma_repeat_penalty = value
+        self.worker.set_local_gemma_params(getattr(self, "local_gemma_temperature", 0.2), self.local_gemma_repeat_penalty)
+        self.push_settings()
 
     def get_default_gemma_prompt(self):
         return self.DEFAULT_GEMMA_PROMPT
@@ -3758,6 +3833,8 @@ class Controller(QWidget):
         self.save_settings()
         if hasattr(self, 'hotkey_filter'):
             self.hotkey_filter.unregister_hotkey(self.winId())
+            if QApplication.instance():
+                QApplication.instance().removeNativeEventFilter(self.hotkey_filter)
         self.auto_timer.stop()
         self.display_timer.stop()
         self.cooldown_timer.stop()
@@ -3768,6 +3845,8 @@ class Controller(QWidget):
             self.settings_window.close()
         self.region_frame.close()
         self.selection_overlay.close()
+        if hasattr(self.overlay, 'timer'):
+            self.overlay.timer.stop()
         self.overlay.close()
         self.close()
         QApplication.instance().quit()
@@ -3781,4 +3860,5 @@ class Controller(QWidget):
             self.move(self.x()+delta.x(), self.y()+delta.y())
             self.old_pos = event.globalPosition().toPoint()
     def mouseReleaseEvent(self, event): self.old_pos = None
+
 

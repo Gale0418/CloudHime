@@ -160,6 +160,13 @@ from cloudhime_ui import Controller, OverlayWindow
 if __name__ == "__main__":
     startup_log("main start")
     app = QApplication(sys.argv)
+    
+    # Apply Apple-style typography globally
+    font = QFont("Helvetica Neue", 10)
+    font.setStyleHint(QFont.SansSerif)
+    font.setHintingPreference(QFont.PreferNoHinting)
+    app.setFont(font)
+
     startup_log("QApplication created")
     loaded_font = None
     for font_path in (

@@ -192,7 +192,7 @@ class OCRWorker(QObject):
             supported_models=SUPPORTED_GEMMA_MODEL_NAMES,
         )
         import os
-        local_model_path = os.path.abspath("models/translategemma-4b-it.Q2_K.gguf")
+        local_model_path = os.path.abspath("models/gemma-3-4b-it.Q4_K_M.gguf")
         self.local_gemma_provider = LocalGemmaProvider(
             model_path=local_model_path,
             gemma_prompt="",
@@ -312,6 +312,8 @@ class OCRWorker(QObject):
             gemma_enabled=self.use_gemma_translation,
             gemma_auto_switch_enabled=self.gemma_auto_switch_enabled,
             target_lang=self.translation_target_lang,
+            local_gemma_temperature=getattr(self, "local_gemma_temperature", 0.2),
+            local_gemma_repeat_penalty=getattr(self, "local_gemma_repeat_penalty", 1.15),
         )
 
     def _refresh_translation_registry(self):
@@ -337,7 +339,9 @@ class OCRWorker(QObject):
             self.local_gemma_provider.update_config(
                 gemma_prompt=config.gemma_prompt,
                 target_lang=config.target_lang,
-                gemma_enabled=config.gemma_enabled
+                gemma_enabled=config.gemma_enabled,
+                temperature=config.local_gemma_temperature,
+                repeat_penalty=config.local_gemma_repeat_penalty
             )
             
             active_gemma = self.local_gemma_provider if config.gemma_model == "translategemma-4b-it-local" else self.gemma_translation_provider
@@ -427,6 +431,11 @@ class OCRWorker(QObject):
 
     def set_screenshot_gemma_prompt(self, prompt):
         self.screenshot_gemma_prompt = (prompt or "").strip()
+        self._refresh_translation_registry()
+
+    def set_local_gemma_params(self, temperature, repeat_penalty):
+        self.local_gemma_temperature = temperature
+        self.local_gemma_repeat_penalty = repeat_penalty
         self._refresh_translation_registry()
 
     def set_scan_mode(self, scan_mode):

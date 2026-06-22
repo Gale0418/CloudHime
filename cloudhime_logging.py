@@ -2,31 +2,33 @@ import os
 import time
 import logging
 
+
 def setup_logger():
     logger = logging.getLogger("CloudHime")
     if not logger.handlers:
         logger.setLevel(logging.DEBUG)
-        
-        # File handler
-        log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "CloudHime")
-        os.makedirs(log_dir, exist_ok=True)
-        log_path = os.path.join(log_dir, "cloudhime.log")
-        
-        file_handler = logging.FileHandler(log_path, encoding="utf-8")
         file_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
-        file_handler.setFormatter(file_formatter)
-        
-        # Console handler
+
+        log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "CloudHime")
+        log_path = os.path.join(log_dir, "cloudhime.log")
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            file_handler = logging.FileHandler(log_path, encoding="utf-8")
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+        except Exception:
+            pass
+
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(file_formatter)
-        
-        logger.addHandler(file_handler)
         logger.addHandler(console_handler)
-        
+
     return logger
+
 
 # Global logger instance
 logger = setup_logger()
+
 
 def log_ai_debug(message):
     try:
@@ -46,6 +48,7 @@ def log_ai_debug(message):
         logger.debug(f"[AI-DEBUG] {message}")
     except Exception:
         pass
+
 
 def log_translation_debug(message):
     try:

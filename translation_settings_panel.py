@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+    QDoubleSpinBox,
 )
 
 import translation_helpers as translation_tools
@@ -150,6 +151,22 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.textChanged.connect(self.on_gemma_prompt_changed)
         advanced_layout.addWidget(self.input_gemma_prompt)
 
+        self.lbl_local_gemma_temp = QLabel("Local Gemma Temperature (0.0 - 1.0)")
+        advanced_layout.addWidget(self.lbl_local_gemma_temp)
+        self.spin_local_gemma_temp = QDoubleSpinBox()
+        self.spin_local_gemma_temp.setRange(0.0, 1.0)
+        self.spin_local_gemma_temp.setSingleStep(0.1)
+        self.spin_local_gemma_temp.valueChanged.connect(self.on_local_gemma_temp_changed)
+        advanced_layout.addWidget(self.spin_local_gemma_temp)
+
+        self.lbl_local_gemma_repeat = QLabel("Local Gemma Repeat Penalty (1.0 - 2.0)")
+        advanced_layout.addWidget(self.lbl_local_gemma_repeat)
+        self.spin_local_gemma_repeat = QDoubleSpinBox()
+        self.spin_local_gemma_repeat.setRange(1.0, 2.0)
+        self.spin_local_gemma_repeat.setSingleStep(0.05)
+        self.spin_local_gemma_repeat.valueChanged.connect(self.on_local_gemma_repeat_changed)
+        advanced_layout.addWidget(self.spin_local_gemma_repeat)
+
         self.chk_auto_switch = QCheckBox("")
         self.chk_auto_switch.toggled.connect(self.on_auto_switch_toggled)
         self.chk_auto_switch.setVisible(False)
@@ -199,6 +216,14 @@ class TranslationSettingsPanel(QWidget):
     def on_gemma_prompt_changed(self):
         if hasattr(self.controller, "on_gemma_prompt_changed"):
             self.controller.on_gemma_prompt_changed(self.input_gemma_prompt.toPlainText())
+
+    def on_local_gemma_temp_changed(self, value):
+        if hasattr(self.controller, "on_local_gemma_temp_changed"):
+            self.controller.on_local_gemma_temp_changed(value)
+
+    def on_local_gemma_repeat_changed(self, value):
+        if hasattr(self.controller, "on_local_gemma_repeat_changed"):
+            self.controller.on_local_gemma_repeat_changed(value)
 
     def _ui_language(self):
         return translation_tools.get_ui_language(self.controller)
@@ -302,6 +327,14 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.setPlainText(prompt_text)
         self.input_gemma_prompt.blockSignals(False)
 
+        self.spin_local_gemma_temp.blockSignals(True)
+        self.spin_local_gemma_temp.setValue(getattr(self.controller, "local_gemma_temperature", 0.2))
+        self.spin_local_gemma_temp.blockSignals(False)
+
+        self.spin_local_gemma_repeat.blockSignals(True)
+        self.spin_local_gemma_repeat.setValue(getattr(self.controller, "local_gemma_repeat_penalty", 1.15))
+        self.spin_local_gemma_repeat.blockSignals(False)
+
         self.chk_auto_switch.blockSignals(True)
         self.chk_auto_switch.setChecked(self.controller.worker.gemma_auto_switch_enabled)
         self.chk_auto_switch.blockSignals(False)
@@ -383,4 +416,9 @@ class TranslationSettingsPanel(QWidget):
             f"QPlainTextEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
             f"border-radius: 6px; padding: 6px; font-size: 13px; }}"
         )
+        self.lbl_local_gemma_temp.setStyleSheet(accent_label_style)
+        self.lbl_local_gemma_repeat.setStyleSheet(accent_label_style)
+        spinbox_style = f"QDoubleSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 4px; }}"
+        self.spin_local_gemma_temp.setStyleSheet(spinbox_style)
+        self.spin_local_gemma_repeat.setStyleSheet(spinbox_style)
         self.update_translate_summary()

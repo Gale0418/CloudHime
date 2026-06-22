@@ -25,3 +25,6 @@ MissionCenter/
 docs/
 example/
 benchmark_manifest.example.json
+
+# Environment Variables
+.env

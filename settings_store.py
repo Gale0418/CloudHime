@@ -144,4 +144,6 @@ def normalize_settings_payload(
         ui_language if ui_language is not None else normalized.get("ui_language", localization.DEFAULT_UI_LANGUAGE),
         fallback=localization.DEFAULT_UI_LANGUAGE,
     )
+    normalized["local_gemma_temperature"] = float(normalized.get("local_gemma_temperature", 0.2))
+    normalized["local_gemma_repeat_penalty"] = float(normalized.get("local_gemma_repeat_penalty", 1.15))
     return normalized
