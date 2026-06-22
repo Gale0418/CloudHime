@@ -33,7 +33,7 @@ class ThemeDefinition:
     def base_qss(self) -> str:
         return f"QWidget {{ color: {self.text}; }} QFrame {{ border: none; }}"
 
-    def window_qss(self, radius: int = 24, border_width: int = 2) -> str:
+    def window_qss(self, radius: int = 16, border_width: int = 1) -> str:
         return (
             f"QFrame {{ background-color: {self.shell_bg}; border: {border_width}px solid {self.shell_border}; "
             f"border-radius: {int(radius)}px; }}"
@@ -45,11 +45,11 @@ class ThemeDefinition:
             f"border-radius: {int(radius)}px; }}"
         )
 
-    def panel_qss(self, variant: str = "subtle", radius: int = 20) -> str:
+    def panel_qss(self, variant: str = "subtle", radius: int = 12) -> str:
         variant = str(variant or "subtle").strip().lower()
         if variant == "primary":
             return (
-                f"QFrame {{ background-color: {self.panel_bg}; border: 1.5px solid {self.accent}; "
+                f"QFrame {{ background-color: {self.panel_bg}; border: 1px solid {self.accent}; "
                 f"border-radius: {int(radius)}px; }}"
             )
         if variant == "transparent":
@@ -78,7 +78,7 @@ class ThemeDefinition:
             f"border: 1px solid {border}; border-radius: 999px; padding: 4px 10px;"
         )
 
-    def button_qss(self, variant: str = "default", radius: int = 8) -> str:
+    def button_qss(self, variant: str = "default", radius: int = 10) -> str:
         variant = str(variant or "default").strip().lower()
         if variant == "danger":
             return (
@@ -135,31 +135,31 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
         label="淺色模式",
         is_dark=False,
         colors=_theme_colors(
-            shell_bg="rgba(240, 248, 255, 230)",
-            shell_border="#87CEEB",
-            panel_bg="rgba(255, 255, 255, 232)",
-            panel_border="#9DDCF2",
-            text="#39566B",
-            subtext="#6C8A9D",
-            border="#9DDCF2",
-            accent="#4FC3F7",
-            accent_soft="rgba(79, 195, 247, 41)",
-            input_bg="#FFFFFF",
-            control_bg="#E0F7FA",
-            control_fg="#444444",
-            control_hover="#B2EBF2",
-            control_checked="#4FC3F7",
-            control_disabled_fg="#888888",
-            control_disabled_bg="#CCCCCC",
-            danger_bg="#C96B6B",
-            danger_hover="#D98A8A",
+            shell_bg="rgba(242, 242, 247, 235)",
+            shell_border="rgba(0, 0, 0, 10)",
+            panel_bg="rgba(255, 255, 255, 240)",
+            panel_border="rgba(0, 0, 0, 10)",
+            text="#1C1C1E",
+            subtext="#8E8E93",
+            border="rgba(0, 0, 0, 15)",
+            accent="#007AFF",
+            accent_soft="rgba(0, 122, 255, 30)",
+            input_bg="rgba(255, 255, 255, 200)",
+            control_bg="rgba(118, 118, 128, 20)",
+            control_fg="#1C1C1E",
+            control_hover="rgba(118, 118, 128, 40)",
+            control_checked="#007AFF",
+            control_disabled_fg="#8E8E93",
+            control_disabled_bg="rgba(118, 118, 128, 10)",
+            danger_bg="#FF3B30",
+            danger_hover="#FF453A",
             danger_fg="#FFFFFF",
-            danger_checked="#A85656",
-            header_bg="rgba(79, 195, 247, 0.12)",
-            header_border="#9DDCF2",
-            status_bg="#FFFFFF",
-            status_border="#87CEEB",
-            status_text="#39566B",
+            danger_checked="#D70015",
+            header_bg="rgba(255, 255, 255, 120)",
+            header_border="rgba(0, 0, 0, 10)",
+            status_bg="rgba(255, 255, 255, 180)",
+            status_border="rgba(0, 0, 0, 10)",
+            status_text="#1C1C1E",
             bubble_bg="rgba(255, 255, 255, 245)",
             bubble_fg="#39566B",
             bubble_border="#DDDDDD",
@@ -191,31 +191,31 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
         label="深色模式",
         is_dark=True,
         colors=_theme_colors(
-            shell_bg="rgba(34, 39, 46, 242)",
-            shell_border="#5B6B78",
-            panel_bg="rgba(56, 64, 74, 220)",
-            panel_border="#5B6B78",
-            text="#EAF7FF",
-            subtext="#B7CCD9",
-            border="#5B6B78",
-            accent="#55C7F3",
-            accent_soft="rgba(85, 199, 243, 46)",
-            input_bg="#2F3942",
-            control_bg="#424242",
-            control_fg="#E0E0E0",
-            control_hover="#505050",
-            control_checked="#00ACC1",
-            control_disabled_fg="#888888",
-            control_disabled_bg="#CCCCCC",
-            danger_bg="#B96464",
-            danger_hover="#C97E7E",
+            shell_bg="rgba(28, 28, 30, 242)",
+            shell_border="rgba(255, 255, 255, 15)",
+            panel_bg="rgba(44, 44, 46, 230)",
+            panel_border="rgba(255, 255, 255, 10)",
+            text="rgba(255, 255, 255, 220)",
+            subtext="rgba(235, 235, 245, 150)",
+            border="rgba(255, 255, 255, 20)",
+            accent="#0A84FF",
+            accent_soft="rgba(10, 132, 255, 46)",
+            input_bg="rgba(118, 118, 128, 60)",
+            control_bg="rgba(118, 118, 128, 60)",
+            control_fg="rgba(255, 255, 255, 220)",
+            control_hover="rgba(118, 118, 128, 80)",
+            control_checked="#0A84FF",
+            control_disabled_fg="rgba(235, 235, 245, 100)",
+            control_disabled_bg="rgba(118, 118, 128, 30)",
+            danger_bg="#FF453A",
+            danger_hover="#FF5E55",
             danger_fg="#FFFFFF",
-            danger_checked="#944B4B",
-            header_bg="rgba(85, 199, 243, 0.12)",
-            header_border="#5B6B78",
-            status_bg="#3A3A3A",
-            status_border="#555555",
-            status_text="#E0E0E0",
+            danger_checked="#D70015",
+            header_bg="rgba(44, 44, 46, 120)",
+            header_border="rgba(255, 255, 255, 15)",
+            status_bg="rgba(44, 44, 46, 180)",
+            status_border="rgba(255, 255, 255, 15)",
+            status_text="rgba(255, 255, 255, 220)",
             bubble_bg="rgba(35, 35, 35, 245)",
             bubble_fg="#EAF7FF",
             bubble_border="#555555",
@@ -514,14 +514,14 @@ def build_window_styles(
 def build_controller_styles(theme: ThemeDefinition) -> dict:
     return build_window_styles(
         theme,
-        frame_radius=15,
-        header_radius=15,
-        card_radius=15,
+        frame_radius=18,
+        header_radius=18,
+        card_radius=12,
         title_size=18,
-        subtitle_size=11,
+        subtitle_size=12,
         label_size=14,
-        status_radius=4,
-        control_radius=8,
+        status_radius=8,
+        control_radius=10,
         scroll_area=False,
     )
 
@@ -531,11 +531,11 @@ def build_settings_styles(theme: ThemeDefinition) -> dict:
         theme,
         frame_radius=20,
         header_radius=18,
-        card_radius=18,
-        title_size=19,
-        subtitle_size=11,
+        card_radius=14,
+        title_size=20,
+        subtitle_size=13,
         label_size=15,
-        status_radius=15,
+        status_radius=10,
         control_radius=10,
         scroll_area=True,
     )

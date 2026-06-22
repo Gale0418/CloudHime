@@ -14,13 +14,15 @@ from translation_providers import (
 @dataclass(frozen=True)
 class TranslationProviderRegistryConfig:
     google_api_key: str = ""
-    gemma_model: str = "gemma-3-27b-it"
+    gemma_model: str = "gemma-4-31b-it"
     gemma_prompt: str = ""
     screenshot_gemma_prompt: str = ""
     gemma_enabled: bool = False
     gemma_auto_switch_enabled: bool = False
     target_lang: str = "zh-TW"
-    supported_models: Sequence[str] = ("gemma-3-1b-it", "gemma-3-27b-it", "gemma-4-31b-it", "gemini-2.5-pro")
+    supported_models: Sequence[str] = ("gemma-4-26b-it", "gemma-4-31b-it", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite")
+    local_gemma_temperature: float = 0.2
+    local_gemma_repeat_penalty: float = 1.15
 
 
 class TranslationProviderRegistry:

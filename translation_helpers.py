@@ -882,6 +882,13 @@ def build_gemma_prompt_with_override(
             f"{default_system}\n\n"
             f"User instructions (highest priority):\n{custom}"
         )
+    else:
+        system = (
+            f"{default_system}\n"
+            "Rules:\n"
+            "1. ONLY output the translation.\n"
+            "2. Do NOT add any notes, explanations, or conversational text."
+        )
     return (
         f"{system}\n"
         f"Source language hint: {source_lang}\n\n"

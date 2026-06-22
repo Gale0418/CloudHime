@@ -6,7 +6,7 @@ import difflib
 import re
 import time
 import os
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 from urllib import error, request
@@ -32,8 +32,8 @@ from translation_helpers import (
 
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GOOGLE_STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
-DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
-SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-3-1b-it", "gemma-3-27b-it", "gemma-4-31b-it", "gemini-2.5-pro")
+DEFAULT_GEMMA_MODEL = "gemma-4-31b-it"
+SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-4-26b-a4b-it", "gemma-4-31b-it", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite")
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 TRANSLATION_CACHE_LIMIT = 512
@@ -144,7 +144,7 @@ class GoogleTranslationProvider:
         source_lang: str = "auto",
         target_lang: str = "zh-TW",
     ) -> TranslationResult:
-        normalized = clean_model_output(text).strip() if text else ""
+        normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return TranslationResult(text="", provider=self.name)
         source_lang = source_lang if source_lang != "auto" else detect_source_language(normalized)
@@ -458,7 +458,7 @@ class GemmaTranslationProvider:
         source_lang: str = "auto",
         target_lang: str = "zh-TW",
     ) -> TranslationResult:
-        normalized = clean_model_output(text).strip() if text else ""
+        normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return TranslationResult(text="", provider=self.name, model=self.gemma_model)
         if not self.google_api_key:
@@ -739,14 +739,30 @@ class LocalGemmaProvider:
         gemma_prompt: str = "",
         target_lang: str = "zh-TW",
         enabled: bool = False,
+        temperature: float = 0.2,
+        repeat_penalty: float = 1.15,
     ):
         self.model_path = model_path
         self.target_lang = target_lang
         self.enabled = bool(enabled)
         self.gemma_prompt = (gemma_prompt or "").strip()
+        self.temperature = temperature
+        self.repeat_penalty = repeat_penalty
         self._llm = None
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
+        self._context_buffer = deque(maxlen=3)
+        self._dictionary = self._load_dictionary()
         self._load_model()
+
+    def _load_dictionary(self):
+        dict_path = os.path.join(os.path.dirname(__file__), "dictionary.json")
+        if os.path.exists(dict_path):
+            try:
+                with open(dict_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
 
     def update_config(
         self,
@@ -769,6 +785,10 @@ class LocalGemmaProvider:
             self.enabled = bool(enabled)
         if "gemma_enabled" in kwargs and kwargs["gemma_enabled"] is not None:
             self.enabled = bool(kwargs["gemma_enabled"])
+        if "temperature" in kwargs and kwargs["temperature"] is not None:
+            self.temperature = float(kwargs["temperature"])
+        if "repeat_penalty" in kwargs and kwargs["repeat_penalty"] is not None:
+            self.repeat_penalty = float(kwargs["repeat_penalty"])
             
         if reload_needed and self.enabled:
             self._load_model()
@@ -806,12 +826,27 @@ class LocalGemmaProvider:
             self._translation_cache.popitem(last=False)
 
     def _build_prompt(self, text: str) -> str:
-        return build_gemma_prompt_with_override(text, self.gemma_prompt)
+        dict_hints = []
+        for k, v in self._dictionary.items():
+            if k.lower() in text.lower():
+                dict_hints.append(f"'{k}' -> '{v}'")
+        
+        hint_text = ""
+        if dict_hints:
+            hint_text = "\n\nCRITICAL: You MUST use the following dictionary for translations: " + ", ".join(dict_hints)
+        
+        prompt = ""
+        for src, tgt in self._context_buffer:
+            prompt += f"<start_of_turn>user\nTranslate:\n{src}<end_of_turn>\n<start_of_turn>model\n{tgt}<end_of_turn>\n"
+
+        raw_prompt = build_gemma_prompt_with_override(text, self.gemma_prompt + hint_text)
+        prompt += f"<start_of_turn>user\n{raw_prompt}<end_of_turn>\n<start_of_turn>model\n"
+        return prompt
 
     def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
         if not self.available() or not self._llm:
             raise ValueError("local_model_unavailable")
-        normalized = clean_model_output(text).strip() if text else ""
+        normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return
 
@@ -826,7 +861,8 @@ class LocalGemmaProvider:
         stream = self._llm.create_completion(
             prompt,
             max_tokens=1024,
-            temperature=0.2,
+            temperature=self.temperature,
+            repeat_penalty=self.repeat_penalty,
             stream=True
         )
         
@@ -837,9 +873,15 @@ class LocalGemmaProvider:
                 accumulated += chunk_text
                 yield chunk_text
 
-        final = clean_model_output(accumulated)
+        final = clean_model_output_multiline(accumulated)
+        final = self._apply_post_processing(normalized, final)
+        if self._is_bad_translation(normalized, final):
+            final = self._fallback_translate(normalized, target_lang)
+            yield f"\n[Fallback] {final}"
+
         if final:
             self._remember(cache_key, final)
+            self._context_buffer.append((normalized, final))
 
     def translate(
         self,
@@ -848,7 +890,7 @@ class LocalGemmaProvider:
         source_lang: str = "auto",
         target_lang: str = "zh-TW",
     ) -> TranslationResult:
-        normalized = clean_model_output(text).strip() if text else ""
+        normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return TranslationResult(text="", provider=self.name, model="local")
         if not self.available() or not self._llm:
@@ -869,11 +911,49 @@ class LocalGemmaProvider:
         response = self._llm.create_completion(
             prompt,
             max_tokens=1024,
-            temperature=0.2,
+            temperature=self.temperature,
+            repeat_penalty=self.repeat_penalty,
         )
         raw_text = response["choices"][0]["text"]
-        translated = clean_model_output(raw_text)
+        translated = clean_model_output_multiline(raw_text)
+        translated = self._apply_post_processing(normalized, translated)
+        
+        if self._is_bad_translation(normalized, translated):
+            translated = self._fallback_translate(normalized, target_lang)
+            raw_text += " [Fallback]"
+
         if not translated:
             raise ValueError("empty_local_response")
+            
         self._remember(cache_key, translated)
+        self._context_buffer.append((normalized, translated))
         return TranslationResult(text=translated, provider=self.name, model="local", raw_text=raw_text)
+
+    def _apply_post_processing(self, source: str, translated: str) -> str:
+        if not translated:
+            return translated
+        for k, v in self._dictionary.items():
+            if k.lower() in source.lower() and v not in translated:
+                # Naive enforcement: just append it if missing, or try string replace
+                # It's safer to just inject it nicely
+                translated = f"{translated} ({v})"
+        return translated
+
+    def _is_bad_translation(self, source: str, translated: str) -> bool:
+        if not translated or len(translated.strip()) == 0:
+            return True
+        if translated.strip() == source.strip():
+            return True
+        if "<start_of_turn>" in translated or "<end_of_turn>" in translated:
+            return True
+        if "Translate:" in translated or "Source text:" in translated:
+            return True
+        return False
+
+    def _fallback_translate(self, text: str, target_lang: str) -> str:
+        try:
+            translator = GoogleTranslator(source="auto", target=target_lang or self.target_lang)
+            return str(translator.translate(text)).strip()
+        except Exception:
+            return text
+
