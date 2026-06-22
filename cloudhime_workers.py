@@ -432,8 +432,18 @@ class OCRWorker(QObject):
     def set_screenshot_gemma_prompt(self, prompt):
         self.screenshot_gemma_prompt = (prompt or "").strip()
         self._refresh_translation_registry()
-
     def set_local_gemma_params(self, temperature, repeat_penalty):
+        try:
+            temperature = float(temperature)
+            repeat_penalty = float(repeat_penalty)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("temperature and repeat_penalty must be numeric") from exc
+
+        if not 0.0 <= temperature <= 1.0:
+            raise ValueError("temperature must be between 0.0 and 1.0")
+        if not 1.0 <= repeat_penalty <= 2.0:
+            raise ValueError("repeat_penalty must be between 1.0 and 2.0")
+
         self.local_gemma_temperature = temperature
         self.local_gemma_repeat_penalty = repeat_penalty
         self._refresh_translation_registry()
@@ -2261,4 +2271,5 @@ class OCRWorker(QObject):
             self.last_results = []
         self.finished.emit([])
         self.show_ui.emit()
+
 
