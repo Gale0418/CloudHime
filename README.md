@@ -77,3 +77,25 @@
 CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中發現了 Bug，或者有更好的想法，歡迎回饋（雖然開發者可能正在忙著玩遊戲就是了）。
 
 祝你能愉快地啃完那些想看很久的生肉！加油吧！(*´▽`*)
+
+
+## 開發者導引 (Developer Guide)
+
+本專案採用模組化架構，主要分為以下幾個核心層級：
+
+- \CloudHime.py\: 應用程式的進入點（Entry Point），負責初始化 QApplication 並掛載主控台介面。
+- \cloudhime_core.py\: 核心業務邏輯層。包含獨立的文字處理、語言偵測、OCR 結果整併等不依賴 UI 的純函式與物件。
+- \cloudhime_workers.py\: 背景處理層。包含負責重度運算（如 \OCRWorker\）與外部 API 呼叫的 QRunnable / QThread 類別，避免阻塞主執行緒。
+- \cloudhime_ui.py\: 介面展示層。所有 PyQt / PySide6 的視覺元件（包含 \Controller\, \OverlayWindow\, \SettingsWindow\ 等）皆定義於此。
+
+### 如何執行測試
+
+專案使用 \pytest\ 與 \pytest-qt\ 進行單元測試與 UI 冒煙測試。執行方式如下：
+
+1. 確保已安裝測試相依套件：
+   \\ash
+   pip install pytest pytest-qt
+   \2. 在專案根目錄下執行測試：
+   \\ash
+   pytest tests/ -v
+   \   此指令會自動執行 \	ests/\ 目錄下的所有測試，確保核心邏輯與 UI 啟動正常。
