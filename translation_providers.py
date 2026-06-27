@@ -83,60 +83,6 @@ class GoogleTranslationProvider:
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
 
-    def _stream_request(self, model_name: str, prompt: str, *, image_parts=None, max_output_tokens: int = 1024, temperature: float = 0.2):
-        """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
-        req_body = {
-            "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
-            "generationConfig": {"temperature": temperature, "topP": 0.9, "topK": 32, "maxOutputTokens": max_output_tokens},
-        }
-        req = request.Request(
-            GOOGLE_STREAM_ENDPOINT.format(model=model_name),
-            data=json.dumps(req_body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "x-goog-api-key": self.google_api_key},
-            method="POST",
-        )
-        self._record_call(model_name)
-        with request.urlopen(req, timeout=30) as response:
-            for raw_line in response:
-                line = raw_line.decode("utf-8").strip()
-                if not line.startswith("data: "):
-                    continue
-                data_str = line[6:]
-                try:
-                    chunk_data = json.loads(data_str)
-                    parts = chunk_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
-                    for part in parts:
-                        text = part.get("text", "")
-                        if text:
-                            yield text
-                except (json.JSONDecodeError, IndexError, KeyError):
-                    pass
-
-    def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
-        """Generator: 串流翻譯，每次 yield 一個文字 chunk（打字機效果用）。"""
-        normalized = clean_model_output(text).strip() if text else ""
-        if not normalized:
-            return
-        if not self.google_api_key:
-            raise ValueError("missing_google_api_key")
-        model_name = self._resolve_model()
-        if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
-        # 快取命中時直接 yield 完整結果
-        cache_key = ("gemma", model_name, normalized, target_lang or self.target_lang, self.gemma_prompt)
-        cached = self._get_cached(cache_key)
-        if cached is not None:
-            yield str(cached)
-            return
-        prompt = self._build_prompt(normalized)
-        accumulated = ""
-        for chunk in self._stream_request(model_name, prompt, max_output_tokens=1024, temperature=0.2):
-            accumulated += chunk
-            yield chunk
-        final = clean_model_output(accumulated)
-        if final:
-            self._remember(cache_key, final)
-
     def translate(
         self,
         text: str,
@@ -957,3 +903,88 @@ class LocalGemmaProvider:
         except Exception:
             return text
 
+
+class LocalMultimodalProvider:
+    name = "local_multimodal"
+
+    def __init__(self, *, base_url: str = "", model_name: str = "", target_lang: str = "zh-TW", enabled: bool = False, timeout_seconds: int = 20):
+        self.base_url = (base_url or "").rstrip("/")
+        self.model_name = (model_name or "").strip()
+        self.target_lang = target_lang
+        self.enabled = bool(enabled)
+        self.timeout_seconds = int(timeout_seconds)
+
+    def available(self) -> bool:
+        return self.enabled and bool(self.base_url) and bool(self.model_name)
+
+    def _inline_part_to_content(self, image_part: dict[str, Any]) -> dict[str, Any]:
+        inline_data = image_part.get("inline_data") or {}
+        mime_type = inline_data.get("mime_type", "image/png")
+        encoded = inline_data.get("data", "")
+        return {
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
+        }
+
+    def _build_chat_payload(self, *, prompt: str, image_parts: Sequence[dict[str, Any]], response_format: str) -> dict[str, Any]:
+        content = [{"type": "text", "text": prompt}]
+        content.extend(self._inline_part_to_content(part) for part in image_parts)
+        return {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": 0.1,
+            "stream": False,
+            "response_format": {"type": response_format},
+        }
+
+    def _request_chat_completion(self, payload: dict[str, Any]) -> str:
+        req = request.Request(
+            f"{self.base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=self.timeout_seconds) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        return body["choices"][0]["message"]["content"]
+
+    def _parse_segmented_response(self, raw_text: str, expected_count: int) -> list[str]:
+        translated = parse_segmented_translation_json(raw_text, expected_count)
+        if len(translated) != expected_count:
+            translated = split_translated_lines(clean_model_output(raw_text), expected_count)
+        if len(translated) != expected_count:
+            raise ValueError("empty_local_multimodal_response")
+        return translated
+
+    def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
+        prompt = build_gemma_multimodal_prompt(texts, target_lang=target_lang)
+        raw_text = self._request_chat_completion(
+            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="json_object")
+        )
+        translated = self._parse_segmented_response(raw_text, len(texts))
+        return [TranslationResult(text=item, provider=self.name, model=self.model_name, raw_text=raw_text) for item in translated]
+
+    def _parse_transcription_response(self, raw_text: str) -> str:
+        transcription = clean_model_output_multiline(raw_text).strip()
+        if not transcription:
+            raise ValueError("empty_local_multimodal_ocr_response")
+        return transcription
+
+    def transcribe_screenshot(self, image_parts: Sequence[dict[str, Any]], *, source_text_hint: str | None = None) -> TranslationResult:
+        prompt = "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
+        if source_text_hint:
+            prompt += f"\n\nOCR hint:\n{source_text_hint[:1200]}"
+        raw_text = self._request_chat_completion(
+            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
+        )
+        return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
+
+    def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
+        prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt="", target_lang=target_lang)
+        raw_text = self._request_chat_completion(
+            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
+        )
+        translated = clean_screenshot_translation_output(raw_text)
+        if not translated:
+            raise ValueError("empty_local_multimodal_screenshot_response")
+        return TranslationResult(text=translated, provider=self.name, model=self.model_name, raw_text=raw_text)

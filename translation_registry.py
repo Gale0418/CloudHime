@@ -7,6 +7,7 @@ from translation_contracts import TranslationProvider
 from translation_providers import (
     GemmaTranslationProvider,
     GoogleTranslationProvider,
+    LocalMultimodalProvider,
     TranslationProviderConfig,
 )
 
@@ -23,6 +24,10 @@ class TranslationProviderRegistryConfig:
     supported_models: Sequence[str] = ("gemma-4-26b-it", "gemma-4-31b-it", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite")
     local_gemma_temperature: float = 0.2
     local_gemma_repeat_penalty: float = 1.15
+    local_multimodal_enabled: bool = False
+    local_multimodal_base_url: str = "http://127.0.0.1:8080/v1"
+    local_multimodal_model: str = ""
+    local_multimodal_timeout_seconds: int = 20
 
 
 class TranslationProviderRegistry:
@@ -52,8 +57,7 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
         GoogleTranslationProvider(target_lang=config.target_lang),
     ]
     if config.google_api_key:
-        providers.insert(
-            0,
+        providers.append(
             GemmaTranslationProvider(
                 google_api_key=config.google_api_key,
                 gemma_model=config.gemma_model,
@@ -63,6 +67,16 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
                 gemma_enabled=config.gemma_enabled,
                 auto_switch_enabled=config.gemma_auto_switch_enabled,
                 supported_models=config.supported_models,
-            ),
+            )
+        )
+    if config.local_multimodal_enabled and config.local_multimodal_model:
+        providers.append(
+            LocalMultimodalProvider(
+                base_url=config.local_multimodal_base_url,
+                model_name=config.local_multimodal_model,
+                target_lang=config.target_lang,
+                enabled=True,
+                timeout_seconds=config.local_multimodal_timeout_seconds,
+            )
         )
     return TranslationProviderRegistry(providers)

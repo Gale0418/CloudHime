@@ -2400,7 +2400,7 @@ class SettingsWindowRevamp(QWidget):
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
         is_dark = theme.key != "light"
-        card_bg = "rgba(18, 31, 46, 127)" if is_dark else "rgba(255, 255, 255, 127)"
+        card_bg = "rgba(18, 31, 46, 168)" if is_dark else "rgba(255, 255, 255, 214)"
         translation_border = "#3D8DFF" if is_dark else "#5AA7F7"
         ocr_border = "#41B96F" if is_dark else "#50B86F"
         render_border = "#8D5CF6" if is_dark else "#8D65D8"
@@ -2441,23 +2441,14 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_auto_scan.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
         self.lbl_auto_scan_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_auto_threshold_refresh.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_random_scan_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
-            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
-        )
-        self.lbl_auto_threshold_refresh_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
-            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
-        )
+        self.lbl_random_scan_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_auto_threshold_refresh_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_random_scan_center.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_random_scan_jitter.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_region_render.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {render_border}; background: transparent; border: none;")
         self.lbl_region_render_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_region_render_mode.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_region_render_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
-            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
-        )
+        self.lbl_region_render_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_relief.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {render_border}; background: transparent; border: none;")
         self.lbl_relief_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_relief_offset_x.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
@@ -2485,10 +2476,7 @@ class SettingsWindowRevamp(QWidget):
         self.spin_relief_font.setStyleSheet(spinbox_style)
         self.slider_relief_offset_y.setStyleSheet(slider_style)
         self.slider_relief_opacity.setStyleSheet(slider_style)
-        self.lbl_relief_summary.setStyleSheet(
-            f"color: {theme.accent}; font-size: 11px; font-weight: 600; background-color: {theme.header_bg}; "
-            f"border: none; border-left: 2px solid {theme.accent}; padding: 2px 8px;"
-        )
+        self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent"))
         self.cmb_theme_mode_chip.setStyleSheet(theme.combo_qss(radius=6))
         self.cmb_ui_language_chip.setStyleSheet(theme.combo_qss(radius=6))
         self.slider_relief_offset_x.setStyleSheet(slider_style)
@@ -3415,8 +3403,9 @@ class Controller(QWidget):
     def toggle_ai_translation(self, checked):
         desired_enabled = bool(checked)
         has_key = bool(self.worker.google_api_key.strip())
-        if desired_enabled and not has_key:
-            self.lbl_status.setText("請先輸入 Google API KEY")
+        is_local_model = (getattr(self.worker, "gemma_model", "") or "").strip() == "translategemma-4b-it-local"
+        if desired_enabled and not (has_key or is_local_model):
+            self.lbl_status.setText("請先輸入 Google API KEY，或切換到本地模型")
             desired_enabled = False
         self.worker.set_gemma_enabled(desired_enabled)
         if self.btn_ai_mode.isChecked() != desired_enabled:
@@ -3860,5 +3849,3 @@ class Controller(QWidget):
             self.move(self.x()+delta.x(), self.y()+delta.y())
             self.old_pos = event.globalPosition().toPoint()
     def mouseReleaseEvent(self, event): self.old_pos = None
-
-

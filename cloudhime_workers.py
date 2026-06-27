@@ -74,7 +74,7 @@ from ocr_refinement import (
 import translation_helpers as translation_tools
 import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
-from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider
+from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -198,6 +198,13 @@ class OCRWorker(QObject):
             gemma_prompt="",
             target_lang=self.translation_target_lang,
             enabled=False
+        )
+        self.local_multimodal_provider = LocalMultimodalProvider(
+            base_url="http://127.0.0.1:8080/v1",
+            model_name="translategemma-4b-it-local",
+            target_lang=self.translation_target_lang,
+            enabled=False,
+            timeout_seconds=20,
         )
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
@@ -344,12 +351,17 @@ class OCRWorker(QObject):
                 repeat_penalty=config.local_gemma_repeat_penalty
             )
             
+            self.local_multimodal_provider.target_lang = config.target_lang
+            self.local_multimodal_provider.enabled = config.gemma_enabled
+            self.local_multimodal_provider.model_name = getattr(config, "local_multimodal_model", "translategemma-4b-it-local")
+            
             active_gemma = self.local_gemma_provider if config.gemma_model == "translategemma-4b-it-local" else self.gemma_translation_provider
             active_gemma.name = "gemma"
             
             self.translation_registry = TranslationProviderRegistry([
                 active_gemma,
                 self.google_translation_provider,
+                self.local_multimodal_provider,
             ])
         except Exception:
             self.translation_registry = None
@@ -472,8 +484,31 @@ class OCRWorker(QObject):
         )
         self.auto_threshold_refresh_interval_ms = minutes * 60 * 1000
 
+    def has_remote_multimodal_ai(self):
+        return self.use_gemma_translation and bool(self.google_api_key) and not self._is_local_model_active()
+
+    def has_local_multimodal_ai(self):
+        return self.use_gemma_translation and self._is_local_model_active()
+
+    def has_any_multimodal_ai(self):
+        return self.has_remote_multimodal_ai() or self.has_local_multimodal_ai()
+
     def has_multimodal_ai(self):
-        return self.use_gemma_translation and bool(self.google_api_key)
+        return self.has_any_multimodal_ai()
+
+    def has_ai_text_provider(self):
+        return self.use_gemma_translation and self._get_translation_provider("gemma") is not None
+
+    def _is_local_model_active(self):
+        model = getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model
+        return model == "translategemma-4b-it-local"
+
+    def resolve_multimodal_provider_name(self):
+        if self.has_local_multimodal_ai():
+            return "local_multimodal"
+        if self.has_remote_multimodal_ai():
+            return "gemma"
+        return None
 
     def normalize_gemma_model(self, model_name):
         model_name = (model_name or "").strip()
@@ -492,7 +527,7 @@ class OCRWorker(QObject):
         self.gemma_call_timestamps[model_name] = [ts for ts in self.gemma_call_timestamps.get(model_name, []) if ts >= cutoff]
 
     def can_call_gemma(self, model_name=None):
-        if not self.has_multimodal_ai():
+        if not self.has_remote_multimodal_ai():
             return False
         model_name = self.normalize_gemma_model(model_name or self.gemma_model)
         self.prune_gemma_call_timestamps(model_name)
@@ -512,7 +547,7 @@ class OCRWorker(QObject):
 
     def resolve_gemma_model_for_call(self, preferred_model=None):
         preferred_model = self.normalize_gemma_model(preferred_model or self.gemma_model)
-        if not self.has_multimodal_ai():
+        if not self.has_remote_multimodal_ai():
             self.active_gemma_model = preferred_model
             return preferred_model
         if self.can_call_gemma(preferred_model):
@@ -550,6 +585,8 @@ class OCRWorker(QObject):
 
     def get_current_ai_provider(self):
         model = (getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model or "").strip().lower()
+        if self._is_local_model_active():
+            return "gemma-3"
         if "gemma-4" in model:
             return "gemma-4"
         if "gemma-3" in model:
@@ -935,7 +972,8 @@ class OCRWorker(QObject):
     def translate_multimodal_gemma(self, image_parts, source_texts):
         if not source_texts:
             return ""
-        provider = self._get_translation_provider("gemma")
+        provider_name = self.resolve_multimodal_provider_name()
+        provider = self._get_translation_provider(provider_name) if provider_name else None
         if provider is not None:
             results = provider.translate_multimodal(
                 source_texts,
@@ -1015,7 +1053,8 @@ class OCRWorker(QObject):
                 f"source_text_hint_len={len(source_text_hint or '')}",
             ])
         )
-        provider = self._get_translation_provider("gemma")
+        provider_name = self.resolve_multimodal_provider_name()
+        provider = self._get_translation_provider(provider_name) if provider_name else None
         if provider is not None:
             result = provider.translate_screenshot(
                 image_parts,
@@ -1116,7 +1155,7 @@ class OCRWorker(QObject):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
             return ""
-        if self.use_gemma_translation and self.google_api_key:
+        if self.has_ai_text_provider():
             try:
                 return self.translate_text_gemma(normalized_text)
             except (error.URLError, error.HTTPError, TimeoutError, ValueError):
@@ -1127,7 +1166,7 @@ class OCRWorker(QObject):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
             return "", ""
-        if self.use_gemma_translation and self.google_api_key:
+        if self.has_ai_text_provider():
             try:
                 translated = self.translate_text_gemma(normalized_text)
                 return translated, self.get_current_ai_provider()
@@ -1144,7 +1183,7 @@ class OCRWorker(QObject):
         normalized_texts = [normalize_ocr_text(text) for text in source_texts]
         if not normalized_texts or any(not text for text in normalized_texts):
             return [], ""
-        if self.use_gemma_translation and self.google_api_key:
+        if self.has_ai_text_provider():
             combined_source = "\n".join(normalized_texts)
             try:
                 translated = self.translate_text_gemma(combined_source)
@@ -1192,23 +1231,23 @@ class OCRWorker(QObject):
     def translate_items_with_ai(self, source_texts, image_parts):
         if not source_texts:
             return []
-        if self.has_multimodal_ai() and image_parts:
+        if self.has_any_multimodal_ai() and image_parts:
             translated = self.translate_multimodal_gemma(image_parts, source_texts)
             parsed = self.parse_segmented_translation_json(translated, len(source_texts))
             if parsed:
                 return parsed
-        return self.translate_items_in_batches(source_texts, batch_size=GOOGLE_BATCH_SIZE if not self.has_multimodal_ai() else 8)
+        return self.translate_items_in_batches(source_texts, batch_size=GOOGLE_BATCH_SIZE if not self.has_any_multimodal_ai() else 8)
 
     def translate_items_with_ai_and_providers(self, source_texts, image_parts, merged_items=None):
         if not source_texts:
             return [], []
-        if self.has_multimodal_ai() and image_parts:
+        if self.has_any_multimodal_ai() and image_parts:
             translated = self.translate_multimodal_gemma(image_parts, source_texts)
             parsed = self.parse_segmented_translation_json(translated, len(source_texts))
             if parsed:
                 return parsed, [self.get_current_ai_provider()] * len(parsed)
         if len(source_texts) == 1 and merged_items is not None:
-            provider_name = self.get_current_ai_provider() if (self.use_gemma_translation and self.google_api_key) else "google"
+            provider_name = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
             provider_obj = self._get_translation_provider(provider_name)
             if hasattr(provider_obj, "translate_stream"):
                 try:
@@ -1224,7 +1263,7 @@ class OCRWorker(QObject):
 
         return self.translate_items_in_batches_with_providers(
             source_texts,
-            batch_size=GOOGLE_BATCH_SIZE if not self.has_multimodal_ai() else 8,
+            batch_size=GOOGLE_BATCH_SIZE if not self.has_any_multimodal_ai() else 8,
         )
 
     def capture_scan_area(self):
@@ -1952,7 +1991,7 @@ class OCRWorker(QObject):
         # 注意：多模態 AI 翻譯已包含看圖能力，可代替 Google OCR refine，故不重複呼叫
         _google_ocr_future = None
         _prefetch_image_parts = None
-        _use_google_ocr_refine = self.google_ocr_enabled and self.google_api_key and not self.has_multimodal_ai()
+        _use_google_ocr_refine = self.google_ocr_enabled and self.google_api_key and not self.has_any_multimodal_ai()
         if _use_google_ocr_refine and self.scan_mode == SCAN_MODE_REGION:
             try:
                 _prefetch_image_parts = self.build_ai_image_parts(img)
@@ -1974,7 +2013,7 @@ class OCRWorker(QObject):
 
         if is_screenshot_mode:
             screenshot_text_hint = self.build_screenshot_text_hint(img)
-            if not self.has_multimodal_ai():
+            if not self.has_any_multimodal_ai():
                 if not screenshot_text_hint:
                     self.status_msg.emit("❌ 截圖模式需要 Gemma AI 與 Google API KEY")
                     self.finished.emit([])
@@ -2146,7 +2185,7 @@ class OCRWorker(QObject):
             self.status_msg.emit(f"✨ 已選最佳閥值 {used_threshold}")
         current_combined_text = "\n".join(item['text'] for item in merged_items)
 
-        current_provider = self.get_current_ai_provider() if (self.use_gemma_translation and self.google_api_key) else "google"
+        current_provider = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
         is_upgrade_needed = self.get_translation_provider_priority(current_provider) > self.get_translation_provider_priority(self.last_provider)
 
         # 🌟 邏輯修正：畫面靜止且無翻譯升級需求時才跳過
@@ -2161,7 +2200,7 @@ class OCRWorker(QObject):
         final_results = []
 
         try:
-            self.status_msg.emit("🧠 AI 大圖翻譯..." if self.has_multimodal_ai() else "🌐 Google...")
+            self.status_msg.emit("🧠 AI 大圖翻譯..." if self.has_any_multimodal_ai() else "🌐 Google...")
             if _use_google_ocr_refine:
                 if _google_ocr_future is not None:
                     _log("⑤ 等待 Google OCR 預取結果...")
@@ -2181,7 +2220,7 @@ class OCRWorker(QObject):
                     _log("⑤ 開始 refine_merged_items_with_google_ocr")
                     merged_items = self.refine_merged_items_with_google_ocr(merged_items, ai_image_parts)
                     _log("⑥ Google OCR 精煉完成")
-            elif self.google_ocr_enabled and self.has_multimodal_ai():
+            elif self.google_ocr_enabled and self.has_any_multimodal_ai():
                 _log("⑤ 多模態 AI 可用，跳過 Google OCR refine（由 AI 翻譯直接讀圖修正）")
             source_texts = [item['text'] for item in merged_items]
             current_combined_text = "\n".join(source_texts)
@@ -2189,7 +2228,7 @@ class OCRWorker(QObject):
             translated_list = []
             provider_list = []
             try:
-                if ai_image_parts is None and self.has_multimodal_ai():
+                if ai_image_parts is None and self.has_any_multimodal_ai():
                     _log("⑦-pre 開始 build_ai_image_parts (多模態翻譯)")
                     ai_image_parts = self.build_ai_image_parts(img)
                     _log("⑦ build_ai_image_parts 完成")
@@ -2208,7 +2247,7 @@ class OCRWorker(QObject):
 
             missing_indexes = [index for index, text in enumerate(translated_list) if not text]
             if missing_indexes:
-                prefix = "AI" if self.has_multimodal_ai() else "Google"
+                prefix = "AI" if self.has_any_multimodal_ai() else "Google"
                 icon = "🧠" if prefix == "AI" else "🌐"
                 self.status_msg.emit(f"{icon} {prefix} 批次補翻 {len(missing_indexes)} 段...")
                 batch_source = [source_texts[index] for index in missing_indexes]
@@ -2227,7 +2266,7 @@ class OCRWorker(QObject):
                     trans_text = known_text
                     provider = known_provider
                 if not trans_text:
-                    prefix = "AI" if self.has_multimodal_ai() else "Google"
+                    prefix = "AI" if self.has_any_multimodal_ai() else "Google"
                     icon = "🧠" if prefix == "AI" else "🌐"
                     self.status_msg.emit(f"{icon} {prefix} {i+1}/{len(merged_items)}")
                     try:
@@ -2271,5 +2310,7 @@ class OCRWorker(QObject):
             self.last_results = []
         self.finished.emit([])
         self.show_ui.emit()
+
+
 
 
