@@ -52,7 +52,7 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_hint.setWordWrap(True)
         self.lbl_translate_hint.setVisible(True)
         self.lbl_translate_summary = QLabel("")
-        self.lbl_translate_summary.setVisible(False)
+        self.lbl_translate_summary.setVisible(True)
         self.lbl_translate_mode = QLabel("")
         self.lbl_translate_mode.setVisible(True)
 
@@ -151,21 +151,35 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.textChanged.connect(self.on_gemma_prompt_changed)
         advanced_layout.addWidget(self.input_gemma_prompt)
 
+        self.btn_advanced_tuning = QPushButton("⚙ Advanced Local Tuning")
+        self.btn_advanced_tuning.setCheckable(True)
+        self.btn_advanced_tuning.setCursor(Qt.PointingHandCursor)
+        self.btn_advanced_tuning.clicked.connect(self.on_advanced_tuning_toggled)
+        advanced_layout.addWidget(self.btn_advanced_tuning)
+
+        self.tuning_frame = QFrame()
+        tuning_layout = QVBoxLayout(self.tuning_frame)
+        tuning_layout.setContentsMargins(0, 0, 0, 0)
+        tuning_layout.setSpacing(10)
+
         self.lbl_local_gemma_temp = QLabel("Local Gemma Temperature (0.0 - 1.0)")
-        advanced_layout.addWidget(self.lbl_local_gemma_temp)
+        tuning_layout.addWidget(self.lbl_local_gemma_temp)
         self.spin_local_gemma_temp = QDoubleSpinBox()
         self.spin_local_gemma_temp.setRange(0.0, 1.0)
         self.spin_local_gemma_temp.setSingleStep(0.1)
         self.spin_local_gemma_temp.valueChanged.connect(self.on_local_gemma_temp_changed)
-        advanced_layout.addWidget(self.spin_local_gemma_temp)
+        tuning_layout.addWidget(self.spin_local_gemma_temp)
 
         self.lbl_local_gemma_repeat = QLabel("Local Gemma Repeat Penalty (1.0 - 2.0)")
-        advanced_layout.addWidget(self.lbl_local_gemma_repeat)
+        tuning_layout.addWidget(self.lbl_local_gemma_repeat)
         self.spin_local_gemma_repeat = QDoubleSpinBox()
         self.spin_local_gemma_repeat.setRange(1.0, 2.0)
         self.spin_local_gemma_repeat.setSingleStep(0.05)
         self.spin_local_gemma_repeat.valueChanged.connect(self.on_local_gemma_repeat_changed)
-        advanced_layout.addWidget(self.spin_local_gemma_repeat)
+        tuning_layout.addWidget(self.spin_local_gemma_repeat)
+
+        self.tuning_frame.setVisible(False)
+        advanced_layout.addWidget(self.tuning_frame)
 
         self.chk_auto_switch = QCheckBox("")
         self.chk_auto_switch.toggled.connect(self.on_auto_switch_toggled)
@@ -212,6 +226,9 @@ class TranslationSettingsPanel(QWidget):
     def on_auto_switch_toggled(self, checked):
         self.controller.set_gemma_auto_switch_mode(checked)
         self.update_translate_summary()
+
+    def on_advanced_tuning_toggled(self, checked):
+        self.tuning_frame.setVisible(checked)
 
     def on_gemma_prompt_changed(self):
         if hasattr(self.controller, "on_gemma_prompt_changed"):
@@ -278,6 +295,7 @@ class TranslationSettingsPanel(QWidget):
             translation_tools.ui_text(lang, "translation_gemma_prompt_placeholder")
         )
         self.chk_auto_switch.setText(translation_tools.ui_text(lang, "translation_auto_switch"))
+        self.btn_advanced_tuning.setText("⚙ Advanced Local Tuning" if lang == "en" else "⚙ 本地進階參數")
         self.update_ai_model_notes()
 
     def set_translate_mode(self, use_ai):
@@ -298,7 +316,16 @@ class TranslationSettingsPanel(QWidget):
         self.advanced_translate_frame.setVisible(True)
 
     def update_translate_summary(self):
-        self.lbl_translate_summary.setText("")
+        use_ai = self.btn_translate_ai.isChecked()
+        model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
+        lang = self._ui_language()
+        if use_ai:
+            auto_state = ("Auto Switch ON" if lang == "en" else "自動切換 ON") if self.chk_auto_switch.isChecked() else ("Auto Switch OFF" if lang == "en" else "自動切換 OFF")
+            text = f"Status: AI · {model_name} · {auto_state}" if lang == "en" else f"狀態：AI 翻譯 · {model_name} · {auto_state}"
+            self.lbl_translate_summary.setText(text)
+        else:
+            text = "Status: Google Translate" if lang == "en" else "狀態：Google 翻譯 · 免 API KEY"
+            self.lbl_translate_summary.setText(text)
 
     def update_key_state(self, enabled):
         self.input_api_key.setEnabled(enabled)
@@ -373,7 +400,7 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_mode.setStyleSheet(
             f"font-size: 12px; font-weight: 800; color: {theme.subtext}; background: transparent; border: none; margin-top: 2px;"
         )
-        self.lbl_translate_summary.setStyleSheet("background: transparent; border: none; color: transparent;")
+        self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_advanced_translate.setStyleSheet("background: transparent; border: none; color: transparent;")
         self.lbl_advanced_hint.setStyleSheet("background: transparent; border: none; color: transparent;")
 
@@ -418,7 +445,12 @@ class TranslationSettingsPanel(QWidget):
         )
         self.lbl_local_gemma_temp.setStyleSheet(accent_label_style)
         self.lbl_local_gemma_repeat.setStyleSheet(accent_label_style)
+        self.btn_advanced_tuning.setStyleSheet(
+            f"QPushButton {{ color: {theme.subtext}; text-align: left; background: transparent; border: none; font-size: 12px; font-weight: 700; padding: 4px 0; }}"
+            f"QPushButton:hover {{ color: {theme.text}; }}"
+        )
         spinbox_style = f"QDoubleSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 4px; }}"
         self.spin_local_gemma_temp.setStyleSheet(spinbox_style)
         self.spin_local_gemma_repeat.setStyleSheet(spinbox_style)
+        self.tuning_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         self.update_translate_summary()

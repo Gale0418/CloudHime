@@ -28,3 +28,13 @@ benchmark_manifest.example.json
 
 # Environment Variables
 .env
+
+# 壓測、暫存截圖與快取 (Sprint 2 新增)
+.pytest_cache/
+models/.cache/
+models/*.gguf
+stress_result*.txt
+out.txt
+test_render.png
+test_screen.png
+theme_func.txt

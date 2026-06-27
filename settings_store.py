@@ -146,4 +146,8 @@ def normalize_settings_payload(
     )
     normalized["local_gemma_temperature"] = float(normalized.get("local_gemma_temperature", 0.2))
     normalized["local_gemma_repeat_penalty"] = float(normalized.get("local_gemma_repeat_penalty", 1.15))
+    normalized["local_multimodal_enabled"] = bool(normalized.get("local_multimodal_enabled", False))
+    normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")
+    normalized["local_multimodal_model"] = str(normalized.get("local_multimodal_model", "") or "")
+    normalized["local_multimodal_timeout_seconds"] = int(normalized.get("local_multimodal_timeout_seconds", 20) or 20)
     return normalized

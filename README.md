@@ -47,20 +47,25 @@
 
 1. **擷取**：抓取指定區域的畫面。
 2. **辨識**：交給 Windows OCR 或你額外安裝的引擎處理。
-3. **翻譯**：送往 Google API 或 Gemini AI 進行轉換。
+3. **翻譯**：依目前選用的模型，送往 Google API、Gemini API，或本地 Gemma / 本地多模態服務進行轉換。
 4. **顯示**：將結果以透明泡泡的形式貼回螢幕。
 
 ---
 
 ## 📦 如何開始？
 
+> **📝 目前專案狀態 (2026-06)：**
+> 專案正處於架構穩定化與防護網建置階段（已加入 GitHub Actions CI workflow 與基礎測試），部分進階 OCR 功能（如本地端字典修正）仍在整理中。
+
 ### 直接執行 (Release)
 如果你是下載打包好的版本，請直接執行 `dist/CloudHime/CloudHime.exe`。
+> `install.bat` / `install.ps1` 目前主要用來準備本地 Gemma 測試環境與模型，仍偏向開發中的輔助腳本。
 
 ### 從原始碼運行 (Source)
 1. 確保你有 Python 3.10+ 環境。
 2. 安裝依賴：`pip install -r requirements.txt`
-3. 執行：`python CloudHime.py`
+3. 若要準備本地 Gemma 模型，可另外執行 `install.bat` 或 `install.ps1`
+4. 執行：`python CloudHime.py`
 
 ---
 
@@ -78,24 +83,25 @@ CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中�
 
 祝你能愉快地啃完那些想看很久的生肉！加油吧！(*´▽`*)
 
-
 ## 開發者導引 (Developer Guide)
 
 本專案採用模組化架構，主要分為以下幾個核心層級：
 
-- \CloudHime.py\: 應用程式的進入點（Entry Point），負責初始化 QApplication 並掛載主控台介面。
-- \cloudhime_core.py\: 核心業務邏輯層。包含獨立的文字處理、語言偵測、OCR 結果整併等不依賴 UI 的純函式與物件。
-- \cloudhime_workers.py\: 背景處理層。包含負責重度運算（如 \OCRWorker\）與外部 API 呼叫的 QRunnable / QThread 類別，避免阻塞主執行緒。
-- \cloudhime_ui.py\: 介面展示層。所有 PyQt / PySide6 的視覺元件（包含 \Controller\, \OverlayWindow\, \SettingsWindow\ 等）皆定義於此。
+- `CloudHime.py`: 應用程式的進入點（Entry Point），負責初始化 QApplication 並掛載主控台介面。
+- `cloudhime_core.py`: 核心業務邏輯層。包含獨立的文字處理、語言偵測、OCR 結果整併等不依賴 UI 的純函式與物件。
+- `cloudhime_workers.py`: 背景處理層。包含負責重度運算（如 `OCRWorker`）與外部 API 呼叫的 QRunnable / QThread 類別，避免阻塞主執行緒。
+- `cloudhime_ui.py`: 介面展示層。所有 PyQt / PySide6 的視覺元件（包含 `Controller`, `OverlayWindow`, `SettingsWindow` 等）皆定義於此。
 
 ### 如何執行測試
 
-專案使用 \pytest\ 與 \pytest-qt\ 進行單元測試與 UI 冒煙測試。執行方式如下：
+專案使用 `pytest` 與 `pytest-qt` 進行單元測試與 UI 冒煙測試。目前本地 regression suite 為 `26 passed`，並已加入 GitHub Actions CI workflow。執行方式如下：
 
 1. 確保已安裝測試相依套件：
-   \\ash
+   ```bash
    pip install pytest pytest-qt
-   \2. 在專案根目錄下執行測試：
-   \\ash
-   pytest tests/ -v
-   \   此指令會自動執行 \	ests/\ 目錄下的所有測試，確保核心邏輯與 UI 啟動正常。
+   ```
+2. 在專案根目錄下執行測試（CI / 無頭環境請加上 `QT_QPA_PLATFORM=offscreen`）：
+   ```bash
+   python -m pytest -q tests
+   ```
+   此指令會自動執行 `tests/` 目錄下的所有測試，確保核心邏輯與 UI 啟動正常。
