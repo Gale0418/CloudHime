@@ -15,6 +15,7 @@ from deep_translator import GoogleTranslator
 
 from translation_contracts import TranslationProvider, TranslationResult
 from translation_helpers import (
+    build_gemma_prompt,
     build_gemma_prompt_conservative,
     build_gemma_prompt_with_override,
     build_gemma_multimodal_prompt,
@@ -35,7 +36,12 @@ GOOGLE_STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/model
 DEFAULT_GEMMA_MODEL = "gemma-4-31b-it"
 SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-4-26b-a4b-it", "gemma-4-31b-it", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite")
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
-GEMMA_RATE_LIMIT_MAX_CALLS = 15
+GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
+    "gemma-3-1b-it": 30,
+    "gemma-3-27b-it": 30,
+    "gemma-4-31b-it": 15,
+    "gemini-2.5-pro": 15,
+}
 TRANSLATION_CACHE_LIMIT = 512
 
 
@@ -237,8 +243,8 @@ class GemmaTranslationProvider:
             self._translation_cache.popitem(last=False)
 
     def _build_prompt(self, text: str) -> str:
-        """用自訂 prompt 取代預設 system 指令，沒填就用預設。"""
-        return build_gemma_prompt_with_override(text, self.gemma_prompt)
+        """用自訂 prompt 結合模型特定的預設 prompt。"""
+        return build_gemma_prompt_with_override(text, self.gemma_prompt, self.target_lang, self.gemma_model)
 
     def _build_multimodal_prompt(self, texts) -> str:
         """多模態版，自訂 prompt 附加在前面（保留原有格式）。"""
@@ -256,28 +262,50 @@ class GemmaTranslationProvider:
         return normalized.lower()
 
     def _should_fallback_to_text_translation(self, source_text_hint: Any, translated_text: Any) -> bool:
-        if re.search(r"[\u3040-\u30ff]", str(translated_text or "")):
+        """
+        截圖模式fallback：極度保守，幾乎不切換到文字翻譯
+        因為截圖模式有專用prompt，應該信任AI模型的輸出
+        """
+        translated_str = str(translated_text or "")
+        
+        # 只有在完全沒有輸出時才fallback
+        if len(translated_str.strip()) < 1:
             return True
-        source_norm = self._normalize_compare_text(source_text_hint)
-        translated_norm = self._normalize_compare_text(translated_text)
-        if not source_norm or not translated_norm:
-            return False
-        if source_norm == translated_norm:
-            return True
-        similarity = difflib.SequenceMatcher(None, source_norm, translated_norm).ratio()
-        return similarity >= 0.82
+            
+        # 其他情況都信任截圖模式的輸出
+        return False
 
     def _prune_timestamps(self, model_name: str) -> None:
         cutoff = time.monotonic() - GEMMA_RATE_LIMIT_WINDOW_SEC
         self._call_timestamps[model_name] = [ts for ts in self._call_timestamps.get(model_name, []) if ts >= cutoff]
 
+    def _max_calls_for_model(self, model_name: str) -> int:
+        model_name = (model_name or "").strip().lower()
+        return GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL.get(model_name, 15)
+
     def _can_call(self, model_name: str) -> bool:
         self._prune_timestamps(model_name)
-        return len(self._call_timestamps.get(model_name, [])) < GEMMA_RATE_LIMIT_MAX_CALLS
+        current_calls = len(self._call_timestamps.get(model_name, []))
+        return current_calls < self._max_calls_for_model(model_name)
 
     def _record_call(self, model_name: str) -> None:
         self._prune_timestamps(model_name)
         self._call_timestamps.setdefault(model_name, []).append(time.monotonic())
+
+    def _wait_if_needed(self, model_name: str) -> None:
+        """如果需要，等待直到可以進行下一次調用"""
+        self._prune_timestamps(model_name)
+        timestamps = self._call_timestamps.get(model_name, [])
+        
+        if len(timestamps) >= self._max_calls_for_model(model_name):
+            # 計算需要等待的時間
+            oldest_timestamp = timestamps[0]
+            wait_time = GEMMA_RATE_LIMIT_WINDOW_SEC - (time.monotonic() - oldest_timestamp)
+            
+            if wait_time > 0:
+                print(f"⏳ 速率限制：等待 {wait_time:.1f} 秒避免429錯誤...")
+                time.sleep(wait_time + 1)  # 額外1秒緩衝
+                self._prune_timestamps(model_name)
 
     def _request_timeout_seconds(self, model_name: str) -> int:
         model_name = (model_name or "").strip().lower()
@@ -562,6 +590,8 @@ class GemmaTranslationProvider:
                     body = ""
                 if "Image input modality is not enabled" in body and source_text_hint:
                     return self.translate(source_text_hint, target_lang=target_lang)
+                if exc.code == 404 and source_text_hint:
+                    break
                 if exc.code in {429, 500, 503, 504} and attempt_index < 2:
                     time.sleep(0.8 * (attempt_index + 1))
                     continue

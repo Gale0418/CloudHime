@@ -871,30 +871,27 @@ def build_gemma_prompt_with_override(
     text: Any,
     custom_prompt: str = "",
     target_lang: str = GOOGLE_TARGET_LANG,
+    model_name: str = "gemma-3-27b-it",
 ) -> str:
-    """Return the default prompt unless the user provides an override."""
+    """Return the model-aware prompt, optionally prefixed by user overrides."""
     custom = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else ""
+    base_prompt = build_gemma_prompt(text, target_lang, model_name)
+    if not custom:
+        return base_prompt
+
     default_system = target_lang_system_prompt(target_lang)
     source_lang = source_lang_instruction(detect_source_language(text))
-    system = default_system
-    if custom:
-        system = (
-            f"{default_system}\n\n"
-            f"User instructions (highest priority):\n{custom}"
-        )
-    else:
-        system = (
-            f"{default_system}\n"
-            "Rules:\n"
-            "1. ONLY output the translation.\n"
-            "2. Do NOT add any notes, explanations, or conversational text."
-        )
+    system = (
+        f"{default_system}\n\n"
+        f"User instructions (highest priority):\n{custom}\n\n"
+        "Model-specific base instructions:\n"
+        f"{base_prompt}"
+    )
     return (
         f"{system}\n"
         f"Source language hint: {source_lang}\n\n"
         f"Source text:\n{text}"
     )
-
 
 def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDTH) -> list[dict[str, Any]]:
     parts: list[dict[str, Any]] = []
@@ -922,6 +919,7 @@ def get_translation_provider_priority(provider: Any) -> int:
 
 def should_replace_provider(old_provider: Any, new_provider: Any) -> bool:
     return get_translation_provider_priority(new_provider) >= get_translation_provider_priority(old_provider)
+
 
 
 
