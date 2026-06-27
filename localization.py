@@ -156,7 +156,15 @@ def normalize_ui_language(language: Any, fallback: str = DEFAULT_UI_LANGUAGE) ->
 
 
 def get_translation_target_lang(ui_language: Any, fallback: str = DEFAULT_UI_LANGUAGE) -> str:
-    return normalize_ui_language(ui_language, fallback=fallback)
+    normalized = normalize_ui_language(ui_language, fallback=fallback)
+    # 如果UI是英文，翻譯目標設為英文
+    if normalized == "en":
+        return "en"
+    # 如果UI是中文，翻譯目標設為繁體中文
+    elif normalized == "zh-TW":
+        return "zh-TW"
+    # 其他情況使用預設
+    return normalized
 
 
 def fallback_text(value: Any, fallback: Any = "") -> str:
