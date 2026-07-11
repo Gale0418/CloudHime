@@ -34,6 +34,10 @@ benchmark_manifest.example.json
 models/.cache/
 models/*.gguf
 stress_result*.txt
+
+# 本地 Vision Runtime（llama-server binary、DLL 與 projector；Task 1 新增）
+runtime/
+models/mmproj-*.gguf
 out.txt
 test_render.png
 test_screen.png
