@@ -29,6 +29,14 @@ _PROJECTOR_REL = Path("models") / "mmproj-model-f16.gguf"
 # SHA-256 流式計算的讀取塊大小（8 MiB）
 _SHA256_CHUNK_BYTES = 8 * 1024 * 1024
 
+# 各資產生產環境最低大小（bytes）；可 import 供 LocalVisionRuntime 使用
+# server > 1 MB, model > 2 GB, projector > 800 MB
+ASSET_MINIMUM_BYTES: dict[str, int] = {
+    "server_path": 1_000_000,
+    "model_path": 2_000_000_000,
+    "projector_path": 800_000_000,
+}
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 例外
@@ -186,13 +194,6 @@ if __name__ == "__main__":
     import argparse
     import sys
 
-    # 最小 bytes 對應設計規格：server > 1 MB，model > 2 GB，projector > 800 MB
-    _MINIMUM_BYTES = {
-        "server_path": 1_000_000,
-        "model_path": 2_000_000_000,
-        "projector_path": 800_000_000,
-    }
-
     parser = argparse.ArgumentParser(description="Verify CloudHime local vision assets.")
     parser.add_argument("--app-root", default=".", help="Application root directory")
     args = parser.parse_args()
@@ -206,7 +207,7 @@ if __name__ == "__main__":
         ("model_path", assets.model_path),
         ("projector_path", assets.projector_path),
     ]:
-        min_bytes = _MINIMUM_BYTES[field_name]
+        min_bytes = ASSET_MINIMUM_BYTES[field_name]
         try:
             verify_asset(path, None, minimum_bytes=min_bytes)
             size = path.stat().st_size
