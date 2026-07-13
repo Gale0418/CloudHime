@@ -12,6 +12,16 @@ from typing import Any
 from ocr_quality import normalize_ocr_text, score_ocr_items, summarize_threshold_candidate
 
 
+def _ensure_console_utf8() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding='utf-8', errors='backslashreplace')
+            except Exception:
+                pass
+
+
 def _load_manifest(source: str) -> Any:
     if source == "-":
         raw = sys.stdin.buffer.read()
@@ -228,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_console_utf8()
     parser = build_parser()
     args = parser.parse_args(argv)
     manifest = _load_manifest(args.manifest)

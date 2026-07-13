@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 from collections import OrderedDict
 from typing import Any, Sequence
@@ -68,6 +69,73 @@ def source_lang_instruction(source_lang: Any) -> str:
     if candidate == "auto":
         return "the source language"
     return str(source_lang or "the source language")
+
+
+def normalize_translation_dictionary(dictionary: Any) -> dict[str, str]:
+    if not isinstance(dictionary, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for source, target in dictionary.items():
+        source_text = str(source or "").strip()
+        target_text = str(target or "").strip()
+        if source_text and target_text:
+            normalized[source_text] = target_text
+    return normalized
+
+
+def load_translation_dictionary(dictionary_path: str | None = None) -> dict[str, str]:
+    path = dictionary_path or os.path.join(os.path.dirname(__file__), "dictionary.json")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return normalize_translation_dictionary(json.load(handle))
+    except Exception:
+        return {}
+
+
+def _coerce_dictionary_source_text(source: Any) -> str:
+    if isinstance(source, str):
+        return source
+    if isinstance(source, (list, tuple)):
+        return "\n".join(str(item or "") for item in source)
+    return str(source or "")
+
+
+def _iter_dictionary_matches(source: Any, dictionary: Any):
+    text = _coerce_dictionary_source_text(source)
+    lowered = text.lower()
+    normalized = normalize_translation_dictionary(dictionary)
+    for source_term, target_term in sorted(normalized.items(), key=lambda item: len(item[0]), reverse=True):
+        if source_term.lower() in lowered:
+            yield source_term, target_term
+
+
+def apply_dictionary_pre_translation(text: Any, dictionary: Any) -> str:
+    updated = str(text or "")
+    if not updated:
+        return ""
+    for source_term, target_term in _iter_dictionary_matches(updated, dictionary):
+        updated = re.sub(re.escape(source_term), target_term, updated, flags=re.IGNORECASE)
+    return updated
+
+
+def build_dictionary_prompt_hint(source: Any, dictionary: Any) -> str:
+    matches = list(_iter_dictionary_matches(source, dictionary))
+    if not matches:
+        return ""
+    rendered = ", ".join(f"'{source_term}' -> '{target_term}'" for source_term, target_term in matches)
+    return f"CRITICAL: You MUST use the following dictionary for translations: {rendered}"
+
+
+def append_missing_dictionary_terms(source: Any, translated: Any, dictionary: Any) -> str:
+    translated_text = str(translated or "")
+    if not translated_text:
+        return translated_text
+    for _source_term, target_term in _iter_dictionary_matches(source, dictionary):
+        if target_term not in translated_text:
+            translated_text = f"{translated_text} ({target_term})"
+    return translated_text
+
+
 UI_TEXTS = {
     "settings_title": {
         "zh-TW": "設定頁面",
@@ -264,6 +332,26 @@ UI_TEXTS = {
     "translation_auto_switch": {
         "zh-TW": "自動切換",
         "en": "Auto switch",
+    },
+    "translation_local_multimodal_group": {
+        "zh-TW": "本地多模態端點",
+        "en": "Local multimodal endpoint",
+    },
+    "translation_local_multimodal_enabled": {
+        "zh-TW": "啟用本地多模態",
+        "en": "Enable local multimodal",
+    },
+    "translation_local_multimodal_base_url": {
+        "zh-TW": "Base URL",
+        "en": "Base URL",
+    },
+    "translation_local_multimodal_model": {
+        "zh-TW": "本地模型名稱",
+        "en": "Local model name",
+    },
+    "translation_local_multimodal_timeout": {
+        "zh-TW": "逾時秒數",
+        "en": "Timeout",
     },
     "ocr_backend_title": {
         "zh-TW": "OCR",
@@ -478,7 +566,11 @@ def translate_text_google_batch(
     return [line or "" for line in translated]
 
 
-def build_gemma_prompt(text: Any, target_lang: str = GOOGLE_TARGET_LANG) -> str:
+def build_gemma_prompt(
+    text: Any,
+    target_lang: str = GOOGLE_TARGET_LANG,
+    model_name: str | None = None,
+) -> str:
     target = target_lang_instruction(target_lang)
     return (
         "You are a professional translator specializing in games, manga, and UI text.\n"
@@ -553,9 +645,17 @@ def build_gemma_screenshot_prompt(source_text_hint: Any = None, target_lang: str
 
 
 def split_translated_lines(translated_text: Any, expected_count: int) -> list[str]:
-    cleaned_text = clean_model_output(translated_text)
     if expected_count <= 1:
-        return [cleaned_text]
+        return [clean_model_output(translated_text)]
+    raw_text = str(translated_text or "").strip().replace("```", "")
+    translated_lines = []
+    for line in raw_text.splitlines():
+        cleaned_line = clean_model_output(line).strip()
+        if cleaned_line:
+            translated_lines.append(cleaned_line)
+    if len(translated_lines) == expected_count:
+        return translated_lines
+    cleaned_text = clean_model_output(translated_text)
     translated_lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
     if len(translated_lines) == expected_count:
         return translated_lines

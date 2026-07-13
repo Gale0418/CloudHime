@@ -40,8 +40,50 @@ def test_translate_multimodal_parses_segmented_json_response():
     assert parsed == ["測試", "選單"]
 
 
+def test_translate_multimodal_prompt_includes_dictionary_hint():
+    provider = make_provider()
+    captured = {}
+
+    def fake_request(payload):
+        captured["prompt"] = payload["messages"][0]["content"][0]["text"]
+        return '{"segments":[{"index":0,"translation":"雙點博物館"}]}'
+
+    provider._request_chat_completion = fake_request
+
+    provider.translate_multimodal(
+        ["TWO POINT MUSEUM"],
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+    )
+
+    assert "'TWO POINT MUSEUM' -> '雙點博物館'" in captured["prompt"]
+
+
 def test_transcribe_screenshot_raises_on_empty_response():
     provider = make_provider()
 
     with pytest.raises(ValueError, match="empty_local_multimodal_ocr_response"):
         provider._parse_transcription_response("")
+
+
+def test_embedded_provider_is_available_only_after_runtime_ready():
+    provider = LocalMultimodalProvider(
+        model_name="gemma-3-4b-it",
+        enabled=True,
+    )
+
+    provider.update_runtime(
+        "http://127.0.0.1:43123/v1",
+        "gemma-3-4b-it",
+        ready=False,
+    )
+    assert provider.available() is False
+
+    provider.update_runtime(
+        "http://127.0.0.1:43123/v1",
+        "gemma-3-4b-it",
+        ready=True,
+    )
+    assert provider.available() is True
+
+    provider.update_runtime("", "", ready=False)
+    assert provider.available() is False
