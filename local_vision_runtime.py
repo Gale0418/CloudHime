@@ -126,6 +126,7 @@ class LocalVisionRuntime:
         sleep: Optional[Callable[[float], None]] = None,
         health_retries: int = _DEFAULT_HEALTH_RETRIES,
         context_size: int = 4096,
+        gpu_layers: int = 999,
         asset_minimum_bytes: dict[str, int] | None = None,
     ) -> None:
         self._assets = assets
@@ -135,6 +136,7 @@ class LocalVisionRuntime:
         self._sleep = sleep or __import__("time").sleep
         self._health_retries = health_retries
         self._context_size = max(512, int(context_size))
+        self._gpu_layers = max(0, int(gpu_layers))
         # 可注入資產大小最小值（測試用小數值，生產用正式大小）
         self._asset_minimum_bytes: dict[str, int] = (
             asset_minimum_bytes if asset_minimum_bytes is not None else ASSET_MINIMUM_BYTES
@@ -179,14 +181,15 @@ class LocalVisionRuntime:
             )
             return self._state
         self._port = port
-        state = self._try_spawn(port, gpu_layers=999, mode="gpu")
+        initial_mode = "gpu" if self._gpu_layers > 0 else "cpu"
+        state = self._try_spawn(port, gpu_layers=self._gpu_layers, mode=initial_mode)
         if state.name == "ready":
             self._state = state
             return self._state
 
-        # 3. 檢查是否為 CUDA 錯誤 → 單次 CPU fallback
+        # 3. GPU 啟動失敗時才允許單次 CPU fallback。
         # [FIX-3] GPU proc 已在 _try_spawn 內 cleanup，此處直接 spawn CPU
-        if _is_cuda_error(state.detail) or _is_gpu_health_timeout(state):
+        if initial_mode == "gpu" and (_is_cuda_error(state.detail) or _is_gpu_health_timeout(state)):
             cpu_state = self._try_spawn(port, gpu_layers=0, mode="cpu")
             self._state = cpu_state
             return self._state

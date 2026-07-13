@@ -2,9 +2,19 @@ import base64
 from pathlib import Path
 
 import cv2
+import pytest
 import numpy as np
 
-from vision_smoke_benchmark import group_cases_by_image, image_parts, line_match, load_cases, percentile, score_match
+from vision_smoke_benchmark import (
+    build_parser,
+    group_cases_by_image,
+    run_smoke,
+    image_parts,
+    line_match,
+    load_cases,
+    percentile,
+    score_match,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -60,3 +70,18 @@ def test_group_cases_deduplicates_same_image_requests() -> None:
 
 def test_percentile_uses_image_latency_values() -> None:
     assert percentile([10.0, 20.0, 30.0, 40.0]) == 40.0
+
+
+def test_parser_exposes_gpu_only_controls() -> None:
+    args = build_parser().parse_args(["--gpu-layers", "20", "--require-gpu"])
+
+    assert args.gpu_layers == 20
+    assert args.require_gpu is True
+
+
+def test_require_gpu_rejects_cpu_controls() -> None:
+    with pytest.raises(ValueError, match="force_cpu"):
+        run_smoke(require_gpu=True, force_cpu=True)
+
+    with pytest.raises(ValueError, match="gpu_layers"):
+        run_smoke(require_gpu=True, gpu_layers=0)
