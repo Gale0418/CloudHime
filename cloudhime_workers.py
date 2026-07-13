@@ -8,6 +8,7 @@
 
 import os
 import sys
+from pathlib import Path
 from cloudhime_logging import logger
 import ctypes
 import ctypes.wintypes
@@ -75,6 +76,8 @@ import translation_helpers as translation_tools
 import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
+from local_vision_runtime import LocalVisionRuntime
+from local_vision_assets import resolve_vision_assets
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -111,11 +114,13 @@ NOISE_ONLY_PATTERN = re.compile(r'^[-_=.,|/\\:;~^]+$')
 HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
+LOCAL_GEMMA_MODEL_ID = "gemma-3-4b-it-local"
 SETTINGS_PATHS = create_settings_paths(os.path.dirname(__file__))
 MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
 SUPPORTED_AI_MODELS = [
+    ("Gemma 3 4B (Local)", LOCAL_GEMMA_MODEL_ID),
     ("Gemma 3 1B", "gemma-3-1b-it"),
     ("Gemma 3 27B", "gemma-3-27b-it"),
     ("Gemma 4 31B", "gemma-4-31b-it"),
@@ -164,6 +169,8 @@ class OCRWorker(QObject):
     show_ui = Signal()
     threshold_suggested = Signal(int)
     gemma_model_changed = Signal(str, str)
+    local_model_status = Signal(str, str)
+    local_vision_status = Signal(str, str)
 
     def __init__(self):
         super().__init__()
@@ -201,11 +208,15 @@ class OCRWorker(QObject):
         )
         self.local_multimodal_provider = LocalMultimodalProvider(
             base_url="http://127.0.0.1:8080/v1",
-            model_name="translategemma-4b-it-local",
+            model_name="gemma-3-4b-it",
             target_lang=self.translation_target_lang,
             enabled=False,
             timeout_seconds=20,
         )
+        self.local_multimodal_enabled = False
+        self.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+        self.local_multimodal_model = "gemma-3-4b-it"
+        self.local_multimodal_timeout_seconds = 20
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
         self.active_gemma_model = self.gemma_model
@@ -230,6 +241,18 @@ class OCRWorker(QObject):
         self.last_scanned_offset = (0, 0)
         self._bg_threshold_running = False  # 防止重複提交背景任務
         self._bg_threshold_executor = ThreadPoolExecutor(max_workers=1)
+        self._local_model_executor = ThreadPoolExecutor(max_workers=1)
+        self._local_model_load_future = None
+        self._local_vision_executor = ThreadPoolExecutor(max_workers=1)
+        self._local_vision_load_future = None
+        
+        try:
+            self.local_vision_runtime = LocalVisionRuntime(
+                resolve_vision_assets(Path(__file__).resolve().parent)
+            )
+        except Exception as exc:
+            logger.error(f"Failed to init LocalVisionRuntime: {exc}")
+            self.local_vision_runtime = None
         
         self.cc = OpenCC('s2t') if OPENCC_AVAILABLE else None
         self._refresh_translation_registry()
@@ -321,6 +344,10 @@ class OCRWorker(QObject):
             target_lang=self.translation_target_lang,
             local_gemma_temperature=getattr(self, "local_gemma_temperature", 0.2),
             local_gemma_repeat_penalty=getattr(self, "local_gemma_repeat_penalty", 1.15),
+            local_multimodal_enabled=getattr(self, "local_multimodal_enabled", False),
+            local_multimodal_base_url=getattr(self, "local_multimodal_base_url", "http://127.0.0.1:8080/v1"),
+            local_multimodal_model=getattr(self, "local_multimodal_model", "gemma-3-4b-it"),
+            local_multimodal_timeout_seconds=getattr(self, "local_multimodal_timeout_seconds", 20),
         )
 
     def _refresh_translation_registry(self):
@@ -352,10 +379,25 @@ class OCRWorker(QObject):
             )
             
             self.local_multimodal_provider.target_lang = config.target_lang
-            self.local_multimodal_provider.enabled = config.gemma_enabled
-            self.local_multimodal_provider.model_name = getattr(config, "local_multimodal_model", "translategemma-4b-it-local")
+            self.local_multimodal_provider.enabled = config.local_multimodal_enabled
+            self.local_multimodal_provider.timeout_seconds = config.local_multimodal_timeout_seconds
+            embedded_runtime = getattr(self, "local_vision_runtime", None)
+            runtime_state = getattr(embedded_runtime, "_state", None)
+            has_embedded_runtime = embedded_runtime is not None
             
-            active_gemma = self.local_gemma_provider if config.gemma_model == "translategemma-4b-it-local" else self.gemma_translation_provider
+            if has_embedded_runtime:
+                if runtime_state is None or runtime_state.name != "ready":
+                    self.local_multimodal_provider.update_runtime("", "", ready=False)
+                else:
+                    self.local_multimodal_provider.model_name = config.local_multimodal_model
+            else:
+                self.local_multimodal_provider.update_runtime(
+                    config.local_multimodal_base_url,
+                    config.local_multimodal_model,
+                    ready=config.local_multimodal_enabled,
+                )
+            
+            active_gemma = self.local_gemma_provider if config.gemma_model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"} else self.gemma_translation_provider
             active_gemma.name = "gemma"
             
             self.translation_registry = TranslationProviderRegistry([
@@ -363,8 +405,141 @@ class OCRWorker(QObject):
                 self.google_translation_provider,
                 self.local_multimodal_provider,
             ])
+            self.request_local_model_load()
+            self.request_local_vision_start()
         except Exception:
             self.translation_registry = None
+
+    def request_local_model_load(self):
+        if not self.use_gemma_translation or not self._is_local_model_active():
+            return
+        if self.local_gemma_provider.available():
+            OCRWorker._emit_local_model_status(self, "ready", "")
+            return
+        if self._local_model_load_future is not None and not self._local_model_load_future.done():
+            return
+
+        OCRWorker._emit_local_model_status(self, "loading", "")
+        try:
+            future = self._local_model_executor.submit(self.local_gemma_provider.load_model)
+        except Exception as exc:
+            self._local_model_load_future = None
+            OCRWorker._emit_local_model_status(self, "failed", f"{type(exc).__name__}: {exc}")
+            return
+        self._local_model_load_future = future
+        future.add_done_callback(
+            lambda completed: OCRWorker._on_local_model_load_done(self, completed)
+        )
+
+    def _on_local_model_load_done(self, future):
+        if self._local_model_load_future is future:
+            self._local_model_load_future = None
+        try:
+            ready = bool(future.result())
+        except Exception as exc:
+            OCRWorker._emit_local_model_status(self, "failed", f"{type(exc).__name__}: {exc}")
+            return
+        if ready:
+            OCRWorker._emit_local_model_status(self, "ready", "")
+            return
+        OCRWorker._emit_local_model_status(self, 
+            "failed",
+            getattr(self.local_gemma_provider, "last_load_error", "") or "local_model_unavailable",
+        )
+
+    def _emit_local_model_status(self, *args):
+        try:
+            signal = getattr(self, "local_model_status", None)
+        except RuntimeError:
+            return
+        if signal is not None:
+            signal.emit(*args)
+
+    def _emit_local_vision_status(self, *args):
+        try:
+            signal = getattr(self, "local_vision_status", None)
+        except RuntimeError:
+            return
+        if signal is not None:
+            signal.emit(*args)
+
+    def request_local_vision_start(self):
+        if not self.use_gemma_translation or not self.local_multimodal_enabled:
+            return
+        if getattr(self, "local_vision_runtime", None) is None:
+            OCRWorker._emit_local_vision_status(self, "failed", "runtime_missing")
+            return
+        
+        state = getattr(self.local_vision_runtime, "_state", None)
+        if state is not None and state.name == "ready":
+            self.local_multimodal_provider.update_runtime(
+                state.base_url,
+                getattr(self, "local_multimodal_model", "gemma-3-4b-it"),
+                ready=True,
+            )
+            OCRWorker._emit_local_vision_status(self, state.name, state.detail)
+            return
+            
+        pending_future = getattr(self, "_local_vision_load_future", None)
+        if pending_future is not None and not pending_future.done():
+            return
+
+        OCRWorker._emit_local_vision_status(self, "starting", "")
+        executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
+        if executor is None:
+            OCRWorker._emit_local_vision_status(self, "failed", "vision_executor_missing")
+            return
+        try:
+            future = executor.submit(self.local_vision_runtime.start)
+        except Exception as exc:
+            self._local_vision_load_future = None
+            self.local_multimodal_provider.update_runtime("", "", False)
+            OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
+            return
+
+        self._local_vision_load_future = future
+        future.add_done_callback(
+            lambda completed: OCRWorker._on_local_vision_load_done(self, completed)
+        )
+
+    def _on_local_vision_load_done(self, future):
+        if self._local_vision_load_future is future:
+            self._local_vision_load_future = None
+        try:
+            state = future.result()
+        except Exception as exc:
+            OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
+            return
+            
+        self.local_multimodal_provider.update_runtime(
+            state.base_url if state.name == "ready" else "",
+            getattr(self, "local_multimodal_model", "gemma-3-4b-it") if state.name == "ready" else "",
+            ready=state.name == "ready",
+        )
+        if state.name == "ready":
+            self._refresh_translation_registry()
+        OCRWorker._emit_local_vision_status(self, state.name, state.detail)
+
+    request_local_vision_load = request_local_vision_start
+
+    def shutdown_local_vision_runtime(self):
+        runtime = getattr(self, "local_vision_runtime", None)
+        if runtime is not None:
+            runtime.stop()
+        executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=False)
+
+    def shutdown_local_model_loader(self):
+        executor = getattr(self, "_local_model_executor", None)
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=False)
 
     def set_translation_target_lang(self, target_lang):
         normalized = localization.get_translation_target_lang(target_lang)
@@ -437,6 +612,14 @@ class OCRWorker(QObject):
         self.active_gemma_model = self.gemma_model
         self._refresh_translation_registry()
 
+    def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds):
+        self.local_multimodal_enabled = bool(enabled)
+        self.local_multimodal_base_url = (base_url or "").rstrip("/")
+        self.local_multimodal_model = (model_name or "").strip()
+        self.local_multimodal_timeout_seconds = max(1, int(timeout_seconds))
+        self._refresh_translation_registry()
+
+
     def set_gemma_prompt(self, prompt):
         self.gemma_prompt = (prompt or "").strip()
         self._refresh_translation_registry()
@@ -488,7 +671,11 @@ class OCRWorker(QObject):
         return self.use_gemma_translation and bool(self.google_api_key) and not self._is_local_model_active()
 
     def has_local_multimodal_ai(self):
-        return self.use_gemma_translation and self._is_local_model_active()
+        return (
+            self.use_gemma_translation
+            and bool(getattr(self, "local_multimodal_enabled", False))
+            and bool(getattr(self, "local_multimodal_model", ""))
+        )
 
     def has_any_multimodal_ai(self):
         return self.has_remote_multimodal_ai() or self.has_local_multimodal_ai()
@@ -501,7 +688,7 @@ class OCRWorker(QObject):
 
     def _is_local_model_active(self):
         model = getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model
-        return model == "translategemma-4b-it-local"
+        return model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"}
 
     def resolve_multimodal_provider_name(self):
         if self.has_local_multimodal_ai():
@@ -579,6 +766,8 @@ class OCRWorker(QObject):
     def cleanup(self):
         if hasattr(self, '_bg_threshold_executor'):
             self._bg_threshold_executor.shutdown(wait=True)
+        self.shutdown_local_vision_runtime()
+        self.shutdown_local_model_loader()
 
     def get_translation_provider_priority(self, provider):
         return translation_tools.get_translation_provider_priority(provider)

@@ -184,7 +184,7 @@ class LocalVisionRuntime:
 
         # 3. 檢查是否為 CUDA 錯誤 → 單次 CPU fallback
         # [FIX-3] GPU proc 已在 _try_spawn 內 cleanup，此處直接 spawn CPU
-        if _is_cuda_error(state.detail):
+        if _is_cuda_error(state.detail) or _is_gpu_health_timeout(state):
             cpu_state = self._try_spawn(port, gpu_layers=0, mode="cpu")
             self._state = cpu_state
             return self._state
@@ -363,6 +363,16 @@ def _is_cuda_error(detail: str) -> bool:
     """判斷 detail 是否含有 CUDA/VRAM 啟動失敗的關鍵字（小寫比對）。"""
     lower = detail.lower()
     return any(kw in lower for kw in _CUDA_ERROR_KEYWORDS)
+
+
+def _is_gpu_health_timeout(state: VisionRuntimeState) -> bool:
+    """Allow CPU fallback when GPU loading stalls without a CUDA error message."""
+    return (
+        state.name == "failed"
+        and state.mode == "gpu"
+        and state.detail.startswith("health_timeout:")
+        and ("load_model" in state.detail.lower() or "loading model" in state.detail.lower())
+    )
 
 
 def _default_urlopen() -> Callable:

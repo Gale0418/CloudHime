@@ -97,6 +97,14 @@ def clamp_percent(value: Any, fallback: int = 40) -> int:
     return max(0, min(100, numeric))
 
 
+def clamp_local_multimodal_timeout(value: Any, fallback: int = 20) -> int:
+    try:
+        numeric = int(value)
+    except Exception:
+        numeric = int(fallback)
+    return max(1, min(300, numeric))
+
+
 def clamp_relief_offset(value: Any, fallback: int = 0) -> int:
     try:
         numeric = int(value)
@@ -149,5 +157,7 @@ def normalize_settings_payload(
     normalized["local_multimodal_enabled"] = bool(normalized.get("local_multimodal_enabled", False))
     normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")
     normalized["local_multimodal_model"] = str(normalized.get("local_multimodal_model", "") or "")
-    normalized["local_multimodal_timeout_seconds"] = int(normalized.get("local_multimodal_timeout_seconds", 20) or 20)
+    normalized["local_multimodal_timeout_seconds"] = clamp_local_multimodal_timeout(
+        normalized.get("local_multimodal_timeout_seconds", 20)
+    )
     return normalized

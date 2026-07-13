@@ -1022,7 +1022,26 @@ class StatusChargeBar(QWidget):
         self.border_color = QColor("#7FC8E8")
         self.fill_color = QColor("#4FC3F7")
         self.text_color = QColor("#3A5C72")
+        self.indeterminate = False
+        self.indeterminate_offset = 0
+        self._animation_timer = QTimer(self)
+        self._animation_timer.timeout.connect(self._update_animation)
         self.setFixedHeight(18)
+
+    def _update_animation(self):
+        self.indeterminate_offset = (self.indeterminate_offset + 5) % 100
+        self.update()
+
+    def set_indeterminate(self, is_indeterminate, label=""):
+        self.indeterminate = is_indeterminate
+        if label:
+            self.label = label
+        if self.indeterminate:
+            if not self._animation_timer.isActive():
+                self._animation_timer.start(30)
+        else:
+            self._animation_timer.stop()
+        self.update()
 
     def _parse_color(self, c_str):
         c_str = str(c_str).strip()
@@ -1044,6 +1063,8 @@ class StatusChargeBar(QWidget):
         self.update()
 
     def set_progress(self, progress, label=""):
+        if getattr(self, "indeterminate", False):
+            self.set_indeterminate(False)
         self.progress = max(0, min(100, int(progress)))
         self.label = label or self.label
         self.update()
@@ -1060,11 +1081,22 @@ class StatusChargeBar(QWidget):
         painter.setBrush(self.base_bg)
         painter.drawRoundedRect(rect, 8, 8)
 
-        fill_rect = QRect(rect.left(), rect.top(), int(rect.width() * self.progress / 100), rect.height())
-        if fill_rect.width() > 0:
+        if getattr(self, "indeterminate", False):
+            bar_width = int(rect.width() * 0.3)
+            import math
+            pos = (math.sin(self.indeterminate_offset / 100.0 * math.pi * 2) + 1) / 2.0
+            x = rect.left() + int((rect.width() - bar_width) * pos)
+            fill_rect = QRect(x, rect.top(), bar_width, rect.height())
+            
             painter.setPen(Qt.NoPen)
             painter.setBrush(self.fill_color)
             painter.drawRoundedRect(fill_rect, 8, 8)
+        else:
+            fill_rect = QRect(rect.left(), rect.top(), int(rect.width() * self.progress / 100), rect.height())
+            if fill_rect.width() > 0:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(self.fill_color)
+                painter.drawRoundedRect(fill_rect, 8, 8)
 
         painter.setPen(self.text_color)
         painter.drawText(rect, Qt.AlignCenter, self.label or f"{self.progress}%")
@@ -2577,6 +2609,10 @@ class Controller(QWidget):
         self.region_frame_opacity = 40
         self.region_pass_through = False
         self.gemma_prompt = ""
+        self.local_multimodal_enabled = False
+        self.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+        self.local_multimodal_model = "gemma-3-4b-it"
+        self.local_multimodal_timeout_seconds = 20
         self.was_minimized = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
         self.selected_region = None
@@ -2753,6 +2789,8 @@ class Controller(QWidget):
         self.worker.show_ui.connect(self.show_ui_after_scan)
         self.worker.threshold_suggested.connect(self.apply_auto_threshold)
         self.worker.gemma_model_changed.connect(self.on_worker_gemma_model_changed)
+        self.worker.local_model_status.connect(self.on_local_model_status)
+        self.worker.local_vision_status.connect(self.on_local_vision_status)
         self.ocr_thread.start()
         
         self.auto_timer = QTimer(self)
@@ -2862,6 +2900,10 @@ class Controller(QWidget):
             "google_ocr_enabled": self.google_ocr_enabled,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
             "google_api_key": self.worker.google_api_key,
+            "local_multimodal_enabled": bool(getattr(self.worker, "local_multimodal_enabled", getattr(self, "local_multimodal_enabled", False))),
+            "local_multimodal_base_url": str(getattr(self.worker, "local_multimodal_base_url", getattr(self, "local_multimodal_base_url", "http://127.0.0.1:8080/v1")) or "http://127.0.0.1:8080/v1"),
+            "local_multimodal_model": str(getattr(self.worker, "local_multimodal_model", getattr(self, "local_multimodal_model", "gemma-3-4b-it")) or "gemma-3-4b-it"),
+            "local_multimodal_timeout_seconds": int(getattr(self.worker, "local_multimodal_timeout_seconds", getattr(self, "local_multimodal_timeout_seconds", 20))),
             "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
@@ -3020,6 +3062,17 @@ class Controller(QWidget):
             self.local_gemma_temperature = float(settings.get("local_gemma_temperature", 0.2))
             self.local_gemma_repeat_penalty = float(settings.get("local_gemma_repeat_penalty", 1.15))
             self.worker.set_local_gemma_params(self.local_gemma_temperature, self.local_gemma_repeat_penalty)
+
+            self.local_multimodal_enabled = bool(settings.get("local_multimodal_enabled", False))
+            self.local_multimodal_base_url = str(settings.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1").rstrip("/")
+            self.local_multimodal_model = str(settings.get("local_multimodal_model", "gemma-3-4b-it") or "gemma-3-4b-it").strip()
+            self.local_multimodal_timeout_seconds = safe_int(settings.get("local_multimodal_timeout_seconds", 20), 20, 1, 300)
+            self.worker.set_local_multimodal_config(
+                enabled=self.local_multimodal_enabled,
+                base_url=self.local_multimodal_base_url,
+                model_name=self.local_multimodal_model,
+                timeout_seconds=self.local_multimodal_timeout_seconds,
+            )
 
             saved_theme_mode = str(settings.get("theme_mode", "") or "").strip()
             if not saved_theme_mode:
@@ -3319,12 +3372,12 @@ class Controller(QWidget):
     def on_local_gemma_temp_changed(self, value):
         self.local_gemma_temperature = value
         self.worker.set_local_gemma_params(self.local_gemma_temperature, getattr(self, "local_gemma_repeat_penalty", 1.15))
-        self.push_settings()
+        self.schedule_save_settings()
 
     def on_local_gemma_repeat_changed(self, value):
         self.local_gemma_repeat_penalty = value
         self.worker.set_local_gemma_params(getattr(self, "local_gemma_temperature", 0.2), self.local_gemma_repeat_penalty)
-        self.push_settings()
+        self.schedule_save_settings()
 
     def get_default_gemma_prompt(self):
         return self.DEFAULT_GEMMA_PROMPT
@@ -3400,10 +3453,35 @@ class Controller(QWidget):
         self._pending_screenshot_gemma_prompt = self.screenshot_gemma_prompt
         self.screenshot_gemma_prompt_timer.start(1000)
 
+    def _push_local_multimodal_config(self):
+        self.worker.set_local_multimodal_config(
+            enabled=self.local_multimodal_enabled,
+            base_url=self.local_multimodal_base_url,
+            model_name=self.local_multimodal_model,
+            timeout_seconds=self.local_multimodal_timeout_seconds,
+        )
+        self.schedule_save_settings()
+
+    def on_local_multimodal_enabled_changed(self, enabled):
+        self.local_multimodal_enabled = bool(enabled)
+        self._push_local_multimodal_config()
+
+    def on_local_multimodal_base_url_changed(self, base_url):
+        self.local_multimodal_base_url = str(base_url or "").strip().rstrip("/")
+        self._push_local_multimodal_config()
+
+    def on_local_multimodal_model_changed(self, model_name):
+        self.local_multimodal_model = str(model_name or "").strip()
+        self._push_local_multimodal_config()
+
+    def on_local_multimodal_timeout_changed(self, timeout_seconds):
+        self.local_multimodal_timeout_seconds = max(1, min(300, int(timeout_seconds)))
+        self._push_local_multimodal_config()
+
     def toggle_ai_translation(self, checked):
         desired_enabled = bool(checked)
         has_key = bool(self.worker.google_api_key.strip())
-        is_local_model = (getattr(self.worker, "gemma_model", "") or "").strip() == "translategemma-4b-it-local"
+        is_local_model = (getattr(self.worker, "gemma_model", "") or "").strip() in {"translategemma-4b-it-local", "gemma-3-4b-it-local"}
         if desired_enabled and not (has_key or is_local_model):
             self.lbl_status.setText("請先輸入 Google API KEY，或切換到本地模型")
             desired_enabled = False
@@ -3818,8 +3896,76 @@ class Controller(QWidget):
             self.settings_window.sync_from_controller()
         self.region_frame.set_theme_mode(theme.key)
 
+    def on_local_model_status(self, state, detail=""):
+        state = str(state or "failed")
+        detail = str(detail or "")
+        self.local_model_state = state
+        self.local_model_detail = detail
+        theme = resolve_theme(self.theme_mode)
+
+        if state == "loading":
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            label = "Local Gemma3 載入中"
+            self.charge_bar.set_indeterminate(True, label)
+            self.lbl_status.setText("正在讀取內嵌模型並初始化 GPU...")
+            return
+        if state == "ready":
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            self.charge_bar.set_progress(100, "Local Gemma3 已就緒")
+            self.lbl_status.setText("內嵌 Local Gemma3 已就緒")
+            return
+
+        colors = build_charge_bar_colors(theme, "danger")
+        self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+        self.charge_bar.set_progress(0, "Local Gemma3 載入失敗")
+        self.lbl_status.setText(f"內嵌模型載入失敗：{detail}" if detail else "內嵌模型載入失敗")
+
+    def on_local_vision_status(self, state, detail=""):
+        state = str(state or "failed")
+        detail = str(detail or "")
+        self.local_vision_state = state
+        self.local_vision_detail = detail
+        theme = resolve_theme(self.theme_mode)
+
+        if state == "starting":
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            label = "Gemma Vision 載入中"
+            self.charge_bar.set_indeterminate(True, label)
+            self.lbl_status.setText("正在啟動內嵌多模態伺服器...")
+            return
+        if state == "ready":
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            self.charge_bar.set_progress(100, "Gemma Vision 已就緒")
+            self.lbl_status.setText("內嵌 Gemma Vision 已就緒")
+            return
+
+        colors = build_charge_bar_colors(theme, "danger")
+        self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+        
+        if state == "missing":
+            bar_text = "缺少 Vision 模型"
+            status_text = "找不到內嵌多模態模型檔案"
+        elif state == "stopped":
+            bar_text = "Vision 已停止"
+            status_text = "內嵌多模態伺服器已停止"
+        else:
+            bar_text = "Gemma Vision 啟動失敗"
+            status_text = "內嵌多模態啟動失敗"
+            
+        if detail:
+            status_text += f"：{detail}"
+            
+        self.charge_bar.set_progress(0, bar_text)
+        self.lbl_status.setText(status_text)
+
     def close_app(self):
         self.save_settings()
+        if hasattr(self, 'worker'):
+            self.worker.cleanup()
         if hasattr(self, 'hotkey_filter'):
             self.hotkey_filter.unregister_hotkey(self.winId())
             if QApplication.instance():

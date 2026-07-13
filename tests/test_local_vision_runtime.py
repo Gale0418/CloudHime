@@ -124,11 +124,13 @@ class BlockingStderr:
     def __init__(self, caller_thread_ident: int) -> None:
         self._caller_ident = caller_thread_ident
         self.called_from_caller_thread: bool = False
+        self.read_started = threading.Event()
 
     def __iter__(self):
         return self
 
     def __next__(self) -> str:
+        self.read_started.set()
         if threading.current_thread().ident == self._caller_ident:
             self.called_from_caller_thread = True
         raise StopIteration
@@ -469,28 +471,25 @@ def test_start_is_idempotent_while_ready(fake_assets):
 
 
 def test_start_is_idempotent_while_starting(fake_assets):
-    """start() 在 starting 狀態（首次 health 尚未成功）期間不應再次 spawn。"""
-    # 只給一個 process；health 先失敗多次再成功
-    popen = FakePopen([RunningProcess()])
-    call_count = 0
-    original_urlopen = _make_health_urlopen([False, True])
-
-    def counting_urlopen(url, timeout=None):
-        nonlocal call_count
-        call_count += 1
-        return original_urlopen(url, timeout=timeout)
-
+    """已有 starting snapshot 時，start() 不得重新配置 port 或 spawn。"""
+    popen = FakePopen([])
     runtime = LocalVisionRuntime(
         assets=fake_assets,
         popen_factory=popen,
-        urlopen=counting_urlopen,
-        port_allocator=_port_allocator(43123),
+        urlopen=_make_health_urlopen([]),
+        port_allocator=lambda: pytest.fail("starting state must not allocate a port"),
         sleep=_no_sleep,
-        health_retries=5,
         asset_minimum_bytes=_TEST_MIN,
     )
-    runtime.start()
-    assert popen.call_count == 1
+    starting = VisionRuntimeState(
+        name="starting", detail="loading", base_url="", mode="gpu"
+    )
+    runtime._state = starting
+
+    returned = runtime.start()
+
+    assert returned is starting
+    assert popen.call_count == 0
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -585,6 +584,34 @@ def test_stop_terminates_only_owned_process(fake_assets):
     state = runtime.stop()
     assert state.name == "stopped"
     assert owned.terminate_calls == 1
+
+
+def test_stop_kills_owned_process_when_terminate_times_out(fake_assets):
+    """terminate() 逾時時，stop() 必須 kill 自己持有的 process。"""
+
+    class UncooperativeProcess(RunningProcess):
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            raise subprocess.TimeoutExpired(cmd="llama-server", timeout=timeout)
+
+    proc = UncooperativeProcess()
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    runtime.start()
+
+    state = runtime.stop()
+
+    assert state.name == "stopped"
+    assert proc.terminate_calls == 1
+    assert proc.wait_calls == 1
+    assert proc.kill_calls == 1
+    assert runtime.owned_process is None
 
 
 def test_stop_without_start_returns_stopped(fake_assets):
@@ -695,6 +722,7 @@ def test_health_loop_does_not_block_on_stderr(fake_assets):
     )
     state = runtime.start()
     assert state.name == "ready"
+    assert blocking.read_started.wait(timeout=1), "stderr reader thread never consumed the pipe"
     assert not blocking.called_from_caller_thread, (
         "Health loop called next(proc.stderr) from caller thread — "
         "this deadlocks on a real subprocess PIPE"
@@ -897,3 +925,24 @@ def test_port_allocator_failure_returns_port_unavailable(fake_assets):
     assert state.detail.startswith("port_unavailable"), (
         f"Expected detail starting with 'port_unavailable', got: {state.detail!r}"
     )
+
+def test_gpu_health_timeout_retries_once_in_cpu_mode(fake_assets):
+    """GPU model loading timeout without CUDA text must retry once in CPU mode."""
+    gpu_proc = FakeProcess(stderr_lines=["load_model: loading model"])
+    cpu_proc = RunningProcess()
+    popen = FakePopen([gpu_proc, cpu_proc])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([False, False, False, True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        health_retries=3,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start()
+
+    assert state.name == "ready"
+    assert state.mode == "cpu"
+    assert popen.call_count == 2

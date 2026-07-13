@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
     QDoubleSpinBox,
@@ -178,6 +179,31 @@ class TranslationSettingsPanel(QWidget):
         self.spin_local_gemma_repeat.valueChanged.connect(self.on_local_gemma_repeat_changed)
         tuning_layout.addWidget(self.spin_local_gemma_repeat)
 
+        self.lbl_local_multimodal = QLabel("")
+        tuning_layout.addWidget(self.lbl_local_multimodal)
+        self.chk_local_multimodal_enabled = QCheckBox("")
+        self.chk_local_multimodal_enabled.toggled.connect(self.on_local_multimodal_enabled_changed)
+        tuning_layout.addWidget(self.chk_local_multimodal_enabled)
+
+        self.lbl_local_multimodal_base_url = QLabel("")
+        tuning_layout.addWidget(self.lbl_local_multimodal_base_url)
+        self.input_local_multimodal_base_url = QLineEdit()
+        self.input_local_multimodal_base_url.editingFinished.connect(self.on_local_multimodal_base_url_changed)
+        tuning_layout.addWidget(self.input_local_multimodal_base_url)
+
+        self.lbl_local_multimodal_model = QLabel("")
+        tuning_layout.addWidget(self.lbl_local_multimodal_model)
+        self.input_local_multimodal_model = QLineEdit()
+        self.input_local_multimodal_model.editingFinished.connect(self.on_local_multimodal_model_changed)
+        tuning_layout.addWidget(self.input_local_multimodal_model)
+
+        self.lbl_local_multimodal_timeout = QLabel("")
+        tuning_layout.addWidget(self.lbl_local_multimodal_timeout)
+        self.spin_local_multimodal_timeout = QSpinBox()
+        self.spin_local_multimodal_timeout.setRange(1, 300)
+        self.spin_local_multimodal_timeout.valueChanged.connect(self.on_local_multimodal_timeout_changed)
+        tuning_layout.addWidget(self.spin_local_multimodal_timeout)
+
         self.tuning_frame.setVisible(False)
         advanced_layout.addWidget(self.tuning_frame)
 
@@ -194,9 +220,10 @@ class TranslationSettingsPanel(QWidget):
 
     def on_translate_mode_clicked(self, use_ai):
         has_key = bool(self.controller.worker.google_api_key.strip())
+        is_local_model = (getattr(self.controller.worker, "gemma_model", "") or "").strip() in {"translategemma-4b-it-local", "gemma-3-4b-it-local"}
         self._ai_requested = bool(use_ai)
         if use_ai:
-            if has_key:
+            if has_key or is_local_model:
                 self.controller.toggle_ai_translation(True)
             else:
                 self.controller.toggle_ai_translation(False)
@@ -241,6 +268,45 @@ class TranslationSettingsPanel(QWidget):
     def on_local_gemma_repeat_changed(self, value):
         if hasattr(self.controller, "on_local_gemma_repeat_changed"):
             self.controller.on_local_gemma_repeat_changed(value)
+
+    def on_local_multimodal_enabled_changed(self, checked):
+        if hasattr(self.controller, "on_local_multimodal_enabled_changed"):
+            self.controller.on_local_multimodal_enabled_changed(checked)
+        self.update_local_multimodal_state()
+        self.update_translate_summary()
+
+    def on_local_multimodal_base_url_changed(self):
+        if hasattr(self.controller, "on_local_multimodal_base_url_changed"):
+            self.controller.on_local_multimodal_base_url_changed(self.input_local_multimodal_base_url.text())
+
+    def on_local_multimodal_model_changed(self):
+        if hasattr(self.controller, "on_local_multimodal_model_changed"):
+            self.controller.on_local_multimodal_model_changed(self.input_local_multimodal_model.text())
+        self.update_translate_summary()
+
+    def on_local_multimodal_timeout_changed(self, value):
+        if hasattr(self.controller, "on_local_multimodal_timeout_changed"):
+            self.controller.on_local_multimodal_timeout_changed(value)
+
+    def update_local_multimodal_state(self):
+        enabled = self.chk_local_multimodal_enabled.isEnabled() and self.chk_local_multimodal_enabled.isChecked()
+        has_embedded = getattr(self.controller.worker, "local_vision_runtime", None) is not None
+        is_custom_url_visible = not has_embedded
+        
+        self.lbl_local_multimodal_base_url.setVisible(is_custom_url_visible)
+        self.input_local_multimodal_base_url.setVisible(is_custom_url_visible)
+        self.lbl_local_multimodal_model.setVisible(is_custom_url_visible)
+        self.input_local_multimodal_model.setVisible(is_custom_url_visible)
+
+        for widget in (
+            self.lbl_local_multimodal_base_url,
+            self.input_local_multimodal_base_url,
+            self.lbl_local_multimodal_model,
+            self.input_local_multimodal_model,
+            self.lbl_local_multimodal_timeout,
+            self.spin_local_multimodal_timeout,
+        ):
+            widget.setEnabled(enabled)
 
     def _ui_language(self):
         return translation_tools.get_ui_language(self.controller)
@@ -295,6 +361,20 @@ class TranslationSettingsPanel(QWidget):
             translation_tools.ui_text(lang, "translation_gemma_prompt_placeholder")
         )
         self.chk_auto_switch.setText(translation_tools.ui_text(lang, "translation_auto_switch"))
+        self.lbl_local_multimodal.setText(translation_tools.ui_text(lang, "translation_local_multimodal_group"))
+        self.chk_local_multimodal_enabled.setText(
+            translation_tools.ui_text(lang, "translation_local_multimodal_enabled")
+        )
+        self.lbl_local_multimodal_base_url.setText(
+            translation_tools.ui_text(lang, "translation_local_multimodal_base_url")
+        )
+        self.lbl_local_multimodal_model.setText(
+            translation_tools.ui_text(lang, "translation_local_multimodal_model")
+        )
+        self.lbl_local_multimodal_timeout.setText(
+            translation_tools.ui_text(lang, "translation_local_multimodal_timeout")
+        )
+        self.spin_local_multimodal_timeout.setSuffix(" sec" if lang == "en" else " 秒")
         self.btn_advanced_tuning.setText("⚙ Advanced Local Tuning" if lang == "en" else "⚙ 本地進階參數")
         self.update_ai_model_notes()
 
@@ -318,10 +398,15 @@ class TranslationSettingsPanel(QWidget):
     def update_translate_summary(self):
         use_ai = self.btn_translate_ai.isChecked()
         model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
+        model_id = str(self.cmb_ai_model.currentData() or "") if self.cmb_ai_model.count() else ""
         lang = self._ui_language()
         if use_ai:
             auto_state = ("Auto Switch ON" if lang == "en" else "自動切換 ON") if self.chk_auto_switch.isChecked() else ("Auto Switch OFF" if lang == "en" else "自動切換 OFF")
-            text = f"Status: AI · {model_name} · {auto_state}" if lang == "en" else f"狀態：AI 翻譯 · {model_name} · {auto_state}"
+            if model_id in {"translategemma-4b-it-local", "gemma-3-4b-it-local"}:
+                local_state = ("Local MM ON" if lang == "en" else "本地多模態 ON") if self.chk_local_multimodal_enabled.isChecked() else ("Local MM OFF" if lang == "en" else "本地多模態 OFF")
+                text = f"Status: AI · {model_name} · {local_state}" if lang == "en" else f"狀態：AI 翻譯 · {model_name} · {local_state}"
+            else:
+                text = f"Status: AI · {model_name} · {auto_state}" if lang == "en" else f"狀態：AI 翻譯 · {model_name} · {auto_state}"
             self.lbl_translate_summary.setText(text)
         else:
             text = "Status: Google Translate" if lang == "en" else "狀態：Google 翻譯 · 免 API KEY"
@@ -333,6 +418,14 @@ class TranslationSettingsPanel(QWidget):
         self.cmb_ai_model.setEnabled(enabled)
         self.input_gemma_prompt.setEnabled(enabled)
         self.chk_auto_switch.setEnabled(enabled)
+        self.btn_advanced_tuning.setEnabled(enabled)
+        self.spin_local_gemma_temp.setEnabled(enabled)
+        self.spin_local_gemma_repeat.setEnabled(enabled)
+        self.lbl_local_gemma_temp.setEnabled(enabled)
+        self.lbl_local_gemma_repeat.setEnabled(enabled)
+        self.lbl_local_multimodal.setEnabled(enabled)
+        self.chk_local_multimodal_enabled.setEnabled(enabled)
+        self.update_local_multimodal_state()
 
     def sync_from_controller(self):
         self.refresh_localized_texts()
@@ -362,6 +455,24 @@ class TranslationSettingsPanel(QWidget):
         self.spin_local_gemma_repeat.setValue(getattr(self.controller, "local_gemma_repeat_penalty", 1.15))
         self.spin_local_gemma_repeat.blockSignals(False)
 
+        self.chk_local_multimodal_enabled.blockSignals(True)
+        self.chk_local_multimodal_enabled.setChecked(getattr(self.controller, "local_multimodal_enabled", False))
+        self.chk_local_multimodal_enabled.blockSignals(False)
+
+        self.input_local_multimodal_base_url.blockSignals(True)
+        self.input_local_multimodal_base_url.setText(
+            getattr(self.controller, "local_multimodal_base_url", "http://127.0.0.1:8080/v1")
+        )
+        self.input_local_multimodal_base_url.blockSignals(False)
+
+        self.input_local_multimodal_model.blockSignals(True)
+        self.input_local_multimodal_model.setText(getattr(self.controller, "local_multimodal_model", ""))
+        self.input_local_multimodal_model.blockSignals(False)
+
+        self.spin_local_multimodal_timeout.blockSignals(True)
+        self.spin_local_multimodal_timeout.setValue(getattr(self.controller, "local_multimodal_timeout_seconds", 20))
+        self.spin_local_multimodal_timeout.blockSignals(False)
+
         self.chk_auto_switch.blockSignals(True)
         self.chk_auto_switch.setChecked(self.controller.worker.gemma_auto_switch_enabled)
         self.chk_auto_switch.blockSignals(False)
@@ -376,6 +487,7 @@ class TranslationSettingsPanel(QWidget):
         enabled = bool(ai_enabled or self._ai_requested)
         self.set_translate_advanced_visible(enabled)
         self.update_key_state(enabled)
+        self.update_local_multimodal_state()
         self.update_translate_summary()
 
     def update_theme(self, theme_mode):
@@ -445,12 +557,28 @@ class TranslationSettingsPanel(QWidget):
         )
         self.lbl_local_gemma_temp.setStyleSheet(accent_label_style)
         self.lbl_local_gemma_repeat.setStyleSheet(accent_label_style)
+        self.lbl_local_multimodal.setStyleSheet(accent_label_style)
+        self.lbl_local_multimodal_base_url.setStyleSheet(field_label_style)
+        self.lbl_local_multimodal_model.setStyleSheet(field_label_style)
+        self.lbl_local_multimodal_timeout.setStyleSheet(field_label_style)
         self.btn_advanced_tuning.setStyleSheet(
             f"QPushButton {{ color: {theme.subtext}; text-align: left; background: transparent; border: none; font-size: 12px; font-weight: 700; padding: 4px 0; }}"
             f"QPushButton:hover {{ color: {theme.text}; }}"
         )
-        spinbox_style = f"QDoubleSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 4px; }}"
+        self.input_local_multimodal_base_url.setStyleSheet(
+            f"background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
+            f"border-radius: 6px; padding: 7px; font-size: 13px;"
+        )
+        self.input_local_multimodal_model.setStyleSheet(
+            f"background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
+            f"border-radius: 6px; padding: 7px; font-size: 13px;"
+        )
+        self.chk_local_multimodal_enabled.setStyleSheet(
+            f"QCheckBox {{ color: {theme.subtext}; background: transparent; border: none; font-size: 12px; font-weight: 700; }}"
+        )
+        spinbox_style = f"QDoubleSpinBox, QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 4px; }}"
         self.spin_local_gemma_temp.setStyleSheet(spinbox_style)
         self.spin_local_gemma_repeat.setStyleSheet(spinbox_style)
+        self.spin_local_multimodal_timeout.setStyleSheet(spinbox_style)
         self.tuning_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         self.update_translate_summary()

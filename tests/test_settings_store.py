@@ -9,6 +9,15 @@ def test_normalize_settings_payload_applies_local_multimodal_defaults():
     assert normalized["local_multimodal_model"] == ""
     assert normalized["local_multimodal_timeout_seconds"] == 20
 
+def test_normalize_settings_payload_sanitizes_local_multimodal_timeout():
+    invalid = normalize_settings_payload({"local_multimodal_timeout_seconds": "oops"}, region_opacity=40)
+    low = normalize_settings_payload({"local_multimodal_timeout_seconds": -5}, region_opacity=40)
+    high = normalize_settings_payload({"local_multimodal_timeout_seconds": 999}, region_opacity=40)
+
+    assert invalid["local_multimodal_timeout_seconds"] == 20
+    assert low["local_multimodal_timeout_seconds"] == 1
+    assert high["local_multimodal_timeout_seconds"] == 300
+
 def test_registry_registers_local_multimodal():
     config = TranslationProviderRegistryConfig(
         google_api_key="fake-key",

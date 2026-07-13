@@ -116,11 +116,11 @@ MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
 SUPPORTED_AI_MODELS = [
+    ("Gemma 3 4B (Local)", "gemma-3-4b-it-local"),
     ("Gemma 3 1B", "gemma-3-1b-it"),
     ("Gemma 3 27B", "gemma-3-27b-it"),
     ("Gemma 4 31B", "gemma-4-31b-it"),
     ("Gemini 2.5 Pro", "gemini-2.5-pro"),
-    ("TranslateGemma (Local)", "translategemma-4b-it-local"),
 ]
 SUPPORTED_GEMMA_MODEL_NAMES = [model_name for _, model_name in SUPPORTED_AI_MODELS]
 SCAN_MODE_FULLSCREEN = "fullscreen"

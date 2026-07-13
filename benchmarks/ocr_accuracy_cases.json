@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "dataset": "cloudhime-ocr-accuracy-seed",
+  "description": "Seed OCR accuracy benchmark cases curated from example screenshots and current Windows OCR baseline output.",
+  "cases": [
+    {
+      "category": "quote_cn",
+      "sample_source": "example/2023-03-01 13 58 56.png",
+      "note": "historical-meme-line-1",
+      "backend": "windows",
+      "expected": [
+        "“我到河北省来”",
+        "我到河北省来"
+      ],
+      "actual": [
+        {
+          "text": "“ 我 到 河 北 省 来 ”",
+          "x": 142,
+          "y": 267,
+          "w": 221,
+          "h": 29
+        }
+      ]
+    },
+    {
+      "category": "lyric_jp",
+      "sample_source": "example/2026-04-30 20 47 05.png",
+      "note": "glow-subtitle-line-1",
+      "backend": "windows",
+      "expected": "過ぎた街並は終わりの愛と遠くへ",
+      "actual": [
+        {
+          "text": "一 過 き な 街 並 は 終 わ ) の 愛 遠 く へ",
+          "x": 10,
+          "y": 23,
+          "w": 545,
+          "h": 47
+        }
+      ]
+    },
+    {
+      "category": "ui_en",
+      "sample_source": "example/2026-05-01 14 09 56.png",
+      "note": "invite-title-line-1",
+      "backend": "windows",
+      "expected": "Exclusive Invite: Forbes",
+      "actual": [
+        {
+          "text": "Exclusive lnvite: Forbes",
+          "x": 35,
+          "y": 25,
+          "w": 564,
+          "h": 46
+        }
+      ]
+    },
+    {
+      "category": "ui_en",
+      "sample_source": "example/2026-05-01 14 09 56.png",
+      "note": "invite-title-line-2",
+      "backend": "windows",
+      "expected": "Wine Club",
+      "actual": [
+        {
+          "text": "Wine Club",
+          "x": 189,
+          "y": 97,
+          "w": 256,
+          "h": 46
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-1",
+      "backend": "windows",
+      "expected": "the market for humanoids reaches a fever pitch, soaring demand for",
+      "actual": [
+        {
+          "text": "themarket forhumanoids reaches a feverpitch, soaring demandfor",
+          "x": 161,
+          "y": 15,
+          "w": 674,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-2",
+      "backend": "windows",
+      "expected": "their components has sparked a gold rush for the sector's suppliers.",
+      "actual": [
+        {
+          "text": "theircomponentshas sparked a goldrushforthe sector's suppliers.",
+          "x": 161,
+          "y": 53,
+          "w": 668,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-3",
+      "backend": "windows",
+      "expected": "Shares of Shanghai-listed Leader Harmonious Drive Systems, which",
+      "actual": [
+        {
+          "text": "Shares of Shanghai-Iisted Leader Harmonious Drive Systems, which",
+          "x": 162,
+          "y": 90,
+          "w": 675,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-4",
+      "backend": "windows",
+      "expected": "makes robotic joints, or harmonic reducers in industry parlance, have jumped 40% in",
+      "actual": [
+        {
+          "text": "makes roboticjoints, orharmonicreducers ⅲ industryparlance, havejumped40% ⅲ",
+          "x": 10,
+          "y": 128,
+          "w": 847,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-5",
+      "backend": "windows",
+      "expected": "the past year on sizzling sales. The surge has minted a pair of new billionaires: company",
+      "actual": [
+        {
+          "text": "the past year on sizzling sales. surge has minted a pair of new billionaires: company",
+          "x": 10,
+          "y": 165,
+          "w": 870,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-6",
+      "backend": "windows",
+      "expected": "founder and chairman Zuo Yuyu, 56, and his older brother and vice chairman Zuo Jing,",
+      "actual": [
+        {
+          "text": "founder and chairman ZuoYuyu, 56 , andhis olderbrother andvice chairman Zuo Jing,",
+          "x": 10,
+          "y": 203,
+          "w": 865,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-7",
+      "backend": "windows",
+      "expected": "61. Based on Thursday's closing price of 203.8 yuan, the siblings, who each own a 17%",
+      "actual": [
+        {
+          "text": "61. Based on ThursdayPs closing price 0f203.8 yuan, the siblings, who each 0 、 Ⅵ 1 a 17 %",
+          "x": 11,
+          "y": 240,
+          "w": 849,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "article_en",
+      "sample_source": "example/2026-05-01 14 21 34.png",
+      "note": "humanoid-article-line-8",
+      "backend": "windows",
+      "expected": "stake, are worth $1 billion apiece.",
+      "actual": [
+        {
+          "text": "stake, arewofth $ 1 billion apiece.",
+          "x": 11,
+          "y": 277,
+          "w": 330,
+          "h": 23
+        }
+      ]
+    },
+    {
+      "category": "playlist_mixed",
+      "sample_source": "example/2026-05-01 14 21 52.png",
+      "note": "playlist-title-line-1",
+      "backend": "windows",
+      "expected": [
+        "合輯 - 【空の境界 第五章 矛盾螺旋...】",
+        "合輯 - 【空の境界 第五章 矛盾螺旋..."
+      ],
+      "actual": [
+        {
+          "text": "合 輯 - 倥 の 境 界 第 五 章 矛 盾 螺 旋 ...",
+          "x": 11,
+          "y": 14,
+          "w": 399,
+          "h": 24
+        }
+      ]
+    },
+    {
+      "category": "playlist_mixed",
+      "sample_source": "example/2026-05-01 14 21 52.png",
+      "note": "playlist-description-line-2",
+      "backend": "windows",
+      "expected": "合輯是 YouTube 專為你打造的播放清單",
+      "actual": [
+        {
+          "text": "合 輯 是 YouTube 專 為 价 打 的 播 放 渚 單",
+          "x": 11,
+          "y": 51,
+          "w": 259,
+          "h": 14
+        }
+      ]
+    },
+    {
+      "category": "title_mixed",
+      "sample_source": "example/2026-05-01 14 28 13.png",
+      "note": "museum-logo-line-1",
+      "backend": "windows",
+      "expected": "TWO POINT",
+      "actual": [
+        {
+          "text": "TWO POINT",
+          "x": 58,
+          "y": 19,
+          "w": 178,
+          "h": 17
+        }
+      ]
+    },
+    {
+      "category": "title_mixed",
+      "sample_source": "example/2026-05-01 14 28 13.png",
+      "note": "museum-logo-line-2",
+      "backend": "windows",
+      "expected": "MUSEUM",
+      "actual": [
+        {
+          "text": "MUSEUM",
+          "x": 13,
+          "y": 42,
+          "w": 266,
+          "h": 49
+        }
+      ]
+    },
+    {
+      "category": "title_mixed",
+      "sample_source": "example/2026-05-01 14 28 13.png",
+      "note": "museum-katakana-line-3",
+      "backend": "windows",
+      "expected": "ツーポイントミュージアム",
+      "actual": [
+        {
+          "text": "ツ ー ポ イ ン ト = ユ ー ジ ア ム",
+          "x": 49,
+          "y": 87,
+          "w": 190,
+          "h": 19
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-1",
+      "backend": "windows",
+      "expected": "GPT-5.5 works best when prompts define the",
+      "actual": [
+        {
+          "text": "GPT-5.5 works best when prompts define the",
+          "x": 37,
+          "y": 27,
+          "w": 589,
+          "h": 27
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-2",
+      "backend": "windows",
+      "expected": "outcome and leave room for the model to",
+      "actual": [
+        {
+          "text": "outcome and leave room forthe modelto",
+          "x": 37,
+          "y": 73,
+          "w": 539,
+          "h": 22
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-3",
+      "backend": "windows",
+      "expected": "choose an efficient solution path. Compared",
+      "actual": [
+        {
+          "text": "choose an efficient solution path. Compared",
+          "x": 37,
+          "y": 119,
+          "w": 576,
+          "h": 27
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-4",
+      "backend": "windows",
+      "expected": "with earlier models, you can often use shorter,",
+      "actual": [
+        {
+          "text": "with earlier models, you can Often use shorter,",
+          "x": 36,
+          "y": 165,
+          "w": 596,
+          "h": 27
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-5",
+      "backend": "windows",
+      "expected": "more outcome-oriented prompts: describe",
+      "actual": [
+        {
+          "text": "more outcome-oriented prompts: describe",
+          "x": 38,
+          "y": 210,
+          "w": 555,
+          "h": 28
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-6",
+      "backend": "windows",
+      "expected": "what good looks like, what constraints matter,",
+      "actual": [
+        {
+          "text": "what good lOOks like, what constraints matter,",
+          "x": 36,
+          "y": 256,
+          "w": 597,
+          "h": 28
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-7",
+      "backend": "windows",
+      "expected": "what evidence is available, and what the final",
+      "actual": [
+        {
+          "text": "what evidence is available, and what the final",
+          "x": 36,
+          "y": 302,
+          "w": 586,
+          "h": 25
+        }
+      ]
+    },
+    {
+      "category": "docs_en",
+      "sample_source": "example/2026-05-01 14 44 02.png",
+      "note": "gpt55-doc-line-8",
+      "backend": "windows",
+      "expected": "answer should contain.",
+      "actual": [
+        {
+          "text": "answer should contain.",
+          "x": 37,
+          "y": 348,
+          "w": 298,
+          "h": 21
+        }
+      ]
+    }
+  ]
+}

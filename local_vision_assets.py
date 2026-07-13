@@ -30,9 +30,9 @@ _PROJECTOR_REL = Path("models") / "mmproj-model-f16.gguf"
 _SHA256_CHUNK_BYTES = 8 * 1024 * 1024
 
 # 各資產生產環境最低大小（bytes）；可 import 供 LocalVisionRuntime 使用
-# server > 1 MB, model > 2 GB, projector > 800 MB
+# server launcher > 5 KB, model > 2 GB, projector > 800 MB
 ASSET_MINIMUM_BYTES: dict[str, int] = {
-    "server_path": 1_000_000,
+    "server_path": 5_000,
     "model_path": 2_000_000_000,
     "projector_path": 800_000_000,
 }

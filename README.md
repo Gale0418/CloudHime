@@ -115,3 +115,20 @@ CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中�
    python -m pytest -q tests
    ```
    此指令會自動執行 `tests/` 目錄下的所有測試，確保核心邏輯與 UI 啟動正常。
+
+### OCR 準確度基準
+
+- `benchmarks/ocr_accuracy_cases.json` 目前收錄 25 個由 `example/` 截圖整理出的 seed benchmark case，涵蓋英文段落、介面標題、日文 / 中文短句與混合 UI 文本。
+- 可用以下指令重跑目前的 OCR 基準：
+  ```bash
+  python ocr_benchmark.py benchmarks/ocr_accuracy_cases.json
+  ```
+- 這份 seed dataset 的目的不是宣稱現在全部辨識都正確，而是讓後續 OCR 合併、字典修正與 fallback 微調都有固定對照組。
+
+### 速度基準
+
+- `speed_benchmark.py` 會使用同一份 seed case，分段量測 OCR 後處理、翻譯 prompt / cache 準備，以及氣泡 render layout。
+- 可用以下指令重跑目前的本機速度基準：
+  ```bash
+  python speed_benchmark.py benchmarks/ocr_accuracy_cases.json
+  ```

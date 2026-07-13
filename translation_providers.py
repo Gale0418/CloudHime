@@ -15,10 +15,13 @@ from deep_translator import GoogleTranslator
 
 from translation_contracts import TranslationProvider, TranslationResult
 from translation_helpers import (
+    append_missing_dictionary_terms,
+    apply_dictionary_pre_translation,
     build_gemma_prompt,
     build_gemma_prompt_conservative,
     build_gemma_prompt_with_override,
     build_gemma_multimodal_prompt,
+    build_dictionary_prompt_hint,
     clean_model_output,
     clean_model_output_multiline,
     build_gemma_screenshot_prompt_v3,
@@ -27,6 +30,7 @@ from translation_helpers import (
     is_valid_screenshot_translation,
     detect_source_language,
     extract_gemma_text,
+    load_translation_dictionary,
     parse_segmented_translation_json,
     split_translated_lines,
 )
@@ -60,6 +64,7 @@ class GoogleTranslationProvider:
         self.target_lang = target_lang
         self._translators: dict[str, GoogleTranslator] = {}
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
+        self._dictionary = load_translation_dictionary()
 
     def set_target_lang(self, target_lang: str) -> None:
         target_lang = (target_lang or "").strip() or "zh-TW"
@@ -105,7 +110,8 @@ class GoogleTranslationProvider:
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, from_cache=True)
         translator = self._get_translator(source_lang)
-        translated_raw = translator.translate(normalized)
+        source_for_translation = apply_dictionary_pre_translation(normalized, self._dictionary)
+        translated_raw = translator.translate(source_for_translation)
         if not isinstance(translated_raw, str):
             raise ValueError("empty_google_translation")
         translated = translated_raw.strip()
@@ -143,7 +149,11 @@ class GoogleTranslationProvider:
             batch_result = self._get_cached(cache_key)
             if batch_result is None:
                 translator = self._get_translator(batch_source_lang)
-                combined_source = "\n".join(group_texts)
+                prepared_group_texts = [
+                    apply_dictionary_pre_translation(item, self._dictionary)
+                    for item in group_texts
+                ]
+                combined_source = "\n".join(prepared_group_texts)
                 combined_translated_raw = translator.translate(combined_source)
                 if not isinstance(combined_translated_raw, str):
                     return []
@@ -186,6 +196,7 @@ class GemmaTranslationProvider:
         self.gemma_model = self.normalize_gemma_model(gemma_model)
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._call_timestamps: dict[str, list[float]] = {name: [] for name in self.supported_models}
+        self._dictionary = load_translation_dictionary()
 
     def update_config(
         self,
@@ -244,12 +255,15 @@ class GemmaTranslationProvider:
 
     def _build_prompt(self, text: str) -> str:
         """用自訂 prompt 結合模型特定的預設 prompt。"""
-        return build_gemma_prompt_with_override(text, self.gemma_prompt, self.target_lang, self.gemma_model)
+        dictionary_hint = build_dictionary_prompt_hint(text, self._dictionary)
+        custom_prompt = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
+        return build_gemma_prompt_with_override(text, custom_prompt, self.target_lang, self.gemma_model)
 
     def _build_multimodal_prompt(self, texts) -> str:
         """多模態版，自訂 prompt 附加在前面（保留原有格式）。"""
-        base = build_gemma_multimodal_prompt(texts)
-        custom = self.gemma_prompt.strip()
+        base = build_gemma_multimodal_prompt(texts, target_lang=self.target_lang)
+        dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
+        custom = "\n\n".join(part for part in (self.gemma_prompt.strip(), dictionary_hint) if part)
         if not custom:
             return base
         return f"{custom}\n\n{base}"
@@ -569,7 +583,14 @@ class GemmaTranslationProvider:
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            prompt = build_screenshot_prompt_with_override(source_text_hint, retry_note, self.screenshot_gemma_prompt)
+            dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
+            custom_prompt = "\n\n".join(part for part in (self.screenshot_gemma_prompt, dictionary_hint) if part)
+            prompt = build_screenshot_prompt_with_override(
+                source_text_hint,
+                retry_note,
+                custom_prompt,
+                target_lang=target_lang,
+            )
             try:
                 payload = self._request(
                     model_name,
@@ -725,20 +746,11 @@ class LocalGemmaProvider:
         self.temperature = temperature
         self.repeat_penalty = repeat_penalty
         self._llm = None
+        self.last_load_error = ""
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._context_buffer = deque(maxlen=3)
-        self._dictionary = self._load_dictionary()
+        self._dictionary = load_translation_dictionary()
         self._load_model()
-
-    def _load_dictionary(self):
-        dict_path = os.path.join(os.path.dirname(__file__), "dictionary.json")
-        if os.path.exists(dict_path):
-            try:
-                with open(dict_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return {}
 
     def update_config(
         self,
@@ -772,7 +784,8 @@ class LocalGemmaProvider:
     def _load_model(self):
         if not self.enabled or not self.model_path or not os.path.exists(self.model_path):
             self._llm = None
-            return
+            return False
+        self.last_load_error = ""
         try:
             # We import locally to avoid requiring it if not enabled
             from llama_cpp import Llama
@@ -782,9 +795,15 @@ class LocalGemmaProvider:
                 n_gpu_layers=-1, # Offload all to GPU
                 verbose=False
             )
-        except Exception as e:
-            print(f"Failed to load local model: {e}")
+            return True
+        except Exception as exc:
             self._llm = None
+            self.last_load_error = f"{type(exc).__name__}: {exc}"
+            return False
+
+    def load_model(self) -> bool:
+        self._load_model()
+        return self.available()
 
     def available(self) -> bool:
         return self.enabled and self._llm is not None
@@ -802,20 +821,14 @@ class LocalGemmaProvider:
             self._translation_cache.popitem(last=False)
 
     def _build_prompt(self, text: str) -> str:
-        dict_hints = []
-        for k, v in self._dictionary.items():
-            if k.lower() in text.lower():
-                dict_hints.append(f"'{k}' -> '{v}'")
-        
-        hint_text = ""
-        if dict_hints:
-            hint_text = "\n\nCRITICAL: You MUST use the following dictionary for translations: " + ", ".join(dict_hints)
-        
+        dictionary_hint = build_dictionary_prompt_hint(text, self._dictionary)
+
         prompt = ""
         for src, tgt in self._context_buffer:
             prompt += f"<start_of_turn>user\nTranslate:\n{src}<end_of_turn>\n<start_of_turn>model\n{tgt}<end_of_turn>\n"
 
-        raw_prompt = build_gemma_prompt_with_override(text, self.gemma_prompt + hint_text)
+        custom_prompt = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
+        raw_prompt = build_gemma_prompt_with_override(text, custom_prompt, self.target_lang)
         prompt += f"<start_of_turn>user\n{raw_prompt}<end_of_turn>\n<start_of_turn>model\n"
         return prompt
 
@@ -906,14 +919,7 @@ class LocalGemmaProvider:
         return TranslationResult(text=translated, provider=self.name, model="local", raw_text=raw_text)
 
     def _apply_post_processing(self, source: str, translated: str) -> str:
-        if not translated:
-            return translated
-        for k, v in self._dictionary.items():
-            if k.lower() in source.lower() and v not in translated:
-                # Naive enforcement: just append it if missing, or try string replace
-                # It's safer to just inject it nicely
-                translated = f"{translated} ({v})"
-        return translated
+        return append_missing_dictionary_terms(source, translated, self._dictionary)
 
     def _is_bad_translation(self, source: str, translated: str) -> bool:
         if not translated or len(translated.strip()) == 0:
@@ -943,9 +949,16 @@ class LocalMultimodalProvider:
         self.target_lang = target_lang
         self.enabled = bool(enabled)
         self.timeout_seconds = int(timeout_seconds)
+        self._runtime_ready = bool(self.base_url and self.model_name)
+        self._dictionary = load_translation_dictionary()
 
     def available(self) -> bool:
-        return self.enabled and bool(self.base_url) and bool(self.model_name)
+        return self.enabled and self._runtime_ready and bool(self.base_url) and bool(self.model_name)
+
+    def update_runtime(self, base_url: str, model_name: str, ready: bool) -> None:
+        self.base_url = (base_url or "").rstrip("/")
+        self.model_name = (model_name or "").strip()
+        self._runtime_ready = bool(ready and self.base_url and self.model_name)
 
     def _inline_part_to_content(self, image_part: dict[str, Any]) -> dict[str, Any]:
         inline_data = image_part.get("inline_data") or {}
@@ -987,7 +1000,9 @@ class LocalMultimodalProvider:
         return translated
 
     def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
-        prompt = build_gemma_multimodal_prompt(texts, target_lang=target_lang)
+        dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
+        base_prompt = build_gemma_multimodal_prompt(texts, target_lang=target_lang)
+        prompt = f"{dictionary_hint}\n\n{base_prompt}" if dictionary_hint else base_prompt
         raw_text = self._request_chat_completion(
             self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="json_object")
         )
@@ -1010,7 +1025,8 @@ class LocalMultimodalProvider:
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
     def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
-        prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt="", target_lang=target_lang)
+        dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
+        prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=target_lang)
         raw_text = self._request_chat_completion(
             self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
         )
