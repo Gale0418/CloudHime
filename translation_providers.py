@@ -1015,8 +1015,14 @@ class LocalMultimodalProvider:
             raise ValueError("empty_local_multimodal_ocr_response")
         return transcription
 
-    def transcribe_screenshot(self, image_parts: Sequence[dict[str, Any]], *, source_text_hint: str | None = None) -> TranslationResult:
-        prompt = "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
+    def transcribe_screenshot(
+        self,
+        image_parts: Sequence[dict[str, Any]],
+        *,
+        source_text_hint: str | None = None,
+        ocr_prompt: str | None = None,
+    ) -> TranslationResult:
+        prompt = (ocr_prompt or "").strip() or "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
         if source_text_hint:
             prompt += f"\n\nOCR hint:\n{source_text_hint[:1200]}"
         raw_text = self._request_chat_completion(

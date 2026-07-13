@@ -87,3 +87,20 @@ def test_embedded_provider_is_available_only_after_runtime_ready():
 
     provider.update_runtime("", "", ready=False)
     assert provider.available() is False
+
+def test_transcribe_screenshot_accepts_ocr_prompt_override() -> None:
+    provider = make_provider()
+    captured = {}
+
+    def fake_request(payload):
+        captured["prompt"] = payload["messages"][0]["content"][0]["text"]
+        return "Wine Club"
+
+    provider._request_chat_completion = fake_request
+    result = provider.transcribe_screenshot(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+        ocr_prompt="STRICT OCR",
+    )
+
+    assert result.text == "Wine Club"
+    assert captured["prompt"] == "STRICT OCR"
