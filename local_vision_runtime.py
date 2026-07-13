@@ -125,6 +125,7 @@ class LocalVisionRuntime:
         port_allocator: Optional[Callable[[], int]] = None,
         sleep: Optional[Callable[[float], None]] = None,
         health_retries: int = _DEFAULT_HEALTH_RETRIES,
+        context_size: int = 4096,
         asset_minimum_bytes: dict[str, int] | None = None,
     ) -> None:
         self._assets = assets
@@ -133,6 +134,7 @@ class LocalVisionRuntime:
         self._port_allocator = port_allocator or _default_port_allocator()
         self._sleep = sleep or __import__("time").sleep
         self._health_retries = health_retries
+        self._context_size = max(512, int(context_size))
         # 可注入資產大小最小值（測試用小數值，生產用正式大小）
         self._asset_minimum_bytes: dict[str, int] = (
             asset_minimum_bytes if asset_minimum_bytes is not None else ASSET_MINIMUM_BYTES
@@ -217,7 +219,7 @@ class LocalVisionRuntime:
             "--port", str(port),
             "-m", str(assets.model_path),
             "--mmproj", str(assets.projector_path),
-            "-c", "4096",
+            "-c", str(self._context_size),
             "-ngl", str(gpu_layers),
         ]
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0

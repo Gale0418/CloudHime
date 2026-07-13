@@ -946,3 +946,20 @@ def test_gpu_health_timeout_retries_once_in_cpu_mode(fake_assets):
     assert state.name == "ready"
     assert state.mode == "cpu"
     assert popen.call_count == 2
+
+def test_start_command_accepts_context_size_override(fake_assets):
+    """診斷 smoke 可覆寫 context size，但正式預設仍由既有測試固定為 4096。"""
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        context_size=2048,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    runtime.start()
+    args = popen.calls[0]
+    idx = args.index("-c")
+    assert args[idx + 1] == "2048"
