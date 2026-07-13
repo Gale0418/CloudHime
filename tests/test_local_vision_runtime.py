@@ -369,6 +369,44 @@ def test_start_gpu_mode_uses_ngl_999(fake_assets):
     assert args[idx + 1] == "999"
 
 
+def test_start_gpu_mode_accepts_ngl_override(fake_assets):
+    """GPU smoke test 可指定部分 offload 的 layer 數量。"""
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        gpu_layers=20,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    state = runtime.start()
+
+    assert state.mode == "gpu"
+    args = popen.calls[0]
+    idx = args.index("-ngl")
+    assert args[idx + 1] == "20"
+
+
+def test_zero_gpu_layers_reports_cpu_mode(fake_assets):
+    """-ngl 0 不得被標記成 GPU。"""
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        gpu_layers=0,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    state = runtime.start()
+
+    assert state.name == "ready"
+    assert state.mode == "cpu"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 3. Windows 隱藏視窗 flag
 # ──────────────────────────────────────────────────────────────────────────────
