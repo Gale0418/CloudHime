@@ -626,6 +626,8 @@ class OverlayWindow(QWidget):
         return QRect(x, y, rect.width(), rect.height())
 
     def arrange_bubbles(self):
+        if all(b.render_mode == REGION_RENDER_SCREENSHOT for b in self.bubbles):
+            return
         if not self.bubbles:
             return
 

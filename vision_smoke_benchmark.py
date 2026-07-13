@@ -35,6 +35,11 @@ OCR_PROMPTS = {
         "Copy uncertain characters as seen instead of substituting a likely word.\n"
         "Return plain OCR text only, with no explanation."
     ),
+    "japanese_ocr": (
+        "Read the Japanese text in this image exactly as shown. "
+        "Preserve every hiragana, katakana, kanji, punctuation, and line break. "
+        "Do not translate, correct, infer, or add text. Output only the original Japanese text."
+    ),
 }
 
 
@@ -110,6 +115,18 @@ def image_parts(image_path: Path, *, small_image_scale: float = 1.0) -> list[dic
     return [{"inline_data": {"mime_type": mime_type, "data": encoded}}]
 
 
+def build_windows_ocr_hint(worker: Any, image_path: Path) -> str:
+    if worker is None:
+        return ""
+    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    if image is None:
+        return ""
+    try:
+        return str(worker.build_screenshot_text_hint(image) or "").strip()
+    except Exception:
+        return ""
+
+
 def percentile(values: Sequence[float], quantile: float = 0.95) -> float:
     ordered = sorted(float(value) for value in values)
     if not ordered:
@@ -135,6 +152,7 @@ def run_smoke(
     force_cpu: bool = False,
     small_image_scale: float = 1.0,
     prompt_mode: str = "baseline",
+    ocr_hint: bool = False,
     model_name: str = DEFAULT_MODEL,
 ) -> dict[str, Any]:
     cases = load_cases(manifest_path, max_cases=max_cases)
@@ -164,6 +182,7 @@ def run_smoke(
     startup_started = time.perf_counter()
     results: list[dict[str, Any]] = []
     image_results: list[dict[str, Any]] = []
+    ocr_hint_worker = None
     try:
         state = runtime.start()
         startup_ms = (time.perf_counter() - startup_started) * 1000.0
@@ -176,15 +195,21 @@ def run_smoke(
             enabled=True,
             timeout_seconds=timeout_seconds,
         )
+        if ocr_hint:
+            from cloudhime_workers import OCRWorker
+            ocr_hint_worker = OCRWorker()
+            ocr_hint_worker.reload_ocr_backends(["windows"], log=False)
         for sample_source, image_cases in group_cases_by_image(cases).items():
             image_path = PROJECT_ROOT / sample_source
             request_started = time.perf_counter()
             error = ""
             actual = ""
             try:
+                ocr_hint_text = build_windows_ocr_hint(ocr_hint_worker, image_path) if ocr_hint_worker is not None else ""
                 result = provider.transcribe_screenshot(
                     image_parts(image_path, small_image_scale=small_image_scale),
                     ocr_prompt=ocr_prompt,
+                    source_text_hint=ocr_hint_text,
                 )
                 actual = result.text.strip()
             except Exception as exc:
@@ -196,6 +221,7 @@ def run_smoke(
                     "categories": sorted({str(case.get("category", "")) for case in image_cases}),
                     "actual": actual,
                     "latency_ms": latency_ms,
+                    "ocr_hint": ocr_hint_text,
                     "error": error,
                 }
             )
@@ -214,7 +240,8 @@ def run_smoke(
                 )
     finally:
         runtime.stop()
-
+        if ocr_hint_worker is not None:
+            ocr_hint_worker.cleanup()
     latencies = [float(result["latency_ms"]) for result in image_results]
     successful_cases = [result for result in results if result["actual"] and not result["error"]]
     successful_images = [result for result in image_results if result["actual"] and not result["error"]]
@@ -225,6 +252,7 @@ def run_smoke(
         "runtime_mode": runtime_mode,
         "small_image_scale": max(1.0, float(small_image_scale)),
         "prompt_mode": prompt_mode,
+        "ocr_hint": bool(ocr_hint),
         "startup_ms": startup_ms,
         "image_count": len(image_results),
         "case_count": len(results),
@@ -249,6 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-cpu", action="store_true")
     parser.add_argument("--small-image-scale", type=float, default=1.0)
     parser.add_argument("--prompt-mode", choices=tuple(OCR_PROMPTS), default="baseline")
+    parser.add_argument("--ocr-hint", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -264,6 +293,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         force_cpu=args.force_cpu,
         small_image_scale=args.small_image_scale,
         prompt_mode=args.prompt_mode,
+        ocr_hint=args.ocr_hint,
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
