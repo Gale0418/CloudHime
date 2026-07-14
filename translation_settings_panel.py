@@ -65,6 +65,7 @@ class TranslationSettingsPanel(QWidget):
         header_row.addStretch()
         translate_layout.addLayout(header_row)
         translate_layout.addWidget(self.lbl_translate_hint)
+        translate_layout.addWidget(self.lbl_translate_summary)
 
         self.translate_mode_group = QButtonGroup(self)
         self.translate_mode_group.setExclusive(True)

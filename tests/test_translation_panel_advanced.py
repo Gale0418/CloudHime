@@ -71,6 +71,8 @@ def test_translation_panel_advanced_tuning_hidden(qtbot):
     assert panel.tuning_frame.isHidden()
     assert not panel.lbl_gemma_prompt.isHidden()
     assert not panel.input_gemma_prompt.isHidden()
+    assert panel.lbl_translate_summary.parentWidget() is not None
+    assert not panel.lbl_translate_summary.isWindow()
 
     qtbot.mouseClick(panel.btn_advanced_tuning, Qt.LeftButton)
     assert not panel.tuning_frame.isHidden()
