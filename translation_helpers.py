@@ -298,8 +298,8 @@ UI_TEXTS = {
         "en": "Translation",
     },
     "translation_panel_hint": {
-        "zh-TW": "Google 翻譯可直接使用；AI 模式才需要 API Key 與模型。",
-        "en": "Google translation works out of the box; AI mode needs an API key and model.",
+        "zh-TW": "Google 翻譯可直接使用；本地 AI 由 CloudHime 管理，遠端 AI 才需要 API Key。",
+        "en": "Google Translate works out of the box; CloudHime manages local AI, and only remote AI needs an API key.",
     },
     "translation_mode_google": {
         "zh-TW": "Google 翻譯",
