@@ -59,10 +59,12 @@ from themes import (
 )
 from ocr_backends import discover_backends
 from ocr_quality import (
+    is_valid_content,
+    merge_horizontal_lines,
+    needs_cjk_tight_join,
     score_ocr_items as quality_score_ocr_items,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
-from ocr_text_processing import normalize_ocr_text
 from ocr_backend_installer import detect_backend_state
 from ocr_refinement import (
     normalize_translation_compare_text,
@@ -153,70 +155,6 @@ def startup_log(stage, detail=""):
 # ==========================================
 # 🛡️ 核心：Windows 原生熱鍵過濾器
 # ==========================================
-
-def is_valid_content(text):
-    if not text:
-        return False
-    text = text.strip()
-    if len(text) == 0:
-        return False
-    if NOISE_ONLY_PATTERN.match(text):
-        return False
-    has_cjk = HAS_CJK_PATTERN.search(text)
-    if len(text) < 2 and not has_cjk and not text.isdigit():
-        return False
-    if text.lower() in ['ii', 'll', 'rr', '...']:
-        return False
-    return True
-
-def needs_cjk_tight_join(left_text, right_text):
-    if not left_text or not right_text:
-        return False
-    left_char = left_text[-1]
-    right_char = right_text[0]
-    return bool(HAS_CJK_PATTERN.search(left_char) or HAS_CJK_PATTERN.search(right_char) or left_char in "「『（([" or right_char in "」』），。！？：；、)]")
-
-def merge_horizontal_lines(items):
-    if not items:
-        return []
-    items.sort(key=lambda k: k['y'])
-    lines = []
-    current_line = [items[0]]
-    for i in range(1, len(items)):
-        curr = items[i]
-        prev = current_line[-1]
-        prev_cy = prev['y'] + prev['h'] / 2
-        curr_cy = curr['y'] + curr['h'] / 2
-        if abs(prev_cy - curr_cy) < (min(prev['h'], curr['h']) * 0.5):
-            current_line.append(curr)
-        else:
-            lines.append(current_line)
-            current_line = [curr]
-    lines.append(current_line)
-    merged = []
-    for line in lines:
-        line.sort(key=lambda k: k['x'])
-        idx = 0
-        while idx < len(line):
-            base = line[idx]
-            text = base['text']
-            x1, y1 = base['x'], base['y']
-            x2, y2 = base['x']+base['w'], base['y']+base['h']
-            next_idx = idx + 1
-            while next_idx < len(line):
-                cand = line[next_idx]
-                if cand['x'] - x2 < (base['h'] * 2.0):
-                    joiner = "" if needs_cjk_tight_join(text, cand['text']) else " "
-                    text += joiner + cand['text']
-                    x2 = max(x2, cand['x'] + cand['w'])
-                    y2 = max(y2, cand['y'] + cand['h'])
-                    y1 = min(y1, cand['y'])
-                    next_idx += 1
-                else:
-                    break
-            merged.append({'text': normalize_ocr_text(text), 'x': x1, 'y': y1, 'w': x2-x1, 'h': y2-y1})
-            idx = next_idx
-    return merged
 
 # ==========================================
 # 🤖 OCR 與翻譯工作執行緒

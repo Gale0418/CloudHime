@@ -78,5 +78,63 @@ class TestOCRTextProcessing(unittest.TestCase):
         # 確認傳入的 items 完全沒被改變 (順序跟內容都不該動)
         self.assertEqual(items, original_items)
 
+    def test_normalize_ocr_text_collapses_horizontal_space_and_cjk_punctuation(self):
+        self.assertEqual(normalize_ocr_text("  「  測 試  !  」  "), "「測試!」")
+        self.assertEqual(normalize_ocr_text("Hello   World\nSecond\tline"), "Hello World\nSecond line")
+
+    def test_merge_horizontal_lines_keeps_small_punctuation_with_large_text(self):
+        items = [
+            {"text": "測試", "x": 0, "y": 0, "w": 48, "h": 30, "confidence": 0.9},
+            {"text": "！", "x": 50, "y": 15, "w": 8, "h": 10, "confidence": 0.6},
+        ]
+
+        merged = merge_horizontal_lines(items)
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["text"], "測試！")
+        self.assertEqual((merged[0]["x"], merged[0]["y"], merged[0]["w"], merged[0]["h"]), (0, 0, 58, 30))
+
+    def test_merge_horizontal_lines_does_not_chain_across_rows(self):
+        items = [
+            {"text": "第一", "x": 0, "y": 0, "w": 35, "h": 20},
+            {"text": "行", "x": 38, "y": 9, "w": 18, "h": 20},
+            {"text": "第二行", "x": 0, "y": 18, "w": 56, "h": 20},
+        ]
+
+        merged = merge_horizontal_lines(items)
+
+        self.assertEqual([item["text"] for item in merged], ["第一行", "第二行"])
+
+    def test_merge_horizontal_lines_preserves_weighted_confidence(self):
+        items = [
+            {"text": "AB", "x": 0, "y": 0, "w": 20, "h": 20, "confidence": 0.9},
+            {"text": "CDEF", "x": 22, "y": 0, "w": 40, "h": 20, "confidence": 50},
+        ]
+
+        merged = merge_horizontal_lines(items)
+
+        self.assertEqual(len(merged), 1)
+        self.assertAlmostEqual(merged[0]["confidence"], (0.9 * 2 + 0.5 * 4) / 6)
+    def test_merge_horizontal_lines_rejects_tall_bridge_between_rows(self):
+        items = [
+            {"text": "上", "x": 0, "y": 0, "w": 10, "h": 10},
+            {"text": "高框", "x": 12, "y": 0, "w": 20, "h": 40},
+            {"text": "下", "x": 34, "y": 30, "w": 10, "h": 10},
+        ]
+
+        merged = merge_horizontal_lines(items)
+
+        self.assertEqual([item["text"] for item in merged], ["上高框", "下"])
+
+    def test_merge_horizontal_lines_ignores_empty_token_confidence(self):
+        items = [
+            {"text": "", "x": 0, "y": 0, "w": 1, "h": 20, "confidence": 1.0},
+            {"text": "AB", "x": 2, "y": 0, "w": 20, "h": 20, "confidence": 0.5},
+        ]
+
+        merged = merge_horizontal_lines(items)
+
+        self.assertEqual(merged[0]["text"], "AB")
+        self.assertAlmostEqual(merged[0]["confidence"], 0.5)
 if __name__ == '__main__':
     unittest.main()
