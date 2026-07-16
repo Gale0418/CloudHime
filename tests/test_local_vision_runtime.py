@@ -312,6 +312,40 @@ def test_start_uses_loopback_dynamic_port_and_mmproj(fake_assets):
     assert "--mmproj" in args
     idx = args.index("--mmproj")
     assert args[idx + 1] == str(fake_assets.projector_path)
+    assert "--no-mmproj-offload" not in args
+    assert "--no-mmap" in args
+    parallel_idx = args.index("--parallel")
+    assert args[parallel_idx + 1] == "1"
+
+
+def test_start_reports_monotonic_warmup_progress(fake_assets):
+    updates = []
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+        progress_callback=lambda phase, progress: updates.append((phase, progress)),
+    )
+
+    state = runtime.start()
+
+    assert state.name == "ready"
+    assert updates[:2] == [("checking_assets", 5), ("starting_server", 10)]
+    assert updates[-1] == ("ready", 100)
+
+    runtime._last_progress = 10
+    runtime._report_line_progress("load_tensors: loading weights")
+    runtime._report_line_progress("load_model: initializing, n_slots = 1")
+    runtime._report_line_progress("warming up the model")
+    assert updates[-3:] == [
+        ("loading_tensors", 45),
+        ("initializing", 70),
+        ("warming_up", 85),
+    ]
 
 
 def test_start_command_includes_model_path(fake_assets):
@@ -964,15 +998,14 @@ def test_port_allocator_failure_returns_port_unavailable(fake_assets):
         f"Expected detail starting with 'port_unavailable', got: {state.detail!r}"
     )
 
-def test_gpu_health_timeout_retries_once_in_cpu_mode(fake_assets):
-    """GPU model loading timeout without CUDA text must retry once in CPU mode."""
+def test_gpu_health_timeout_does_not_double_wait_in_cpu_mode(fake_assets):
+    """A generic loading timeout must fail once instead of repeating the full wait on CPU."""
     gpu_proc = FakeProcess(stderr_lines=["load_model: loading model"])
-    cpu_proc = RunningProcess()
-    popen = FakePopen([gpu_proc, cpu_proc])
+    popen = FakePopen([gpu_proc])
     runtime = LocalVisionRuntime(
         assets=fake_assets,
         popen_factory=popen,
-        urlopen=_make_health_urlopen([False, False, False, True]),
+        urlopen=_make_health_urlopen([False, False, False]),
         port_allocator=_port_allocator(43123),
         sleep=_no_sleep,
         health_retries=3,
@@ -981,9 +1014,10 @@ def test_gpu_health_timeout_retries_once_in_cpu_mode(fake_assets):
 
     state = runtime.start()
 
-    assert state.name == "ready"
-    assert state.mode == "cpu"
-    assert popen.call_count == 2
+    assert state.name == "failed"
+    assert state.mode == "gpu"
+    assert "health_timeout" in state.detail
+    assert popen.call_count == 1
 
 def test_start_command_accepts_context_size_override(fake_assets):
     """診斷 smoke 可覆寫 context size，但正式預設仍由既有測試固定為 4096。"""

@@ -16,6 +16,14 @@ from typing import Any, Sequence
 import cv2
 import numpy as np
 
+from japanese_ocr_rescue import (
+    build_verification_hint,
+    decide_rescue_text,
+    is_usable_meiki_candidate,
+    load_meiki_ocr,
+    rescue_gate,
+    run_meiki_ocr,
+)
 from local_vision_assets import resolve_vision_assets
 from local_vision_runtime import LocalVisionRuntime
 from translation_providers import LocalMultimodalProvider
@@ -155,6 +163,7 @@ def run_smoke(
     small_image_scale: float = 1.0,
     prompt_mode: str = "baseline",
     ocr_hint: bool = False,
+    japanese_rescue: bool = False,
     model_name: str = DEFAULT_MODEL,
 ) -> dict[str, Any]:
     effective_gpu_layers = 0 if force_cpu else max(0, int(gpu_layers))
@@ -192,6 +201,8 @@ def run_smoke(
     results: list[dict[str, Any]] = []
     image_results: list[dict[str, Any]] = []
     ocr_hint_worker = None
+    japanese_rescuer = None
+    rescue_startup_ms = 0.0
     try:
         state = runtime.start()
         startup_ms = (time.perf_counter() - startup_started) * 1000.0
@@ -220,6 +231,11 @@ def run_smoke(
             image_encode_ms = 0.0
             model_request_ms = 0.0
             postprocess_ms = 0.0
+            meiki_ms = 0.0
+            rescue_request_ms = 0.0
+            rescue_triggered = False
+            rescue_adopted = False
+            rescue_candidate = ""
             try:
                 stage_started = time.perf_counter()
                 try:
@@ -248,6 +264,37 @@ def run_smoke(
                     actual = result.text.strip()
                 finally:
                     postprocess_ms = (time.perf_counter() - stage_started) * 1000.0
+
+                if japanese_rescue:
+                    source_image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                    if source_image is not None and rescue_gate(
+                        actual,
+                        image_width=source_image.shape[1],
+                        image_height=source_image.shape[0],
+                    ):
+                        if japanese_rescuer is None:
+                            rescue_started = time.perf_counter()
+                            japanese_rescuer = load_meiki_ocr()
+                            rescue_startup_ms += (time.perf_counter() - rescue_started) * 1000.0
+                        rescue_stage = time.perf_counter()
+                        candidate = run_meiki_ocr(japanese_rescuer, source_image)
+                        meiki_ms = (time.perf_counter() - rescue_stage) * 1000.0
+                        rescue_candidate = candidate.text
+                        if is_usable_meiki_candidate(candidate, actual):
+                            rescue_triggered = True
+                            rescue_stage = time.perf_counter()
+                            rescued = provider.transcribe_screenshot(
+                                parts,
+                                ocr_prompt=ocr_prompt,
+                                source_text_hint=build_verification_hint(candidate),
+                            ).text.strip()
+                            rescue_request_ms = (time.perf_counter() - rescue_stage) * 1000.0
+                            model_request_ms += rescue_request_ms
+                            decision_started = time.perf_counter()
+                            decision = decide_rescue_text(actual, rescued, candidate)
+                            postprocess_ms += (time.perf_counter() - decision_started) * 1000.0
+                            actual = decision.selected_text
+                            rescue_adopted = decision.adopted
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
             latency_ms = (time.perf_counter() - request_started) * 1000.0
@@ -261,6 +308,11 @@ def run_smoke(
                     "image_encode_ms": image_encode_ms,
                     "model_request_ms": model_request_ms,
                     "postprocess_ms": postprocess_ms,
+                    "meiki_ms": meiki_ms,
+                    "rescue_request_ms": rescue_request_ms,
+                    "rescue_triggered": rescue_triggered,
+                    "rescue_adopted": rescue_adopted,
+                    "rescue_candidate": rescue_candidate,
                     "ocr_hint": ocr_hint_text,
                     "error": error,
                 }
@@ -287,6 +339,8 @@ def run_smoke(
     encode_latencies = [float(result["image_encode_ms"]) for result in image_results]
     model_latencies = [float(result["model_request_ms"]) for result in image_results]
     postprocess_latencies = [float(result["postprocess_ms"]) for result in image_results]
+    meiki_latencies = [float(result["meiki_ms"]) for result in image_results]
+    rescue_latencies = [float(result["rescue_request_ms"]) for result in image_results]
     successful_cases = [result for result in results if result["actual"] and not result["error"]]
     successful_images = [result for result in image_results if result["actual"] and not result["error"]]
     runtime_mode = "cpu" if force_cpu else state.mode
@@ -299,7 +353,9 @@ def run_smoke(
         "small_image_scale": max(1.0, float(small_image_scale)),
         "prompt_mode": prompt_mode,
         "ocr_hint": bool(ocr_hint),
+        "japanese_rescue": bool(japanese_rescue),
         "startup_ms": startup_ms,
+        "rescue_startup_ms": rescue_startup_ms,
         "image_count": len(image_results),
         "case_count": len(results),
         "successful_images": len(successful_images),
@@ -314,6 +370,10 @@ def run_smoke(
         "average_model_request_ms": mean(model_latencies),
         "p95_model_request_ms": percentile(model_latencies),
         "average_postprocess_ms": mean(postprocess_latencies),
+        "average_meiki_ms": mean(meiki_latencies),
+        "average_rescue_request_ms": mean(rescue_latencies),
+        "rescue_triggered_images": sum(bool(result["rescue_triggered"]) for result in image_results),
+        "rescue_adopted_images": sum(bool(result["rescue_adopted"]) for result in image_results),
         "image_results": image_results,
         "results": results,
     }
@@ -331,6 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--small-image-scale", type=float, default=1.0)
     parser.add_argument("--prompt-mode", choices=tuple(OCR_PROMPTS), default="baseline")
     parser.add_argument("--ocr-hint", action="store_true")
+    parser.add_argument("--japanese-rescue", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -349,6 +410,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         small_image_scale=args.small_image_scale,
         prompt_mode=args.prompt_mode,
         ocr_hint=args.ocr_hint,
+        japanese_rescue=args.japanese_rescue,
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -364,7 +426,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"avg_match={result['average_match_score']:.3f} "
         f"avg_latency_ms={result['average_latency_ms']:.1f} p95_latency_ms={result['p95_latency_ms']:.1f} "
         f"stages_ms=hint:{result['average_hint_ms']:.1f},encode:{result['average_image_encode_ms']:.1f},"
-        f"model:{result['average_model_request_ms']:.1f},post:{result['average_postprocess_ms']:.1f}"
+        f"model:{result['average_model_request_ms']:.1f},post:{result['average_postprocess_ms']:.1f},"
+        f"meiki:{result['average_meiki_ms']:.1f},rescue:{result['average_rescue_request_ms']:.1f} "
+        f"rescued={result['rescue_adopted_images']}/{result['image_count']}"
     )
     for item in result["results"]:
         print(

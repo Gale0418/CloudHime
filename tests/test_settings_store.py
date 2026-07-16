@@ -17,6 +17,7 @@ def test_normalize_settings_payload_applies_local_multimodal_defaults():
     assert normalized["local_multimodal_base_url"] == "http://127.0.0.1:8080/v1"
     assert normalized["local_multimodal_model"] == ""
     assert normalized["local_multimodal_timeout_seconds"] == 20
+    assert normalized["japanese_ocr_rescue_enabled"] is False
 
 def test_normalize_settings_payload_sanitizes_local_multimodal_timeout():
     invalid = normalize_settings_payload({"local_multimodal_timeout_seconds": "oops"}, region_opacity=40)
@@ -26,6 +27,14 @@ def test_normalize_settings_payload_sanitizes_local_multimodal_timeout():
     assert invalid["local_multimodal_timeout_seconds"] == 20
     assert low["local_multimodal_timeout_seconds"] == 1
     assert high["local_multimodal_timeout_seconds"] == 300
+
+def test_normalize_settings_payload_preserves_japanese_rescue_opt_in():
+    normalized = normalize_settings_payload(
+        {"japanese_ocr_rescue_enabled": True},
+        region_opacity=40,
+    )
+
+    assert normalized["japanese_ocr_rescue_enabled"] is True
 
 def test_registry_registers_local_multimodal():
     config = TranslationProviderRegistryConfig(

@@ -9,7 +9,7 @@ from typing import Any
 import localization
 
 
-SETTINGS_SCHEMA_VERSION = 4
+SETTINGS_SCHEMA_VERSION = 5
 SETTINGS_FILENAME = "cloudhime_settings.json"
 SETTINGS_APP_DIR = "CloudHime"
 RELIEF_OFFSET_MIN = -500
@@ -147,6 +147,7 @@ def normalize_settings_payload(
     normalized["local_gemma_temperature"] = float(normalized.get("local_gemma_temperature", 0.2))
     normalized["local_gemma_repeat_penalty"] = float(normalized.get("local_gemma_repeat_penalty", 1.15))
     normalized["local_multimodal_enabled"] = bool(normalized.get("local_multimodal_enabled", False))
+    normalized["japanese_ocr_rescue_enabled"] = bool(normalized.get("japanese_ocr_rescue_enabled", False))
     normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")
     normalized["local_multimodal_model"] = str(normalized.get("local_multimodal_model", "") or "")
     normalized["local_multimodal_timeout_seconds"] = clamp_local_multimodal_timeout(

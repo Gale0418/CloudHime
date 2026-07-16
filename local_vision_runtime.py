@@ -8,7 +8,7 @@ Task 2：LocalVisionRuntime 生命週期管理。
 - 配置 OS loopback port。
 - 以隱藏視窗啟動 llama-server.exe（Windows CREATE_NO_WINDOW）。
 - 輪詢健康端點，發出 missing / starting / ready / failed / stopped 狀態。
-- GPU 啟動失敗時只允許單次 CPU fallback（-ngl 0）；仍失敗則 failed。
+- GPU 明確回報 CUDA/VRAM 錯誤時只允許單次 CPU fallback（-ngl 0）。
 - 截斷 stderr 到最多 2000 字元供 UI 顯示。
 - stop() 只回收本 instance 持有的 process handle，不依名稱掃殺。
 
@@ -49,6 +49,14 @@ _DEFAULT_HEALTH_RETRIES = 60     # 30 秒（0.5s × 60）
 _STDERR_MAX_CHARS = 2_000        # stderr detail 截斷上限
 _CLEANUP_WAIT_TIMEOUT = 5.0      # _cleanup_process 等待 process 結束的秒數
 _STDERR_JOIN_TIMEOUT = 1.0       # 等待 daemon stderr 讀取完成的秒數
+
+_PROGRESS_MARKERS = (
+    ("load_model: loading model", "loading_model", 20),
+    ("load_tensors", "loading_tensors", 45),
+    ("load_model: initializing", "initializing", 70),
+    ("warming up", "warming_up", 85),
+    ("model loaded", "model_loaded", 95),
+)
 
 # CUDA/VRAM 錯誤關鍵字（小寫比對）
 _CUDA_ERROR_KEYWORDS = (
@@ -128,6 +136,7 @@ class LocalVisionRuntime:
         context_size: int = 4096,
         gpu_layers: int = 999,
         asset_minimum_bytes: dict[str, int] | None = None,
+        progress_callback: Optional[Callable[[str, int], None]] = None,
     ) -> None:
         self._assets = assets
         self._popen_factory = popen_factory
@@ -137,6 +146,8 @@ class LocalVisionRuntime:
         self._health_retries = health_retries
         self._context_size = max(512, int(context_size))
         self._gpu_layers = max(0, int(gpu_layers))
+        self._progress_callback = progress_callback
+        self._last_progress = 0
         # 可注入資產大小最小值（測試用小數值，生產用正式大小）
         self._asset_minimum_bytes: dict[str, int] = (
             asset_minimum_bytes if asset_minimum_bytes is not None else ASSET_MINIMUM_BYTES
@@ -145,6 +156,7 @@ class LocalVisionRuntime:
         self._state: VisionRuntimeState = _STOPPED
         self._process = None   # FakeProcess or Popen；有啟動程序時非 None
         self._port: Optional[int] = None
+        self._start_lock = threading.Lock()
 
     # ── 公開介面 ──────────────────────────────────────────────────────────────
 
@@ -158,44 +170,50 @@ class LocalVisionRuntime:
 
         狀態機：stopped → missing | starting → ready | failed
         """
-        if self._state.name in ("ready", "starting"):
-            return self._state
+        with self._start_lock:
+            if self._state.name in ("ready", "starting"):
+                return self._state
+            self._state = VisionRuntimeState(name="starting", detail="", base_url="", mode="")
 
-        # 1. 資產驗證
-        missing_detail = self._check_assets()
-        if missing_detail:
-            self._state = VisionRuntimeState(
-                name="missing", detail=missing_detail, base_url="", mode=""
-            )
-            return self._state
+            self._last_progress = 0
+            self._report_progress("checking_assets", 5)
 
-        # 2. Port 分配：port_allocator 失敗則回傳 failed，不揋出
-        try:
-            port = self._port_allocator()
-        except Exception as exc:
-            self._state = VisionRuntimeState(
-                name="failed",
-                detail=f"port_unavailable: {exc}",
-                base_url="",
-                mode="",
-            )
-            return self._state
-        self._port = port
-        initial_mode = "gpu" if self._gpu_layers > 0 else "cpu"
-        state = self._try_spawn(port, gpu_layers=self._gpu_layers, mode=initial_mode)
-        if state.name == "ready":
+            # 1. 資產驗證
+            missing_detail = self._check_assets()
+            if missing_detail:
+                self._state = VisionRuntimeState(
+                    name="missing", detail=missing_detail, base_url="", mode=""
+                )
+                return self._state
+
+            # 2. Port 分配：port_allocator 失敗則回傳 failed，不揋出
+            try:
+                port = self._port_allocator()
+            except Exception as exc:
+                self._state = VisionRuntimeState(
+                    name="failed",
+                    detail=f"port_unavailable: {exc}",
+                    base_url="",
+                    mode="",
+                )
+                return self._state
+            self._port = port
+            self._report_progress("starting_server", 10)
+            initial_mode = "gpu" if self._gpu_layers > 0 else "cpu"
+            state = self._try_spawn(port, gpu_layers=self._gpu_layers, mode=initial_mode)
+            if state.name == "ready":
+                self._state = state
+                return self._state
+
+            # 3. GPU 啟動失敗時才允許單次 CPU fallback。
+            # [FIX-3] GPU proc 已在 _try_spawn 內 cleanup，此處直接 spawn CPU
+            if initial_mode == "gpu" and _is_cuda_error(state.detail):
+                cpu_state = self._try_spawn(port, gpu_layers=0, mode="cpu")
+                self._state = cpu_state
+                return self._state
+
             self._state = state
             return self._state
-
-        # 3. GPU 啟動失敗時才允許單次 CPU fallback。
-        # [FIX-3] GPU proc 已在 _try_spawn 內 cleanup，此處直接 spawn CPU
-        if initial_mode == "gpu" and (_is_cuda_error(state.detail) or _is_gpu_health_timeout(state)):
-            cpu_state = self._try_spawn(port, gpu_layers=0, mode="cpu")
-            self._state = cpu_state
-            return self._state
-
-        self._state = state
-        return self._state
 
     def stop(self) -> VisionRuntimeState:
         """終止本 instance 持有的 process；不影響任何其他程序。"""
@@ -222,6 +240,10 @@ class LocalVisionRuntime:
             "--port", str(port),
             "-m", str(assets.model_path),
             "--mmproj", str(assets.projector_path),
+            # Avoid a reproducible Windows mmap stall while loading Gemma 3 projector tensors.
+            "--no-mmap",
+            # CloudHime serializes translations, so extra server slots only waste KV memory.
+            "--parallel", "1",
             "-c", str(self._context_size),
             "-ngl", str(gpu_layers),
         ]
@@ -266,12 +288,19 @@ class LocalVisionRuntime:
         """
         health_url = f"http://127.0.0.1:{port}/health"
         stderr_lines = deque(maxlen=256)
+        stderr_lock = threading.Lock()
+
+        def _snapshot_stderr() -> str:
+            with stderr_lock:
+                return "".join(stderr_lines)[:_STDERR_MAX_CHARS]
 
         # [FIX-1] daemon thread：非阻塞消化 stderr
         def _drain() -> None:
             try:
                 for line in proc.stderr:  # type: ignore[union-attr]
-                    stderr_lines.append(line)
+                    with stderr_lock:
+                        stderr_lines.append(line)
+                    self._report_line_progress(line)
             except Exception:
                 pass
 
@@ -282,7 +311,7 @@ class LocalVisionRuntime:
             # 先確認 process 是否提早退出
             if proc.poll() is not None:
                 drain_thread.join(timeout=_STDERR_JOIN_TIMEOUT)
-                stderr_text = "".join(stderr_lines)[:_STDERR_MAX_CHARS]
+                stderr_text = _snapshot_stderr()
                 return VisionRuntimeState(
                     name="failed",
                     detail=f"process_exited: {stderr_text}",
@@ -295,6 +324,7 @@ class LocalVisionRuntime:
             try:
                 resp = self._urlopen(health_url, timeout=2)
                 base_url = f"http://127.0.0.1:{port}/v1"
+                self._report_progress("ready", 100)
                 return VisionRuntimeState(
                     name="ready", detail="", base_url=base_url, mode=mode
                 )
@@ -311,7 +341,7 @@ class LocalVisionRuntime:
 
         # 全部嘗試耗盡 → health_timeout
         drain_thread.join(timeout=_STDERR_JOIN_TIMEOUT)
-        stderr_text = "".join(stderr_lines)[:_STDERR_MAX_CHARS]
+        stderr_text = _snapshot_stderr()
         return VisionRuntimeState(
             name="failed",
             detail=f"health_timeout: {stderr_text}",
@@ -320,6 +350,26 @@ class LocalVisionRuntime:
         )
 
     # ── 內部：資產驗證 ────────────────────────────────────────────────────────
+
+    def _report_progress(self, phase: str, progress: int) -> None:
+        value = max(self._last_progress, min(100, int(progress)))
+        if value == self._last_progress and value not in {0, 100}:
+            return
+        self._last_progress = value
+        callback = self._progress_callback
+        if callback is None:
+            return
+        try:
+            callback(phase, value)
+        except Exception:
+            pass
+
+    def _report_line_progress(self, line: str) -> None:
+        normalized = str(line or "").lower()
+        for marker, phase, progress in _PROGRESS_MARKERS:
+            if marker in normalized:
+                self._report_progress(phase, progress)
+                return
 
     def _check_assets(self) -> str:
         """回傳空字串表示 OK；否則回傳第一個錯誤的 detail。
@@ -368,16 +418,6 @@ def _is_cuda_error(detail: str) -> bool:
     """判斷 detail 是否含有 CUDA/VRAM 啟動失敗的關鍵字（小寫比對）。"""
     lower = detail.lower()
     return any(kw in lower for kw in _CUDA_ERROR_KEYWORDS)
-
-
-def _is_gpu_health_timeout(state: VisionRuntimeState) -> bool:
-    """Allow CPU fallback when GPU loading stalls without a CUDA error message."""
-    return (
-        state.name == "failed"
-        and state.mode == "gpu"
-        and state.detail.startswith("health_timeout:")
-        and ("load_model" in state.detail.lower() or "loading model" in state.detail.lower())
-    )
 
 
 def _default_urlopen() -> Callable:

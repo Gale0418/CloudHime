@@ -62,6 +62,7 @@ from ocr_quality import (
     score_ocr_items as quality_score_ocr_items,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
+from ocr_text_processing import normalize_ocr_text
 from ocr_backend_installer import detect_backend_state
 from ocr_refinement import (
     normalize_translation_compare_text,
@@ -207,7 +208,7 @@ def merge_horizontal_lines(items):
                 if cand['x'] - x2 < (base['h'] * 2.0):
                     joiner = "" if needs_cjk_tight_join(text, cand['text']) else " "
                     text += joiner + cand['text']
-                    x2 = cand['x'] + cand['w']
+                    x2 = max(x2, cand['x'] + cand['w'])
                     y2 = max(y2, cand['y'] + cand['h'])
                     y1 = min(y1, cand['y'])
                     next_idx += 1

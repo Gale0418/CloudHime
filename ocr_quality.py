@@ -117,7 +117,7 @@ def merge_horizontal_lines(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if cand["x"] - x2 < (base["h"] * 2.0):
                     joiner = "" if needs_cjk_tight_join(text, cand["text"]) else " "
                     text += joiner + cand["text"]
-                    x2 = cand["x"] + cand["w"]
+                    x2 = max(x2, cand["x"] + cand["w"])
                     y2 = max(y2, cand["y"] + cand["h"])
                     y1 = min(y1, cand["y"])
                     cand_confidence = _normalize_confidence(cand.get("confidence"))

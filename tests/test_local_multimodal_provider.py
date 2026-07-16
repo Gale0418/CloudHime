@@ -58,6 +58,30 @@ def test_translate_multimodal_prompt_includes_dictionary_hint():
     assert "'TWO POINT MUSEUM' -> '雙點博物館'" in captured["prompt"]
 
 
+def test_translate_text_reuses_multimodal_runtime_and_cache():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        return "翻譯結果"
+
+    provider._request_chat_completion = fake_request
+
+    first = provider.translate("Translate me")
+    second = provider.translate("Translate me")
+
+    assert first.text == "翻譯結果"
+    assert first.from_cache is False
+    assert second.text == "翻譯結果"
+    assert second.from_cache is True
+    assert len(payloads) == 1
+    assert payloads[0]["messages"][0]["content"] == [
+        {"type": "text", "text": payloads[0]["messages"][0]["content"][0]["text"]}
+    ]
+    assert payloads[0]["response_format"] == {"type": "text"}
+
+
 def test_transcribe_screenshot_raises_on_empty_response():
     provider = make_provider()
 
@@ -87,6 +111,27 @@ def test_embedded_provider_is_available_only_after_runtime_ready():
 
     provider.update_runtime("", "", ready=False)
     assert provider.available() is False
+
+def test_transcribe_screenshot_marks_ocr_hint_as_untrusted():
+    provider = make_provider()
+    captured = {}
+
+    def fake_request(payload):
+        captured["prompt"] = payload["messages"][0]["content"][0]["text"]
+        return "修正結果"
+
+    provider._request_chat_completion = fake_request
+    result = provider.transcribe_screenshot(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+        source_text_hint="可能有誤",
+        ocr_prompt="STRICT OCR",
+    )
+
+    assert result.text == "修正結果"
+    assert "may contain recognition errors" in captured["prompt"]
+    assert "return one final transcription" in captured["prompt"]
+    assert captured["prompt"].endswith("OCR hint:\n可能有誤")
+
 
 def test_transcribe_screenshot_accepts_ocr_prompt_override() -> None:
     provider = make_provider()
