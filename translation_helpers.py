@@ -672,9 +672,9 @@ def clean_model_output(text: Any) -> str:
         if not line:
             continue
         line = re.sub(r"^[*\-\s]+", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
-            continue
         line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        if re.match(r"^(Input|Task|OCR text|Source text)\s*[:：]", line, re.IGNORECASE):
+            continue
         lines.append(line)
 
     if not lines:
@@ -696,11 +696,6 @@ def clean_model_output(text: Any) -> str:
             parts = re.split(r"[:：]", line, maxsplit=1)
             if len(parts) == 2 and HAS_CJK_PATTERN.search(parts[1]):
                 candidates.append(parts[1].strip(" \"'"))
-                continue
-
-        stripped = line.strip(" \"'")
-        if HAS_CJK_PATTERN.search(stripped):
-            candidates.append(stripped)
 
     if candidates:
         candidates.sort(key=lambda item: (len(item), item))
@@ -720,9 +715,9 @@ def clean_model_output_multiline(text: Any) -> str:
         if not line:
             continue
         line = re.sub(r"^[*\-\s]+", "", line)
-        if re.match(r"^(Input|Task|OCR text|Source text|Translation)\s*[:：]", line, re.IGNORECASE):
-            continue
         line = re.sub(r"^(Translation|Output)\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        if re.match(r"^(Input|Task|OCR text|Source text)\s*[:：]", line, re.IGNORECASE):
+            continue
         line = line.strip(" \"'")
         if line:
             lines.append(line)
@@ -791,7 +786,7 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
             return []
         index = item.get("index")
         translation = item.get("translation", "")
-        if not isinstance(index, int) or not (0 <= index < expected_count):
+        if type(index) is not int or not (0 <= index < expected_count):
             return []
         if index in seen:
             return []
@@ -894,9 +889,10 @@ def build_gemma_screenshot_prompt_v2(
     )
 
 
-def clean_screenshot_translation_output(text: Any) -> str:
+def clean_screenshot_translation_output(text: Any, target_lang: Any = GOOGLE_TARGET_LANG) -> str:
     if not text:
         return ""
+    is_english_target = normalize_target_lang(target_lang) == "en"
     candidate = str(text).strip().replace("```json", "").replace("```JSON", "").replace("```", "").strip()
     start = candidate.find("{")
     end = candidate.rfind("}")
@@ -916,6 +912,11 @@ def clean_screenshot_translation_output(text: Any) -> str:
         line = raw_line.strip()
         if not line:
             continue
+        line = re.sub(r"^Translation\s*[:：]\s*", "", line, flags=re.IGNORECASE)
+        if not line:
+            continue
+        if re.match(r"^(Input|Task|OCR text|Source text)\s*[:：]", line, re.IGNORECASE):
+            continue
         lower = line.lower()
         if re.match(r"^(text|translation|output|meaning|context|right column|left column|furigana|romanization)\s*[:：]", lower):
             continue
@@ -923,13 +924,13 @@ def clean_screenshot_translation_output(text: Any) -> str:
             continue
         if re.search(r"[\u3040-\u30ff]", line):
             continue
-        if re.search(r"[A-Za-z]{4,}", line) and not HAS_CJK_PATTERN.search(line):
+        if not is_english_target and re.search(r"[A-Za-z]{4,}", line) and not HAS_CJK_PATTERN.search(line):
             continue
         lines.append(line)
     return "\n".join(lines).strip()
 
 
-def is_valid_screenshot_translation(text: Any) -> bool:
+def is_valid_screenshot_translation(text: Any, target_lang: Any = GOOGLE_TARGET_LANG) -> bool:
     if not text:
         return False
     normalized = str(text).strip()
@@ -937,6 +938,9 @@ def is_valid_screenshot_translation(text: Any) -> bool:
         return False
     if re.search(r"[\u3040-\u30ff]", normalized):
         return False
+    is_english_target = normalize_target_lang(target_lang) == "en"
+    if is_english_target:
+        return bool(re.search(r"[A-Za-z]", normalized))
     if re.search(r"[A-Za-z]", normalized):
         return False
     if not HAS_CJK_PATTERN.search(normalized):

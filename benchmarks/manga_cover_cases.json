@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "description": "Public-domain manga and illustrated-magazine cover holdout cases for OCR and local multimodal evaluation.",
+  "usage_policy": {
+    "split": "test",
+    "holdout_only": true,
+    "allow_threshold_training": false,
+    "allow_prompt_tuning": false,
+    "selection_rule": "Evaluate per difficulty tag; do not merge into the regular UI screenshot average."
+  },
+  "cases": [
+    {
+      "id": "manga-cover-tobae-1888",
+      "image": "example/manga_cover_pd_1888_tobae.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Tobae.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/f/fe/Tobae.jpg",
+      "license": "Public Domain Mark",
+      "creator": "Georges Ferdinand Bigot",
+      "year": 1888,
+      "width": 1090,
+      "height": 1518,
+      "bytes": 1031520,
+      "sha256": "83ac021ff5e5d41af0ec3b688b123b046390bcb9bc18c067c981655e2ad653e6",
+      "visible_text_anchors": [
+        "TÔBAÉ"
+      ],
+      "difficulty_tags": [
+        "hand_drawn_title",
+        "line_art",
+        "irregular_glyphs",
+        "illustration_overlap"
+      ]
+    },
+    {
+      "id": "manga-cover-shojo-sekai-1906",
+      "image": "example/manga_cover_pd_1906_shojo_sekai.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Sh%C5%8Djo_Sekai_first_issue.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/9/99/Sh%C5%8Djo_Sekai_first_issue.jpg",
+      "license": "Public Domain (PD-Japan-oldphoto, PD-1996)",
+      "creator": "Hakubunkan",
+      "year": 1906,
+      "width": 424,
+      "height": 626,
+      "bytes": 332320,
+      "sha256": "eaa1e76db068fdaaa6d8d61eb22bccdb5dcc8406674a783631e5f0756e86db2a",
+      "visible_text_anchors": [
+        "少女世界"
+      ],
+      "difficulty_tags": [
+        "historic_orthography",
+        "right_to_left_layout",
+        "decorative_title",
+        "aged_print"
+      ]
+    },
+    {
+      "id": "manga-cover-shojo-gaho-1926",
+      "image": "example/manga_cover_pd_1926_shojo_gaho.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Shojo_gaho_1926_09.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/b/ba/Shojo_gaho_1926_09.jpg",
+      "license": "Public Domain (PD-Japan, PD-US, PD-scan)",
+      "creator": "Kasho Takabatake / Tokyo-sha",
+      "year": 1926,
+      "width": 2809,
+      "height": 4096,
+      "bytes": 3801096,
+      "sha256": "03dbae28ec898328ff2504e0829ed96ecdca8a7703624ede0e322ff183f0eb7e",
+      "visible_text_anchors": [
+        "少女畫報"
+      ],
+      "difficulty_tags": [
+        "decorative_title",
+        "multicolor_text",
+        "small_print",
+        "illustration_overlap"
+      ]
+    },
+    {
+      "id": "manga-cover-shochan-1923",
+      "image": "example/manga_cover_pd_1923_shochan_no_boken.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Shochan_no_boken.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/1/19/Shochan_no_boken.jpg",
+      "license": "Public Domain (PD-US-expired, PD-Japan)",
+      "creator": "Katsuichi Kabashima and Shosei Oda",
+      "year": 1923,
+      "width": 760,
+      "height": 540,
+      "bytes": 71253,
+      "sha256": "b981f743c29eb4122803e8f497494d29fbb886587347b8c3a306aea39f537c8f",
+      "visible_text_anchors": [
+        "正チャンの冒険"
+      ],
+      "difficulty_tags": [
+        "stylized_title",
+        "mixed_orientation",
+        "line_art",
+        "aged_print"
+      ]
+    },
+    {
+      "id": "manga-cover-shonen-club-1929",
+      "image": "example/manga_cover_pd_1929_shonen_club.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Sh%C5%8Dnen_Club_April_1929.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/3/3e/Sh%C5%8Dnen_Club_April_1929.jpg",
+      "license": "Public Domain (Japan and United States)",
+      "creator": "Isoe Saito / Kodansha",
+      "year": 1929,
+      "width": 280,
+      "height": 404,
+      "bytes": 153000,
+      "sha256": "97dfcefb1a1029c8597c19926d2d08977ded2e069b94184640dda0908e3e5f7b",
+      "visible_text_anchors": [
+        "少年倶楽部"
+      ],
+      "difficulty_tags": [
+        "low_resolution",
+        "small_print",
+        "aged_print",
+        "illustration_overlap"
+      ]
+    },
+    {
+      "id": "manga-cover-jikyoku-1943",
+      "image": "example/manga_cover_pd_1943_jikyoku_manga.jpg",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Japanese_caricature_of_Franklin_Roosevelt_on_the_cover_of_Manga,_August_1943.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/5/54/Japanese_caricature_of_Franklin_Roosevelt_on_the_cover_of_Manga%2C_August_1943.jpg",
+      "license": "Public Domain (PD-Japan-organization, PD-1996, PD-US)",
+      "creator": "Unknown",
+      "year": 1943,
+      "width": 1562,
+      "height": 2260,
+      "bytes": 856235,
+      "sha256": "a60dddff610bc676a960f21dbab2e8514695f577aa874e465e81f7ee41bf431d",
+      "visible_text_anchors": [
+        "漫画"
+      ],
+      "difficulty_tags": [
+        "high_contrast",
+        "caricature",
+        "text_image_overlap",
+        "historic_print"
+      ]
+    }
+  ]
+}

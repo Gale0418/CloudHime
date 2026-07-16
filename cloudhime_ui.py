@@ -77,6 +77,7 @@ import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider
 from settings_store import (
+    appdata_companion_path,
     create_settings_paths,
     extract_backend_chain,
     load_settings_data,
@@ -113,6 +114,29 @@ HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
 SETTINGS_PATHS = create_settings_paths(os.path.dirname(__file__))
+APPDATA_ENV_PATH = appdata_companion_path(SETTINGS_PATHS, ".env")
+LEGACY_ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+UI_ERROR_LOG_PATH = appdata_companion_path(SETTINGS_PATHS, "cloudhime_ui_errors.log")
+
+
+def _read_api_key_from_env_files(env_paths) -> str:
+    for env_path in env_paths:
+        try:
+            if not os.path.exists(env_path):
+                continue
+            with open(env_path, "r", encoding="utf-8") as env_file:
+                for line in env_file:
+                    if line.startswith(f"{API_KEY_ENV_VAR}="):
+                        api_key = line.strip().split("=", 1)[1].strip()
+                        if api_key:
+                            return api_key
+                        break
+        except (OSError, UnicodeError) as exc:
+            logger.warning("Failed to read API key file %s: %s", env_path, exc)
+            continue
+    return ""
+
+
 MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
@@ -261,13 +285,17 @@ class TransBubble(QLabel):
             bubble_rect, best_size = self.compute_screenshot_layout(text, x, y, w, h)
         else:
             bubble_rect, best_size = self.compute_bubble_layout(text, x, y, w, h, tight=True)
-        font = self.font()
-        font.setFamily("Microsoft JhengHei")
-        font.setPointSizeF(best_size)
-        font.setBold(True)
-        self.setFont(font)
+        self.setFont(self._get_bubble_font(best_size))
         self.setGeometry(bubble_rect)
         self.show()
+
+    def _get_bubble_font(self, size=None):
+        parent = self.parentWidget()
+        font = QFont(parent.font() if parent is not None else QApplication.font())
+        font.setBold(True)
+        if size is not None:
+            font.setPointSizeF(float(size))
+        return font
 
     def set_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
@@ -296,9 +324,7 @@ class TransBubble(QLabel):
         self.repaint()
 
     def fit_text_strictly(self, text, w, h, max_size=30):
-        font = self.font()
-        font.setFamily("Microsoft JhengHei")
-        font.setBold(True)
+        font = self._get_bubble_font()
         # 扣掉 Padding，確保文字有足夠的內縮空間不會被截斷
         text_w = max(1, w - self.text_padding * 2)
         text_h = max(1, h - self.text_padding * 2)
@@ -312,10 +338,7 @@ class TransBubble(QLabel):
         return float(MIN_BUBBLE_FONT_PT)
 
     def measure_text_height(self, text, w, point_size):
-        font = self.font()
-        font.setFamily("Microsoft JhengHei")
-        font.setBold(True)
-        font.setPointSizeF(float(point_size))
+        font = self._get_bubble_font(point_size)
         return QFontMetrics(font).boundingRect(
             0,
             0,
@@ -388,9 +411,7 @@ class TransBubble(QLabel):
         font_size = float(self.relief_font_pt)
 
         # 單行量測：用實際字型寬度決定氣泡大小，不換行
-        font = QFont("Microsoft JhengHei")
-        font.setBold(True)
-        font.setPointSizeF(font_size)
+        font = self._get_bubble_font(font_size)
         fm = QFontMetrics(font)
         bubble_w = fm.horizontalAdvance(text) + self.text_padding * 2
         bubble_h = fm.height() + self.text_padding * 2
@@ -2615,6 +2636,7 @@ class Controller(QWidget):
         self.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
         self.local_multimodal_model = "gemma-3-4b-it"
         self.local_multimodal_timeout_seconds = 20
+        self.japanese_ocr_rescue_enabled = False
         self.was_minimized = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
         self.selected_region = None
@@ -2793,6 +2815,7 @@ class Controller(QWidget):
         self.worker.gemma_model_changed.connect(self.on_worker_gemma_model_changed)
         self.worker.local_model_status.connect(self.on_local_model_status)
         self.worker.local_vision_status.connect(self.on_local_vision_status)
+        self.worker.japanese_rescue_status.connect(self.on_japanese_rescue_status)
         self.ocr_thread.start()
         
         self.auto_timer = QTimer(self)
@@ -2895,17 +2918,23 @@ class Controller(QWidget):
         payload = {
             "gemma_model": self.worker.gemma_model,
             "gemma_prompt": self.gemma_prompt,
+            "local_gemma_temperature": float(
+                getattr(self, "local_gemma_temperature", 0.2)
+            ),
+            "local_gemma_repeat_penalty": float(
+                getattr(self, "local_gemma_repeat_penalty", 1.15)
+            ),
             "screenshot_gemma_prompt": self.screenshot_gemma_prompt,
             "use_gemma_translation": self.worker.use_gemma_translation,
             "auto_threshold_enabled": self.worker.auto_threshold_enabled,
             "auto_threshold_refresh_minutes": int(self.auto_threshold_refresh_minutes),
             "google_ocr_enabled": self.google_ocr_enabled,
             "gemma_auto_switch_enabled": self.worker.gemma_auto_switch_enabled,
-            "google_api_key": self.worker.google_api_key,
             "local_multimodal_enabled": bool(getattr(self.worker, "local_multimodal_enabled", getattr(self, "local_multimodal_enabled", False))),
             "local_multimodal_base_url": str(getattr(self.worker, "local_multimodal_base_url", getattr(self, "local_multimodal_base_url", "http://127.0.0.1:8080/v1")) or "http://127.0.0.1:8080/v1"),
             "local_multimodal_model": str(getattr(self.worker, "local_multimodal_model", getattr(self, "local_multimodal_model", "gemma-3-4b-it")) or "gemma-3-4b-it"),
             "local_multimodal_timeout_seconds": int(getattr(self.worker, "local_multimodal_timeout_seconds", getattr(self, "local_multimodal_timeout_seconds", 20))),
+            "japanese_ocr_rescue_enabled": bool(getattr(self, "japanese_ocr_rescue_enabled", False)),
             "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
@@ -2930,7 +2959,7 @@ class Controller(QWidget):
         except Exception as exc:
             logger.error(f"[Settings] save failed: {exc}")
             try:
-                log_path = os.path.join(os.path.dirname(__file__), "cloudhime_ui_errors.log")
+                log_path = UI_ERROR_LOG_PATH
                 with open(log_path, "a", encoding="utf-8") as fp:
                     fp.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] save_settings failed: {exc}\n")
                     fp.write(traceback.format_exc())
@@ -3012,15 +3041,11 @@ class Controller(QWidget):
 
             env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
             
-            # Manually parse .env as fallback since python-dotenv is not used
+            # Read the AppData copy first, with the install-adjacent file kept as a migration fallback.
             if not env_api_key:
-                env_path = os.path.join(os.path.dirname(__file__), ".env")
-                if os.path.exists(env_path):
-                    with open(env_path, "r", encoding="utf-8") as f:
-                        for line in f:
-                            if line.startswith(f"{API_KEY_ENV_VAR}="):
-                                env_api_key = line.strip().split("=", 1)[1].strip()
-                                break
+                env_api_key = _read_api_key_from_env_files(
+                    (APPDATA_ENV_PATH, LEGACY_ENV_PATH)
+                )
 
             legacy_api_key = str(settings.get("google_api_key", "") or "").strip()
             api_key = env_api_key or legacy_api_key
@@ -3074,6 +3099,10 @@ class Controller(QWidget):
                 base_url=self.local_multimodal_base_url,
                 model_name=self.local_multimodal_model,
                 timeout_seconds=self.local_multimodal_timeout_seconds,
+            )
+            self.japanese_ocr_rescue_enabled = bool(settings.get("japanese_ocr_rescue_enabled", False))
+            self.worker.set_japanese_rescue_enabled(
+                self.japanese_ocr_rescue_enabled and self.local_multimodal_enabled
             )
 
             saved_theme_mode = str(settings.get("theme_mode", "") or "").strip()
@@ -3319,9 +3348,10 @@ class Controller(QWidget):
     def on_api_key_changed(self, text):
         self.worker.set_google_api_key(text)
         
-        # Save to .env
-        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        # Store user secrets beside settings, never in the read-only package directory.
+        env_path = APPDATA_ENV_PATH
         try:
+            os.makedirs(os.path.dirname(env_path), exist_ok=True)
             env_vars = {}
             if os.path.exists(env_path):
                 with open(env_path, "r", encoding="utf-8") as f:
@@ -3332,9 +3362,9 @@ class Controller(QWidget):
             env_vars[API_KEY_ENV_VAR] = text.strip()
             with open(env_path, "w", encoding="utf-8") as f:
                 for k, v in env_vars.items():
-                    f.write(f"{k}={v}\\n")
+                    f.write(f"{k}={v}\n")
         except Exception as e:
-            logger.error(f"Failed to save API key to .env: {e}")
+            logger.error(f"Failed to save API key to AppData: {e}")
 
         if self.input_api_key.text() != text:
             self.input_api_key.blockSignals(True)
@@ -3462,11 +3492,27 @@ class Controller(QWidget):
             model_name=self.local_multimodal_model,
             timeout_seconds=self.local_multimodal_timeout_seconds,
         )
+        rescue_setter = getattr(self.worker, "set_japanese_rescue_enabled", None)
+        if callable(rescue_setter):
+            rescue_setter(
+                bool(getattr(self, "japanese_ocr_rescue_enabled", False))
+                and self.local_multimodal_enabled
+            )
         self.schedule_save_settings()
 
     def on_local_multimodal_enabled_changed(self, enabled):
         self.local_multimodal_enabled = bool(enabled)
         self._push_local_multimodal_config()
+
+    def on_japanese_ocr_rescue_enabled_changed(self, enabled):
+        self.japanese_ocr_rescue_enabled = bool(enabled)
+        rescue_setter = getattr(self.worker, "set_japanese_rescue_enabled", None)
+        if callable(rescue_setter):
+            rescue_setter(
+                bool(getattr(self, "japanese_ocr_rescue_enabled", False))
+                and self.local_multimodal_enabled
+            )
+        self.schedule_save_settings()
 
     def on_local_multimodal_base_url_changed(self, base_url):
         self.local_multimodal_base_url = str(base_url or "").strip().rstrip("/")
@@ -3611,7 +3657,7 @@ class Controller(QWidget):
 
     def log_ui_error(self, context, exc):
         try:
-            log_path = os.path.join(os.path.dirname(__file__), "cloudhime_ui_errors.log")
+            log_path = UI_ERROR_LOG_PATH
             with open(log_path, "a", encoding="utf-8") as fp:
                 fp.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {context}: {exc}\n")
                 fp.write(traceback.format_exc())
@@ -3930,39 +3976,121 @@ class Controller(QWidget):
         self.local_vision_state = state
         self.local_vision_detail = detail
         theme = resolve_theme(self.theme_mode)
+        english = self.get_ui_language() == "en"
+
+        if state == "progress":
+            try:
+                progress_text, phase = detail.split("|", 1)
+                progress = max(0, min(100, int(progress_text)))
+            except (TypeError, ValueError):
+                progress, phase = 0, "starting_server"
+            phase_labels = {
+                "checking_disk": "Checking disk space" if english else "檢查磁碟空間",
+                "checking_assets": "Checking model files" if english else "檢查模型檔案",
+                "downloading": "Downloading Gemma model" if english else "下載 Gemma 模型",
+                "verifying": "Verifying model files" if english else "驗證模型檔案",
+                "starting_server": "Starting embedded server" if english else "啟動內嵌伺服器",
+                "loading_model": "Reading Gemma model" if english else "讀取 Gemma 模型",
+                "loading_tensors": "Loading model weights" if english else "載入模型權重",
+                "initializing": "Initializing GPU and context" if english else "初始化 GPU 與上下文",
+                "warming_up": "Warming up model" if english else "執行模型暖身",
+                "model_loaded": "Model loaded, checking service" if english else "模型已載入，確認服務",
+                "ready": "Model warm-up complete" if english else "模型暖身完成",
+            }
+            label = phase_labels.get(
+                phase,
+                "Loading Gemma Vision" if english else "載入 Gemma Vision",
+            )
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            self.charge_bar.set_progress(progress, f"{label} {progress}%")
+            suffix = "..." if progress < 100 else ""
+            self.lbl_status.setText(f"{label}{suffix} ({progress}%)" if progress < 100 else label)
+            return
 
         if state == "starting":
             colors = build_charge_bar_colors(theme, "normal")
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
-            label = "Gemma Vision 載入中"
+            label = "Loading Gemma Vision" if english else "Gemma Vision 載入中"
             self.charge_bar.set_indeterminate(True, label)
-            self.lbl_status.setText("正在啟動內嵌多模態伺服器...")
+            self.lbl_status.setText(
+                "Preparing the embedded multimodal engine..."
+                if english else "正在準備內嵌多模態引擎..."
+            )
             return
         if state == "ready":
             colors = build_charge_bar_colors(theme, "normal")
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
-            self.charge_bar.set_progress(100, "Gemma Vision 已就緒")
-            self.lbl_status.setText("內嵌 Gemma Vision 已就緒")
+            self.charge_bar.set_progress(100, "Gemma Vision ready" if english else "Gemma Vision 已就緒")
+            self.lbl_status.setText(
+                "Embedded Gemma Vision is ready"
+                if english else "內嵌 Gemma Vision 已就緒"
+            )
             return
 
         colors = build_charge_bar_colors(theme, "danger")
         self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
-        
+
         if state == "missing":
-            bar_text = "缺少 Vision 模型"
-            status_text = "找不到內嵌多模態模型檔案"
+            bar_text = "Vision model missing" if english else "缺少 Vision 模型"
+            status_text = "Embedded multimodal model files were not found" if english else "找不到內嵌多模態模型檔案"
         elif state == "stopped":
-            bar_text = "Vision 已停止"
-            status_text = "內嵌多模態伺服器已停止"
+            bar_text = "Vision stopped" if english else "Vision 已停止"
+            status_text = "Embedded multimodal server stopped" if english else "內嵌多模態伺服器已停止"
         else:
-            bar_text = "Gemma Vision 啟動失敗"
-            status_text = "內嵌多模態啟動失敗"
-            
+            bar_text = "Gemma Vision failed" if english else "Gemma Vision 啟動失敗"
+            status_text = "Embedded multimodal startup failed" if english else "內嵌多模態啟動失敗"
+
         if detail:
-            status_text += f"：{detail}"
-            
+            status_text += (f": {detail}" if english else f"：{detail}")
+
         self.charge_bar.set_progress(0, bar_text)
         self.lbl_status.setText(status_text)
+    def on_japanese_rescue_status(self, state, detail=""):
+        state = str(state or "failed")
+        detail = str(detail or "")
+        if state == "disabled":
+            return
+        english = self.get_ui_language() == "en"
+        labels = {
+            "downloading": "Downloading Japanese OCR model" if english else "下載日文 OCR 模型",
+            "warming_up": "Warming up Japanese OCR" if english else "暖身日文 OCR",
+            "ready": "Japanese OCR ready" if english else "日文 OCR 已就緒",
+            "preparing": "Preparing Japanese OCR" if english else "準備日文 OCR",
+            "failed": "Japanese OCR failed" if english else "日文 OCR 啟動失敗",
+        }
+        theme = resolve_theme(self.theme_mode)
+        colors = build_charge_bar_colors(theme, "danger" if state == "failed" else "normal")
+        self.charge_bar.set_theme_colors(
+            colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"]
+        )
+        if state == "progress":
+            try:
+                progress_text, phase = detail.split("|", 1)
+                progress = max(0, min(100, int(progress_text)))
+            except (TypeError, ValueError):
+                progress, phase = 0, "downloading"
+            label = labels.get(phase, labels["preparing"])
+            self.charge_bar.set_progress(progress, f"{label} {progress}%")
+            self.lbl_status.setText(f"{label}... ({progress}%)" if progress < 100 else label)
+        elif state == "starting":
+            self.charge_bar.set_indeterminate(True, labels["preparing"])
+            self.lbl_status.setText(
+                "Preparing Japanese game subtitle OCR in the background..."
+                if english else "正在背景準備日文遊戲字幕 OCR..."
+            )
+        elif state == "ready":
+            self.charge_bar.set_progress(100, labels["ready"])
+            self.lbl_status.setText(
+                "Accurate Japanese game subtitle OCR is ready"
+                if english else "日文遊戲字幕精準 OCR 已就緒"
+            )
+        else:
+            self.charge_bar.set_progress(0, labels["failed"])
+            separator = ": " if english else "："
+            self.lbl_status.setText(
+                f"{labels['failed']}{separator}{detail}" if detail else labels["failed"]
+            )
 
     def close_app(self):
         self.save_settings()

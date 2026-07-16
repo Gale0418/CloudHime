@@ -62,7 +62,7 @@ class GoogleTranslationProvider:
 
     def __init__(self, *, target_lang: str = "zh-TW"):
         self.target_lang = target_lang
-        self._translators: dict[str, GoogleTranslator] = {}
+        self._translators: dict[tuple[str, str], GoogleTranslator] = {}
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._dictionary = load_translation_dictionary()
 
@@ -75,11 +75,12 @@ class GoogleTranslationProvider:
     def available(self) -> bool:
         return True
 
-    def _get_translator(self, source_lang: str) -> GoogleTranslator:
-        translator = self._translators.get(source_lang)
+    def _get_translator(self, source_lang: str, target_lang: str) -> GoogleTranslator:
+        cache_key = (source_lang, target_lang)
+        translator = self._translators.get(cache_key)
         if translator is None:
-            translator = GoogleTranslator(source=source_lang, target=self.target_lang)
-            self._translators[source_lang] = translator
+            translator = GoogleTranslator(source=source_lang, target=target_lang)
+            self._translators[cache_key] = translator
         return translator
 
     def _get_cached(self, cache_key: Any):
@@ -104,12 +105,13 @@ class GoogleTranslationProvider:
         normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return TranslationResult(text="", provider=self.name)
+        resolved_target = target_lang or self.target_lang
         source_lang = source_lang if source_lang != "auto" else detect_source_language(normalized)
-        cache_key = (source_lang, normalized, target_lang or self.target_lang)
+        cache_key = (source_lang, normalized, resolved_target)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, from_cache=True)
-        translator = self._get_translator(source_lang)
+        translator = self._get_translator(source_lang, resolved_target)
         source_for_translation = apply_dictionary_pre_translation(normalized, self._dictionary)
         translated_raw = translator.translate(source_for_translation)
         if not isinstance(translated_raw, str):
@@ -130,6 +132,7 @@ class GoogleTranslationProvider:
         normalized_texts = [clean_model_output(text).strip() if text else "" for text in texts]
         if not normalized_texts or any(not text for text in normalized_texts):
             return []
+        resolved_target = target_lang or self.target_lang
 
         translated = [None] * len(normalized_texts)
         index = 0
@@ -145,10 +148,10 @@ class GoogleTranslationProvider:
                 group_texts.append(normalized_texts[index])
                 index += 1
 
-            cache_key = ("google-batch", batch_source_lang, tuple(group_texts), target_lang or self.target_lang)
+            cache_key = ("google-batch", batch_source_lang, tuple(group_texts), resolved_target)
             batch_result = self._get_cached(cache_key)
             if batch_result is None:
-                translator = self._get_translator(batch_source_lang)
+                translator = self._get_translator(batch_source_lang, resolved_target)
                 prepared_group_texts = [
                     apply_dictionary_pre_translation(item, self._dictionary)
                     for item in group_texts
@@ -166,7 +169,7 @@ class GoogleTranslationProvider:
                 self._remember(cache_key, batch_result)
             for offset, line in enumerate(batch_result):
                 translated[group_start + offset] = TranslationResult(text=line, provider=self.name)
-                self._remember((batch_source_lang, group_texts[offset], target_lang or self.target_lang), line)
+                self._remember((batch_source_lang, group_texts[offset], resolved_target), line)
 
         return [item for item in translated if item is not None]
 
@@ -253,15 +256,17 @@ class GemmaTranslationProvider:
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
 
-    def _build_prompt(self, text: str) -> str:
+    def _build_prompt(self, text: str, target_lang: str | None = None) -> str:
         """用自訂 prompt 結合模型特定的預設 prompt。"""
+        resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(text, self._dictionary)
         custom_prompt = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
-        return build_gemma_prompt_with_override(text, custom_prompt, self.target_lang, self.gemma_model)
+        return build_gemma_prompt_with_override(text, custom_prompt, resolved_target, self.gemma_model)
 
-    def _build_multimodal_prompt(self, texts) -> str:
+    def _build_multimodal_prompt(self, texts, target_lang: str | None = None) -> str:
         """多模態版，自訂 prompt 附加在前面（保留原有格式）。"""
-        base = build_gemma_multimodal_prompt(texts, target_lang=self.target_lang)
+        resolved_target = target_lang or self.target_lang
+        base = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
         dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
         custom = "\n\n".join(part for part in (self.gemma_prompt.strip(), dictionary_hint) if part)
         if not custom:
@@ -281,11 +286,11 @@ class GemmaTranslationProvider:
         因為截圖模式有專用prompt，應該信任AI模型的輸出
         """
         translated_str = str(translated_text or "")
-        
+
         # 只有在完全沒有輸出時才fallback
         if len(translated_str.strip()) < 1:
             return True
-            
+
         # 其他情況都信任截圖模式的輸出
         return False
 
@@ -310,12 +315,12 @@ class GemmaTranslationProvider:
         """如果需要，等待直到可以進行下一次調用"""
         self._prune_timestamps(model_name)
         timestamps = self._call_timestamps.get(model_name, [])
-        
+
         if len(timestamps) >= self._max_calls_for_model(model_name):
             # 計算需要等待的時間
             oldest_timestamp = timestamps[0]
             wait_time = GEMMA_RATE_LIMIT_WINDOW_SEC - (time.monotonic() - oldest_timestamp)
-            
+
             if wait_time > 0:
                 print(f"⏳ 速率限制：等待 {wait_time:.1f} 秒避免429錯誤...")
                 time.sleep(wait_time + 1)  # 額外1秒緩衝
@@ -419,18 +424,19 @@ class GemmaTranslationProvider:
         normalized = clean_model_output(text).strip() if text else ""
         if not normalized:
             return
+        resolved_target = target_lang or self.target_lang
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self._resolve_model()
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
         # 快取命中時直接 yield 完整結果
-        cache_key = ("gemma", model_name, normalized, target_lang or self.target_lang, self.gemma_prompt)
+        cache_key = ("gemma", model_name, normalized, resolved_target, self.gemma_prompt)
         cached = self._get_cached(cache_key)
         if cached is not None:
             yield str(cached)
             return
-        prompt = self._build_prompt(normalized)
+        prompt = self._build_prompt(normalized, resolved_target)
         accumulated = ""
         for chunk in self._stream_request(model_name, prompt, max_output_tokens=1024, temperature=0.2):
             accumulated += chunk
@@ -449,6 +455,7 @@ class GemmaTranslationProvider:
         normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return TranslationResult(text="", provider=self.name, model=self.gemma_model)
+        resolved_target = target_lang or self.target_lang
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self._resolve_model()
@@ -458,7 +465,7 @@ class GemmaTranslationProvider:
             "gemma",
             model_name,
             normalized,
-            target_lang or self.target_lang,
+            resolved_target,
             self.gemma_prompt,
         )
         cached = self._get_cached(cache_key)
@@ -466,11 +473,11 @@ class GemmaTranslationProvider:
             return TranslationResult(text=str(cached), provider=self.name, model=model_name, from_cache=True)
         payload = self._request(
             model_name,
-            self._build_prompt(normalized),
+            self._build_prompt(normalized, resolved_target),
             max_output_tokens=1024,
             temperature=0.2,
         )
-        translated = clean_model_output(extract_gemma_text(payload))
+        translated = clean_model_output_multiline(extract_gemma_text(payload))
         if not translated:
             raise ValueError("empty_gemma_response")
         self._remember(cache_key, translated)
@@ -506,6 +513,7 @@ class GemmaTranslationProvider:
             raise ValueError("missing_image_context")
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
+        resolved_target = target_lang or self.target_lang
         model_name = self._resolve_model()
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
@@ -516,7 +524,7 @@ class GemmaTranslationProvider:
             model_name,
             normalized_texts,
             hashlib.sha1(image_seed.encode("utf-8")).hexdigest(),
-            target_lang or self.target_lang,
+            resolved_target,
             self.gemma_prompt,
         )
         cached = self._get_cached(cache_key)
@@ -529,7 +537,7 @@ class GemmaTranslationProvider:
 
         payload = self._request(
             model_name,
-            self._build_multimodal_prompt(texts),
+            self._build_multimodal_prompt(texts, resolved_target),
             image_parts=image_parts,
             max_output_tokens=2048,
             temperature=0.1,
@@ -555,6 +563,7 @@ class GemmaTranslationProvider:
             raise ValueError("missing_image_context")
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
+        resolved_target = target_lang or self.target_lang
         model_name = self._resolve_model()
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
@@ -564,7 +573,7 @@ class GemmaTranslationProvider:
             "gemma-screenshot",
             model_name,
             hashlib.sha1(cache_seed.encode("utf-8")).hexdigest(),
-            target_lang or self.target_lang,
+            resolved_target,
             self.screenshot_gemma_prompt,
             hashlib.sha1((source_text_hint or "").encode("utf-8")).hexdigest(),
         )
@@ -589,7 +598,7 @@ class GemmaTranslationProvider:
                 source_text_hint,
                 retry_note,
                 custom_prompt,
-                target_lang=target_lang,
+                target_lang=resolved_target,
             )
             try:
                 payload = self._request(
@@ -610,7 +619,7 @@ class GemmaTranslationProvider:
                 except Exception:
                     body = ""
                 if "Image input modality is not enabled" in body and source_text_hint:
-                    return self.translate(source_text_hint, target_lang=target_lang)
+                    return self.translate(source_text_hint, target_lang=resolved_target)
                 if exc.code == 404 and source_text_hint:
                     break
                 if exc.code in {429, 500, 503, 504} and attempt_index < 2:
@@ -625,8 +634,12 @@ class GemmaTranslationProvider:
                     continue
                 raise
             last_raw_text = extract_gemma_text(payload)
-            translated = clean_screenshot_translation_output(last_raw_text)
-            is_valid = is_valid_screenshot_translation(translated)
+            translated = clean_screenshot_translation_output(
+                last_raw_text, target_lang=resolved_target
+            )
+            is_valid = is_valid_screenshot_translation(
+                translated, target_lang=resolved_target
+            )
             if debug_log is not None:
                 debug_log(
                     "\n".join([
@@ -648,7 +661,7 @@ class GemmaTranslationProvider:
                     try:
                         translated = GoogleTranslator(
                             source=detect_source_language(source_text_hint),
-                            target=target_lang or self.target_lang,
+                            target=resolved_target,
                         ).translate(clean_model_output(source_text_hint)).strip()
                     except Exception:
                         translated = ""
@@ -761,6 +774,7 @@ class LocalGemmaProvider:
         enabled: bool | None = None,
         **kwargs
     ) -> None:
+        previous_enabled = self.enabled
         reload_needed = False
         if model_path is not None and model_path != self.model_path:
             self.model_path = model_path
@@ -777,8 +791,8 @@ class LocalGemmaProvider:
             self.temperature = float(kwargs["temperature"])
         if "repeat_penalty" in kwargs and kwargs["repeat_penalty"] is not None:
             self.repeat_penalty = float(kwargs["repeat_penalty"])
-            
-        if reload_needed and self.enabled:
+
+        if self.enabled and (reload_needed or not previous_enabled):
             self._load_model()
 
     def _load_model(self):
@@ -820,15 +834,18 @@ class LocalGemmaProvider:
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
 
-    def _build_prompt(self, text: str) -> str:
+    def _build_prompt(self, text: str, target_lang: str | None = None) -> str:
+        resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(text, self._dictionary)
 
         prompt = ""
-        for src, tgt in self._context_buffer:
+        for src, tgt, context_target in self._context_buffer:
+            if context_target != resolved_target:
+                continue
             prompt += f"<start_of_turn>user\nTranslate:\n{src}<end_of_turn>\n<start_of_turn>model\n{tgt}<end_of_turn>\n"
 
         custom_prompt = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
-        raw_prompt = build_gemma_prompt_with_override(text, custom_prompt, self.target_lang)
+        raw_prompt = build_gemma_prompt_with_override(text, custom_prompt, resolved_target)
         prompt += f"<start_of_turn>user\n{raw_prompt}<end_of_turn>\n<start_of_turn>model\n"
         return prompt
 
@@ -838,15 +855,16 @@ class LocalGemmaProvider:
         normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return
+        resolved_target = target_lang or self.target_lang
 
-        cache_key = ("local_gemma", self.model_path, normalized, target_lang or self.target_lang, self.gemma_prompt)
+        cache_key = ("local_gemma", self.model_path, normalized, resolved_target, self.gemma_prompt)
         cached = self._get_cached(cache_key)
         if cached is not None:
             yield str(cached)
             return
 
-        prompt = self._build_prompt(normalized)
-        
+        prompt = self._build_prompt(normalized, resolved_target)
+
         stream = self._llm.create_completion(
             prompt,
             max_tokens=1024,
@@ -854,7 +872,7 @@ class LocalGemmaProvider:
             repeat_penalty=self.repeat_penalty,
             stream=True
         )
-        
+
         accumulated = ""
         for chunk in stream:
             chunk_text = chunk["choices"][0].get("text", "")
@@ -865,12 +883,12 @@ class LocalGemmaProvider:
         final = clean_model_output_multiline(accumulated)
         final = self._apply_post_processing(normalized, final)
         if self._is_bad_translation(normalized, final):
-            final = self._fallback_translate(normalized, target_lang)
+            final = self._fallback_translate(normalized, resolved_target)
             yield f"\n[Fallback] {final}"
 
         if final:
             self._remember(cache_key, final)
-            self._context_buffer.append((normalized, final))
+            self._context_buffer.append((normalized, final, resolved_target))
 
     def translate(
         self,
@@ -882,6 +900,7 @@ class LocalGemmaProvider:
         normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
             return TranslationResult(text="", provider=self.name, model="local")
+        resolved_target = target_lang or self.target_lang
         if not self.available() or not self._llm:
             raise ValueError("local_model_unavailable")
 
@@ -889,14 +908,14 @@ class LocalGemmaProvider:
             "local_gemma",
             self.model_path,
             normalized,
-            target_lang or self.target_lang,
+            resolved_target,
             self.gemma_prompt,
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, model="local", from_cache=True)
 
-        prompt = self._build_prompt(normalized)
+        prompt = self._build_prompt(normalized, resolved_target)
         response = self._llm.create_completion(
             prompt,
             max_tokens=1024,
@@ -906,16 +925,16 @@ class LocalGemmaProvider:
         raw_text = response["choices"][0]["text"]
         translated = clean_model_output_multiline(raw_text)
         translated = self._apply_post_processing(normalized, translated)
-        
+
         if self._is_bad_translation(normalized, translated):
-            translated = self._fallback_translate(normalized, target_lang)
+            translated = self._fallback_translate(normalized, resolved_target)
             raw_text += " [Fallback]"
 
         if not translated:
             raise ValueError("empty_local_response")
-            
+
         self._remember(cache_key, translated)
-        self._context_buffer.append((normalized, translated))
+        self._context_buffer.append((normalized, translated, resolved_target))
         return TranslationResult(text=translated, provider=self.name, model="local", raw_text=raw_text)
 
     def _apply_post_processing(self, source: str, translated: str) -> str:
@@ -936,8 +955,8 @@ class LocalGemmaProvider:
         try:
             translator = GoogleTranslator(source="auto", target=target_lang or self.target_lang)
             return str(translator.translate(text)).strip()
-        except Exception:
-            return text
+        except Exception as e:
+            raise RuntimeError(f"Fallback translation failed: {e}")
 
 
 class LocalMultimodalProvider:
@@ -951,6 +970,7 @@ class LocalMultimodalProvider:
         self.timeout_seconds = int(timeout_seconds)
         self._runtime_ready = bool(self.base_url and self.model_name)
         self._dictionary = load_translation_dictionary()
+        self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
 
     def available(self) -> bool:
         return self.enabled and self._runtime_ready and bool(self.base_url) and bool(self.model_name)
@@ -999,9 +1019,63 @@ class LocalMultimodalProvider:
             raise ValueError("empty_local_multimodal_response")
         return translated
 
+    def translate(
+        self,
+        text: str,
+        *,
+        source_lang: str = "auto",
+        target_lang: str = "zh-TW",
+    ) -> TranslationResult:
+        if not self.available():
+            raise ValueError("local_multimodal_unavailable")
+        normalized = clean_model_output_multiline(text).strip() if text else ""
+        if not normalized:
+            return TranslationResult(text="", provider=self.name, model=self.model_name)
+        resolved_target = target_lang or self.target_lang
+        cache_key = (self.base_url, self.model_name, normalized, resolved_target)
+        cached = self._translation_cache.get(cache_key)
+        if cached is not None:
+            self._translation_cache.move_to_end(cache_key)
+            return TranslationResult(
+                text=cached.text,
+                provider=self.name,
+                model=self.model_name,
+                raw_text=cached.raw_text,
+                from_cache=True,
+            )
+
+        dictionary_hint = build_dictionary_prompt_hint(normalized, self._dictionary)
+        prompt = build_gemma_prompt_with_override(
+            normalized,
+            dictionary_hint,
+            resolved_target,
+            self.model_name,
+        )
+        raw_text = self._request_chat_completion(
+            self._build_chat_payload(
+                prompt=prompt,
+                image_parts=(),
+                response_format="text",
+            )
+        )
+        translated = clean_model_output_multiline(raw_text).strip()
+        if not translated:
+            raise ValueError("empty_local_multimodal_response")
+        result = TranslationResult(
+            text=translated,
+            provider=self.name,
+            model=self.model_name,
+            raw_text=raw_text,
+        )
+        self._translation_cache[cache_key] = result
+        self._translation_cache.move_to_end(cache_key)
+        if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
+            self._translation_cache.popitem(last=False)
+        return result
     def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
+        resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
-        base_prompt = build_gemma_multimodal_prompt(texts, target_lang=target_lang)
+        base_prompt = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
         prompt = f"{dictionary_hint}\n\n{base_prompt}" if dictionary_hint else base_prompt
         raw_text = self._request_chat_completion(
             self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="json_object")
@@ -1024,19 +1098,26 @@ class LocalMultimodalProvider:
     ) -> TranslationResult:
         prompt = (ocr_prompt or "").strip() or "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
         if source_text_hint:
-            prompt += f"\n\nOCR hint:\n{source_text_hint[:1200]}"
+            prompt += (
+                "\n\nThe OCR hint below may contain recognition errors. "
+                "Use the image as the source of truth and return one final transcription."
+                f"\n\nOCR hint:\n{source_text_hint[:1200]}"
+            )
         raw_text = self._request_chat_completion(
             self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
         )
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
     def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
+        resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
-        prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=target_lang)
+        prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=resolved_target)
         raw_text = self._request_chat_completion(
             self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
         )
-        translated = clean_screenshot_translation_output(raw_text)
+        translated = clean_screenshot_translation_output(
+            raw_text, target_lang=resolved_target
+        )
         if not translated:
             raise ValueError("empty_local_multimodal_screenshot_response")
         return TranslationResult(text=translated, provider=self.name, model=self.model_name, raw_text=raw_text)

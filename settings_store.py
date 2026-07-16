@@ -30,6 +30,10 @@ def create_settings_paths(script_dir: str, appdata_root: str | None = None) -> S
     return SettingsPaths(appdata_file=appdata_file, legacy_file=legacy_file)
 
 
+def appdata_companion_path(paths: SettingsPaths, filename: str) -> str:
+    return os.path.join(os.path.dirname(paths.appdata_file), filename)
+
+
 def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None]:
     candidates: list[tuple[float, dict[str, Any], str]] = []
     for settings_path in (paths.appdata_file, paths.legacy_file):
@@ -52,34 +56,22 @@ def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None
 
 
 def save_settings_data(paths: SettingsPaths, payload: dict[str, Any]) -> None:
-    targets = (paths.appdata_file, paths.legacy_file)
-    last_error: Exception | None = None
-    for target in targets:
+    target = paths.appdata_file
+    target_dir = os.path.dirname(target)
+    os.makedirs(target_dir, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(dir=target_dir or None, prefix=".cloudhime-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            json.dump(payload, fp, ensure_ascii=False, indent=2)
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.replace(temp_path, target)
+    except Exception:
         try:
-            target_dir = os.path.dirname(target)
-            os.makedirs(target_dir, exist_ok=True)
+            os.remove(temp_path)
         except Exception:
             pass
-        try:
-            fd, temp_path = tempfile.mkstemp(dir=target_dir or None, prefix=".cloudhime-", suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fp:
-                    json.dump(payload, fp, ensure_ascii=False, indent=2)
-                    fp.flush()
-                    os.fsync(fp.fileno())
-                os.replace(temp_path, target)
-            except Exception:
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-                raise
-            return
-        except Exception as exc:
-            last_error = exc
-    if last_error is not None:
-        raise last_error
-
+        raise
 
 def should_migrate_to_appdata(paths: SettingsPaths, loaded_from_path: str | None) -> bool:
     return loaded_from_path == paths.legacy_file or not os.path.exists(paths.appdata_file)

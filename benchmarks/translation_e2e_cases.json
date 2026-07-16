@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "dataset": "cloudhime-translation-e2e-seed",
+  "description": "Source-disjoint seed cases from existing example screenshots.",
+  "schema": {
+    "required_case_fields": ["id", "source_group", "image", "split", "source_lang", "target_lang", "reference_source", "reference_translations", "required_terms"],
+    "splits": ["train", "dev", "test"],
+    "source_disjoint": true
+  },
+  "cases": [
+    {
+      "id": "quote-cn-to-en",
+      "source_group": "example-quote-2023",
+      "image": "example/2023-03-01 13 58 56.png",
+      "split": "test",
+      "source_lang": "zh-Hant",
+      "target_lang": "en",
+      "reference_source": "我到河北省來",
+      "reference_translations": ["I came to Hebei Province."],
+      "required_terms": ["Hebei", "Province"]
+    },
+    {
+      "id": "invite-en-to-zh",
+      "source_group": "example-invite-2026-05",
+      "image": "example/2026-05-01 14 09 56.png",
+      "split": "dev",
+      "source_lang": "en",
+      "target_lang": "zh-Hant",
+      "reference_source": "Exclusive Invite: Forbes Wine Club",
+      "reference_translations": ["《富比士》Wine Club 獨家邀請"],
+      "required_terms": ["富比士", "Wine Club"]
+    },
+    {
+      "id": "humanoid-article-en-to-zh",
+      "source_group": "example-humanoid-article-2026",
+      "image": "example/2026-05-01 14 21 34.png",
+      "split": "train",
+      "source_lang": "en",
+      "target_lang": "zh-Hant",
+      "reference_source": "the market for humanoids reaches a fever pitch, soaring demand for their components",
+      "reference_translations": ["人形機器人的市場需求達到高峰，對其零組件的需求持續飆升。"],
+      "required_terms": ["人形機器人", "零組件"]
+    },
+    {
+      "id": "playlist-zh-to-en",
+      "source_group": "example-playlist-2026",
+      "image": "example/2026-05-01 14 21 52.png",
+      "split": "dev",
+      "source_lang": "zh-Hant",
+      "target_lang": "en",
+      "reference_source": "合輯是 YouTube 專為你打造的播放清單",
+      "reference_translations": ["This is a YouTube playlist made just for you."],
+      "required_terms": ["YouTube", "playlist"]
+    },
+    {
+      "id": "museum-ja-to-zh",
+      "source_group": "example-museum-2026",
+      "image": "example/2026-05-01 14 28 13.png",
+      "split": "train",
+      "source_lang": "ja",
+      "target_lang": "zh-Hant",
+      "reference_source": "TWO POINT MUSEUM ツーポイントミュージアム",
+      "reference_translations": ["雙點博物館"],
+      "required_terms": ["雙點", "博物館"]
+    },
+    {
+      "id": "prompt-doc-en-to-zh",
+      "source_group": "example-prompt-doc-2026",
+      "image": "example/2026-05-01 14 44 02.png",
+      "split": "test",
+      "source_lang": "en",
+      "target_lang": "zh-Hant",
+      "reference_source": "GPT-5.5 works best when prompts define the outcome",
+      "reference_translations": ["GPT-5.5 在提示詞明確定義成果時效果最佳。"],
+      "required_terms": ["GPT-5.5", "提示詞", "成果"]
+    }
+  ]
+}
