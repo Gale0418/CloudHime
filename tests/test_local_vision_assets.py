@@ -9,11 +9,23 @@ Task 1：真機資產契約 – RED/GREEN 單元測試。
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
 
-from local_vision_assets import VisionAssetError, resolve_vision_assets, verify_asset
+import local_vision_assets as vision_assets_module
+from local_vision_assets import (
+    GEMMA_ASSET_REVISION,
+    GEMMA_MODEL_SHA256,
+    GEMMA_PROJECTOR_SHA256,
+    VisionAssetError,
+    ensure_vision_model_assets,
+    resolve_managed_vision_assets,
+    resolve_preferred_vision_assets,
+    resolve_vision_assets,
+    verify_asset,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -139,3 +151,130 @@ def test_vision_asset_error_str_contains_code():
     """VisionAssetError.__str__() 應包含錯誤代碼。"""
     err = VisionAssetError("asset_too_small", path=Path("/some/file.gguf"), detail="got 5, want 800000000")
     assert "asset_too_small" in str(err)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Store-friendly managed assets
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_managed_assets_put_models_in_local_appdata_and_runtime_in_app(tmp_path):
+    app = tmp_path / "app"
+    local_appdata = tmp_path / "local"
+
+    assets = resolve_managed_vision_assets(app, local_appdata)
+
+    assert assets.managed is True
+    assert assets.server_path == app / "runtime" / "llama-server.exe"
+    assert str(assets.model_path).startswith(str(local_appdata.resolve()))
+    assert GEMMA_ASSET_REVISION[:8] in str(assets.model_path)
+    assert assets.projector_path.parent == assets.model_path.parent
+
+
+def test_preferred_assets_keep_complete_legacy_install(tmp_path, monkeypatch):
+    app = tmp_path / "app"
+    legacy = resolve_vision_assets(app)
+    complete = {legacy.model_path, legacy.projector_path}
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_has_exact_size",
+        lambda path, expected: path in complete,
+    )
+
+    selected = resolve_preferred_vision_assets(app, tmp_path / "local")
+
+    assert selected == legacy
+    assert selected.managed is False
+
+
+def test_ensure_managed_assets_writes_and_reuses_verification_receipt(tmp_path, monkeypatch):
+    assets = resolve_managed_vision_assets(tmp_path / "app", tmp_path / "local")
+    calls = []
+
+    def fake_ensure(root, manifest, **kwargs):
+        calls.append((root, tuple(manifest)))
+        root.mkdir(parents=True, exist_ok=True)
+        for spec in manifest:
+            path = root / spec.name
+            path.write_bytes(b"x")
+
+    # Frozen AssetSpec cannot be patched; use a small manifest with the same paths.
+    small_manifest = tuple(
+        vision_assets_module.AssetSpec(spec.name, spec.url, spec.sha256, 1)
+        for spec in vision_assets_module.GEMMA_ASSET_MANIFEST
+    )
+    monkeypatch.setattr(vision_assets_module, "GEMMA_ASSET_MANIFEST", small_manifest)
+    monkeypatch.setattr(vision_assets_module, "ensure_managed_assets", fake_ensure)
+
+    ensure_vision_model_assets(assets)
+    ensure_vision_model_assets(assets)
+
+    assert len(calls) == 1
+    assert (assets.model_path.parent / ".verified.json").is_file()
+
+def test_verify_resolved_assets_uses_manifest_sha_and_unpinned_server(
+    tmp_path,
+    monkeypatch,
+):
+    assets = vision_assets_module.VisionAssets(
+        server_path=tmp_path / "llama-server.exe",
+        model_path=tmp_path / "model.gguf",
+        projector_path=tmp_path / "projector.gguf",
+    )
+    calls = []
+    monkeypatch.setattr(
+        vision_assets_module,
+        "verify_asset",
+        lambda path, expected_sha256, minimum_bytes: calls.append(
+            (path, expected_sha256, minimum_bytes)
+        ),
+    )
+
+    assert vision_assets_module._verify_resolved_assets(assets) == []
+    assert [expected for _, expected, _ in calls] == [
+        None,
+        GEMMA_MODEL_SHA256,
+        GEMMA_PROJECTOR_SHA256,
+    ]
+
+
+def test_write_receipt_uses_process_unique_temp_and_cleans_on_replace_failure(
+    tmp_path,
+    monkeypatch,
+):
+    root = tmp_path / "receipt"
+    root.mkdir()
+    small_manifest = tuple(
+        vision_assets_module.AssetSpec(spec.name, spec.url, spec.sha256, 1)
+        for spec in vision_assets_module.GEMMA_ASSET_MANIFEST
+    )
+    monkeypatch.setattr(vision_assets_module, "GEMMA_ASSET_MANIFEST", small_manifest)
+    for spec in small_manifest:
+        (root / spec.name).write_bytes(b"x")
+
+    replaced_from = []
+    real_replace = vision_assets_module.os.replace
+
+    def recording_replace(source, destination):
+        replaced_from.append(Path(source))
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(vision_assets_module.os, "replace", recording_replace)
+    vision_assets_module._write_receipt(root)
+
+    assert replaced_from[0].name.startswith(
+        f".verified.json.{os.getpid()}."
+    )
+    assert replaced_from[0].suffix == ".tmp"
+    assert not replaced_from[0].exists()
+
+    receipt = root / ".verified.json"
+    receipt.unlink()
+
+    def failing_replace(source, destination):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(vision_assets_module.os, "replace", failing_replace)
+    with pytest.raises(OSError, match="replace failed"):
+        vision_assets_module._write_receipt(root)
+
+    assert list(root.glob(".verified.json.*.tmp")) == []

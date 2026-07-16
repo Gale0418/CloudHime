@@ -143,11 +143,22 @@ def merge_horizontal_lines(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return merged
 
 
-def score_ocr_items(raw_items: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
+def score_ocr_items(
+    raw_items: list[dict[str, Any]],
+    *,
+    allow_relaxed: bool = False,
+) -> tuple[int, list[dict[str, Any]]]:
     if not raw_items:
         return -1, []
     merged_items = merge_horizontal_lines(raw_items)
     filtered_items = [item for item in merged_items if is_valid_content(item["text"])]
+    if allow_relaxed:
+        filtered_items = [
+            item
+            for item in merged_items
+            if normalize_ocr_text(item.get("text", ""))
+            and not NOISE_ONLY_PATTERN.fullmatch(normalize_ocr_text(item.get("text", "")))
+        ]
     if not filtered_items:
         return 0, []
     score = sum(

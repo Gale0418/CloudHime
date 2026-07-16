@@ -53,7 +53,8 @@ def test_import_succeeds_when_file_handler_is_unavailable(monkeypatch):
     assert any(isinstance(handler, logging.StreamHandler) for handler in module.logger.handlers)
 
 
-def test_log_ai_debug_writes_to_script_and_appdata_logs(monkeypatch):
+def test_log_ai_debug_writes_only_to_appdata(monkeypatch, tmp_path):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setattr(logging, "FileHandler", DummyFileHandler)
     module = import_cloudhime_logging()
 
@@ -61,24 +62,12 @@ def test_log_ai_debug_writes_to_script_and_appdata_logs(monkeypatch):
         test_msg = "test_ai_debug_msg_123"
         module.log_ai_debug(test_msg)
 
-    assert mock_file.call_count == 2
-
-    calls = mock_file.call_args_list
-    path1 = calls[0][0][0]
-    path2 = calls[1][0][0]
-
-    assert "cloudhime_ai_debug.log" in path1
-    assert "cloudhime_ai_debug.log" in path2
-
-    script_dir = os.path.dirname(module.__file__)
-    paths = [path1, path2]
-    assert any(script_dir in path for path in paths)
-    assert any("CloudHime" in path for path in paths)
-
-    write_calls = mock_file().write.call_args_list
-    assert any(test_msg in call[0][0] for call in write_calls)
-    assert mock_makedirs.call_count == 2
-
+    mock_file.assert_called_once()
+    log_path = mock_file.call_args.args[0]
+    assert log_path == os.path.join(str(tmp_path), "CloudHime", "cloudhime_ai_debug.log")
+    assert os.path.dirname(module.__file__) not in log_path
+    assert test_msg in mock_file().write.call_args.args[0]
+    mock_makedirs.assert_called_once_with(os.path.dirname(log_path), exist_ok=True)
 
 def test_log_translation_debug_delegates_to_ai_debug(monkeypatch):
     monkeypatch.setattr(logging, "FileHandler", DummyFileHandler)

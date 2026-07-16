@@ -34,17 +34,17 @@ def log_ai_debug(message):
     try:
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
         log_line = f"[{timestamp}] {message}\n\n"
-        log_paths = [
-            os.path.join(os.path.dirname(__file__), "cloudhime_ai_debug.log"),
-            os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "CloudHime", "cloudhime_ai_debug.log"),
-        ]
-        for log_path in log_paths:
-            try:
-                os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                with open(log_path, "a", encoding="utf-8") as fp:
-                    fp.write(log_line)
-            except Exception:
-                pass
+        log_path = os.path.join(
+            os.environ.get("APPDATA", os.path.expanduser("~")),
+            "CloudHime",
+            "cloudhime_ai_debug.log",
+        )
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as fp:
+                fp.write(log_line)
+        except Exception:
+            pass
         logger.debug(f"[AI-DEBUG] {message}")
     except Exception:
         pass

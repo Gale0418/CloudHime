@@ -1,62 +1,62 @@
-"""
-local_vision_assets.py
------------------------
-Task 1：真機資產契約 – 視覺資產路徑解析與驗證。
-
-職責：
-- 以應用程式 root 解析 llama-server.exe、主模型與 projector 的絕對路徑。
-- 驗證資產存在、大小符合下限，以及選用的 SHA-256 完整性。
-- 完全不依賴 current working directory。
-- 不啟動任何外部程序，不執行網路請求。
-"""
+"""CloudHime 內嵌 Gemma 視覺資產的路徑、下載與完整性契約。"""
 
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from managed_asset_store import AssetSpec, ensure_managed_assets
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 常數
-# ──────────────────────────────────────────────────────────────────────────────
 
 _SERVER_REL = Path("runtime") / "llama-server.exe"
 _MODEL_REL = Path("models") / "gemma-3-4b-it.Q4_K_M.gguf"
 _PROJECTOR_REL = Path("models") / "mmproj-model-f16.gguf"
-
-# SHA-256 流式計算的讀取塊大小（8 MiB）
 _SHA256_CHUNK_BYTES = 8 * 1024 * 1024
 
-# 各資產生產環境最低大小（bytes）；可 import 供 LocalVisionRuntime 使用
-# server launcher > 5 KB, model > 2 GB, projector > 800 MB
+GEMMA_ASSET_REVISION = "ab31416aceb30cd095cb34cc27eea120940964e4"
+GEMMA_MODEL_SIZE = 2_489_758_304
+GEMMA_PROJECTOR_SIZE = 851_251_104
+GEMMA_MODEL_SHA256 = "882e8d2db44dc554fb0ea5077cb7e4bc49e7342a1f0da57901c0802ea21a0863"
+GEMMA_PROJECTOR_SHA256 = "8c0fb064b019a6972856aaae2c7e4792858af3ca4561be2dbf649123ba6c40cb"
+_GEMMA_REPOSITORY = "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF"
+_MANAGED_DIR = Path("CloudHime") / "models" / "gemma-3-4b-it" / f"ggml-org-{GEMMA_ASSET_REVISION[:8]}"
+_RECEIPT_NAME = ".verified.json"
+_ASSET_LOCK = threading.Lock()
+
+GEMMA_ASSET_MANIFEST = (
+    AssetSpec(
+        name="gemma-3-4b-it.Q4_K_M.gguf",
+        url=f"{_GEMMA_REPOSITORY}/resolve/{GEMMA_ASSET_REVISION}/gemma-3-4b-it-Q4_K_M.gguf",
+        sha256=GEMMA_MODEL_SHA256,
+        size=GEMMA_MODEL_SIZE,
+    ),
+    AssetSpec(
+        name="mmproj-model-f16.gguf",
+        url=f"{_GEMMA_REPOSITORY}/resolve/{GEMMA_ASSET_REVISION}/mmproj-model-f16.gguf",
+        sha256=GEMMA_PROJECTOR_SHA256,
+        size=GEMMA_PROJECTOR_SIZE,
+    ),
+)
+
 ASSET_MINIMUM_BYTES: dict[str, int] = {
     "server_path": 5_000,
     "model_path": 2_000_000_000,
     "projector_path": 800_000_000,
 }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 例外
-# ──────────────────────────────────────────────────────────────────────────────
+ASSET_SHA256: dict[str, Optional[str]] = {
+    "server_path": None,
+    "model_path": GEMMA_MODEL_SHA256,
+    "projector_path": GEMMA_PROJECTOR_SHA256,
+}
 
 
 class VisionAssetError(Exception):
-    """資產驗證失敗的統一例外。
-
-    Parameters
-    ----------
-    code:
-        機器可讀的錯誤代碼，例如 ``"asset_missing"``、``"asset_too_small"``、
-        ``"asset_sha256_mismatch"``。
-    path:
-        發生錯誤的資產路徑。
-    detail:
-        附加的人類可讀描述（選用）。
-    """
-
     def __init__(self, code: str, *, path: Path, detail: str = "") -> None:
         self.code = code
         self.path = path
@@ -64,58 +64,20 @@ class VisionAssetError(Exception):
         super().__init__(self._format())
 
     def _format(self) -> str:
-        msg = f"{self.code}: {self.path}"
-        if self.detail:
-            msg += f" ({self.detail})"
-        return msg
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 資產資料類別
-# ──────────────────────────────────────────────────────────────────────────────
+        message = f"{self.code}: {self.path}"
+        return f"{message} ({self.detail})" if self.detail else message
 
 
 @dataclass(frozen=True)
 class VisionAssets:
-    """三個必要資產的絕對路徑容器（唯讀）。
-
-    Attributes
-    ----------
-    server_path:
-        ``runtime/llama-server.exe`` 的絕對路徑。
-    model_path:
-        ``models/gemma-3-4b-it.Q4_K_M.gguf`` 的絕對路徑。
-    projector_path:
-        ``models/mmproj-model-f16.gguf`` 的絕對路徑。
-    """
-
     server_path: Path
     model_path: Path
     projector_path: Path
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 公開 API
-# ──────────────────────────────────────────────────────────────────────────────
+    managed: bool = False
 
 
 def resolve_vision_assets(app_root: Path) -> VisionAssets:
-    """以 *app_root* 解析三個資產的絕對路徑。
-
-    不受 current working directory 影響；不驗證檔案是否存在。
-    若需驗證，請在回傳後對各欄位呼叫 :func:`verify_asset`。
-
-    Parameters
-    ----------
-    app_root:
-        應用程式根目錄，PyInstaller frozen 環境傳入 resource root，
-        原始碼執行傳入模組所在目錄（或明確指定的 project root）。
-
-    Returns
-    -------
-    VisionAssets
-        含三個絕對路徑的 frozen dataclass。
-    """
+    """解析舊版隨程式模型路徑；保留給既有開發環境與安裝相容。"""
     root = Path(app_root).resolve()
     return VisionAssets(
         server_path=root / _SERVER_REL,
@@ -124,32 +86,75 @@ def resolve_vision_assets(app_root: Path) -> VisionAssets:
     )
 
 
-def verify_asset(
-    path: Path,
-    expected_sha256: Optional[str],
-    minimum_bytes: int,
-) -> None:
-    """驗證單一資產的存在性、大小下限與 SHA-256 完整性。
+def _local_appdata_root(local_appdata: Path | None = None) -> Path:
+    if local_appdata is not None:
+        return Path(local_appdata).expanduser().resolve()
+    configured = os.environ.get("LOCALAPPDATA")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path.home() / "AppData" / "Local").resolve()
 
-    Parameters
-    ----------
-    path:
-        要驗證的檔案路徑。
-    expected_sha256:
-        預期的十六進位 SHA-256 字串；傳入 ``None`` 則跳過雜湊驗證。
-    minimum_bytes:
-        可接受的最小檔案大小（bytes）；傳入 ``0`` 則不進行大小驗證。
 
-    Raises
-    ------
-    VisionAssetError
-        - code ``"asset_missing"``：檔案不存在。
-        - code ``"asset_too_small"``：檔案大小小於 ``minimum_bytes``。
-        - code ``"asset_sha256_mismatch"``：SHA-256 不符。
-    """
+def resolve_managed_vision_assets(
+    app_root: Path,
+    local_appdata: Path | None = None,
+) -> VisionAssets:
+    """解析 Store 友善的受管模型路徑；可執行 runtime 仍由套件提供。"""
+    app = Path(app_root).resolve()
+    model_root = _local_appdata_root(local_appdata) / _MANAGED_DIR
+    return VisionAssets(
+        server_path=app / _SERVER_REL,
+        model_path=model_root / GEMMA_ASSET_MANIFEST[0].name,
+        projector_path=model_root / GEMMA_ASSET_MANIFEST[1].name,
+        managed=True,
+    )
+
+
+def resolve_preferred_vision_assets(
+    app_root: Path,
+    local_appdata: Path | None = None,
+) -> VisionAssets:
+    """既有完整隨程式模型優先，否則改用 AppData 受管資產。"""
+    legacy = resolve_vision_assets(app_root)
+    if (
+        _has_exact_size(legacy.model_path, GEMMA_MODEL_SIZE)
+        and _has_exact_size(legacy.projector_path, GEMMA_PROJECTOR_SIZE)
+    ):
+        return legacy
+    return resolve_managed_vision_assets(app_root, local_appdata)
+
+
+def ensure_vision_model_assets(
+    assets: VisionAssets,
+    progress_callback=None,
+    cancel_event=None,
+    opener=None,
+) -> VisionAssets:
+    """下載並驗證受管模型；驗證收據可避免每次啟動重算 3.34 GB 雜湊。"""
+    if not assets.managed:
+        return assets
+    root = assets.model_path.parent
+    with _ASSET_LOCK:
+        if _receipt_matches(root):
+            if progress_callback:
+                progress_callback("checking_assets", 80)
+            return assets
+        if progress_callback:
+            progress_callback("checking_disk", 0)
+        ensure_managed_assets(
+            root,
+            GEMMA_ASSET_MANIFEST,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+            opener=opener,
+        )
+        _write_receipt(root)
+    return assets
+
+
+def verify_asset(path: Path, expected_sha256: Optional[str], minimum_bytes: int) -> None:
     if not path.exists():
         raise VisionAssetError("asset_missing", path=path)
-
     if minimum_bytes > 0:
         actual_bytes = path.stat().st_size
         if actual_bytes < minimum_bytes:
@@ -158,7 +163,6 @@ def verify_asset(
                 path=path,
                 detail=f"got {actual_bytes}, want >={minimum_bytes}",
             )
-
     if expected_sha256 is not None:
         actual_sha = _sha256_file(path)
         if actual_sha != expected_sha256.lower():
@@ -169,26 +173,94 @@ def verify_asset(
             )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 內部工具
-# ──────────────────────────────────────────────────────────────────────────────
+def _verify_resolved_assets(assets: VisionAssets) -> list[str]:
+    failures = []
+    for field_name, path in (
+        ("server_path", assets.server_path),
+        ("model_path", assets.model_path),
+        ("projector_path", assets.projector_path),
+    ):
+        try:
+            verify_asset(
+                path,
+                ASSET_SHA256[field_name],
+                ASSET_MINIMUM_BYTES[field_name],
+            )
+        except VisionAssetError as exc:
+            failures.append(f"  [ERROR] {field_name}: {path} -> {exc.code}")
+    return failures
+
+
+def _has_exact_size(path: Path, expected_size: int) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size == expected_size
+    except OSError:
+        return False
+
+
+def _receipt_matches(root: Path) -> bool:
+    try:
+        payload = json.loads((root / _RECEIPT_NAME).read_text(encoding="utf-8"))
+        if payload.get("revision") != GEMMA_ASSET_REVISION:
+            return False
+        entries = payload.get("assets", {})
+        for spec in GEMMA_ASSET_MANIFEST:
+            path = root / spec.name
+            stat = path.stat()
+            entry = entries.get(spec.name, {})
+            if (
+                stat.st_size != spec.size
+                or entry.get("size") != stat.st_size
+                or entry.get("mtime_ns") != stat.st_mtime_ns
+                or entry.get("sha256") != spec.sha256
+            ):
+                return False
+        return True
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def _write_receipt(root: Path) -> None:
+    entries = {}
+    for spec in GEMMA_ASSET_MANIFEST:
+        stat = (root / spec.name).stat()
+        entries[spec.name] = {
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": spec.sha256,
+        }
+    payload = {"revision": GEMMA_ASSET_REVISION, "assets": entries}
+    receipt = root / _RECEIPT_NAME
+    temporary: Path | None = None
+    try:
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=f"{receipt.name}.{os.getpid()}.",
+            suffix=".tmp",
+            dir=root,
+        )
+        temporary = Path(temporary_name)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(payload, stream, ensure_ascii=True, indent=2)
+            stream.write("\n")
+        os.replace(temporary, receipt)
+        temporary = None
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def _sha256_file(path: Path) -> str:
-    """以串流方式計算檔案 SHA-256，避免大檔案佔用過多記憶體。"""
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            chunk = f.read(_SHA256_CHUNK_BYTES)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(_SHA256_CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CLI 入口（python local_vision_assets.py --app-root .）
-# ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
@@ -197,29 +269,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Verify CloudHime local vision assets.")
     parser.add_argument("--app-root", default=".", help="Application root directory")
     args = parser.parse_args()
-
-    app_root = Path(args.app_root).resolve()
-    assets = resolve_vision_assets(app_root)
-
-    missing: list[str] = []
-    for field_name, path in [
-        ("server_path", assets.server_path),
-        ("model_path", assets.model_path),
-        ("projector_path", assets.projector_path),
-    ]:
-        min_bytes = ASSET_MINIMUM_BYTES[field_name]
-        try:
-            verify_asset(path, None, minimum_bytes=min_bytes)
-            size = path.stat().st_size
-            print(f"  [OK] {field_name}: {path} ({size:,} bytes)")
-        except VisionAssetError as exc:
-            missing.append(f"  [ERROR] {field_name}: {path} -> {exc.code}")
-
-    if missing:
+    resolved = resolve_preferred_vision_assets(Path(args.app_root))
+    failures = _verify_resolved_assets(resolved)
+    for field_name, path in (
+        ("server_path", resolved.server_path),
+        ("model_path", resolved.model_path),
+        ("projector_path", resolved.projector_path),
+    ):
+        if not any(line.startswith(f"  [ERROR] {field_name}:") for line in failures):
+            print(f"  [OK] {field_name}: {path} ({path.stat().st_size:,} bytes)")
+    if failures:
         print("\n[local_vision_assets] Missing or invalid assets:")
-        for line in missing:
-            print(line)
+        print("\n".join(failures))
         sys.exit(2)
-    else:
-        print("\n[local_vision_assets] All assets OK.")
-        sys.exit(0)
+    print("\n[local_vision_assets] All assets OK.")
