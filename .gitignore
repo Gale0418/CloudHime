@@ -42,3 +42,7 @@ out.txt
 test_render.png
 test_screen.png
 theme_func.txt
+
+# Generated local test fixtures/review captures; keep source tests and cache code.
+scratch/codex-*/
+.review_exact_image_*/

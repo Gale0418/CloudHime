@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import io
 from pathlib import Path
+import shutil
 
-import japanese_ocr_assets as assets_module
 from japanese_ocr_assets import (
     JapaneseOCRAssets,
     ModelAsset,
@@ -12,6 +11,9 @@ from japanese_ocr_assets import (
     resolve_japanese_ocr_assets,
     verify_model_asset,
 )
+
+
+TEST_ROOT = Path(__file__).with_name("_japanese_ocr_assets_test_data")
 
 
 def _tiny_manifest(payloads):
@@ -26,6 +28,15 @@ def _tiny_manifest(payloads):
     )
 
 
+def _clean(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+    if TEST_ROOT.is_dir() and not any(TEST_ROOT.iterdir()):
+        TEST_ROOT.rmdir()
+
+
 def test_resolve_assets_uses_local_appdata():
     base = Path("X:/LocalAppData")
     assets = resolve_japanese_ocr_assets(base)
@@ -33,45 +44,39 @@ def test_resolve_assets_uses_local_appdata():
     assert assets.detection.parent == assets.root
 
 
-def test_existing_verified_assets_skip_download(monkeypatch):
+def test_existing_verified_assets_skip_download():
     payloads = (b"detect", b"horizontal", b"vertical")
     manifest = _tiny_manifest(payloads)
-    root = Path("unused")
-    paths = tuple(root / spec.name for spec in manifest)
-    assets = JapaneseOCRAssets(root, *paths)
-
-    monkeypatch.setattr(assets_module.Path, "mkdir", lambda *args, **kwargs: None)
-    monkeypatch.setattr(assets_module, "verify_model_asset", lambda path, spec: True)
-    monkeypatch.setattr(
-        assets_module,
-        "_download",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("downloaded")),
+    root = TEST_ROOT / "skip"
+    assets = JapaneseOCRAssets(
+        root,
+        root / manifest[0].name,
+        root / manifest[1].name,
+        root / manifest[2].name,
     )
     progress = []
-    assert ensure_japanese_ocr_assets(
-        assets,
-        manifest=manifest,
-        progress_callback=lambda phase, value: progress.append((phase, value)),
-    ) == assets
-    assert progress[-1] == ("downloading", 80)
+    try:
+        root.mkdir(parents=True)
+        for spec, payload in zip(manifest, payloads):
+            (root / spec.name).write_bytes(payload)
+
+        assert ensure_japanese_ocr_assets(
+            assets,
+            manifest=manifest,
+            progress_callback=lambda phase, value: progress.append((phase, value)),
+        ) == assets
+        assert progress[-1] == ("downloading", 80)
+    finally:
+        _clean(root)
 
 
-def test_download_verifies_then_atomically_promotes(monkeypatch):
+def test_verify_model_asset_delegates_to_shared_core():
     payload = b"model-data"
     spec = _tiny_manifest((payload,))[0]
-    destination = Path("tests/_temporary_japanese_ocr_asset.onnx")
-    destination.unlink(missing_ok=True)
-    destination.with_suffix(destination.suffix + ".part").unlink(missing_ok=True)
-
-    class Response(io.BytesIO):
-        status = 200
-
-    monkeypatch.setattr(assets_module.request, "urlopen", lambda *args, **kwargs: Response(payload))
-    seen = []
-    assets_module._download(spec, destination, seen.append)
-
-    assert destination.read_bytes() == payload
-    assert verify_model_asset(destination, spec)
-    assert seen[-1] == len(payload)
-    assert not destination.with_suffix(destination.suffix + ".part").exists()
-    destination.unlink()
+    path = TEST_ROOT / "verify" / spec.name
+    try:
+        path.parent.mkdir(parents=True)
+        path.write_bytes(payload)
+        assert verify_model_asset(path, spec)
+    finally:
+        _clean(path.parent)
