@@ -171,6 +171,8 @@ def test_controller_local_model_loading_uses_indeterminate_charge_bar(qtbot):
     qtbot.addWidget(controller.charge_bar)
     messages = []
     controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
+    health_refreshes = []
+    controller._refresh_translation_provider_health = lambda: health_refreshes.append(True)
 
     Controller.on_local_model_status(controller, "loading", "")
 
@@ -178,6 +180,7 @@ def test_controller_local_model_loading_uses_indeterminate_charge_bar(qtbot):
     assert controller.charge_bar.indeterminate is True
     assert "Local Gemma3" in controller.charge_bar.label
     assert messages
+    assert health_refreshes == [True]
 
 
 def test_controller_local_vision_states_update_ui(qtbot):
@@ -188,6 +191,8 @@ def test_controller_local_vision_states_update_ui(qtbot):
     qtbot.addWidget(controller.charge_bar)
     messages = []
     controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
+    health_refreshes = []
+    controller._refresh_translation_provider_health = lambda: health_refreshes.append(True)
 
     Controller.on_local_vision_status(controller, "starting", "")
     assert controller.charge_bar.indeterminate is True
@@ -212,6 +217,7 @@ def test_controller_local_vision_states_update_ui(qtbot):
     Controller.on_local_vision_status(controller, "stopped", "")
     assert controller.charge_bar.progress == 0
     assert messages[-1] == "內嵌多模態伺服器已停止"
+    assert len(health_refreshes) == 5
 
 def test_controller_japanese_rescue_status_is_bilingual(qtbot):
     for language, expected in (

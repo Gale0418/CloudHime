@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 import translation_helpers as translation_tools
+from provider_health import LOCAL_MODEL_IDS, assess_provider_health
 from themes import resolve_theme
 
 
@@ -29,6 +30,7 @@ class TranslationSettingsPanel(QWidget):
         self.controller = controller
         self.supported_ai_models = list(supported_ai_models or [])
         self._ai_requested = False
+        self._theme_mode = getattr(controller, "theme_mode", "light")
         self.setObjectName("translationSettingsPanel")
         self.setStyleSheet("QWidget { background: transparent; border: none; }")
 
@@ -51,9 +53,19 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_translate_hint = QLabel("")
         self.lbl_translate_hint.setWordWrap(True)
+        self.lbl_translate_hint.setMinimumWidth(0)
+        self.lbl_translate_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_translate_hint.setVisible(True)
         self.lbl_translate_summary = QLabel("")
+        self.lbl_translate_summary.setWordWrap(True)
+        self.lbl_translate_summary.setMinimumWidth(0)
+        self.lbl_translate_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_translate_summary.setVisible(True)
+        self.lbl_translate_health_detail = QLabel("")
+        self.lbl_translate_health_detail.setWordWrap(True)
+        self.lbl_translate_health_detail.setMinimumWidth(0)
+        self.lbl_translate_health_detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.lbl_translate_health_detail.setVisible(True)
         self.lbl_translate_mode = QLabel("")
         self.lbl_translate_mode.setVisible(True)
 
@@ -66,6 +78,7 @@ class TranslationSettingsPanel(QWidget):
         translate_layout.addLayout(header_row)
         translate_layout.addWidget(self.lbl_translate_hint)
         translate_layout.addWidget(self.lbl_translate_summary)
+        translate_layout.addWidget(self.lbl_translate_health_detail)
 
         self.translate_mode_group = QButtonGroup(self)
         self.translate_mode_group.setExclusive(True)
@@ -225,7 +238,7 @@ class TranslationSettingsPanel(QWidget):
 
     def on_translate_mode_clicked(self, use_ai):
         has_key = bool(self.controller.worker.google_api_key.strip())
-        is_local_model = (getattr(self.controller.worker, "gemma_model", "") or "").strip() in {"translategemma-4b-it-local", "gemma-3-4b-it-local"}
+        is_local_model = (getattr(self.controller.worker, "gemma_model", "") or "").strip() in LOCAL_MODEL_IDS
         self._ai_requested = bool(use_ai)
         if use_ai:
             if has_key or is_local_model:
@@ -252,6 +265,13 @@ class TranslationSettingsPanel(QWidget):
 
     def on_ai_model_changed(self, index):
         self.controller.on_ai_model_changed(index)
+        model_id = str(self.cmb_ai_model.itemData(index) or "").strip().lower()
+        if (
+            self._ai_requested
+            and model_id in LOCAL_MODEL_IDS
+            and not getattr(self.controller.worker, "use_gemma_translation", False)
+        ):
+            self.controller.toggle_ai_translation(True)
         self.update_ai_model_notes()
         self.update_translate_summary()
 
@@ -302,7 +322,7 @@ class TranslationSettingsPanel(QWidget):
         has_embedded = getattr(self.controller.worker, "local_vision_runtime", None) is not None
         self.chk_japanese_ocr_rescue_enabled.setEnabled(enabled)
         is_custom_url_visible = not has_embedded
-        
+
         self.lbl_local_multimodal_base_url.setVisible(is_custom_url_visible)
         self.input_local_multimodal_base_url.setVisible(is_custom_url_visible)
         self.lbl_local_multimodal_model.setVisible(is_custom_url_visible)
@@ -401,29 +421,76 @@ class TranslationSettingsPanel(QWidget):
         enabled = bool(use_ai or self._ai_requested)
         self.set_translate_advanced_visible(enabled)
         self.update_key_state(enabled)
-        if use_ai and not self.input_api_key.text().strip():
+        model_id = str(self.cmb_ai_model.currentData() or "").strip().lower()
+        if use_ai and model_id not in LOCAL_MODEL_IDS and not self.input_api_key.text().strip():
             self.input_api_key.setFocus()
         self.update_translate_summary()
 
     def set_translate_advanced_visible(self, visible):
         self.advanced_translate_frame.setVisible(True)
 
-    def update_translate_summary(self):
-        use_ai = self.btn_translate_ai.isChecked()
-        model_name = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "Gemma"
+    def _provider_health(self):
+        worker = self.controller.worker
         model_id = str(self.cmb_ai_model.currentData() or "") if self.cmb_ai_model.count() else ""
-        lang = self._ui_language()
-        if use_ai:
-            auto_state = ("Auto Switch ON" if lang == "en" else "自動切換 ON") if self.chk_auto_switch.isChecked() else ("Auto Switch OFF" if lang == "en" else "自動切換 OFF")
-            if model_id in {"translategemma-4b-it-local", "gemma-3-4b-it-local"}:
-                local_state = ("Local MM ON" if lang == "en" else "本地多模態 ON") if self.chk_local_multimodal_enabled.isChecked() else ("Local MM OFF" if lang == "en" else "本地多模態 OFF")
-                text = f"Status: AI · {model_name} · {local_state}" if lang == "en" else f"狀態：AI 翻譯 · {model_name} · {local_state}"
-            else:
-                text = f"Status: AI · {model_name} · {auto_state}" if lang == "en" else f"狀態：AI 翻譯 · {model_name} · {auto_state}"
-            self.lbl_translate_summary.setText(text)
+        model_label = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "AI"
+        runtime = getattr(worker, "local_vision_runtime", None)
+        runtime_state = getattr(runtime, "_state", None)
+        runtime_name = str(getattr(runtime_state, "name", "") or "")
+        controller_vision_state = str(getattr(self.controller, "local_vision_state", "") or "")
+        if controller_vision_state and controller_vision_state != "stopped":
+            vision_state = controller_vision_state
         else:
-            text = "Status: Google Translate" if lang == "en" else "狀態：Google 翻譯 · 免 API KEY"
-            self.lbl_translate_summary.setText(text)
+            vision_state = runtime_name or controller_vision_state or "stopped"
+        vision_detail = str(
+            getattr(self.controller, "local_vision_detail", "")
+            or getattr(runtime_state, "detail", "")
+            or ""
+        )
+        vision_mode = str(getattr(runtime_state, "mode", "") or "")
+
+        local_provider = getattr(worker, "local_gemma_provider", None)
+        try:
+            local_text_ready = bool(local_provider is not None and local_provider.available())
+        except Exception:
+            local_text_ready = False
+
+        assets = getattr(worker, "_local_vision_assets", None)
+        asset_paths = [
+            getattr(assets, "model_path", None),
+            getattr(assets, "projector_path", None),
+        ]
+        model_assets_present = bool(asset_paths) and all(
+            path is not None and path.exists() for path in asset_paths
+        )
+
+        return assess_provider_health(
+            ui_language=self._ui_language(),
+            ai_requested=bool(self._ai_requested),
+            ai_enabled=bool(self.btn_translate_ai.isChecked()),
+            model_id=model_id,
+            model_label=model_label,
+            has_api_key=bool(self.input_api_key.text().strip() or getattr(worker, "google_api_key", "").strip()),
+            local_multimodal_enabled=bool(self.chk_local_multimodal_enabled.isChecked()),
+            embedded_runtime_available=runtime is not None,
+            local_vision_state=vision_state,
+            local_vision_detail=vision_detail,
+            local_vision_mode=vision_mode,
+            local_model_state=str(getattr(self.controller, "local_model_state", "stopped") or "stopped"),
+            local_model_detail=str(getattr(self.controller, "local_model_detail", "") or ""),
+            local_text_ready=local_text_ready,
+            model_assets_present=model_assets_present,
+        )
+
+    def update_translate_summary(self):
+        health = self._provider_health()
+        self.lbl_translate_summary.setText(health.summary)
+        self.lbl_translate_health_detail.setText(health.detail)
+        self.lbl_translate_health_detail.setVisible(bool(health.detail))
+        self.lbl_translate_summary.setProperty("healthTone", health.tone)
+        theme_mode = self._theme_mode
+        summary_kind = "danger" if health.tone == "danger" else "accent"
+        self.lbl_translate_summary.setStyleSheet(resolve_theme(theme_mode).pill_qss(summary_kind))
+        self.lbl_translate_summary.setToolTip(health.detail)
 
     def update_key_state(self, enabled):
         self.input_api_key.setEnabled(enabled)
@@ -511,6 +578,7 @@ class TranslationSettingsPanel(QWidget):
         self.update_translate_summary()
 
     def update_theme(self, theme_mode):
+        self._theme_mode = theme_mode
         theme = resolve_theme(theme_mode)
         self.refresh_localized_texts()
         self.card_translate.setStyleSheet(theme.panel_qss("subtle", radius=16))
@@ -533,6 +601,9 @@ class TranslationSettingsPanel(QWidget):
             f"font-size: 12px; font-weight: 800; color: {theme.subtext}; background: transparent; border: none; margin-top: 2px;"
         )
         self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
+        self.lbl_translate_health_detail.setStyleSheet(
+            f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;"
+        )
         self.lbl_advanced_translate.setStyleSheet("background: transparent; border: none; color: transparent;")
         self.lbl_advanced_hint.setStyleSheet("background: transparent; border: none; color: transparent;")
 

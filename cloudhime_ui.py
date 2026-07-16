@@ -2636,6 +2636,10 @@ class Controller(QWidget):
         self.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
         self.local_multimodal_model = "gemma-3-4b-it"
         self.local_multimodal_timeout_seconds = 20
+        self.local_model_state = "stopped"
+        self.local_model_detail = ""
+        self.local_vision_state = "stopped"
+        self.local_vision_detail = ""
         self.japanese_ocr_rescue_enabled = False
         self.was_minimized = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
@@ -2869,6 +2873,16 @@ class Controller(QWidget):
     def _set_status_text(self, key, fallback=None, **params):
         if hasattr(self, "lbl_status"):
             self.lbl_status.setText(self._tr(key, fallback=fallback, **params))
+
+    def _refresh_translation_provider_health(self):
+        settings_window = getattr(self, "settings_window", None)
+        updater = getattr(settings_window, "update_translate_summary", None)
+        if not callable(updater):
+            return
+        try:
+            updater()
+        except (AttributeError, RuntimeError):
+            pass
 
     def get_ui_language(self):
         return localization.normalize_ui_language(self.ui_language)
@@ -3949,6 +3963,7 @@ class Controller(QWidget):
         detail = str(detail or "")
         self.local_model_state = state
         self.local_model_detail = detail
+        self._refresh_translation_provider_health()
         theme = resolve_theme(self.theme_mode)
 
         if state == "loading":
@@ -3975,6 +3990,7 @@ class Controller(QWidget):
         detail = str(detail or "")
         self.local_vision_state = state
         self.local_vision_detail = detail
+        self._refresh_translation_provider_health()
         theme = resolve_theme(self.theme_mode)
         english = self.get_ui_language() == "en"
 
