@@ -5,6 +5,9 @@ from typing import Any
 
 NOISE_ONLY_PATTERN = re.compile(r"^[-_=.,|/\\:;~^]+$")
 HAS_CJK_PATTERN = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+HORIZONTAL_SPACE_PATTERN = re.compile(r"[^\S\r\n]+")
+CLOSING_PUNCTUATION = "，。！？：；、﹐﹒﹔﹕﹖﹗)]}〉》」』】〕］〉〉,.!?;:"
+OPENING_PUNCTUATION = "「『（【〔［〈《([{"
 
 
 def _normalize_confidence(value: Any) -> float | None:
@@ -40,13 +43,26 @@ def _score_text_fragment(text: str, confidence: Any) -> int:
 
 
 def normalize_ocr_text(text: Any) -> str:
+    """Normalize OCR spacing while preserving meaningful Latin word spacing/newlines."""
     if not text:
         return ""
-    text = str(text).strip()
-    text = re.sub(r"(?<=[\u3040-\u30ff\u4e00-\u9fff])\s+(?=[\u3040-\u30ff\u4e00-\u9fff])", "", text)
-    text = re.sub(r"\s+([，。！？：；、」』）])", r"\1", text)
-    text = re.sub(r"([「『（])\s+", r"\1", text)
-    return text
+    normalized = str(text).strip()
+    normalized = HORIZONTAL_SPACE_PATTERN.sub(" ", normalized)
+    normalized = re.sub(
+        r"(?<=[\u3040-\u30ff\u4e00-\u9fff])[^\S\r\n]+(?=[\u3040-\u30ff\u4e00-\u9fff])",
+        "",
+        normalized,
+    )
+    closing = re.escape(CLOSING_PUNCTUATION)
+    opening = re.escape(OPENING_PUNCTUATION)
+    normalized = re.sub(rf"[^\S\r\n]+([{closing}])", r"\1", normalized)
+    normalized = re.sub(rf"([{opening}])[^\S\r\n]+", r"\1", normalized)
+    normalized = re.sub(
+        rf"(?<=[\u3040-\u30ff\u4e00-\u9fff])([{closing}])[^\S\r\n]+(?=[\u3040-\u30ff\u4e00-\u9fff])",
+        r"\1",
+        normalized,
+    )
+    return normalized
 
 
 def is_valid_content(text: Any) -> bool:
@@ -73,62 +89,98 @@ def needs_cjk_tight_join(left_text: str, right_text: str) -> bool:
     return bool(
         HAS_CJK_PATTERN.search(left_char)
         or HAS_CJK_PATTERN.search(right_char)
-        or left_char in "「『（(["
-        or right_char in "」』），。！？：；、)]"
+        or left_char in OPENING_PUNCTUATION
+        or right_char in CLOSING_PUNCTUATION + ")]"
     )
 
 
+def _vertical_overlap_ratio(first: dict[str, Any], second: dict[str, Any]) -> float:
+    first_top = float(first["y"])
+    first_bottom = first_top + float(first["h"])
+    second_top = float(second["y"])
+    second_bottom = second_top + float(second["h"])
+    overlap = max(0.0, min(first_bottom, second_bottom) - max(first_top, second_top))
+    return overlap / max(1.0, min(float(first["h"]), float(second["h"])))
+
+
+def _same_horizontal_line(anchor: dict[str, Any], candidate: dict[str, Any]) -> bool:
+    anchor_height = float(anchor["h"])
+    candidate_height = float(candidate["h"])
+    anchor_center = float(anchor["y"]) + anchor_height / 2.0
+    candidate_center = float(candidate["y"]) + candidate_height / 2.0
+    center_delta = abs(anchor_center - candidate_center)
+    min_height = min(anchor_height, candidate_height)
+    return center_delta < min_height * 0.5 or _vertical_overlap_ratio(anchor, candidate) >= 0.8
+
+
+def _group_horizontal_lines(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Group items against a stable, largest-height anchor to avoid chain merges."""
+    lines: list[dict[str, Any]] = []
+    for item in sorted(items, key=lambda value: (value["y"], value["x"])):
+        matching_lines = [
+            line
+            for line in lines
+            if all(_same_horizontal_line(member, item) for member in line["items"])
+        ]
+        if not matching_lines:
+            lines.append({"anchor": item, "items": [item]})
+            continue
+        line = min(
+            matching_lines,
+            key=lambda value: abs(
+                (float(value["anchor"]["y"]) + float(value["anchor"]["h"]) / 2.0)
+                - (float(item["y"]) + float(item["h"]) / 2.0)
+            ),
+        )
+        line["items"].append(item)
+        if float(item["h"]) > float(line["anchor"]["h"]):
+            line["anchor"] = item
+    return [line["items"] for line in lines]
+
+
 def merge_horizontal_lines(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge horizontal OCR items without mutating input, preserving bbox/confidence."""
     if not items:
         return []
-    items = sorted(items, key=lambda item: item["y"])
-    lines: list[list[dict[str, Any]]] = []
-    current_line = [items[0]]
-    for curr in items[1:]:
-        prev = current_line[-1]
-        prev_cy = prev["y"] + prev["h"] / 2
-        curr_cy = curr["y"] + curr["h"] / 2
-        if abs(prev_cy - curr_cy) < (min(prev["h"], curr["h"]) * 0.5):
-            current_line.append(curr)
-        else:
-            lines.append(current_line)
-            current_line = [curr]
-    lines.append(current_line)
 
     merged: list[dict[str, Any]] = []
-    for line in lines:
-        line = sorted(line, key=lambda item: item["x"])
+    for line in _group_horizontal_lines(items):
+        ordered_line = sorted(line, key=lambda item: (item["x"], item["y"]))
+        line_height = max(float(item["h"]) for item in ordered_line)
         idx = 0
-        while idx < len(line):
-            base = line[idx]
+        while idx < len(ordered_line):
+            base = ordered_line[idx]
             text = base["text"]
             x1, y1 = base["x"], base["y"]
-            x2, y2 = base["x"] + base["w"], base["y"] + base["h"]
+            x2 = base["x"] + base["w"]
+            y2 = base["y"] + base["h"]
             confidence_sum = 0.0
             confidence_weight = 0.0
-            base_confidence = _normalize_confidence(base.get("confidence"))
-            if base_confidence is not None:
-                base_weight = max(1.0, float(len(normalize_ocr_text(base["text"])) or 1))
-                confidence_sum += base_confidence * base_weight
-                confidence_weight += base_weight
+
+            def add_confidence(item: dict[str, Any]) -> None:
+                nonlocal confidence_sum, confidence_weight
+                normalized_text = normalize_ocr_text(item.get("text", ""))
+                confidence = _normalize_confidence(item.get("confidence"))
+                if not normalized_text or confidence is None:
+                    return
+                weight = float(len(normalized_text))
+                confidence_sum += confidence * weight
+                confidence_weight += weight
+
+            add_confidence(base)
             next_idx = idx + 1
-            while next_idx < len(line):
-                cand = line[next_idx]
-                if cand["x"] - x2 < (base["h"] * 2.0):
-                    joiner = "" if needs_cjk_tight_join(text, cand["text"]) else " "
-                    text += joiner + cand["text"]
-                    x2 = max(x2, cand["x"] + cand["w"])
-                    y2 = max(y2, cand["y"] + cand["h"])
-                    y1 = min(y1, cand["y"])
-                    cand_confidence = _normalize_confidence(cand.get("confidence"))
-                    if cand_confidence is not None:
-                        cand_weight = max(1.0, float(len(normalize_ocr_text(cand["text"])) or 1))
-                        confidence_sum += cand_confidence * cand_weight
-                        confidence_weight += cand_weight
+            while next_idx < len(ordered_line):
+                candidate = ordered_line[next_idx]
+                if candidate["x"] - x2 < line_height * 2.0:
+                    joiner = "" if needs_cjk_tight_join(text, candidate["text"]) else " "
+                    text += joiner + candidate["text"]
+                    x2 = max(x2, candidate["x"] + candidate["w"])
+                    y2 = max(y2, candidate["y"] + candidate["h"])
+                    y1 = min(y1, candidate["y"])
+                    add_confidence(candidate)
                     next_idx += 1
                 else:
                     break
-            merged_confidence = confidence_sum / confidence_weight if confidence_weight else None
             merged.append(
                 {
                     "text": normalize_ocr_text(text),
@@ -136,7 +188,7 @@ def merge_horizontal_lines(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "y": y1,
                     "w": x2 - x1,
                     "h": y2 - y1,
-                    "confidence": merged_confidence,
+                    "confidence": confidence_sum / confidence_weight if confidence_weight else None,
                 }
             )
             idx = next_idx
