@@ -9,24 +9,94 @@ def normalize_translation_compare_text(text):
     normalized = re.sub(r"[\s\(\)（）\[\]【】「」『』《》<>“”\"'、，。！？!?…：;；\-—~]+", "", normalized)
     return normalized.lower()
 
-def should_fallback_to_text_translation(source_text_hint, translated_text):
-    if re.search(r"[\u3040-\u30ff]", str(translated_text or "")):
-        return True
-    source_norm = normalize_translation_compare_text(source_text_hint)
-    translated_norm = normalize_translation_compare_text(translated_text)
-    if not source_norm or not translated_norm:
-        return False
-    if source_norm == translated_norm:
-        return True
-    similarity = difflib.SequenceMatcher(None, source_norm, translated_norm).ratio()
-    return similarity >= 0.82
+def _script_flags(text):
+    normalized = normalize_ocr_text(text)
+    return {
+        "ascii_letters": bool(re.search(r"[A-Za-z]", normalized)),
+        "cjk": bool(re.search(r"[\u4e00-\u9fff]", normalized)),
+        "kana": bool(re.search(r"[\u3040-\u30ff]", normalized)),
+        "hiragana": bool(re.search(r"[\u3040-\u309f]", normalized)),
+    }
 
-def is_suspiciously_short_translation(source_text_hint, translated_text):
+
+def _is_english_target(target_lang):
+    return str(target_lang or "").lower().replace("_", "-").split("-", 1)[0] == "en"
+
+
+def _is_chinese_target(target_lang):
+    return str(target_lang or "").lower().replace("_", "-").split("-", 1)[0] == "zh"
+
+
+def _source_is_clearly_not_target(source_text, target_lang):
+    flags = _script_flags(source_text)
+    if _is_english_target(target_lang):
+        return not flags["ascii_letters"] and (flags["cjk"] or flags["kana"])
+    if _is_chinese_target(target_lang):
+        return flags["kana"] or (flags["ascii_letters"] and not flags["cjk"])
+    return False
+
+
+def _translation_retains_source_script(translated_text, target_lang):
+    flags = _script_flags(translated_text)
+    if _is_english_target(target_lang):
+        return (flags["cjk"] or flags["kana"]) and not flags["ascii_letters"]
+    if _is_chinese_target(target_lang):
+        return flags["hiragana"] or (flags["kana"] and not flags["cjk"])
+    return False
+
+
+def _nonempty_lines(text):
+    return [line for line in str(text or "").splitlines() if normalize_ocr_text(line)]
+
+
+def _is_low_coverage_translation(source_text_hint, translated_text):
+    source_lines = _nonempty_lines(source_text_hint)
+    translated_lines = _nonempty_lines(translated_text)
+    if len(source_lines) < 2 or not translated_lines:
+        return False
     source_norm = normalize_translation_compare_text(source_text_hint)
     translated_norm = normalize_translation_compare_text(translated_text)
-    if len(source_norm) < 8 or len(translated_norm) < 2:
+    if len(source_norm) < 8 or not translated_norm:
         return False
-    return len(translated_norm) <= max(4, int(len(source_norm) * 0.35))
+    if len(translated_lines) >= len(source_lines):
+        return False
+    return len(translated_norm) / len(source_norm) <= 0.35
+
+
+def translation_fallback_reason(source, translated, target_lang="zh-TW"):
+    source_norm = normalize_translation_compare_text(source)
+    translated_norm = normalize_translation_compare_text(translated)
+    if source_norm and not translated_norm:
+        return "empty"
+    if not source_norm or not translated_norm:
+        return ""
+    if _translation_retains_source_script(translated, target_lang):
+        return "source_script_retained"
+    if _source_is_clearly_not_target(source, target_lang):
+        similarity = difflib.SequenceMatcher(None, source_norm, translated_norm).ratio()
+        if source_norm == translated_norm or similarity >= 0.82:
+            return "source_echo"
+    if _is_low_coverage_translation(source, translated):
+        return "low_coverage"
+    return ""
+
+
+def should_fallback_to_text_translation(source_text_hint, translated_text, target_lang="zh-TW"):
+    return bool(
+        translation_fallback_reason(
+            source_text_hint,
+            translated_text,
+            target_lang=target_lang,
+        )
+    )
+
+
+def is_suspiciously_short_translation(source_text_hint, translated_text, target_lang="zh-TW"):
+    return translation_fallback_reason(
+        source_text_hint,
+        translated_text,
+        target_lang=target_lang,
+    ) == "low_coverage"
 
 def score_ocr_candidate_text(text):
     normalized = normalize_ocr_text(text)

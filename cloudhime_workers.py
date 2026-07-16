@@ -66,6 +66,7 @@ from ocr_quality import (
 from ocr_backend_installer import detect_backend_state
 from ocr_refinement import (
     normalize_translation_compare_text,
+    translation_fallback_reason,
     should_fallback_to_text_translation,
     is_suspiciously_short_translation,
     score_ocr_candidate_text,
@@ -1333,6 +1334,7 @@ class OCRWorker(QObject):
     def translate_screenshot_gemma(self, image_parts, source_text_hint=""):
         if not image_parts:
             raise ValueError("missing_image_context")
+        self._last_screenshot_translation_provider = ""
         self.log_ai_debug(
             "\n".join([
                 "[screenshot start]",
@@ -1355,13 +1357,29 @@ class OCRWorker(QObject):
             self.active_gemma_model = provider_model
             self.sync_gemma_call_timestamps_from_provider(provider)
             translated = self.convert_to_trad(result.text)
-            if source_text_hint and (
-                should_fallback_to_text_translation(source_text_hint, translated)
-                or is_suspiciously_short_translation(source_text_hint, translated)
-            ):
-                fallback = self.translate_text_gemma(source_text_hint)
-                if fallback:
+            fallback_reason = translation_fallback_reason(
+                source_text_hint,
+                translated,
+                target_lang=self.translation_target_lang,
+            )
+            primary_provider = provider_name or self.get_current_ai_provider()
+            if fallback_reason:
+                self._log_translation_fallback_reason(
+                    fallback_reason,
+                    source_text_hint,
+                    translated,
+                    "screenshot_gemma_provider",
+                )
+                if fallback_reason == "empty":
+                    raise ValueError("empty_gemma_screenshot_response")
+                try:
+                    fallback, fallback_provider = self.translate_text_preferred_with_provider(source_text_hint)
+                except Exception:
+                    fallback, fallback_provider = "", ""
+                if self._is_usable_text_fallback(source_text_hint, fallback):
+                    self._last_screenshot_translation_provider = fallback_provider or primary_provider
                     return fallback
+            self._last_screenshot_translation_provider = primary_provider
             return translated
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
@@ -1413,27 +1431,46 @@ class OCRWorker(QObject):
                 break
             translated = ""
         if not translated:
-            if source_text_hint:
-                try:
-                    translated = self.translate_text_google(source_text_hint)
-                except Exception:
-                    try:
-                        translated = self.translate_text_gemma(source_text_hint)
-                    except Exception:
-                        translated = ""
-            if translated:
-                return translated
+            fallback_reason = translation_fallback_reason(
+                source_text_hint,
+                translated,
+                target_lang=self.translation_target_lang,
+            )
+            if fallback_reason:
+                self._log_translation_fallback_reason(
+                    fallback_reason,
+                    source_text_hint,
+                    translated,
+                    "screenshot_gemma_empty",
+                )
             raise ValueError("empty_gemma_screenshot_response")
-        if source_text_hint and (
-            should_fallback_to_text_translation(source_text_hint, translated)
-            or is_suspiciously_short_translation(source_text_hint, translated)
-        ):
-            fallback = self.translate_text_google(source_text_hint)
-            if fallback:
+        fallback_reason = translation_fallback_reason(
+            source_text_hint,
+            translated,
+            target_lang=self.translation_target_lang,
+        )
+        if fallback_reason:
+            self._log_translation_fallback_reason(
+                fallback_reason,
+                source_text_hint,
+                translated,
+                "screenshot_gemma_google",
+            )
+            try:
+                fallback = self.translate_text_google(source_text_hint)
+            except Exception:
+                fallback = ""
+            if self._is_usable_text_fallback(source_text_hint, fallback):
+                self._last_screenshot_translation_provider = "google"
                 return fallback
-            fallback = self.translate_text_gemma(source_text_hint)
-            if fallback:
+            try:
+                fallback = self.translate_text_gemma(source_text_hint)
+            except Exception:
+                fallback = ""
+            if self._is_usable_text_fallback(source_text_hint, fallback):
+                self._last_screenshot_translation_provider = self.get_current_ai_provider()
                 return fallback
+        self._last_screenshot_translation_provider = self.get_current_ai_provider()
         return translated
 
     def translate_text_gemma_with_provider(self, text):
@@ -1524,8 +1561,59 @@ class OCRWorker(QObject):
             translated = self.translate_multimodal_gemma(image_parts, source_texts)
             parsed = self.parse_segmented_translation_json(translated, len(source_texts))
             if parsed:
-                return parsed
+                repaired, _providers = self._repair_suspicious_multimodal_segments(source_texts, parsed)
+                return repaired
         return self.translate_items_in_batches(source_texts, batch_size=GOOGLE_BATCH_SIZE if not self.has_any_multimodal_ai() else 8)
+
+    def _is_usable_text_fallback(self, source_text, translated_text):
+        return bool(str(translated_text or "").strip()) and not translation_fallback_reason(
+            source_text,
+            translated_text,
+            target_lang=self.translation_target_lang,
+        )
+
+    def _log_translation_fallback_reason(self, reason, source_text, translated_text, route):
+        debug_log = getattr(self, "log_ai_debug", None)
+        if not callable(debug_log):
+            return
+        debug_log(
+            " ".join(
+                [
+                    "[translation fallback]",
+                    f"route={route}",
+                    f"reason={reason}",
+                    f"source_len={len(str(source_text or ''))}",
+                    f"translated_len={len(str(translated_text or ''))}",
+                ]
+            )
+        )
+
+    def _repair_suspicious_multimodal_segments(self, source_texts, parsed):
+        repaired = list(parsed)
+        provider_name = self.get_current_ai_provider()
+        providers = [provider_name] * len(repaired)
+        for index, (source_text, translated_text) in enumerate(zip(source_texts, repaired)):
+            fallback_reason = translation_fallback_reason(
+                source_text,
+                translated_text,
+                target_lang=self.translation_target_lang,
+            )
+            if not fallback_reason:
+                continue
+            self._log_translation_fallback_reason(
+                fallback_reason,
+                source_text,
+                translated_text,
+                f"multimodal_segment_{index}",
+            )
+            try:
+                fallback, fallback_provider = self.translate_text_preferred_with_provider(source_text)
+            except Exception:
+                continue
+            if self._is_usable_text_fallback(source_text, fallback):
+                repaired[index] = fallback
+                providers[index] = fallback_provider or provider_name
+        return repaired, providers
 
     def translate_items_with_ai_and_providers(self, source_texts, image_parts, merged_items=None):
         if not source_texts:
@@ -1534,7 +1622,7 @@ class OCRWorker(QObject):
             translated = self.translate_multimodal_gemma(image_parts, source_texts)
             parsed = self.parse_segmented_translation_json(translated, len(source_texts))
             if parsed:
-                return parsed, [self.get_current_ai_provider()] * len(parsed)
+                return self._repair_suspicious_multimodal_segments(source_texts, parsed)
         if len(source_texts) == 1 and merged_items is not None:
             provider_name = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
             provider_obj = self._get_translation_provider(provider_name)
@@ -2394,7 +2482,10 @@ class OCRWorker(QObject):
                 self.status_msg.emit("🖼 截圖模式翻譯中...")
                 try:
                     translated_text = self.translate_screenshot_gemma(ai_image_parts, screenshot_text_hint).strip()
-                    current_provider = self.get_current_ai_provider()
+                    current_provider = (
+                        getattr(self, "_last_screenshot_translation_provider", "")
+                        or self.get_current_ai_provider()
+                    )
                 except Exception as exc:
                     self.log_ai_debug(f"MULTIMODAL FAILED: {exc}")
                     if screenshot_text_hint:
