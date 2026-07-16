@@ -8,6 +8,7 @@ import pytest
 
 import cloudhime_workers as workers_module
 from cloudhime_workers import OCRWorker
+from exact_image_cache import ExactImageCache
 
 
 def make_worker_stub():
@@ -29,14 +30,20 @@ def make_worker_stub():
     return worker
 
 
-def test_translation_setting_changes_clear_translation_memories_only():
+def test_translation_setting_changes_clear_all_translation_memories():
     worker = make_worker_stub()
     worker.translation_target_lang = "zh-TW"
     worker.gemma_prompt = "old prompt"
     worker.screenshot_gemma_prompt = "old screenshot prompt"
-    worker.translation_cache = OrderedDict({("source", "text"): "舊翻譯"})
-    worker.preferred_text_memory = OrderedDict({"hello": {"translated_text": "舊翻譯"}})
-    worker.hud_memory = OrderedDict({"hello": {"translated_text": "舊翻譯"}})
+    worker.translation_cache = OrderedDict({("source", "text"): "old translation"})
+    worker.preferred_text_memory = OrderedDict({"hello": {"translated_text": "old translation"}})
+    worker.hud_memory = OrderedDict({"hello": {"translated_text": "old translation"}})
+    worker.exact_image_cache = ExactImageCache()
+    image = np.zeros((2, 2, 3), dtype=np.uint8)
+    worker.exact_image_cache.put(image, "context", ["cached"], "google", "state")
+    worker.last_combined_text = "old"
+    worker.last_results = [("old", 1, 2, 3, 4)]
+    worker.last_provider = "google"
     worker.unrelated_setting = "keep"
 
     OCRWorker.set_translation_target_lang(worker, "en")
@@ -45,23 +52,49 @@ def test_translation_setting_changes_clear_translation_memories_only():
     assert not worker.translation_cache
     assert not worker.preferred_text_memory
     assert not worker.hud_memory
+    assert len(worker.exact_image_cache) == 0
+    assert worker.last_combined_text == ""
+    assert worker.last_results == []
+    assert worker.last_provider == ""
     assert worker.unrelated_setting == "keep"
 
-    worker.translation_cache["new"] = "translation"
-    worker.preferred_text_memory["new"] = {"translated_text": "translation"}
-    worker.hud_memory["new"] = {"translated_text": "translation"}
-    OCRWorker.set_gemma_prompt(worker, "new prompt")
-    assert not worker.translation_cache
-    assert not worker.preferred_text_memory
-    assert not worker.hud_memory
+    for setter, value in (
+        (OCRWorker.set_gemma_prompt, "new prompt"),
+        (OCRWorker.set_screenshot_gemma_prompt, "new screenshot prompt"),
+    ):
+        worker.translation_cache["new"] = "translation"
+        worker.preferred_text_memory["new"] = {"translated_text": "translation"}
+        worker.hud_memory["new"] = {"translated_text": "translation"}
+        worker.exact_image_cache.put(image, "context", ["cached"], "google", "state")
+        worker.last_results = [("old", 1, 2, 3, 4)]
 
-    worker.translation_cache["newer"] = "translation"
-    worker.preferred_text_memory["newer"] = {"translated_text": "translation"}
-    worker.hud_memory["newer"] = {"translated_text": "translation"}
-    OCRWorker.set_screenshot_gemma_prompt(worker, "new screenshot prompt")
-    assert not worker.translation_cache
-    assert not worker.preferred_text_memory
-    assert not worker.hud_memory
+        setter(worker, value)
+
+        assert not worker.translation_cache
+        assert not worker.preferred_text_memory
+        assert not worker.hud_memory
+        assert len(worker.exact_image_cache) == 0
+        assert worker.last_results == []
+
+
+def test_background_threshold_change_invalidates_exact_image_cache():
+    worker = make_worker_stub()
+    worker.binary_threshold = 100
+    worker.exact_image_cache = ExactImageCache()
+    image = np.zeros((2, 2, 3), dtype=np.uint8)
+    worker.exact_image_cache.put(image, "context", ["cached"], "google", "state")
+
+    def refresh_threshold(*_args, **_kwargs):
+        OCRWorker.set_binary_threshold(worker, 120)
+        return 120, []
+
+    worker.run_ocr_with_best_threshold = refresh_threshold
+    worker._bg_threshold_running = True
+
+    OCRWorker._run_background_threshold(worker, image, 0, 0, "region")
+
+    assert len(worker.exact_image_cache) == 0
+    assert worker._bg_threshold_running is False
 
 
 def test_gemma_text_fallback_cache_isolated_by_target_and_prompt(monkeypatch):
@@ -125,7 +158,7 @@ def test_gemma_multimodal_fallback_cache_includes_target_and_effective_prompt(mo
     worker.record_gemma_call = lambda model_name=None: None
     worker.extract_gemma_text = lambda payload: payload["translation"]
     worker.convert_to_trad = lambda text: text
-    responses = iter(["舊多模態翻譯", "新多模態翻譯"])
+    responses = iter(["舊多模態翻譯", "不同影像翻譯", "新多模態翻譯"])
     requests = []
 
     class Response:
@@ -150,16 +183,33 @@ def test_gemma_multimodal_fallback_cache_includes_target_and_effective_prompt(mo
 
     assert OCRWorker.translate_multimodal_gemma(worker, image_parts, ["hello"]) == "舊多模態翻譯"
     old_key = next(iter(worker.translation_cache))
+    expected_digest = workers_module.hashlib.sha256(
+        json.dumps(image_parts, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
     assert old_key[0:2] == ("gemma-mm", "gemma-3-27b-it")
-    assert old_key[3] == "zh-TW"
-    assert "old prompt" in old_key[4]
+    assert old_key[3] == expected_digest
+    assert old_key[4] == "zh-TW"
+    assert "old prompt" in old_key[5]
+
+    assert OCRWorker.translate_multimodal_gemma(worker, image_parts, ["hello"]) == "舊多模態翻譯"
+    assert len(requests) == 1
+
+    different_image_parts = [{"inline_data": {"mime_type": "image/png", "data": "YmFy"}}]
+    assert OCRWorker.translate_multimodal_gemma(worker, different_image_parts, ["hello"]) == "不同影像翻譯"
+    different_key = next(key for key in worker.translation_cache if key[3] != old_key[3])
+    assert different_key[0:2] == ("gemma-mm", "gemma-3-27b-it")
+    assert different_key[4] == "zh-TW"
+    assert "old prompt" in different_key[5]
+    assert len(requests) == 2
 
     OCRWorker.set_gemma_prompt(worker, "new prompt")
-    assert OCRWorker.translate_multimodal_gemma(worker, image_parts, ["hello"]) == "新多模態翻譯"
-    new_key = next(iter(worker.translation_cache))
-    assert new_key[3] == "zh-TW"
-    assert "new prompt" in new_key[4]
-    assert requests[0]["contents"][0]["parts"][-1]["text"] != requests[1]["contents"][0]["parts"][-1]["text"]
+    assert OCRWorker.translate_multimodal_gemma(worker, different_image_parts, ["hello"]) == "新多模態翻譯"
+    new_key = next(key for key in worker.translation_cache if "new prompt" in key[5])
+    assert new_key[3] == different_key[3]
+    assert new_key[4] == "zh-TW"
+    assert "new prompt" in new_key[5]
+    assert len(requests) == 3
+    assert requests[0]["contents"][0]["parts"][-1]["text"] != requests[2]["contents"][0]["parts"][-1]["text"]
 
 
 def test_set_local_gemma_params_rejects_non_numeric_values():
@@ -427,7 +477,7 @@ def test_refresh_translation_registry_applies_local_multimodal_config():
     worker = make_worker_stub()
     worker.use_gemma_translation = False
     worker.gemma_prompt = ""
-    worker.screenshot_gemma_prompt = ""
+    worker.screenshot_gemma_prompt = "remote screenshot prompt"
     worker.gemma_auto_switch_enabled = False
     worker.translation_target_lang = "zh-TW"
     worker.local_gemma_temperature = 0.2
@@ -465,6 +515,7 @@ def test_refresh_translation_registry_applies_local_multimodal_config():
     assert provider.base_url == "http://localhost:11434/v1"
     assert provider.model_name == "vision-local"
     assert provider.timeout_seconds == 45
+    assert worker.gemma_translation_provider.screenshot_gemma_prompt == "remote screenshot prompt"
 
 def test_refresh_translation_registry_gates_embedded_runtime_readiness():
     from translation_providers import (
@@ -721,6 +772,9 @@ def test_run_ocr_explores_thresholds_after_fast_path_misses():
     worker.scan_mode = "fullscreen"
     worker.binary_threshold = 100
     worker.auto_threshold_enabled = False
+    worker.exact_image_cache = ExactImageCache()
+    cached_image = np.zeros((2, 2, 3), dtype=np.uint8)
+    worker.exact_image_cache.put(cached_image, "old-threshold", ["cached"], "google", "state")
     emitted_thresholds = []
     worker.threshold_suggested = SimpleNamespace(emit=emitted_thresholds.append)
 
@@ -730,6 +784,7 @@ def test_run_ocr_explores_thresholds_after_fast_path_misses():
     assert used_threshold == 250
     assert emitted_thresholds == [250]
     assert [item["text"] for item in items] == ["x"]
+    assert len(worker.exact_image_cache) == 0
 def test_prepare_local_vision_ensures_assets_before_runtime_start(monkeypatch):
     calls = []
     assets = SimpleNamespace(managed=True)

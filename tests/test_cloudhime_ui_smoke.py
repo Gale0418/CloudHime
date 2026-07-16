@@ -196,7 +196,7 @@ def test_controller_local_vision_states_update_ui(qtbot):
 
     Controller.on_local_vision_status(controller, "starting", "")
     assert controller.charge_bar.indeterminate is True
-    assert messages[-1] == "正在啟動內嵌多模態伺服器..."
+    assert messages[-1] == "正在準備內嵌多模態引擎..."
 
     Controller.on_local_vision_status(controller, "progress", "85|warming_up")
     assert controller.charge_bar.indeterminate is False
@@ -219,6 +219,25 @@ def test_controller_local_vision_states_update_ui(qtbot):
     assert messages[-1] == "內嵌多模態伺服器已停止"
     assert len(health_refreshes) == 5
 
+def test_controller_local_vision_download_status_is_bilingual(qtbot):
+    for language, expected in (
+        ("zh-TW", "下載 Gemma 模型"),
+        ("en", "Downloading Gemma model"),
+    ):
+        controller = Controller.__new__(Controller)
+        controller.ui_language = language
+        controller.theme_mode = "light"
+        controller.charge_bar = StatusChargeBar()
+        qtbot.addWidget(controller.charge_bar)
+        messages = []
+        controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
+
+        Controller.on_local_vision_status(controller, "progress", "40|downloading")
+
+        assert controller.charge_bar.progress == 40
+        assert expected in controller.charge_bar.label
+        assert expected in messages[-1]
+
 def test_controller_japanese_rescue_status_is_bilingual(qtbot):
     for language, expected in (
         ("zh-TW", "下載日文 OCR 模型"),
@@ -237,3 +256,52 @@ def test_controller_japanese_rescue_status_is_bilingual(qtbot):
         assert controller.charge_bar.progress == 40
         assert expected in controller.charge_bar.label
         assert expected in messages[-1]
+def test_api_key_is_persisted_beside_appdata_settings(monkeypatch, tmp_path):
+    import cloudhime_ui
+
+    class FakeLineEdit:
+        def __init__(self):
+            self.value = ""
+
+        def text(self):
+            return self.value
+
+        def blockSignals(self, _blocked):
+            return None
+
+        def setText(self, value):
+            self.value = value
+
+    env_path = tmp_path / "CloudHime" / ".env"
+    monkeypatch.setattr(cloudhime_ui, "APPDATA_ENV_PATH", str(env_path))
+
+    controller = Controller.__new__(Controller)
+    controller.worker = SimpleNamespace(
+        google_api_key="",
+        use_gemma_translation=False,
+        set_google_api_key=lambda value: setattr(controller.worker, "google_api_key", value),
+    )
+    controller.input_api_key = FakeLineEdit()
+    controller.settings_window = None
+    controller.schedule_save_settings = lambda: None
+    controller.toggle_ai_translation = lambda _enabled: None
+
+    Controller.on_api_key_changed(controller, "secret-key")
+
+    assert env_path.read_text(encoding="utf-8") == f"{cloudhime_ui.API_KEY_ENV_VAR}=secret-key\n"
+    assert controller.worker.google_api_key == "secret-key"
+
+def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):
+    import cloudhime_ui
+
+    appdata_path = tmp_path / "appdata.env"
+    legacy_path = tmp_path / "legacy.env"
+    appdata_path.write_bytes(b"CLOUDHIME_GOOGLE_API_KEY=\xff")
+    legacy_path.write_text(
+        f"{cloudhime_ui.API_KEY_ENV_VAR}=legacy-key\n",
+        encoding="utf-8",
+    )
+
+    assert cloudhime_ui._read_api_key_from_env_files(
+        (str(appdata_path), str(legacy_path))
+    ) == "legacy-key"
