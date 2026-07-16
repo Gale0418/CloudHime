@@ -3,6 +3,7 @@ import unittest
 try:
     from ocr_refinement import (
         normalize_translation_compare_text,
+        translation_fallback_reason,
         should_fallback_to_text_translation,
         is_suspiciously_short_translation,
         score_ocr_candidate_text,
@@ -13,6 +14,7 @@ except ImportError:
     # 為了在完全沒有目標檔案的 RED 階段仍能被 unittest 掃描到，
     # 這裡給定 None 的 mock，讓它會在執行階段失敗，而不是在 module import 時卡死。
     normalize_translation_compare_text = None
+    translation_fallback_reason = None
     should_fallback_to_text_translation = None
     is_suspiciously_short_translation = None
     score_ocr_candidate_text = None
@@ -40,17 +42,34 @@ class TestOcrRefinement(unittest.TestCase):
         self.assertTrue(should_fallback_to_text_translation("identical text", "identical text"))
         self.assertFalse(should_fallback_to_text_translation("This is a test", "這是一個測試"))
 
-    def test_is_suspiciously_short_translation(self):
-        # 3. 當 source 很長、translated 很短時，會回傳 True。
+    def test_translation_fallback_reason_respects_target_language_and_empty_results(self):
+        if translation_fallback_reason is None:
+            self.fail("ocr_refinement module or function not implemented")
+
+        self.assertEqual(translation_fallback_reason("Hello world", "", "zh-TW"), "empty")
+        self.assertEqual(translation_fallback_reason("\u3053\u3093\u306b\u3061\u306f", "", "en"), "empty")
+        self.assertEqual(translation_fallback_reason("Hello world", "Hello world", "zh-TW"), "source_echo")
+        self.assertEqual(translation_fallback_reason("Hello world", "Hello world", "en"), "")
+        self.assertEqual(translation_fallback_reason("\u7e41\u9ad4\u4e2d\u6587", "\u7e41\u9ad4\u4e2d\u6587", "zh-TW"), "")
+        self.assertEqual(translation_fallback_reason("Hello", "\u65e5\u672c\u8a9e", "en"), "source_script_retained")
+        self.assertEqual(translation_fallback_reason("Hello", "\u3053\u3093\u306b\u3061\u306f", "en"), "source_script_retained")
+        self.assertEqual(translation_fallback_reason("Hello", "\u30c4\u30fc\u30dd\u30a4\u30f3\u30c8", "en"), "source_script_retained")
+        self.assertEqual(translation_fallback_reason("Hello", "Hello \u65e5\u672c", "en"), "")
+        self.assertEqual(translation_fallback_reason("Hello", "\u3053\u308c\u306f\u30c6\u30b9\u30c8", "zh-TW"), "source_script_retained")
+        self.assertEqual(translation_fallback_reason("Hello", "\u3053\u308c\u306f\u8a66\u9a13\u3067\u3059", "zh-TW"), "source_script_retained")
+        self.assertEqual(translation_fallback_reason("\u3053\u308c\u306f\u65e5\u672c\u8a9e\u3067\u3059", "\u3053\u308c\u306f\u65e5\u672c\u8a9e\u3067\u3059", "zh-TW"), "source_script_retained")
+        self.assertEqual(translation_fallback_reason("Hello", "\u904a\u6232\u300a\u30c4\u30fc\u30dd\u30a4\u30f3\u30c8\u300b", "zh-TW"), "")
+    def test_is_suspiciously_short_translation_only_flags_multiline_missing_coverage(self):
         if is_suspiciously_short_translation is None:
             self.fail("ocr_refinement module or function not implemented")
-            
-        long_source = "A very long source text that has many many words and characters in it to be translated."
-        short_translated = "很短"
-        normal_translated = "這是一段很長很長的來源文字，裡面有很多很多的單字和字元需要被翻譯。"
-        
+
+        long_source = "First source line with enough detail.\nSecond source line with enough detail.\nThird source line with enough detail."
+        short_translated = "短"
+        complete_translated = "第一行完整翻譯\n第二行完整翻譯\n第三行完整翻譯"
+
+        self.assertFalse(is_suspiciously_short_translation("A long single line with many words", "短"))
         self.assertTrue(is_suspiciously_short_translation(long_source, short_translated))
-        self.assertFalse(is_suspiciously_short_translation(long_source, normal_translated))
+        self.assertFalse(is_suspiciously_short_translation(long_source, complete_translated))
 
     def test_score_ocr_candidate_text(self):
         # 4. score_ocr_candidate_text 對正常 CJK 文字分數高於噪聲字串。
