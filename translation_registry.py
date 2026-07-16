@@ -34,6 +34,12 @@ class TranslationProviderRegistry:
     def __init__(self, providers: Sequence[TranslationProvider]):
         self._providers = {provider.name: provider for provider in providers}
 
+    def register(self, name: str, provider: TranslationProvider) -> None:
+        normalized = (name or "").strip().lower()
+        if not normalized:
+            raise ValueError("provider_name_required")
+        self._providers[normalized] = provider
+
     def get(self, name: str) -> TranslationProvider | None:
         return self._providers.get((name or "").strip().lower())
 

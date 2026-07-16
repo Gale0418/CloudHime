@@ -186,6 +186,10 @@ class TranslationSettingsPanel(QWidget):
         self.chk_local_multimodal_enabled.toggled.connect(self.on_local_multimodal_enabled_changed)
         tuning_layout.addWidget(self.chk_local_multimodal_enabled)
 
+        self.chk_japanese_ocr_rescue_enabled = QCheckBox("")
+        self.chk_japanese_ocr_rescue_enabled.toggled.connect(self.on_japanese_ocr_rescue_enabled_changed)
+        tuning_layout.addWidget(self.chk_japanese_ocr_rescue_enabled)
+
         self.lbl_local_multimodal_base_url = QLabel("")
         tuning_layout.addWidget(self.lbl_local_multimodal_base_url)
         self.input_local_multimodal_base_url = QLineEdit()
@@ -276,6 +280,10 @@ class TranslationSettingsPanel(QWidget):
         self.update_local_multimodal_state()
         self.update_translate_summary()
 
+    def on_japanese_ocr_rescue_enabled_changed(self, checked):
+        if hasattr(self.controller, "on_japanese_ocr_rescue_enabled_changed"):
+            self.controller.on_japanese_ocr_rescue_enabled_changed(checked)
+
     def on_local_multimodal_base_url_changed(self):
         if hasattr(self.controller, "on_local_multimodal_base_url_changed"):
             self.controller.on_local_multimodal_base_url_changed(self.input_local_multimodal_base_url.text())
@@ -292,6 +300,7 @@ class TranslationSettingsPanel(QWidget):
     def update_local_multimodal_state(self):
         enabled = self.chk_local_multimodal_enabled.isEnabled() and self.chk_local_multimodal_enabled.isChecked()
         has_embedded = getattr(self.controller.worker, "local_vision_runtime", None) is not None
+        self.chk_japanese_ocr_rescue_enabled.setEnabled(enabled)
         is_custom_url_visible = not has_embedded
         
         self.lbl_local_multimodal_base_url.setVisible(is_custom_url_visible)
@@ -366,6 +375,9 @@ class TranslationSettingsPanel(QWidget):
         self.chk_local_multimodal_enabled.setText(
             translation_tools.ui_text(lang, "translation_local_multimodal_enabled")
         )
+        self.chk_japanese_ocr_rescue_enabled.setText(
+            translation_tools.ui_text(lang, "translation_japanese_ocr_rescue_enabled")
+        )
         self.lbl_local_multimodal_base_url.setText(
             translation_tools.ui_text(lang, "translation_local_multimodal_base_url")
         )
@@ -426,6 +438,7 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_local_gemma_repeat.setEnabled(enabled)
         self.lbl_local_multimodal.setEnabled(enabled)
         self.chk_local_multimodal_enabled.setEnabled(enabled)
+        self.chk_japanese_ocr_rescue_enabled.setEnabled(enabled)
         self.update_local_multimodal_state()
 
     def sync_from_controller(self):
@@ -459,6 +472,12 @@ class TranslationSettingsPanel(QWidget):
         self.chk_local_multimodal_enabled.blockSignals(True)
         self.chk_local_multimodal_enabled.setChecked(getattr(self.controller, "local_multimodal_enabled", False))
         self.chk_local_multimodal_enabled.blockSignals(False)
+
+        self.chk_japanese_ocr_rescue_enabled.blockSignals(True)
+        self.chk_japanese_ocr_rescue_enabled.setChecked(
+            getattr(self.controller, "japanese_ocr_rescue_enabled", False)
+        )
+        self.chk_japanese_ocr_rescue_enabled.blockSignals(False)
 
         self.input_local_multimodal_base_url.blockSignals(True)
         self.input_local_multimodal_base_url.setText(

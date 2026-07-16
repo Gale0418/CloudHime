@@ -77,6 +77,13 @@ def test_parser_exposes_gpu_only_controls() -> None:
 
     assert args.gpu_layers == 20
     assert args.require_gpu is True
+    assert args.japanese_rescue is False
+
+
+def test_parser_exposes_optional_japanese_rescue() -> None:
+    args = build_parser().parse_args(["--japanese-rescue"])
+
+    assert args.japanese_rescue is True
 
 
 def test_require_gpu_rejects_cpu_controls() -> None:

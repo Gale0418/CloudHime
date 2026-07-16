@@ -18,7 +18,6 @@ import random
 import re
 import json
 import time
-import threading
 import traceback
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -78,10 +77,7 @@ import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
 from local_vision_runtime import LocalVisionRuntime
-from local_vision_assets import (
-    ensure_vision_model_assets,
-    resolve_preferred_vision_assets,
-)
+from local_vision_assets import resolve_vision_assets
 from japanese_ocr_assets import resolve_japanese_ocr_assets
 from japanese_ocr_runtime import JapaneseOCRRuntime, JapaneseOCRRuntimeState
 from japanese_ocr_rescue import (
@@ -211,10 +207,10 @@ class OCRWorker(QObject):
             auto_switch_enabled=False,
             supported_models=SUPPORTED_GEMMA_MODEL_NAMES,
         )
-        app_root = Path(__file__).resolve().parent
-        self._local_vision_assets = resolve_preferred_vision_assets(app_root)
+        from pathlib import Path
+        local_model_path = str(Path(__file__).resolve().parent / "models" / "gemma-3-4b-it.Q4_K_M.gguf")
         self.local_gemma_provider = LocalGemmaProvider(
-            model_path=str(self._local_vision_assets.model_path),
+            model_path=local_model_path,
             gemma_prompt="",
             target_lang=self.translation_target_lang,
             enabled=False
@@ -257,10 +253,8 @@ class OCRWorker(QObject):
         self._bg_threshold_executor = ThreadPoolExecutor(max_workers=1)
         self._local_model_executor = ThreadPoolExecutor(max_workers=1)
         self._local_model_load_future = None
-        self._local_model_cancel_event = threading.Event()
         self._local_vision_executor = ThreadPoolExecutor(max_workers=1)
         self._local_vision_load_future = None
-        self._local_vision_cancel_event = threading.Event()
         self._japanese_rescue_executor = ThreadPoolExecutor(max_workers=1)
         self._japanese_rescue_load_future = None
         self.japanese_rescue_runtime = JapaneseOCRRuntime(
@@ -272,7 +266,7 @@ class OCRWorker(QObject):
         
         try:
             self.local_vision_runtime = LocalVisionRuntime(
-                self._local_vision_assets,
+                resolve_vision_assets(Path(__file__).resolve().parent),
                 progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
                     self, "progress", f"{progress}|{phase}"
                 ),
@@ -445,17 +439,6 @@ class OCRWorker(QObject):
         except Exception:
             self.translation_registry = None
 
-    def _prepare_and_load_local_model(self):
-        assets = getattr(self, "_local_vision_assets", None)
-        if assets is not None:
-            ensure_vision_model_assets(
-                assets,
-                progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
-                    self, "progress", f"{progress}|{phase}"
-                ),
-                cancel_event=getattr(self, "_local_model_cancel_event", None),
-            )
-        return self.local_gemma_provider.load_model()
     def request_local_model_load(self):
         if not self.use_gemma_translation or not self._is_local_model_active():
             return
@@ -475,12 +458,7 @@ class OCRWorker(QObject):
 
         OCRWorker._emit_local_model_status(self, "loading", "")
         try:
-            cancel_event = getattr(self, "_local_model_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.clear()
-            future = self._local_model_executor.submit(
-                lambda: OCRWorker._prepare_and_load_local_model(self)
-            )
+            future = self._local_model_executor.submit(self.local_gemma_provider.load_model)
         except Exception as exc:
             self._local_model_load_future = None
             OCRWorker._emit_local_model_status(self, "failed", f"{type(exc).__name__}: {exc}")
@@ -564,17 +542,6 @@ class OCRWorker(QObject):
         else:
             OCRWorker._emit_japanese_rescue_status(self, "failed", runtime.last_error)
 
-    def _prepare_and_start_local_vision(self):
-        assets = getattr(self, "_local_vision_assets", None)
-        if assets is not None:
-            ensure_vision_model_assets(
-                assets,
-                progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
-                    self, "progress", f"{progress}|{phase}"
-                ),
-                cancel_event=getattr(self, "_local_vision_cancel_event", None),
-            )
-        return self.local_vision_runtime.start()
     def request_local_vision_start(self):
         if not self.use_gemma_translation or not self.local_multimodal_enabled:
             return
@@ -602,12 +569,7 @@ class OCRWorker(QObject):
             OCRWorker._emit_local_vision_status(self, "failed", "vision_executor_missing")
             return
         try:
-            cancel_event = getattr(self, "_local_vision_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.clear()
-            future = executor.submit(
-                lambda: OCRWorker._prepare_and_start_local_vision(self)
-            )
+            future = executor.submit(self.local_vision_runtime.start)
         except Exception as exc:
             self._local_vision_load_future = None
             self.local_multimodal_provider.update_runtime("", "", False)
@@ -625,11 +587,6 @@ class OCRWorker(QObject):
         try:
             state = future.result()
         except Exception as exc:
-            self.local_multimodal_provider.update_runtime("", "", False)
-            registry = getattr(self, "translation_registry", None)
-            local_text_provider = getattr(self, "local_gemma_provider", None)
-            if registry is not None and local_text_provider is not None:
-                registry.register("gemma", local_text_provider)
             OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
             return
             
@@ -650,9 +607,6 @@ class OCRWorker(QObject):
     request_local_vision_load = request_local_vision_start
 
     def shutdown_local_vision_runtime(self):
-        cancel_event = getattr(self, "_local_vision_cancel_event", None)
-        if cancel_event is not None:
-            cancel_event.set()
         runtime = getattr(self, "local_vision_runtime", None)
         if runtime is not None:
             runtime.stop()
@@ -664,9 +618,6 @@ class OCRWorker(QObject):
                 executor.shutdown(wait=False)
 
     def shutdown_local_model_loader(self):
-        cancel_event = getattr(self, "_local_model_cancel_event", None)
-        if cancel_event is not None:
-            cancel_event.set()
         executor = getattr(self, "_local_model_executor", None)
         if executor is not None:
             try:
@@ -674,19 +625,11 @@ class OCRWorker(QObject):
             except TypeError:
                 executor.shutdown(wait=False)
 
-    def _clear_translation_memories(self):
-        """清除可能把舊語言或舊 prompt 帶回翻譯流程的 worker 記憶。"""
-        for memory_name in ("translation_cache", "preferred_text_memory", "hud_memory"):
-            memory = getattr(self, memory_name, None)
-            if hasattr(memory, "clear"):
-                memory.clear()
-
     def set_translation_target_lang(self, target_lang):
         normalized = localization.get_translation_target_lang(target_lang)
         if normalized == getattr(self, "translation_target_lang", localization.DEFAULT_UI_LANGUAGE):
             return
         self.translation_target_lang = normalized
-        self._clear_translation_memories()
         self._refresh_translation_registry()
 
     def begin_translation_registry_batch(self):
@@ -717,9 +660,9 @@ class OCRWorker(QObject):
         if not self.ocr_backends:
             return None
         best_result = None
-        best_score = float("-inf")
+        best_score = -1
         best_any_result = None
-        best_any_score = float("-inf")
+        best_any_score = -1
         for backend in self.ocr_backends:
             try:
                 result = backend.recognize(img_np)
@@ -746,11 +689,6 @@ class OCRWorker(QObject):
 
     def set_gemma_enabled(self, enabled):
         self.use_gemma_translation = bool(enabled)
-        if not self.use_gemma_translation:
-            for name in ("_local_model_cancel_event", "_local_vision_cancel_event"):
-                cancel_event = getattr(self, name, None)
-                if cancel_event is not None:
-                    cancel_event.set()
         self._refresh_translation_registry()
 
     def set_gemma_auto_switch_enabled(self, enabled):
@@ -773,10 +711,6 @@ class OCRWorker(QObject):
 
     def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds):
         self.local_multimodal_enabled = bool(enabled)
-        if not self.local_multimodal_enabled:
-            cancel_event = getattr(self, "_local_vision_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.set()
         self.local_multimodal_base_url = (base_url or "").rstrip("/")
         self.local_multimodal_model = (model_name or "").strip()
         self.local_multimodal_timeout_seconds = max(1, int(timeout_seconds))
@@ -784,19 +718,11 @@ class OCRWorker(QObject):
 
 
     def set_gemma_prompt(self, prompt):
-        normalized = (prompt or "").strip()
-        changed = normalized != getattr(self, "gemma_prompt", "")
-        self.gemma_prompt = normalized
-        if changed:
-            self._clear_translation_memories()
+        self.gemma_prompt = (prompt or "").strip()
         self._refresh_translation_registry()
 
     def set_screenshot_gemma_prompt(self, prompt):
-        normalized = (prompt or "").strip()
-        changed = normalized != getattr(self, "screenshot_gemma_prompt", "")
-        self.screenshot_gemma_prompt = normalized
-        if changed:
-            self._clear_translation_memories()
+        self.screenshot_gemma_prompt = (prompt or "").strip()
         self._refresh_translation_registry()
     def set_local_gemma_params(self, temperature, repeat_penalty):
         try:
@@ -1118,20 +1044,6 @@ class OCRWorker(QObject):
     def build_gemma_prompt(self, text):
         return translation_tools.build_gemma_prompt(text)
 
-    def build_gemma_text_prompt(self, text, model_name=None):
-        target_lang = getattr(
-            self,
-            "translation_target_lang",
-            localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE),
-        )
-        model_name = model_name or getattr(self, "gemma_model", DEFAULT_GEMMA_MODEL)
-        return translation_tools.build_gemma_prompt_with_override(
-            text,
-            getattr(self, "gemma_prompt", ""),
-            target_lang=target_lang,
-            model_name=model_name,
-        )
-
     def extract_gemma_text(self, payload):
         return translation_tools.extract_gemma_text(payload)
 
@@ -1142,19 +1054,7 @@ class OCRWorker(QObject):
         return translation_tools.build_segmented_ocr_payload(source_texts)
 
     def build_gemma_multimodal_prompt(self, source_texts):
-        target_lang = getattr(
-            self,
-            "translation_target_lang",
-            localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE),
-        )
-        base_prompt = translation_tools.build_gemma_multimodal_prompt(
-            source_texts,
-            target_lang=target_lang,
-        )
-        custom_prompt = getattr(self, "gemma_prompt", "").strip()
-        if not custom_prompt:
-            return base_prompt
-        return f"{custom_prompt}\n\n{base_prompt}"
+        return translation_tools.build_gemma_multimodal_prompt(source_texts)
 
     def split_translated_lines(self, translated_text, expected_count):
         return translation_tools.split_translated_lines(translated_text, expected_count)
@@ -1318,13 +1218,7 @@ class OCRWorker(QObject):
         if not self.can_call_gemma(model_name):
             raise ValueError("gemma_rate_limited")
 
-        target_lang = getattr(
-            self,
-            "translation_target_lang",
-            localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE),
-        )
-        effective_prompt = self.build_gemma_text_prompt(normalized_text, model_name)
-        cache_key = ("gemma", model_name, normalized_text, target_lang, effective_prompt)
+        cache_key = ("gemma", model_name, normalized_text)
         cached = self.get_cached_translation(cache_key)
         if cached is not None:
             return cached
@@ -1332,7 +1226,7 @@ class OCRWorker(QObject):
         req_body = {
             "contents": [{
                 "parts": [{
-                    "text": effective_prompt
+                    "text": translation_tools.build_gemma_prompt_with_override(normalized_text, self.gemma_prompt)
                 }]
             }],
             "generationConfig": {
@@ -1397,13 +1291,7 @@ class OCRWorker(QObject):
             raise ValueError("gemma_rate_limited")
 
         normalized_texts = tuple(normalize_ocr_text(text) for text in source_texts)
-        target_lang = getattr(
-            self,
-            "translation_target_lang",
-            localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE),
-        )
-        effective_prompt = self.build_gemma_multimodal_prompt(source_texts)
-        cache_key = ("gemma-mm", model_name, normalized_texts, target_lang, effective_prompt)
+        cache_key = ("gemma-mm", model_name, normalized_texts)
         cached = self.get_cached_translation(cache_key)
         if cached is not None:
             return cached
@@ -1411,7 +1299,7 @@ class OCRWorker(QObject):
         req_body = {
             "contents": [{
                 "parts": image_parts + [{
-                    "text": effective_prompt
+                    "text": self.build_gemma_multimodal_prompt(source_texts)
                 }]
             }],
             "generationConfig": {
@@ -1491,9 +1379,7 @@ class OCRWorker(QObject):
                     "Rewrite the previous answer as translation only. "
                     f"Previous answer was: {last_raw_text[:600]}"
                 )
-            prompt = translation_tools.build_gemma_screenshot_prompt_v2(
-                retry_note, target_lang=self.translation_target_lang
-            )
+            prompt = translation_tools.build_gemma_screenshot_prompt_v2(retry_note)
             req_body = {
                 "contents": [{
                     "parts": [*image_parts, {"text": prompt}]
@@ -1521,13 +1407,9 @@ class OCRWorker(QObject):
             last_payload = payload
             last_raw_text = self.extract_gemma_text(payload)
             translated = self.convert_to_trad(
-                translation_tools.clean_screenshot_translation_output(
-                    last_raw_text, target_lang=self.translation_target_lang
-                )
+                translation_tools.clean_screenshot_translation_output(last_raw_text)
             )
-            if translation_tools.is_valid_screenshot_translation(
-                translated, target_lang=self.translation_target_lang
-            ):
+            if translation_tools.is_valid_screenshot_translation(translated):
                 break
             translated = ""
         if not translated:
@@ -2295,7 +2177,7 @@ class OCRWorker(QObject):
                     "score": score,
                     "items": filtered_items,
                 })
-                if (filtered_items and not current_best_items) or score > current_best_score:
+                if score > current_best_score:
                     current_best_score = score
                     current_best_threshold = threshold
                     current_best_items = filtered_items

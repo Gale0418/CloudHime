@@ -341,6 +341,10 @@ UI_TEXTS = {
         "zh-TW": "啟用本地多模態",
         "en": "Enable local multimodal",
     },
+    "translation_japanese_ocr_rescue_enabled": {
+        "zh-TW": "日文遊戲字幕精準 OCR（首次下載約 44 MiB）",
+        "en": "Accurate Japanese game subtitle OCR (about 44 MiB first download)",
+    },
     "translation_local_multimodal_base_url": {
         "zh-TW": "Base URL",
         "en": "Base URL",

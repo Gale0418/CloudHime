@@ -12,8 +12,9 @@ def setup_logger():
         log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "CloudHime")
         log_path = os.path.join(log_dir, "cloudhime.log")
         try:
+            from logging.handlers import RotatingFileHandler
             os.makedirs(log_dir, exist_ok=True)
-            file_handler = logging.FileHandler(log_path, encoding="utf-8")
+            file_handler = RotatingFileHandler(log_path, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
             file_handler.setFormatter(file_formatter)
             logger.addHandler(file_handler)
         except Exception:

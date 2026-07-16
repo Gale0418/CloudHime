@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 from typing import Callable, Iterable
-
-from managed_asset_store import (
-    AssetSpec,
-    ensure_managed_assets,
-    verify_managed_asset,
-)
+from urllib import request
 
 
 ProgressCallback = Callable[[str, int], None]
-ModelAsset = AssetSpec
+
+
+@dataclass(frozen=True)
+class ModelAsset:
+    name: str
+    url: str
+    sha256: str
+    size: int
 
 
 @dataclass(frozen=True)
@@ -64,8 +67,45 @@ def resolve_japanese_ocr_assets(local_appdata: str | Path | None = None) -> Japa
     )
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def verify_model_asset(path: Path, asset: ModelAsset) -> bool:
-    return verify_managed_asset(path, asset)
+    return path.is_file() and path.stat().st_size == asset.size and _sha256(path) == asset.sha256
+
+
+def _download(asset: ModelAsset, destination: Path, on_bytes: Callable[[int], None]) -> None:
+    part = destination.with_suffix(destination.suffix + ".part")
+    existing = part.stat().st_size if part.exists() else 0
+    headers = {"User-Agent": "CloudHime/1.0"}
+    if 0 < existing < asset.size:
+        headers["Range"] = f"bytes={existing}-"
+    else:
+        existing = 0
+
+    response = request.urlopen(request.Request(asset.url, headers=headers), timeout=30)
+    append = existing > 0 and getattr(response, "status", 200) == 206
+    if not append:
+        existing = 0
+    mode = "ab" if append else "wb"
+    downloaded = existing
+    on_bytes(downloaded)
+    with response, part.open(mode) as stream:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            stream.write(chunk)
+            downloaded += len(chunk)
+            on_bytes(downloaded)
+    if part.stat().st_size != asset.size or _sha256(part) != asset.sha256:
+        raise JapaneseOCRAssetError(f"asset verification failed: {asset.name}")
+    os.replace(part, destination)
 
 
 def ensure_japanese_ocr_assets(
@@ -78,20 +118,20 @@ def ensure_japanese_ocr_assets(
     paths = (assets.detection, assets.horizontal, assets.vertical)
     if len(specs) != len(paths):
         raise ValueError("manifest/path count mismatch")
+    assets.root.mkdir(parents=True, exist_ok=True)
+    total = sum(spec.size for spec in specs)
+    completed = 0
 
-    def report(phase: str, percent: int) -> None:
+    def report(current: int) -> None:
         if progress_callback:
-            progress_callback(
-                "downloading" if phase == "verifying" else phase,
-                percent,
-            )
+            progress_callback("downloading", min(80, int((completed + current) * 80 / max(1, total))))
 
-    try:
-        ensure_managed_assets(
-            assets.root,
-            specs,
-            progress_callback=report if progress_callback else None,
-        )
-    except ValueError as exc:
-        raise JapaneseOCRAssetError(str(exc)) from exc
+    for spec, path in zip(specs, paths):
+        if verify_model_asset(path, spec):
+            completed += spec.size
+            report(0)
+            continue
+        _download(spec, path, report)
+        completed += spec.size
+        report(0)
     return assets

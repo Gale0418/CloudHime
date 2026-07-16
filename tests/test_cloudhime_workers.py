@@ -1,12 +1,9 @@
-import json
-from collections import OrderedDict
 from concurrent.futures import Future
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-import cloudhime_workers as workers_module
 from cloudhime_workers import OCRWorker
 
 
@@ -27,139 +24,6 @@ def make_worker_stub():
 
     worker._refresh_translation_registry = refresh_registry
     return worker
-
-
-def test_translation_setting_changes_clear_translation_memories_only():
-    worker = make_worker_stub()
-    worker.translation_target_lang = "zh-TW"
-    worker.gemma_prompt = "old prompt"
-    worker.screenshot_gemma_prompt = "old screenshot prompt"
-    worker.translation_cache = OrderedDict({("source", "text"): "舊翻譯"})
-    worker.preferred_text_memory = OrderedDict({"hello": {"translated_text": "舊翻譯"}})
-    worker.hud_memory = OrderedDict({"hello": {"translated_text": "舊翻譯"}})
-    worker.unrelated_setting = "keep"
-
-    OCRWorker.set_translation_target_lang(worker, "en")
-
-    assert worker.translation_target_lang == "en"
-    assert not worker.translation_cache
-    assert not worker.preferred_text_memory
-    assert not worker.hud_memory
-    assert worker.unrelated_setting == "keep"
-
-    worker.translation_cache["new"] = "translation"
-    worker.preferred_text_memory["new"] = {"translated_text": "translation"}
-    worker.hud_memory["new"] = {"translated_text": "translation"}
-    OCRWorker.set_gemma_prompt(worker, "new prompt")
-    assert not worker.translation_cache
-    assert not worker.preferred_text_memory
-    assert not worker.hud_memory
-
-    worker.translation_cache["newer"] = "translation"
-    worker.preferred_text_memory["newer"] = {"translated_text": "translation"}
-    worker.hud_memory["newer"] = {"translated_text": "translation"}
-    OCRWorker.set_screenshot_gemma_prompt(worker, "new screenshot prompt")
-    assert not worker.translation_cache
-    assert not worker.preferred_text_memory
-    assert not worker.hud_memory
-
-
-def test_gemma_text_fallback_cache_isolated_by_target_and_prompt(monkeypatch):
-    worker = make_worker_stub()
-    worker.google_api_key = "test_key"
-    worker.translation_target_lang = "zh-TW"
-    worker.gemma_prompt = "old prompt"
-    worker.translation_cache = OrderedDict()
-    worker._get_translation_provider = lambda name: None
-    worker.resolve_gemma_model_for_call = lambda preferred_model=None: "gemma-3-27b-it"
-    worker.can_call_gemma = lambda model_name=None: True
-    worker.record_gemma_call = lambda model_name=None: None
-    worker.extract_gemma_text = lambda payload: payload["translation"]
-    worker.clean_model_output = lambda text: text
-    worker.convert_to_trad = lambda text: text
-    responses = iter(["舊語言翻譯", "英文翻譯", "新 prompt 翻譯"])
-    requests = []
-
-    class Response:
-        def __init__(self, payload):
-            self.payload = payload
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            return False
-
-        def read(self):
-            return json.dumps(self.payload).encode("utf-8")
-
-    def fake_urlopen(req, timeout):
-        requests.append(json.loads(req.data.decode("utf-8")))
-        return Response({"translation": next(responses)})
-
-    monkeypatch.setattr(workers_module.request, "urlopen", fake_urlopen)
-
-    assert OCRWorker.translate_text_gemma(worker, "hello") == "舊語言翻譯"
-    OCRWorker.set_translation_target_lang(worker, "en")
-    assert OCRWorker.translate_text_gemma(worker, "hello") == "英文翻譯"
-    OCRWorker.set_gemma_prompt(worker, "new prompt")
-    assert OCRWorker.translate_text_gemma(worker, "hello") == "新 prompt 翻譯"
-
-    prompts = [item["contents"][0]["parts"][0]["text"] for item in requests]
-    assert len(requests) == 3
-    assert prompts[0] != prompts[1]
-    assert "natural English" in prompts[1]
-    assert "new prompt" in prompts[2]
-
-
-def test_gemma_multimodal_fallback_cache_includes_target_and_effective_prompt(monkeypatch):
-    worker = make_worker_stub()
-    worker.google_api_key = "test_key"
-    worker.translation_target_lang = "zh-TW"
-    worker.gemma_prompt = "old prompt"
-    worker.translation_cache = OrderedDict()
-    worker.resolve_multimodal_provider_name = lambda: "gemma"
-    worker._get_translation_provider = lambda name: None
-    worker.resolve_gemma_model_for_call = lambda preferred_model=None: "gemma-3-27b-it"
-    worker.can_call_gemma = lambda model_name=None: True
-    worker.record_gemma_call = lambda model_name=None: None
-    worker.extract_gemma_text = lambda payload: payload["translation"]
-    worker.convert_to_trad = lambda text: text
-    responses = iter(["舊多模態翻譯", "新多模態翻譯"])
-    requests = []
-
-    class Response:
-        def __init__(self, payload):
-            self.payload = payload
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            return False
-
-        def read(self):
-            return json.dumps(self.payload).encode("utf-8")
-
-    def fake_urlopen(req, timeout):
-        requests.append(json.loads(req.data.decode("utf-8")))
-        return Response({"translation": next(responses)})
-
-    monkeypatch.setattr(workers_module.request, "urlopen", fake_urlopen)
-    image_parts = [{"inline_data": {"mime_type": "image/png", "data": "Zm9v"}}]
-
-    assert OCRWorker.translate_multimodal_gemma(worker, image_parts, ["hello"]) == "舊多模態翻譯"
-    old_key = next(iter(worker.translation_cache))
-    assert old_key[0:2] == ("gemma-mm", "gemma-3-27b-it")
-    assert old_key[3] == "zh-TW"
-    assert "old prompt" in old_key[4]
-
-    OCRWorker.set_gemma_prompt(worker, "new prompt")
-    assert OCRWorker.translate_multimodal_gemma(worker, image_parts, ["hello"]) == "新多模態翻譯"
-    new_key = next(iter(worker.translation_cache))
-    assert new_key[3] == "zh-TW"
-    assert "new prompt" in new_key[4]
-    assert requests[0]["contents"][0]["parts"][-1]["text"] != requests[1]["contents"][0]["parts"][-1]["text"]
 
 
 def test_set_local_gemma_params_rejects_non_numeric_values():
@@ -604,7 +468,7 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
 
     OCRWorker.request_local_vision_start(worker)
 
-    assert len(submitted) == 1
+    assert submitted == [runtime.start]
     assert statuses == [("starting", ""), ("ready", "")]
     assert provider.runtime_updates == [
         ("http://127.0.0.1:43123/v1", "gemma-3-4b-it", True),
@@ -730,40 +594,3 @@ def test_run_ocr_explores_thresholds_after_fast_path_misses():
     assert used_threshold == 250
     assert emitted_thresholds == [250]
     assert [item["text"] for item in items] == ["x"]
-def test_prepare_local_vision_ensures_assets_before_runtime_start(monkeypatch):
-    calls = []
-    assets = SimpleNamespace(managed=True)
-    runtime = SimpleNamespace(start=lambda: calls.append("start") or "ready")
-    worker = SimpleNamespace(
-        _local_vision_assets=assets,
-        _local_vision_cancel_event=None,
-        local_vision_runtime=runtime,
-        local_vision_status=SimpleNamespace(emit=lambda *args: None),
-    )
-    monkeypatch.setattr(
-        workers_module,
-        "ensure_vision_model_assets",
-        lambda selected, **kwargs: calls.append(("ensure", selected)),
-    )
-
-    result = OCRWorker._prepare_and_start_local_vision(worker)
-
-    assert result == "ready"
-    assert calls == [("ensure", assets), "start"]
-
-
-def test_disabling_local_multimodal_cancels_pending_asset_download():
-    cancel_event = SimpleNamespace(set_calls=0)
-    cancel_event.set = lambda: setattr(cancel_event, "set_calls", cancel_event.set_calls + 1)
-    worker = make_worker_stub()
-    worker._local_vision_cancel_event = cancel_event
-
-    OCRWorker.set_local_multimodal_config(
-        worker,
-        enabled=False,
-        base_url="http://127.0.0.1:8080/v1",
-        model_name="gemma-3-4b-it",
-        timeout_seconds=20,
-    )
-
-    assert cancel_event.set_calls == 1

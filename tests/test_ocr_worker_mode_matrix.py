@@ -3,6 +3,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 from PySide6.QtCore import QRect
+from PySide6.QtGui import QFont
 
 from cloudhime_ui import OverlayWindow
 from cloudhime_workers import (
@@ -125,3 +126,28 @@ def test_overlay_builds_each_region_render_mode(qtbot, render_mode):
     finally:
         overlay.clear_all()
         overlay.close()
+
+
+def test_transbubble_font_inheritance(qtbot):
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+
+    test_font = QFont("Arial", 12)
+    overlay.setFont(test_font)
+
+    overlay.set_render_context(
+        SCAN_MODE_REGION,
+        REGION_RENDER_BUBBLE,
+        scan_region=(0, 0, 100, 100),
+    )
+    overlay.update_bubbles([("Test", 10, 10, 50, 20)])
+
+    assert len(overlay.bubbles) == 1
+    bubble = overlay.bubbles[0]
+
+    assert bubble.font().family() == "Arial"
+    assert bubble._get_bubble_font(16).family() == "Arial"
+    assert bubble.font().bold() is True
+
+    overlay.clear_all()
+    overlay.close()

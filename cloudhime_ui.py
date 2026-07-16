@@ -4008,6 +4008,29 @@ class Controller(QWidget):
             self.lbl_status.setText(f"{label}{suffix} ({progress}%)" if progress < 100 else label)
             return
 
+        if state == "progress":
+            try:
+                progress_text, phase = detail.split("|", 1)
+                progress = max(0, min(100, int(progress_text)))
+            except (TypeError, ValueError):
+                progress, phase = 0, "starting_server"
+            phase_labels = {
+                "checking_assets": "檢查模型檔案",
+                "starting_server": "啟動內嵌伺服器",
+                "loading_model": "讀取 Gemma 模型",
+                "loading_tensors": "載入模型權重",
+                "initializing": "初始化 GPU 與上下文",
+                "warming_up": "執行模型暖身",
+                "model_loaded": "模型已載入，確認服務",
+                "ready": "模型暖身完成",
+            }
+            label = phase_labels.get(phase, "載入 Gemma Vision")
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            self.charge_bar.set_progress(progress, f"{label} {progress}%")
+            self.lbl_status.setText(f"{label}... ({progress}%)" if progress < 100 else label)
+            return
+
         if state == "starting":
             colors = build_charge_bar_colors(theme, "normal")
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
@@ -4046,6 +4069,52 @@ class Controller(QWidget):
 
         self.charge_bar.set_progress(0, bar_text)
         self.lbl_status.setText(status_text)
+    def on_japanese_rescue_status(self, state, detail=""):
+        state = str(state or "failed")
+        detail = str(detail or "")
+        if state == "disabled":
+            return
+        english = self.get_ui_language() == "en"
+        labels = {
+            "downloading": "Downloading Japanese OCR model" if english else "下載日文 OCR 模型",
+            "warming_up": "Warming up Japanese OCR" if english else "暖身日文 OCR",
+            "ready": "Japanese OCR ready" if english else "日文 OCR 已就緒",
+            "preparing": "Preparing Japanese OCR" if english else "準備日文 OCR",
+            "failed": "Japanese OCR failed" if english else "日文 OCR 啟動失敗",
+        }
+        theme = resolve_theme(self.theme_mode)
+        colors = build_charge_bar_colors(theme, "danger" if state == "failed" else "normal")
+        self.charge_bar.set_theme_colors(
+            colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"]
+        )
+        if state == "progress":
+            try:
+                progress_text, phase = detail.split("|", 1)
+                progress = max(0, min(100, int(progress_text)))
+            except (TypeError, ValueError):
+                progress, phase = 0, "downloading"
+            label = labels.get(phase, labels["preparing"])
+            self.charge_bar.set_progress(progress, f"{label} {progress}%")
+            self.lbl_status.setText(f"{label}... ({progress}%)" if progress < 100 else label)
+        elif state == "starting":
+            self.charge_bar.set_indeterminate(True, labels["preparing"])
+            self.lbl_status.setText(
+                "Preparing Japanese game subtitle OCR in the background..."
+                if english else "正在背景準備日文遊戲字幕 OCR..."
+            )
+        elif state == "ready":
+            self.charge_bar.set_progress(100, labels["ready"])
+            self.lbl_status.setText(
+                "Accurate Japanese game subtitle OCR is ready"
+                if english else "日文遊戲字幕精準 OCR 已就緒"
+            )
+        else:
+            self.charge_bar.set_progress(0, labels["failed"])
+            separator = ": " if english else "："
+            self.lbl_status.setText(
+                f"{labels['failed']}{separator}{detail}" if detail else labels["failed"]
+            )
+
     def on_japanese_rescue_status(self, state, detail=""):
         state = str(state or "failed")
         detail = str(detail or "")

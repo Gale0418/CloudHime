@@ -161,31 +161,13 @@ if __name__ == "__main__":
     startup_log("main start")
     app = QApplication(sys.argv)
     
-    # Apply Apple-style typography globally
-    font = QFont("Helvetica Neue", 10)
-    font.setStyleHint(QFont.SansSerif)
-    font.setHintingPreference(QFont.PreferNoHinting)
-    app.setFont(font)
-
     startup_log("QApplication created")
-    loaded_font = None
-    for font_path in (
-        r"C:\Windows\Fonts\msjh.ttc",
-        r"C:\Windows\Fonts\msjhbd.ttc",
-        r"C:\Windows\Fonts\msyh.ttc",
-        r"C:\Windows\Fonts\msyhbd.ttc",
-        r"C:\Windows\Fonts\mingliu.ttc",
-    ):
-        if os.path.exists(font_path):
-            font_id = QFontDatabase.addApplicationFont(font_path)
-            families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
-            if families:
-                loaded_font = families[0]
-                app.setFont(QFont(loaded_font, 10))
-                break
-    if loaded_font is None:
-        app.setFont(QFont("Microsoft JhengHei UI", 10))
-    startup_log("font ready", loaded_font or "Microsoft JhengHei UI")
+    system_font = QFontDatabase.systemFont(QFontDatabase.GeneralFont)
+    system_font.setPointSize(10)
+    system_font.setStyleHint(QFont.SansSerif)
+    system_font.setHintingPreference(QFont.PreferDefaultHinting)
+    app.setFont(system_font)
+    startup_log("font ready", system_font.family())
     
     overlay = OverlayWindow()
     startup_log("OverlayWindow created")
