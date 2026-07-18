@@ -395,6 +395,93 @@ def test_manga_ocr_reliability_gate_is_conservative():
     assert OCRWorker.is_unreliable_manga_ocr([{"text": "短文"}]) is False
 
 
+def test_manga_adaptive_regions_are_bounded_and_offset_aware(qtbot):
+    worker = OCRWorker()
+    items = [
+        {"text": "大きい", "x": 120, "y": 220, "w": 300, "h": 120},
+        {"text": "重複", "x": 130, "y": 230, "w": 280, "h": 110},
+        {"text": "縦書き", "x": 610, "y": 220, "w": 70, "h": 280},
+        {"text": "小さすぎる", "x": 20, "y": 30, "w": 5, "h": 5},
+        {"text": "拡張すると広すぎる", "x": 100, "y": 200, "w": 500, "h": 400},
+        {"text": "広すぎる", "x": 100, "y": 200, "w": 790, "h": 900},
+    ]
+    try:
+        regions = worker.build_manga_adaptive_regions(
+            items,
+            800,
+            1000,
+            offset_x=100,
+            offset_y=200,
+        )
+
+        assert len(regions) == 2
+        assert any(region[3] >= region[2] * 1.3 for region in regions)
+        assert all(0 <= x < 800 and 0 <= y < 1000 for x, y, _w, _h in regions)
+    finally:
+        worker.cleanup()
+
+
+def test_manga_adaptive_refine_routes_orientation_and_replaces_only_better(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    baseline = [
+        {"text": "古い横文", "x": 100, "y": 100, "w": 300, "h": 100},
+        {"text": "古い縦文", "x": 520, "y": 100, "w": 70, "h": 300},
+    ]
+    calls = []
+
+    def run_ocr(_img, _ox, _oy, regions, thresholds, orientations):
+        calls.append((list(regions), list(thresholds), list(orientations)))
+        if orientations == [90, 270]:
+            return 100, [
+                {"text": "改善された縦書き", "x": 520, "y": 100, "w": 70, "h": 300}
+            ]
+        return 100, [
+            {"text": "改善された横書き", "x": 100, "y": 100, "w": 300, "h": 100}
+        ]
+
+    def score(items):
+        total = sum(20 if "改善" in item["text"] else 10 for item in items)
+        return total, list(items)
+
+    worker.run_ocr_with_best_threshold = run_ocr
+    worker.score_ocr_items = score
+    try:
+        refined = worker.refine_manga_ocr_items(image, baseline, 100)
+
+        assert [item["text"] for item in refined] == [
+            "改善された横書き",
+            "改善された縦書き",
+        ]
+        assert {tuple(call[2]) for call in calls} == {(90, 270), (0,)}
+        assert all(call[1] == [100] for call in calls)
+    finally:
+        worker.cleanup()
+
+
+def test_manga_adaptive_refine_keeps_baseline_when_candidate_is_weaker(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    baseline = [
+        {"text": "十分に良い文章", "x": 100, "y": 100, "w": 300, "h": 100},
+        {"text": "別の文章", "x": 500, "y": 100, "w": 80, "h": 300},
+    ]
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(
+            100,
+            [{"text": "弱い", "x": 100, "y": 100, "w": 300, "h": 100}],
+        )
+    )
+    worker.score_ocr_items = lambda items: (
+        sum(20 if "良い" in item["text"] or "別の" in item["text"] else 1 for item in items),
+        list(items),
+    )
+    try:
+        assert worker.refine_manga_ocr_items(image, baseline, 100) == baseline
+    finally:
+        worker.cleanup()
+
+
 def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
     worker = OCRWorker()
