@@ -27,7 +27,11 @@ def _deep_size(value: Any, seen: set[int] | None = None) -> int:
 
     size = sys.getsizeof(value, 0)
     if isinstance(value, np.ndarray):
-        return size + int(value.nbytes)
+        buffer_bytes = int(value.nbytes)
+        size = max(size, buffer_bytes) if value.flags.owndata else size + buffer_bytes
+        if value.dtype.hasobject:
+            size += sum(_deep_size(item, seen) for item in value.flat)
+        return size
     if is_dataclass(value) and not isinstance(value, type):
         return size + sum(
             _deep_size(getattr(value, field.name), seen) for field in fields(value)
@@ -45,6 +49,18 @@ def _deep_size(value: Any, seen: set[int] | None = None) -> int:
     attributes = getattr(value, "__dict__", None)
     if attributes is not None:
         size += _deep_size(attributes, seen)
+    for owner in type(value).__mro__:
+        slots = owner.__dict__.get("__slots__", ())
+        if isinstance(slots, str):
+            slots = (slots,)
+        for slot in slots:
+            if slot in {"__dict__", "__weakref__"}:
+                continue
+            try:
+                slot_value = getattr(value, slot)
+            except AttributeError:
+                continue
+            size += _deep_size(slot_value, seen)
     return size
 
 
@@ -115,6 +131,8 @@ class ExactImageCache:
             )
         if isinstance(context, np.ndarray):
             normalized = np.ascontiguousarray(context)
+            if normalized.dtype.hasobject:
+                raise TypeError("Object arrays are not supported as cache contexts")
             return (
                 "numpy-array",
                 normalized.shape,
@@ -133,11 +151,10 @@ class ExactImageCache:
             values = tuple(sorted((cls._freeze_context(item) for item in context), key=repr))
             return (type(context).__name__, values)
 
-        try:
-            hash(context)
-        except TypeError:
-            return (type(context).__name__, repr(context))
-        return (type(context).__name__, context)
+        raise TypeError(
+            "Unsupported cache context type: "
+            f"{type(context).__module__}.{type(context).__qualname__}"
+        )
 
     def _make_key(self, image: np.ndarray, context: Any) -> _CacheKey:
         return _CacheKey(
@@ -174,8 +191,11 @@ class ExactImageCache:
             for value in (key, image, results, provider, state_token)
         )
 
-    def _evict_if_needed(self) -> None:
-        while len(self._entries) > self._max_entries or self._total_bytes > self._max_bytes:
+    def _evict_for_insert(self, retained_bytes: int) -> None:
+        while self._entries and (
+            len(self._entries) + 1 > self._max_entries
+            or self._total_bytes + retained_bytes > self._max_bytes
+        ):
             _, entry = self._entries.popitem(last=False)
             self._total_bytes -= entry.retained_bytes
 
@@ -217,6 +237,11 @@ class ExactImageCache:
             if retained_bytes > self._max_bytes:
                 return False
 
+            previous = self._entries.pop(key, None)
+            if previous is not None:
+                self._total_bytes -= previous.retained_bytes
+            self._evict_for_insert(retained_bytes)
+
             snapshot = np.array(normalized, copy=True, order="C")
             snapshot.setflags(write=False)
             entry = _Entry(
@@ -227,12 +252,8 @@ class ExactImageCache:
                 nbytes=int(normalized.nbytes),
                 retained_bytes=retained_bytes,
             )
-            previous = self._entries.pop(key, None)
-            if previous is not None:
-                self._total_bytes -= previous.retained_bytes
             self._entries[key] = entry
             self._total_bytes += entry.retained_bytes
-            self._evict_if_needed()
             return True
 
     def clear(self) -> None:

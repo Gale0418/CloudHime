@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+import sys
 from typing import Any
 
 import numpy as np
 import pytest
 
+import exact_image_cache as cache_module
 from exact_image_cache import ExactImageCache, ExactImageCachePayload, _deep_size
 
 
@@ -54,6 +56,32 @@ def test_forced_crc_collision_is_verified_by_array_equal(monkeypatch):
     assert cache.get(first, "ocr") is None
     assert cache.get(second, "ocr").results == ("second",)
 
+
+class _MutableHashableContext:
+    def __hash__(self):
+        return 1
+
+
+class _UnhashableContext:
+    __hash__ = None
+
+
+@pytest.mark.parametrize("context", [_MutableHashableContext(), _UnhashableContext()])
+def test_unsupported_custom_context_is_rejected(context):
+    cache = ExactImageCache()
+
+    with pytest.raises(TypeError, match="Unsupported cache context type"):
+        cache.put(image(1), context, ["text"], "provider", "state")
+
+    assert len(cache) == 0
+
+
+def test_object_array_context_is_rejected():
+    context = np.empty(1, dtype=object)
+    context[0] = "mutable-object-graph"
+
+    with pytest.raises(TypeError, match="Object arrays"):
+        ExactImageCache().put(image(1), context, ["text"], "provider", "state")
 
 def test_context_isolation():
     cache = ExactImageCache()
@@ -120,6 +148,27 @@ def test_large_metadata_can_evict_or_skip_without_corrupting_bookkeeping():
     assert skip_cache.get(source, "ocr") is not None
 
 
+def test_eviction_happens_before_replacement_snapshot(monkeypatch):
+    first = image(1, shape=(512, 512, 3))
+    second = image(2, shape=(512, 512, 3))
+    single_size = retained_size(first, "ocr", [1], "provider", 1)
+    cache = ExactImageCache(max_entries=4, max_bytes=single_size)
+    assert cache.put(first, "ocr", [1], "provider", 1)
+
+    original_array = cache_module.np.array
+    state_during_snapshot = []
+
+    def record_array(*args, **kwargs):
+        state_during_snapshot.append((len(cache), cache.total_bytes))
+        return original_array(*args, **kwargs)
+
+    monkeypatch.setattr(cache_module.np, "array", record_array)
+
+    assert cache.put(second, "ocr", [2], "provider", 2)
+    assert state_during_snapshot == [(0, 0)]
+    assert cache.get(second, "ocr") is not None
+
+
 def test_replacement_updates_retained_bytes_once():
     source = image(1, shape=(2, 2, 1))
     old_results = ["old"]
@@ -161,6 +210,12 @@ class _MetadataBox:
     values: list[Any]
 
 
+class _SlottedMetadata:
+    __slots__ = ("payload",)
+
+    def __init__(self, payload):
+        self.payload = payload
+
 def test_deep_size_handles_dataclasses_and_shared_cycles():
     box = _MetadataBox(values=[])
     box.values.append(box)
@@ -169,6 +224,38 @@ def test_deep_size_handles_dataclasses_and_shared_cycles():
 
     assert size >= len(box.values)
 
+
+def test_deep_size_counts_object_array_elements_and_slots():
+    large_text = "x" * 4096
+    object_array = np.empty(1, dtype=object)
+    object_array[0] = large_text
+    slotted = _SlottedMetadata(large_text)
+
+    assert _deep_size(object_array) >= sys.getsizeof(object_array) + sys.getsizeof(large_text)
+    assert _deep_size(slotted) >= sys.getsizeof(slotted) + sys.getsizeof(large_text)
+
+
+def test_object_array_and_slotted_metadata_respect_byte_budget():
+    source = image(1)
+    small_array = np.empty(1, dtype=object)
+    small_array[0] = None
+    large_array = np.empty(1, dtype=object)
+    large_array[0] = "x" * 4096
+    small_array_size = retained_size(source, "ocr", [small_array], None, None)
+    large_array_size = retained_size(source, "ocr", [large_array], None, None)
+    assert large_array_size > small_array_size
+    assert not ExactImageCache(max_bytes=small_array_size).put(
+        source, "ocr", [large_array], None, None
+    )
+
+    small_slot = _SlottedMetadata("")
+    large_slot = _SlottedMetadata("y" * 4096)
+    small_slot_size = retained_size(source, "ocr", [small_slot], None, None)
+    large_slot_size = retained_size(source, "ocr", [large_slot], None, None)
+    assert large_slot_size > small_slot_size
+    assert not ExactImageCache(max_bytes=small_slot_size).put(
+        source, "ocr", [large_slot], None, None
+    )
 
 def test_byte_eviction_and_oversize_skip():
     first = image(1, shape=(2, 2, 1))
@@ -186,6 +273,15 @@ def test_byte_eviction_and_oversize_skip():
     assert not cache.put(oversize, "ocr", [3], "provider", 3)
     assert len(cache) == 1
     assert cache.total_bytes == single_size
+
+
+def test_default_budget_accepts_one_4k_bgr_frame():
+    cache = ExactImageCache()
+    source = image(1, shape=(2160, 3840, 3))
+
+    assert cache.put(source, "ocr", (), None, None)
+    assert cache.get(source, "ocr") is not None
+    assert source.nbytes <= cache.total_bytes <= 32 * 1024 * 1024
 
 
 def test_non_contiguous_input_is_normalized():

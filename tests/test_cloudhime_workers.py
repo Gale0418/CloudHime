@@ -379,18 +379,37 @@ def test_request_local_model_load_reports_executor_submit_failure():
 
 
 def test_old_local_model_callback_does_not_clear_new_future():
+    statuses = []
     old_future = Future()
     old_future.set_result(True)
     new_future = Future()
     worker = SimpleNamespace(
         _local_model_load_future=new_future,
-        local_model_status=SimpleNamespace(emit=lambda *args: None),
+        local_model_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
         local_gemma_provider=SimpleNamespace(last_load_error=""),
     )
 
     OCRWorker._on_local_model_load_done(worker, old_future)
 
     assert worker._local_model_load_future is new_future
+    assert statuses == []
+
+
+def test_old_failed_local_model_callback_is_silent():
+    statuses = []
+    old_future = Future()
+    old_future.set_exception(RuntimeError("old failure"))
+    new_future = Future()
+    worker = SimpleNamespace(
+        _local_model_load_future=new_future,
+        local_model_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+        local_gemma_provider=SimpleNamespace(last_load_error=""),
+    )
+
+    OCRWorker._on_local_model_load_done(worker, old_future)
+
+    assert worker._local_model_load_future is new_future
+    assert statuses == []
 
 def test_translate_text_preferred_uses_local_ai_without_google_api_key():
     worker = make_worker_stub()
@@ -676,6 +695,8 @@ def test_failed_vision_runtime_restores_local_text_provider():
             update_runtime=lambda *args, **kwargs: None,
         ),
         local_gemma_provider=local_text_provider,
+        gemma_translation_provider=SimpleNamespace(),
+        _is_local_model_active=lambda: True,
         local_multimodal_model="gemma-3-4b-it",
         translation_registry=SimpleNamespace(
             register=lambda *args: registrations.append(args),
@@ -690,6 +711,51 @@ def test_failed_vision_runtime_restores_local_text_provider():
     assert loads == [True]
     assert statuses == [("failed", "health_timeout")]
 
+
+def test_failed_vision_runtime_preserves_remote_text_provider():
+    future = Future()
+    future.set_result(SimpleNamespace(name="failed", detail="health_timeout", base_url="", mode="gpu"))
+    registrations = []
+    remote_provider = SimpleNamespace()
+    worker = SimpleNamespace(
+        _local_vision_load_future=future,
+        local_multimodal_provider=SimpleNamespace(update_runtime=lambda *args, **kwargs: None),
+        local_gemma_provider=SimpleNamespace(),
+        gemma_translation_provider=remote_provider,
+        _is_local_model_active=lambda: False,
+        local_multimodal_model="gemma-3-4b-it",
+        translation_registry=SimpleNamespace(register=lambda *args: registrations.append(args)),
+        request_local_model_load=lambda: None,
+        local_vision_status=SimpleNamespace(emit=lambda *args: None),
+    )
+    worker._restore_configured_text_provider = lambda: OCRWorker._restore_configured_text_provider(worker)
+
+    OCRWorker._on_local_vision_load_done(worker, future)
+
+    assert registrations == [("gemma", remote_provider)]
+
+
+def test_vision_runtime_exception_preserves_remote_text_provider():
+    future = Future()
+    future.set_exception(RuntimeError("startup failed"))
+    registrations = []
+    statuses = []
+    remote_provider = SimpleNamespace()
+    worker = SimpleNamespace(
+        _local_vision_load_future=future,
+        local_multimodal_provider=SimpleNamespace(update_runtime=lambda *args, **kwargs: None),
+        local_gemma_provider=SimpleNamespace(),
+        gemma_translation_provider=remote_provider,
+        _is_local_model_active=lambda: False,
+        translation_registry=SimpleNamespace(register=lambda *args: registrations.append(args)),
+        local_vision_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+    )
+    worker._restore_configured_text_provider = lambda: OCRWorker._restore_configured_text_provider(worker)
+
+    OCRWorker._on_local_vision_load_done(worker, future)
+
+    assert registrations == [("gemma", remote_provider)]
+    assert statuses == [("failed", "RuntimeError: startup failed")]
 
 def test_request_local_vision_start_does_not_submit_duplicate_future():
     statuses = []
@@ -785,6 +851,59 @@ def test_run_ocr_explores_thresholds_after_fast_path_misses():
     assert emitted_thresholds == [250]
     assert [item["text"] for item in items] == ["x"]
     assert len(worker.exact_image_cache) == 0
+def _make_threshold_selection_worker(recognized_results):
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.binary_threshold = 100
+    worker.auto_threshold_enabled = False
+    worker.google_api_key = ""
+    worker.scan_mode = "region"
+    worker.last_auto_threshold_refresh_ms = 0.0
+    worker.exact_image_cache = ExactImageCache()
+    worker.threshold_suggested = SimpleNamespace(emit=lambda _value: None)
+    worker.rotate_crop_for_ocr = lambda crop, _orientation: crop
+    results = iter(recognized_results)
+    worker._recognize_with_backends = lambda _image: next(results)
+    worker.extract_raw_items = lambda result, *_args: result or []
+    worker.remap_items_from_orientation = lambda items, *_args: items
+    worker.score_ocr_items = lambda items: (-5, items) if items else (-1, [])
+    return worker
+
+
+def test_threshold_selection_does_not_replace_nonempty_negative_score_with_empty():
+    valid_item = {"text": "1", "x": 0, "y": 0, "w": 10, "h": 10}
+    worker = _make_threshold_selection_worker([[valid_item], []])
+
+    threshold, items = OCRWorker.run_ocr_with_best_threshold(
+        worker,
+        np.full((20, 40, 3), 128, dtype=np.uint8),
+        0,
+        0,
+        candidate_thresholds=[100, 200],
+        orientation_candidates=[0],
+        force_bg_refresh=True,
+    )
+
+    assert threshold == 100
+    assert items == [valid_item]
+
+
+def test_orientation_selection_prefers_nonempty_result_over_higher_empty_score():
+    valid_item = {"text": "1", "x": 0, "y": 0, "w": 10, "h": 10}
+    worker = _make_threshold_selection_worker([[valid_item], []])
+
+    threshold, items = OCRWorker.run_ocr_with_best_threshold(
+        worker,
+        np.full((20, 40, 3), 128, dtype=np.uint8),
+        0,
+        0,
+        candidate_thresholds=[100],
+        orientation_candidates=[0, 90],
+        force_bg_refresh=True,
+    )
+
+    assert threshold == 100
+    assert items == [valid_item]
+
 def test_prepare_local_vision_ensures_assets_before_runtime_start(monkeypatch):
     calls = []
     assets = SimpleNamespace(managed=True)
