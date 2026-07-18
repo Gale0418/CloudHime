@@ -495,8 +495,9 @@ class OCRWorker(QObject):
         )
 
     def _on_local_model_load_done(self, future):
-        if self._local_model_load_future is future:
-            self._local_model_load_future = None
+        if self._local_model_load_future is not future:
+            return
+        self._local_model_load_future = None
         try:
             ready = bool(future.result())
         except Exception as exc:
@@ -623,6 +624,18 @@ class OCRWorker(QObject):
             lambda completed: OCRWorker._on_local_vision_load_done(self, completed)
         )
 
+    def _restore_configured_text_provider(self):
+        registry = getattr(self, "translation_registry", None)
+        if registry is None:
+            return
+        provider_name = (
+            "local_gemma_provider"
+            if self._is_local_model_active()
+            else "gemma_translation_provider"
+        )
+        provider = getattr(self, provider_name, None)
+        if provider is not None:
+            registry.register("gemma", provider)
     def _on_local_vision_load_done(self, future):
         if self._local_vision_load_future is future:
             self._local_vision_load_future = None
@@ -630,10 +643,8 @@ class OCRWorker(QObject):
             state = future.result()
         except Exception as exc:
             self.local_multimodal_provider.update_runtime("", "", False)
-            registry = getattr(self, "translation_registry", None)
-            local_text_provider = getattr(self, "local_gemma_provider", None)
-            if registry is not None and local_text_provider is not None:
-                registry.register("gemma", local_text_provider)
+            OCRWorker._restore_configured_text_provider(self)
+
             OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
             return
             
@@ -645,9 +656,7 @@ class OCRWorker(QObject):
         if state.name == "ready":
             self._refresh_translation_registry()
         else:
-            registry = getattr(self, "translation_registry", None)
-            if registry is not None:
-                registry.register("gemma", self.local_gemma_provider)
+            OCRWorker._restore_configured_text_provider(self)
             self.request_local_model_load()
         OCRWorker._emit_local_vision_status(self, state.name, state.detail)
 
@@ -710,6 +719,10 @@ class OCRWorker(QObject):
             for backend in getattr(self, "ocr_backends", ())
         )
         threshold_value = int(getattr(self, "binary_threshold", 100))
+        japanese_rescue_ready = (
+            getattr(getattr(self, "japanese_rescue_runtime", None), "state", None)
+            is JapaneseOCRRuntimeState.ready
+        )
 
         return (
             "exact-image-v1",
@@ -725,6 +738,7 @@ class OCRWorker(QObject):
             bool(getattr(self, "auto_threshold_enabled", False)),
             bool(getattr(self, "google_ocr_enabled", False)),
             bool(getattr(self, "japanese_rescue_enabled", False)),
+            japanese_rescue_ready,
             bool(getattr(self, "use_gemma_translation", False)),
             bool(getattr(self, "gemma_auto_switch_enabled", False)),
             getattr(self, "gemma_model", ""),
@@ -904,6 +918,7 @@ class OCRWorker(QObject):
         if hasattr(cache, "clear"):
             cache.clear()
         return normalized
+
     def set_auto_threshold_enabled(self, enabled):
         self.auto_threshold_enabled = bool(enabled)
         if not self.auto_threshold_enabled:
@@ -2454,7 +2469,10 @@ class OCRWorker(QObject):
                 for region_idx in range(len(prepared_regions)):
                     region_results = results_map.get((threshold, region_idx), [])
                     if region_results:
-                        best_score_items = max(region_results, key=lambda x: x[0])
+                        best_score_items = max(
+                            region_results,
+                            key=lambda result: (bool(result[1]), result[0]),
+                        )
                         raw_items.extend(best_score_items[1])
                 score, filtered_items = self.score_ocr_items(raw_items)
                 candidate_results.append({
@@ -2462,7 +2480,7 @@ class OCRWorker(QObject):
                     "score": score,
                     "items": filtered_items,
                 })
-                if (filtered_items and not current_best_items) or score > current_best_score:
+                if filtered_items and (not current_best_items or score > current_best_score):
                     current_best_score = score
                     current_best_threshold = threshold
                     current_best_items = filtered_items
@@ -2730,6 +2748,7 @@ class OCRWorker(QObject):
             self.last_provider = current_provider
             final_results = [(translated_text, int(offset_x), int(offset_y), int(img.shape[1]), int(img.shape[0]))]
             if current_provider:
+                exact_context = self._exact_image_cache_context(offset_x, offset_y)
                 self.exact_image_cache.put(
                     img,
                     exact_context,

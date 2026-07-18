@@ -211,7 +211,7 @@ def test_region_one_pixel_change_repeats_ocr_even_when_text_is_same(monkeypatch,
         worker.cleanup()
 
 
-@pytest.mark.parametrize("change", ["offset", "target", "prompt", "region", "auto_switch"])
+@pytest.mark.parametrize("change", ["offset", "target", "prompt", "region", "auto_switch", "rescue_ready"])
 def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, change):
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     captures = [(image, 7, 11), (image, 8, 11)] if change == "offset" else [(image, 7, 11)] * 2
@@ -219,6 +219,9 @@ def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, ch
     _configure_region_cache_worker(worker, image)
     if change == "target":
         worker.translation_target_lang = "zh-TW"
+    elif change == "rescue_ready":
+        worker.japanese_rescue_enabled = True
+        worker.has_any_multimodal_ai = lambda: True
     worker.capture_scan_area = lambda: captures.pop(0)
     ocr = worker.run_ocr_with_best_threshold
     translate = Mock(return_value=(["Nihao"], ["google"]))
@@ -237,6 +240,8 @@ def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, ch
             worker.scan_region = (30, 10, image.shape[1], image.shape[0])
         elif change == "auto_switch":
             worker.gemma_auto_switch_enabled = not worker.gemma_auto_switch_enabled
+        elif change == "rescue_ready":
+            worker.japanese_rescue_runtime.state = workers_module.JapaneseOCRRuntimeState.ready
         worker.run_scan_once()
 
         assert ocr.call_count == 2
@@ -281,6 +286,41 @@ def test_screenshot_exact_hit_bypasses_hint_parts_and_translation(monkeypatch, q
     finally:
         worker.cleanup()
 
+
+def test_screenshot_cache_uses_threshold_after_hint_processing(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.ocr_backends = []
+    worker.google_ocr_enabled = False
+    worker.auto_threshold_enabled = True
+    worker.scan_mode = SCAN_MODE_REGION
+    worker.region_render_mode = REGION_RENDER_SCREENSHOT
+    worker.scan_region = (20, 10, 80, 40)
+    worker.capture_scan_area = lambda: (image, 7, 11)
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+
+    def build_hint(_image):
+        worker.set_binary_threshold(120)
+        return "Hello"
+
+    worker.build_screenshot_text_hint = Mock(side_effect=build_hint)
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "Zm9v"}}])
+    worker.translate_screenshot_gemma = Mock(return_value="Screenshot")
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+        worker.run_scan_once()
+
+        assert worker.binary_threshold == 120
+        assert worker.build_screenshot_text_hint.call_count == 1
+        assert worker.translate_screenshot_gemma.call_count == 1
+        assert finished[1] == finished[0]
+    finally:
+        worker.cleanup()
 
 @pytest.mark.parametrize("failure", ["exception", "empty"])
 def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, failure):
