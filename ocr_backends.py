@@ -81,6 +81,7 @@ class WindowsOCRBackend(OCRBackend):
         self._engine = None
         self._language = None
         self._mode = "winrt"
+        self._recognize_lock = threading.Lock()
         try:
             try:
                 from winsdk.windows.media.ocr import OcrEngine  # type: ignore
@@ -160,6 +161,10 @@ class WindowsOCRBackend(OCRBackend):
         return await engine.recognize_async(bitmap)
 
     def recognize(self, image: np.ndarray) -> OCRResult:
+        with self._recognize_lock:
+            return self._recognize_once(image)
+
+    def _recognize_once(self, image: np.ndarray) -> OCRResult:
         try:
             ocr_result = self._run_coroutine_sync(self._recognize_async(image))
         except Exception as exc:

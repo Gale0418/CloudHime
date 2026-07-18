@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
@@ -353,5 +354,138 @@ def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, fa
         assert len(worker.exact_image_cache) == 1
         assert finished[0] == []
         assert finished[1] == [["Screenshot", 7, 11, 160, 80]]
+    finally:
+        worker.cleanup()
+
+
+def test_manga_page_region_uses_full_portrait_image_for_missing_or_tiny_detection(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1200, 900, 3), dtype=np.uint8)
+    try:
+        assert worker.normalize_manga_page_region(image, None) == (0, 0, 900, 1200)
+        assert worker.normalize_manga_page_region(image, (0, 850, 300, 250)) == (0, 0, 900, 1200)
+        assert worker.normalize_manga_page_region(image, (20, 80, 820, 1050)) == (20, 80, 820, 1050)
+    finally:
+        worker.cleanup()
+
+
+def test_manga_page_region_accepts_tall_manga_screenshot_boundaries(qtbot):
+    worker = OCRWorker()
+    tall_page = np.zeros((1235, 788, 3), dtype=np.uint8)
+    narrow_page = np.zeros((1283, 825, 3), dtype=np.uint8)
+    try:
+        assert worker.normalize_manga_page_region(tall_page, (22, 72, 190, 311)) == (0, 0, 788, 1235)
+        assert worker.normalize_manga_page_region(narrow_page, None) == (0, 0, 825, 1283)
+    finally:
+        worker.cleanup()
+
+def test_manga_page_region_does_not_treat_landscape_screen_as_page(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    try:
+        assert worker.normalize_manga_page_region(image, None) is None
+    finally:
+        worker.cleanup()
+
+
+def test_manga_ocr_reliability_gate_is_conservative():
+    assert OCRWorker.is_unreliable_manga_ocr([]) is True
+    assert OCRWorker.is_unreliable_manga_ocr([{"text": "S : / S -- ???"}]) is True
+    assert OCRWorker.is_unreliable_manga_ocr([{"text": "君は私の呪いも解いてくれた"}]) is False
+    assert OCRWorker.is_unreliable_manga_ocr([{"text": "短文"}]) is False
+
+
+def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    provider = SimpleNamespace(
+        transcribe_screenshot=Mock(
+            return_value=SimpleNamespace(text="何を言うんだ！")
+        )
+    )
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker._get_translation_provider = lambda _name: provider
+    worker.build_screenshot_text_hint = Mock(return_value="")
+    worker.build_ai_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "cropped"}}]
+    )
+
+    try:
+        rescued, parts = worker.rescue_unreliable_manga_items(
+            image,
+            (100, 200, 400, 500),
+            [{"text": "S : / S -- ???"}],
+            7,
+            11,
+            image_parts=[{"inline_data": {"data": "full"}}],
+        )
+
+        assert worker.build_screenshot_text_hint.call_args.args[0].shape == (500, 400, 3)
+        assert worker.build_ai_image_parts.call_args.args[0].shape == (500, 400, 3)
+        assert parts == [{"inline_data": {"data": "cropped"}}]
+        assert rescued == [
+            {
+                "text": "何を言うんだ！",
+                "x": 107,
+                "y": 211,
+                "w": 400,
+                "h": 500,
+                "confidence": None,
+            }
+        ]
+    finally:
+        worker.cleanup()
+
+
+def test_portrait_latin_screen_does_not_trigger_manga_rescue(monkeypatch, qtbot):
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(100, [{"text": "S : / S -- ???", "x": 10, "y": 12, "w": 40, "h": 16}])
+    )
+    worker.has_any_multimodal_ai = lambda: True
+    worker.rescue_unreliable_manga_items = Mock()
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        worker.rescue_unreliable_manga_items.assert_not_called()
+    finally:
+        worker.cleanup()
+
+def test_fullscreen_unreliable_manga_ocr_uses_multimodal_page_rescue(monkeypatch, qtbot):
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.detect_manga_page_region = lambda _img: (0, 0, 800, 1000)
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(100, [{"text": "S : / S -- ???", "x": 10, "y": 12, "w": 40, "h": 16}])
+    )
+    worker.has_any_multimodal_ai = lambda: True
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    provider = SimpleNamespace(
+        transcribe_screenshot=Mock(
+            return_value=SimpleNamespace(text="何を言うんだ！\n君は私の呪いも解いてくれた")
+        )
+    )
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker.build_screenshot_text_hint = Mock(return_value="何を言うんだ")
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "abc"}}])
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["你說什麼！你不是也替我解除了詛咒嗎！"], ["local_multimodal"])
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        provider.transcribe_screenshot.assert_called_once()
+        assert finished == [[["你說什麼！你不是也替我解除了詛咒嗎！", 7, 11, 800, 1000]]]
     finally:
         worker.cleanup()

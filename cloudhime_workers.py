@@ -2129,6 +2129,129 @@ class OCRWorker(QObject):
         h = min(img_h - y, h + pad_y * 2)
         return (x, y, w, h)
 
+    def normalize_manga_page_region(self, img, detected_region):
+        img_h, img_w = img.shape[:2]
+        if img_h <= 0 or img_w <= 0:
+            return detected_region
+        aspect_ratio = img_w / max(1, img_h)
+        image_is_page_shaped = (
+            min(img_w, img_h) >= 700
+            and 0.58 <= aspect_ratio <= 1.25
+        )
+        if not image_is_page_shaped:
+            return detected_region
+
+        full_region = (0, 0, img_w, img_h)
+        if not detected_region:
+            return full_region
+        try:
+            _x, _y, width, height = [int(value) for value in detected_region]
+        except (TypeError, ValueError):
+            return full_region
+        detected_ratio = max(0, width) * max(0, height) / max(1, img_w * img_h)
+        return full_region if detected_ratio < 0.45 else detected_region
+
+    @staticmethod
+    def is_unreliable_manga_ocr(items):
+        texts = [
+            normalize_ocr_text(item.get("text", ""))
+            for item in (items or [])
+            if normalize_ocr_text(item.get("text", ""))
+        ]
+        combined = "".join(texts)
+        compact = "".join(char for char in combined if not char.isspace())
+        if len(compact) < 4:
+            return not bool(re.search(r"[぀-ヿ㐀-䶿一-鿿]", compact))
+        noise_count = sum(
+            1
+            for char in compact
+            if not (char.isalnum() or re.match(r"[぀-ヿ㐀-䶿一-鿿]", char))
+        )
+        if (noise_count / len(compact)) > 0.55:
+            return True
+        cjk_count = len(re.findall(r"[぀-ヿ㐀-䶿一-鿿]", compact))
+        if len(compact) < 12:
+            fragmented = len(texts) > 1 or any(" " in text for text in texts)
+            return fragmented and (cjk_count / len(compact)) < 0.35
+        return (cjk_count / len(compact)) < 0.18
+
+    @staticmethod
+    def has_cjk_manga_text(items):
+        return any(
+            re.search(r"[぀-ヿ㐀-䶿一-鿿]", normalize_ocr_text(item.get("text", "")))
+            for item in (items or [])
+        )
+
+    @staticmethod
+    def is_degenerate_manga_transcription(text):
+        lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+        if len(lines) < 8:
+            return False
+        counts = {line: lines.count(line) for line in set(lines)}
+        return max(counts.values(), default=0) >= 4 and (len(counts) / len(lines)) < 0.45
+
+    def rescue_unreliable_manga_items(
+        self,
+        img,
+        page_region,
+        items,
+        offset_x,
+        offset_y,
+        image_parts=None,
+    ):
+        if not self.is_unreliable_manga_ocr(items):
+            return list(items or []), image_parts
+        provider_name = self.resolve_multimodal_provider_name()
+        provider = self._get_translation_provider(provider_name) if provider_name else None
+        if provider is None or not hasattr(provider, "transcribe_screenshot"):
+            return list(items or []), image_parts
+
+        page_rect = self.clip_region_rect(
+            *page_region,
+            img.shape[1],
+            img.shape[0],
+        )
+        if page_rect is None:
+            return list(items or []), image_parts
+        x, y, width, height = page_rect
+        page_img = img[y:y + height, x:x + width]
+
+        hint = self.build_screenshot_text_hint(page_img)
+        if not hint:
+            hint = "\n".join(
+                normalize_ocr_text(item.get("text", ""))
+                for item in (items or [])
+                if normalize_ocr_text(item.get("text", ""))
+            )
+        full_rect = (0, 0, img.shape[1], img.shape[0])
+        parts = (
+            image_parts
+            if image_parts and page_rect == full_rect
+            else self.build_ai_image_parts(page_img)
+        )
+        try:
+            result = provider.transcribe_screenshot(parts, source_text_hint=hint or None)
+            transcription = str(getattr(result, "text", "") or "").strip()
+        except Exception as exc:
+            logger.info(f"[Manga rescue] transcription fallback: {type(exc).__name__}")
+            return list(items or []), image_parts
+        if (
+            len(normalize_ocr_text(transcription)) < 4
+            or self.is_degenerate_manga_transcription(transcription)
+        ):
+            return list(items or []), image_parts
+
+        return [
+            {
+                "text": transcription,
+                "x": int(offset_x) + x,
+                "y": int(offset_y) + y,
+                "w": width,
+                "h": height,
+                "confidence": None,
+            }
+        ], parts
+
     def split_region_into_tiles(self, rect, cols=2, rows=3, overlap=0.12):
         x, y, w, h = [int(v) for v in rect]
         if w <= 0 or h <= 0:
@@ -2450,7 +2573,7 @@ class OCRWorker(QObject):
                 # 單任務直接跑，省略 ThreadPoolExecutor 開銷
                 try:
                     threshold, region_idx, orientation, score, filtered_items = _run_one(tasks[0])
-                    results_map.setdefault((threshold, region_idx), []).append((score, filtered_items))
+                    results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
                 except Exception:
                     pass
             elif parallel:
@@ -2460,14 +2583,14 @@ class OCRWorker(QObject):
                     for future in as_completed(futures):
                         try:
                             threshold, region_idx, orientation, score, filtered_items = future.result()
-                            results_map.setdefault((threshold, region_idx), []).append((score, filtered_items))
+                            results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
                         except Exception:
                             pass
             else:
                 for task in tasks:
                     try:
                         threshold, region_idx, orientation, score, filtered_items = _run_one(task)
-                        results_map.setdefault((threshold, region_idx), []).append((score, filtered_items))
+                        results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
                     except Exception:
                         pass
 
@@ -2477,11 +2600,18 @@ class OCRWorker(QObject):
                 for region_idx in range(len(prepared_regions)):
                     region_results = results_map.get((threshold, region_idx), [])
                     if region_results:
+                        orientation_order = {
+                            value: index for index, value in enumerate(orientations)
+                        }
                         best_score_items = max(
                             region_results,
-                            key=lambda result: (bool(result[1]), result[0]),
+                            key=lambda result: (
+                                bool(result[2]),
+                                result[1],
+                                -orientation_order.get(result[0], len(orientation_order)),
+                            ),
                         )
-                        raw_items.extend(best_score_items[1])
+                        raw_items.extend(best_score_items[2])
                 score, filtered_items = self.score_ocr_items(raw_items)
                 candidate_results.append({
                     "threshold": threshold,
@@ -2776,7 +2906,8 @@ class OCRWorker(QObject):
         if self.scan_mode == SCAN_MODE_FULLSCREEN:
             self.status_msg.emit("🧭 智慧裁切分析中...")
             try:
-                page_region = self.detect_manga_page_region(img)
+                detected_page_region = self.detect_manga_page_region(img)
+                page_region = self.normalize_manga_page_region(img, detected_page_region)
                 if page_region:
                     ocr_regions = [page_region]
                     ocr_orientations = [0, 90, 270]
@@ -2863,6 +2994,26 @@ class OCRWorker(QObject):
                     )
                 except Exception:
                     filtered_items = []
+
+        if (
+            self.scan_mode == SCAN_MODE_FULLSCREEN
+            and page_region
+            and (
+                detected_page_region is not None
+                or self.has_cjk_manga_text(filtered_items)
+            )
+            and self.has_any_multimodal_ai()
+            and self.is_unreliable_manga_ocr(filtered_items)
+        ):
+            self.status_msg.emit("📖 漫畫文字辨識補救中...")
+            filtered_items, ai_image_parts = self.rescue_unreliable_manga_items(
+                img,
+                page_region,
+                filtered_items,
+                offset_x,
+                offset_y,
+                ai_image_parts,
+            )
 
         if not filtered_items:
             self.handle_empty()

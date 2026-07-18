@@ -6,7 +6,7 @@ import difflib
 import re
 import time
 import os
-from collections import OrderedDict, deque
+from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 from urllib import error, request
@@ -989,7 +989,14 @@ class LocalMultimodalProvider:
             "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
         }
 
-    def _build_chat_payload(self, *, prompt: str, image_parts: Sequence[dict[str, Any]], response_format: str) -> dict[str, Any]:
+    def _build_chat_payload(
+        self,
+        *,
+        prompt: str,
+        image_parts: Sequence[dict[str, Any]],
+        response_format: str,
+        max_tokens: int = 1024,
+    ) -> dict[str, Any]:
         content = [{"type": "text", "text": prompt}]
         content.extend(self._inline_part_to_content(part) for part in image_parts)
         return {
@@ -997,6 +1004,7 @@ class LocalMultimodalProvider:
             "messages": [{"role": "user", "content": content}],
             "temperature": 0.1,
             "stream": False,
+            "max_tokens": max(64, int(max_tokens)),
             "response_format": {"type": response_format},
         }
 
@@ -1009,7 +1017,10 @@ class LocalMultimodalProvider:
         )
         with request.urlopen(req, timeout=self.timeout_seconds) as response:
             body = json.loads(response.read().decode("utf-8"))
-        return body["choices"][0]["message"]["content"]
+        choice = body["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise ValueError("truncated_local_multimodal_response")
+        return choice["message"]["content"]
 
     def _parse_segmented_response(self, raw_text: str, expected_count: int) -> list[str]:
         translated = parse_segmented_translation_json(raw_text, expected_count)
@@ -1056,6 +1067,7 @@ class LocalMultimodalProvider:
                 prompt=prompt,
                 image_parts=(),
                 response_format="text",
+                max_tokens=512,
             )
         )
         translated = clean_model_output_multiline(raw_text).strip()
@@ -1078,15 +1090,37 @@ class LocalMultimodalProvider:
         base_prompt = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
         prompt = f"{dictionary_hint}\n\n{base_prompt}" if dictionary_hint else base_prompt
         raw_text = self._request_chat_completion(
-            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="json_object")
+            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="json_object", max_tokens=1024)
         )
         translated = self._parse_segmented_response(raw_text, len(texts))
         return [TranslationResult(text=item, provider=self.name, model=self.model_name, raw_text=raw_text) for item in translated]
+
+    @staticmethod
+    def _has_degenerate_repetition(text: str) -> bool:
+        lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+        if len(lines) >= 8:
+            counts = Counter(lines)
+            most_common = max(counts.values(), default=0)
+            if most_common >= 4 and (len(counts) / len(lines)) < 0.45:
+                return True
+
+        compact = re.sub(r"\s+", "", str(text or ""))
+        max_unit = min(32, len(compact) // 4)
+        for unit_size in range(1, max_unit + 1):
+            if len(compact) % unit_size:
+                continue
+            repeats = len(compact) // unit_size
+            unit = compact[:unit_size]
+            if repeats >= 4 and unit * repeats == compact:
+                return True
+        return False
 
     def _parse_transcription_response(self, raw_text: str) -> str:
         transcription = clean_model_output_multiline(raw_text).strip()
         if not transcription:
             raise ValueError("empty_local_multimodal_ocr_response")
+        if self._has_degenerate_repetition(transcription):
+            raise ValueError("degenerate_local_multimodal_ocr_response")
         return transcription
 
     def transcribe_screenshot(
@@ -1104,7 +1138,7 @@ class LocalMultimodalProvider:
                 f"\n\nOCR hint:\n{source_text_hint[:1200]}"
             )
         raw_text = self._request_chat_completion(
-            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
+            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text", max_tokens=384)
         )
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
@@ -1113,7 +1147,7 @@ class LocalMultimodalProvider:
         dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
         prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=resolved_target)
         raw_text = self._request_chat_completion(
-            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text")
+            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text", max_tokens=1024)
         )
         translated = clean_screenshot_translation_output(
             raw_text, target_lang=resolved_target
