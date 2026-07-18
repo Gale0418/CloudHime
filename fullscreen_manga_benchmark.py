@@ -148,6 +148,14 @@ def _run_fullscreen_ocr(worker: OCRWorker, image: Any) -> dict[str, Any]:
         )
         items = _normalize_items(items)
 
+    if page_region and len(items) >= 2:
+        refine = getattr(worker, "refine_manga_ocr_items", None)
+        if callable(refine):
+            try:
+                items = _normalize_items(refine(image, items, threshold, 0, 0))
+            except Exception:
+                pass
+
     return {
         "page_region": _as_rect(page_region),
         "threshold": int(threshold) if threshold is not None else None,

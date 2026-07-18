@@ -108,6 +108,47 @@ def test_whole_page_extraction_does_not_trigger_tiles(monkeypatch):
     assert FakeWorker.instances[0].cleaned is True
 
 
+def test_benchmark_uses_product_manga_refinement_when_available(monkeypatch):
+    class RefiningWorker(FakeWorker):
+        def refine_manga_ocr_items(
+            self,
+            image,
+            items,
+            threshold,
+            offset_x,
+            offset_y,
+        ):
+            self.calls.append(("refine", threshold, offset_x, offset_y))
+            return [
+                {"text": "精修文字", "x": 20, "y": 20, "w": 50, "h": 12},
+                items[1],
+            ]
+
+    RefiningWorker.instances.clear()
+    monkeypatch.setattr(benchmark, "OCRWorker", RefiningWorker)
+    _mock_image_load(monkeypatch)
+
+    result = benchmark.run_benchmark([Path("refined.png")])
+
+    assert result["images"][0]["joined_text"] == "精修文字\n第二行"
+    assert ("refine", 100, 0, 0) in RefiningWorker.instances[0].calls
+
+
+def test_benchmark_keeps_coarse_items_when_product_refinement_fails(monkeypatch):
+    class FailingRefineWorker(FakeWorker):
+        def refine_manga_ocr_items(self, *_args):
+            raise RuntimeError("refine failed")
+
+    FailingRefineWorker.instances.clear()
+    monkeypatch.setattr(benchmark, "OCRWorker", FailingRefineWorker)
+    _mock_image_load(monkeypatch)
+
+    result = benchmark.run_benchmark([Path("refine-fallback.png")])
+
+    assert result["complete"] is True
+    assert result["images"][0]["joined_text"] == "整頁文字\n第二行"
+
+
 def test_sparse_page_triggers_formal_2x3_tile_retry(monkeypatch):
     class SparseWorker(FakeWorker):
         def run_ocr_with_best_threshold(

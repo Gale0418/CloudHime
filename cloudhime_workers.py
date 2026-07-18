@@ -152,6 +152,10 @@ GOOGLE_BATCH_SIZE = 12
 SMART_FULLSCREEN_MAX_REGIONS = 3
 SMART_FULLSCREEN_MIN_AREA_RATIO = 0.015
 SMART_FULLSCREEN_MAX_AREA_RATIO = 0.82
+MANGA_ADAPTIVE_MAX_REGIONS = 4
+MANGA_ADAPTIVE_MIN_AREA_RATIO = 0.001
+MANGA_ADAPTIVE_MAX_AREA_RATIO = 0.30
+MANGA_ADAPTIVE_SCORE_MARGIN = 5
 DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES = 10
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN = 1
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
@@ -2252,6 +2256,164 @@ class OCRWorker(QObject):
             }
         ], parts
 
+    @staticmethod
+    def item_center_in_region(item, region, offset_x=0, offset_y=0):
+        try:
+            center_x = int(item.get("x", 0)) - int(offset_x) + int(item.get("w", 0)) / 2
+            center_y = int(item.get("y", 0)) - int(offset_y) + int(item.get("h", 0)) / 2
+            x, y, width, height = [int(value) for value in region]
+        except (TypeError, ValueError):
+            return False
+        return x <= center_x <= x + width and y <= center_y <= y + height
+
+    def build_manga_adaptive_regions(self, items, img_w, img_h, offset_x=0, offset_y=0):
+        page_area = max(1, int(img_w) * int(img_h))
+        ranked = []
+        for item in items or []:
+            try:
+                x = int(item.get("x", 0)) - int(offset_x)
+                y = int(item.get("y", 0)) - int(offset_y)
+                width = int(item.get("w", 0))
+                height = int(item.get("h", 0))
+            except (TypeError, ValueError):
+                continue
+            if width <= 0 or height <= 0:
+                continue
+            area_ratio = (width * height) / page_area
+            if not (
+                MANGA_ADAPTIVE_MIN_AREA_RATIO
+                <= area_ratio
+                <= MANGA_ADAPTIVE_MAX_AREA_RATIO
+            ):
+                continue
+            pad_x = max(10, int(width * 0.10))
+            pad_y = max(10, int(height * 0.10))
+            expanded = self.expand_region_rect(
+                (x, y, width, height),
+                pad_x,
+                pad_y,
+                int(img_w),
+                int(img_h),
+            )
+            if (
+                expanded
+                and (expanded[2] * expanded[3]) / page_area
+                <= MANGA_ADAPTIVE_MAX_AREA_RATIO
+            ):
+                ranked.append((width * height, expanded))
+
+        ranked.sort(key=lambda value: value[0], reverse=True)
+        selected = []
+        for _area, region in ranked:
+            if any(self.rect_overlap_ratio(region, old) >= 0.75 for old in selected):
+                continue
+            selected.append(region)
+            if len(selected) >= MANGA_ADAPTIVE_MAX_REGIONS:
+                break
+        return selected
+
+    def refine_manga_ocr_items(
+        self,
+        img,
+        items,
+        threshold,
+        offset_x=0,
+        offset_y=0,
+    ):
+        baseline = list(items or [])
+        if len(baseline) < 2 or not self.has_cjk_manga_text(baseline):
+            return baseline
+
+        img_h, img_w = img.shape[:2]
+        regions = self.build_manga_adaptive_regions(
+            baseline,
+            img_w,
+            img_h,
+            offset_x,
+            offset_y,
+        )
+        if not regions:
+            return baseline
+
+        tall_regions = [
+            region for region in regions
+            if region[3] >= region[2] * 1.3
+        ]
+        horizontal_regions = [
+            region for region in regions
+            if region not in tall_regions
+        ]
+        try:
+            selected_threshold = max(
+                AUTO_THRESHOLD_MIN,
+                min(AUTO_THRESHOLD_MAX, int(threshold)),
+            )
+        except (TypeError, ValueError):
+            selected_threshold = int(self.binary_threshold)
+
+        candidates = []
+        for region_group, orientations in (
+            (tall_regions, [90, 270]),
+            (horizontal_regions, [0]),
+        ):
+            if not region_group:
+                continue
+            _used_threshold, found = self.run_ocr_with_best_threshold(
+                img,
+                offset_x,
+                offset_y,
+                region_group,
+                [selected_threshold],
+                orientations,
+            )
+            candidates.extend(found or [])
+
+        replace_indexes = set()
+        accepted = []
+        accepted_keys = set()
+        for region in regions:
+            base_indexes = [
+                index
+                for index, item in enumerate(baseline)
+                if self.item_center_in_region(item, region, offset_x, offset_y)
+            ]
+            base_local = [baseline[index] for index in base_indexes]
+            candidate_local = [
+                item
+                for item in candidates
+                if self.item_center_in_region(item, region, offset_x, offset_y)
+            ]
+            base_score, _filtered_base = self.score_ocr_items(base_local)
+            candidate_score, filtered_candidate = self.score_ocr_items(candidate_local)
+            if (
+                not filtered_candidate
+                or candidate_score < base_score + MANGA_ADAPTIVE_SCORE_MARGIN
+            ):
+                continue
+            replace_indexes.update(base_indexes)
+            for item in filtered_candidate:
+                key = (
+                    normalize_ocr_text(item.get("text", "")),
+                    int(item.get("x", 0)),
+                    int(item.get("y", 0)),
+                    int(item.get("w", 0)),
+                    int(item.get("h", 0)),
+                )
+                if key not in accepted_keys:
+                    accepted_keys.add(key)
+                    accepted.append(item)
+
+        if not replace_indexes:
+            return baseline
+        adjusted = [
+            item
+            for index, item in enumerate(baseline)
+            if index not in replace_indexes
+        ]
+        adjusted.extend(accepted)
+        _score, filtered_adjusted = self.score_ocr_items(adjusted)
+        return filtered_adjusted or baseline
+
     def split_region_into_tiles(self, rect, cols=2, rows=3, overlap=0.12):
         x, y, w, h = [int(v) for v in rect]
         if w <= 0 or h <= 0:
@@ -2994,6 +3156,29 @@ class OCRWorker(QObject):
                     )
                 except Exception:
                     filtered_items = []
+
+        if (
+            self.scan_mode == SCAN_MODE_FULLSCREEN
+            and page_region
+            and len(filtered_items) >= 2
+            and self.has_cjk_manga_text(filtered_items)
+        ):
+            self.status_msg.emit("📖 漫畫文字精修中...")
+            refine_started = time.perf_counter()
+            try:
+                filtered_items = self.refine_manga_ocr_items(
+                    img,
+                    filtered_items,
+                    used_threshold,
+                    offset_x,
+                    offset_y,
+                )
+                _log(
+                    f"③-1 漫畫文字精修完成 "
+                    f"({(time.perf_counter() - refine_started) * 1000.0:.0f}ms)"
+                )
+            except Exception as exc:
+                logger.info(f"[Manga refine] fallback: {type(exc).__name__}")
 
         if (
             self.scan_mode == SCAN_MODE_FULLSCREEN
