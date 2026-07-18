@@ -1,4 +1,8 @@
+import json
+
 import pytest
+
+import translation_providers as providers_module
 
 from translation_providers import LocalMultimodalProvider
 
@@ -149,3 +153,66 @@ def test_transcribe_screenshot_accepts_ocr_prompt_override() -> None:
 
     assert result.text == "Wine Club"
     assert captured["prompt"] == "STRICT OCR"
+
+
+def test_transcribe_screenshot_rejects_degenerate_repetition():
+    provider = make_provider()
+    repeated = "\n".join(["光が"] * 12)
+
+    with pytest.raises(ValueError, match="degenerate_local_multimodal_ocr_response"):
+        provider._parse_transcription_response(repeated)
+    with pytest.raises(ValueError, match="degenerate_local_multimodal_ocr_response"):
+        provider._parse_transcription_response("光が" * 12)
+
+
+def test_request_chat_completion_rejects_truncated_response(monkeypatch):
+    provider = make_provider()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "choices": [
+                        {
+                            "finish_reason": "length",
+                            "message": {"content": "incomplete"},
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setattr(
+        providers_module.request,
+        "urlopen",
+        lambda *_args, **_kwargs: FakeResponse(),
+    )
+
+    with pytest.raises(ValueError, match="truncated_local_multimodal_response"):
+        provider._request_chat_completion({"model": "test"})
+
+def test_local_multimodal_operations_bound_output_tokens():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        response_type = payload["response_format"]["type"]
+        if response_type == "json_object":
+            return '{"segments":[{"index":0,"translation":"翻譯"}]}'
+        return "完整翻譯結果"
+
+    provider._request_chat_completion = fake_request
+    image_parts = [{"inline_data": {"mime_type": "image/png", "data": "abc"}}]
+
+    provider.translate("bounded text")
+    provider.translate_multimodal(["原文"], image_parts)
+    provider.transcribe_screenshot(image_parts)
+    provider.translate_screenshot(image_parts, source_text_hint="原文")
+
+    assert [payload["max_tokens"] for payload in payloads] == [512, 1024, 384, 1024]
