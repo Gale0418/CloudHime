@@ -64,7 +64,11 @@ class JapaneseOCRRuntime:
             self.last_error = ""
 
         try:
-            ensure_japanese_ocr_assets(self.assets, progress_callback=self._report)
+            ensure_japanese_ocr_assets(
+                self.assets,
+                progress_callback=self._report,
+                cancel_event=self._cancel,
+            )
             self._report("warming_up", 85)
             ocr = _create_meiki_ocr(self.assets)
 

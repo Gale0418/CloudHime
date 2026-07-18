@@ -45,7 +45,7 @@ from local_vision_assets import (
 # ──────────────────────────────────────────────────────────────────────────────
 
 _HEALTH_SLEEP_SEC = 0.5          # 每次健康輪詢的間隔（測試注入 no-op sleep）
-_DEFAULT_HEALTH_RETRIES = 60     # 30 秒（0.5s × 60）
+_DEFAULT_HEALTH_RETRIES = 480    # 240 秒，容納慢速磁碟的模型冷讀取
 _STDERR_MAX_CHARS = 2_000        # stderr detail 截斷上限
 _CLEANUP_WAIT_TIMEOUT = 5.0      # _cleanup_process 等待 process 結束的秒數
 _STDERR_JOIN_TIMEOUT = 1.0       # 等待 daemon stderr 讀取完成的秒數
@@ -121,7 +121,7 @@ class LocalVisionRuntime:
     sleep:
         簽名相容 ``time.sleep`` 的 callable，用於健康輪詢間隔。
     health_retries:
-        健康輪詢最大次數（預設 60 次，每次間隔 0.5s → 約 30 秒）。
+        健康輪詢最大次數（預設 480 次，每次間隔 0.5s → 約 240 秒）。
     """
 
     def __init__(
@@ -157,6 +157,7 @@ class LocalVisionRuntime:
         self._process = None   # FakeProcess or Popen；有啟動程序時非 None
         self._port: Optional[int] = None
         self._start_lock = threading.Lock()
+        self._cancel_event = threading.Event()
 
     # ── 公開介面 ──────────────────────────────────────────────────────────────
 
@@ -173,6 +174,7 @@ class LocalVisionRuntime:
         with self._start_lock:
             if self._state.name in ("ready", "starting"):
                 return self._state
+            self._cancel_event.clear()
             self._state = VisionRuntimeState(name="starting", detail="", base_url="", mode="")
 
             self._last_progress = 0
@@ -201,6 +203,9 @@ class LocalVisionRuntime:
             self._report_progress("starting_server", 10)
             initial_mode = "gpu" if self._gpu_layers > 0 else "cpu"
             state = self._try_spawn(port, gpu_layers=self._gpu_layers, mode=initial_mode)
+            if self._cancel_event.is_set() or state.name == "stopped":
+                self._state = _STOPPED
+                return self._state
             if state.name == "ready":
                 self._state = state
                 return self._state
@@ -209,7 +214,7 @@ class LocalVisionRuntime:
             # [FIX-3] GPU proc 已在 _try_spawn 內 cleanup，此處直接 spawn CPU
             if initial_mode == "gpu" and _is_cuda_error(state.detail):
                 cpu_state = self._try_spawn(port, gpu_layers=0, mode="cpu")
-                self._state = cpu_state
+                self._state = _STOPPED if self._cancel_event.is_set() else cpu_state
                 return self._state
 
             self._state = state
@@ -217,6 +222,7 @@ class LocalVisionRuntime:
 
     def stop(self) -> VisionRuntimeState:
         """終止本 instance 持有的 process；不影響任何其他程序。"""
+        self._cancel_event.set()
         proc = self._process
         if proc is not None:
             self._cleanup_process(proc)
@@ -271,7 +277,7 @@ class LocalVisionRuntime:
         state = self._wait_healthy(proc, port, mode)
 
         # [FIX-3] 失敗時清理 process，確保不殘留
-        if state.name != "ready":
+        if state.name != "ready" and self._process is proc:
             self._cleanup_process(proc)
             self._process = None
 
@@ -308,6 +314,9 @@ class LocalVisionRuntime:
         drain_thread.start()
 
         for _ in range(self._health_retries):
+            if self._cancel_event.is_set():
+                return _STOPPED
+
             # 先確認 process 是否提早退出
             if proc.poll() is not None:
                 drain_thread.join(timeout=_STDERR_JOIN_TIMEOUT)

@@ -549,13 +549,21 @@ class OCRWorker(QObject):
         if pending is not None and not pending.done():
             return
         OCRWorker._emit_japanese_rescue_status(self, "starting", "")
-        future = self._japanese_rescue_executor.submit(runtime.start)
+        try:
+            future = self._japanese_rescue_executor.submit(runtime.start)
+        except Exception as exc:
+            self._japanese_rescue_load_future = None
+            OCRWorker._emit_japanese_rescue_status(
+                self, "failed", f"{type(exc).__name__}: {exc}"
+            )
+            return
         self._japanese_rescue_load_future = future
         future.add_done_callback(lambda completed: OCRWorker._on_japanese_rescue_start_done(self, completed))
 
     def _on_japanese_rescue_start_done(self, future):
-        if self._japanese_rescue_load_future is future:
-            self._japanese_rescue_load_future = None
+        if self._japanese_rescue_load_future is not future:
+            return
+        self._japanese_rescue_load_future = None
         try:
             ready = bool(future.result())
         except Exception as exc:

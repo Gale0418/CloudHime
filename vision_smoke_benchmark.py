@@ -16,15 +16,15 @@ from typing import Any, Sequence
 import cv2
 import numpy as np
 
+from japanese_ocr_assets import resolve_japanese_ocr_assets
 from japanese_ocr_rescue import (
     build_verification_hint,
     decide_rescue_text,
     is_usable_meiki_candidate,
-    load_meiki_ocr,
     rescue_gate,
-    run_meiki_ocr,
 )
-from local_vision_assets import resolve_vision_assets
+from japanese_ocr_runtime import JapaneseOCRRuntime
+from local_vision_assets import resolve_preferred_vision_assets
 from local_vision_runtime import LocalVisionRuntime
 from translation_providers import LocalMultimodalProvider
 
@@ -191,7 +191,7 @@ def run_smoke(
         popen_factory = popen_cpu
 
     runtime = LocalVisionRuntime(
-        resolve_vision_assets(PROJECT_ROOT),
+        resolve_preferred_vision_assets(PROJECT_ROOT),
         popen_factory=popen_factory,
         health_retries=max(1, int(startup_timeout_seconds * 2)),
         context_size=max(512, int(context_size)),
@@ -217,6 +217,14 @@ def run_smoke(
             enabled=True,
             timeout_seconds=timeout_seconds,
         )
+        if japanese_rescue:
+            rescue_started = time.perf_counter()
+            japanese_rescuer = JapaneseOCRRuntime(resolve_japanese_ocr_assets())
+            if not japanese_rescuer.start():
+                detail = getattr(japanese_rescuer, "last_error", "")
+                suffix = f": {detail}" if detail else ""
+                raise RuntimeError(f"japanese OCR runtime failed to start{suffix}")
+            rescue_startup_ms = (time.perf_counter() - rescue_started) * 1000.0
         if ocr_hint:
             from cloudhime_workers import OCRWorker
             ocr_hint_worker = OCRWorker()
@@ -272,12 +280,8 @@ def run_smoke(
                         image_width=source_image.shape[1],
                         image_height=source_image.shape[0],
                     ):
-                        if japanese_rescuer is None:
-                            rescue_started = time.perf_counter()
-                            japanese_rescuer = load_meiki_ocr()
-                            rescue_startup_ms += (time.perf_counter() - rescue_started) * 1000.0
                         rescue_stage = time.perf_counter()
-                        candidate = run_meiki_ocr(japanese_rescuer, source_image)
+                        candidate = japanese_rescuer.run(source_image)
                         meiki_ms = (time.perf_counter() - rescue_stage) * 1000.0
                         rescue_candidate = candidate.text
                         if is_usable_meiki_candidate(candidate, actual):
@@ -331,9 +335,15 @@ def run_smoke(
                     }
                 )
     finally:
-        runtime.stop()
-        if ocr_hint_worker is not None:
-            ocr_hint_worker.cleanup()
+        try:
+            runtime.stop()
+        finally:
+            try:
+                if ocr_hint_worker is not None:
+                    ocr_hint_worker.cleanup()
+            finally:
+                if japanese_rescuer is not None:
+                    japanese_rescuer.disable()
     latencies = [float(result["latency_ms"]) for result in image_results]
     hint_latencies = [float(result["hint_ms"]) for result in image_results]
     encode_latencies = [float(result["image_encode_ms"]) for result in image_results]
@@ -378,6 +388,14 @@ def run_smoke(
         "results": results,
     }
 
+
+def _is_complete(result: dict[str, Any]) -> bool:
+    return (
+        int(result["successful_images"]) == int(result["image_count"])
+        and int(result["successful_cases"]) == int(result["case_count"])
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CloudHime local Gemma 3 image OCR smoke benchmark")
     parser.add_argument("manifest", nargs="?", default=str(DEFAULT_MANIFEST))
@@ -392,6 +410,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-mode", choices=tuple(OCR_PROMPTS), default="baseline")
     parser.add_argument("--ocr-hint", action="store_true")
     parser.add_argument("--japanese-rescue", action="store_true")
+    parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -414,7 +433,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
+        return 0 if not args.require_complete or _is_complete(result) else 1
 
     print(
         "Vision Smoke Summary: "
@@ -436,7 +455,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"line_match={item['line_match']:.0f} match={item['match_score']:.3f} "
             f"latency_ms={item['latency_ms']:.1f} actual={item['actual'] or item['error']}"
         )
-    return 0
+    return 0 if not args.require_complete or _is_complete(result) else 1
 
 
 if __name__ == "__main__":

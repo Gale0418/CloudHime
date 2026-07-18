@@ -318,6 +318,55 @@ def test_start_uses_loopback_dynamic_port_and_mmproj(fake_assets):
     assert args[parallel_idx + 1] == "1"
 
 
+def test_default_health_budget_allows_slow_cold_start(fake_assets):
+    health = [False] * 100 + [True]
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([RunningProcess()]),
+        urlopen=_make_health_urlopen(health),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    assert runtime.start().name == "ready"
+
+
+def test_stop_interrupts_slow_cold_start(fake_assets):
+    entered_sleep = threading.Event()
+    release_sleep = threading.Event()
+    proc = RunningProcess()
+    result = {}
+
+    def blocking_sleep(_):
+        entered_sleep.set()
+        release_sleep.wait(timeout=2)
+
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([False] * 480),
+        port_allocator=_port_allocator(43123),
+        sleep=blocking_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    thread = threading.Thread(
+        target=lambda: result.setdefault("state", runtime.start()),
+        daemon=True,
+    )
+    thread.start()
+    assert entered_sleep.wait(timeout=1)
+
+    assert runtime.stop().name == "stopped"
+    release_sleep.set()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert result["state"].name == "stopped"
+    assert runtime.owned_process is None
+    assert proc.terminate_calls == 1
+
+
 def test_start_reports_monotonic_warmup_progress(fake_assets):
     updates = []
     popen = FakePopen([RunningProcess()])

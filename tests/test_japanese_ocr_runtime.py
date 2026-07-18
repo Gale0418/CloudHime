@@ -36,7 +36,7 @@ def test_runtime_reports_progress_and_runs(monkeypatch):
     monkeypatch.setattr(
         runtime_module,
         "ensure_japanese_ocr_assets",
-        lambda assets, progress_callback=None: (
+        lambda assets, progress_callback=None, cancel_event=None: (
             progress_callback("downloading", 80) if progress_callback else None
         ) or assets,
     )
@@ -47,6 +47,21 @@ def test_runtime_reports_progress_and_runs(monkeypatch):
     assert runtime.state is JapaneseOCRRuntimeState.ready
     assert progress == [("downloading", 80), ("warming_up", 85), ("ready", 100)]
     assert runtime.run(object()).text == "日本語"
+
+
+def test_runtime_passes_cancel_event_to_asset_download(monkeypatch):
+    seen = {}
+
+    def ensure(assets, progress_callback=None, cancel_event=None):
+        seen["cancel_event"] = cancel_event
+        return assets
+
+    monkeypatch.setattr(runtime_module, "ensure_japanese_ocr_assets", ensure)
+    monkeypatch.setattr(runtime_module, "_create_meiki_ocr", lambda assets: FakeOCR())
+    runtime = JapaneseOCRRuntime(_assets())
+
+    assert runtime.start()
+    assert seen["cancel_event"] is runtime._cancel
 
 
 def test_runtime_failure_is_non_throwing_and_run_requires_ready(monkeypatch):
