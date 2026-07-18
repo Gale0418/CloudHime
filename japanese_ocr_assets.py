@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 from managed_asset_store import (
     AssetSpec,
@@ -73,6 +73,8 @@ def ensure_japanese_ocr_assets(
     *,
     manifest: Iterable[ModelAsset] = ASSET_MANIFEST,
     progress_callback: ProgressCallback | None = None,
+    cancel_event: Any = None,
+    opener: Callable[[Any], Any] | None = None,
 ) -> JapaneseOCRAssets:
     specs = tuple(manifest)
     paths = (assets.detection, assets.horizontal, assets.vertical)
@@ -91,6 +93,8 @@ def ensure_japanese_ocr_assets(
             assets.root,
             specs,
             progress_callback=report if progress_callback else None,
+            cancel_event=cancel_event,
+            opener=opener,
         )
     except ValueError as exc:
         raise JapaneseOCRAssetError(str(exc)) from exc

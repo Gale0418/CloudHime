@@ -1,10 +1,14 @@
 import base64
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import pytest
 import numpy as np
 
+import vision_smoke_benchmark as benchmark
+from japanese_ocr_rescue import MeikiCandidate, MeikiCharacter
 from vision_smoke_benchmark import (
     build_parser,
     group_cases_by_image,
@@ -84,6 +88,115 @@ def test_parser_exposes_optional_japanese_rescue() -> None:
     args = build_parser().parse_args(["--japanese-rescue"])
 
     assert args.japanese_rescue is True
+    assert args.require_complete is False
+
+
+def test_parser_exposes_require_complete() -> None:
+    args = build_parser().parse_args(["--require-complete"])
+
+    assert args.require_complete is True
+
+
+def test_japanese_rescue_uses_runtime_lifecycle_without_network(monkeypatch, tmp_path) -> None:
+    image_path = tmp_path / "sample.png"
+    assert cv2.imwrite(str(image_path), np.zeros((95, 617, 3), dtype=np.uint8))
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"cases": [{"sample_source": "sample.png", "category": "jp", "expected": "救出"}]}),
+        encoding="utf-8",
+    )
+    events = []
+
+    class FakeVisionRuntime:
+        def __init__(self, *args, **kwargs):
+            self.state = SimpleNamespace(name="ready", detail="", mode="cpu", base_url="http://vision")
+
+        def start(self):
+            events.append("vision_start")
+            return self.state
+
+        def stop(self):
+            events.append("vision_stop")
+
+    class FakeJapaneseRuntime:
+        def __init__(self, assets):
+            events.append(("japanese_init", assets))
+            self.candidate = MeikiCandidate(
+                text="候選",
+                characters=(MeikiCharacter("候", 0.9), MeikiCharacter("選", 0.4)),
+            )
+            self.last_error = ""
+
+        def start(self):
+            events.append("japanese_start")
+            return True
+
+        def run(self, image):
+            events.append("japanese_run")
+            return self.candidate
+
+        def disable(self):
+            events.append("japanese_disable")
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            pass
+
+        def transcribe_screenshot(self, parts, **kwargs):
+            events.append("provider_run")
+            return SimpleNamespace(text="かなかな" if events.count("provider_run") == 1 else "救出")
+
+    sentinel_assets = object()
+    monkeypatch.setattr(benchmark, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(benchmark, "LocalVisionRuntime", FakeVisionRuntime)
+    monkeypatch.setattr(benchmark, "LocalMultimodalProvider", FakeProvider)
+    monkeypatch.setattr(benchmark, "JapaneseOCRRuntime", FakeJapaneseRuntime)
+    monkeypatch.setattr(benchmark, "resolve_japanese_ocr_assets", lambda: sentinel_assets)
+    monkeypatch.setattr(benchmark, "rescue_gate", lambda *args, **kwargs: True)
+    monkeypatch.setattr(benchmark, "is_usable_meiki_candidate", lambda *args, **kwargs: True)
+    monkeypatch.setattr(benchmark, "build_verification_hint", lambda candidate: "verify")
+    monkeypatch.setattr(
+        benchmark,
+        "decide_rescue_text",
+        lambda first, second, candidate: SimpleNamespace(adopted=True, selected_text=second),
+    )
+
+    result = benchmark.run_smoke(manifest_path, japanese_rescue=True)
+
+    assert result["rescue_startup_ms"] >= 0.0
+    assert result["image_results"][0]["rescue_triggered"] is True
+    assert events[0] == "vision_start"
+    assert events[1] == ("japanese_init", sentinel_assets)
+    assert events[2] == "japanese_start"
+    assert "japanese_run" in events
+    assert events[-2] == "vision_stop"
+    assert events[-1] == "japanese_disable"
+
+
+def test_require_complete_returns_nonzero_for_incomplete_result(monkeypatch, capsys) -> None:
+    incomplete = {
+        "image_count": 2,
+        "case_count": 2,
+        "successful_images": 1,
+        "successful_cases": 1,
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: incomplete)
+
+    assert benchmark.main(["--json", "--require-complete"]) == 1
+    assert json.loads(capsys.readouterr().out)["successful_images"] == 1
+
+
+def test_require_complete_accepts_complete_result(monkeypatch, capsys) -> None:
+    complete = {
+        "image_count": 2,
+        "case_count": 3,
+        "successful_images": 2,
+        "successful_cases": 3,
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: complete)
+
+    assert benchmark.main(["--json", "--require-complete"]) == 0
+    assert json.loads(capsys.readouterr().out)["successful_cases"] == 3
 
 
 def test_require_gpu_rejects_cpu_controls() -> None:
