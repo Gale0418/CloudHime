@@ -21,7 +21,7 @@ import time
 import threading
 import traceback
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from urllib import request, error
 import numpy as np
 import cv2
@@ -156,6 +156,9 @@ MANGA_ADAPTIVE_MAX_REGIONS = 4
 MANGA_ADAPTIVE_MIN_AREA_RATIO = 0.001
 MANGA_ADAPTIVE_MAX_AREA_RATIO = 0.30
 MANGA_ADAPTIVE_SCORE_MARGIN = 5
+MANGA_ADAPTIVE_MIN_TEXT_AGREEMENT = 0.20
+MANGA_ADAPTIVE_MIN_COVERAGE = 0.80
+MANGA_ADAPTIVE_MAX_MS = 600
 DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES = 10
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN = 1
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
@@ -2264,7 +2267,7 @@ class OCRWorker(QObject):
             x, y, width, height = [int(value) for value in region]
         except (TypeError, ValueError):
             return False
-        return x <= center_x <= x + width and y <= center_y <= y + height
+        return x <= center_x < x + width and y <= center_y < y + height
 
     def build_manga_adaptive_regions(self, items, img_w, img_h, offset_x=0, offset_y=0):
         page_area = max(1, int(img_w) * int(img_h))
@@ -2321,6 +2324,8 @@ class OCRWorker(QObject):
         offset_y=0,
     ):
         baseline = list(items or [])
+        refine_started = time.perf_counter()
+        refine_deadline = refine_started + MANGA_ADAPTIVE_MAX_MS / 1000.0
         if len(baseline) < 2 or not self.has_cjk_manga_text(baseline):
             return baseline
 
@@ -2358,6 +2363,8 @@ class OCRWorker(QObject):
         ):
             if not region_group:
                 continue
+            if time.perf_counter() >= refine_deadline:
+                break
             _used_threshold, found = self.run_ocr_with_best_threshold(
                 img,
                 offset_x,
@@ -2365,8 +2372,28 @@ class OCRWorker(QObject):
                 region_group,
                 [selected_threshold],
                 orientations,
+                deadline=refine_deadline,
             )
             candidates.extend(found or [])
+
+        def rectangle_coverage(base_item, candidate_item):
+            try:
+                bx = float(base_item.get("x", 0))
+                by = float(base_item.get("y", 0))
+                bw = float(base_item.get("w", 0))
+                bh = float(base_item.get("h", 0))
+                cx = float(candidate_item.get("x", 0))
+                cy = float(candidate_item.get("y", 0))
+                cw = float(candidate_item.get("w", 0))
+                ch = float(candidate_item.get("h", 0))
+            except (TypeError, ValueError):
+                return 0.0
+            base_area = bw * bh
+            if base_area <= 0 or cw <= 0 or ch <= 0:
+                return 0.0
+            intersection = max(0.0, min(bx + bw, cx + cw) - max(bx, cx))
+            intersection *= max(0.0, min(by + bh, cy + ch) - max(by, cy))
+            return intersection / base_area
 
         replace_indexes = set()
         accepted = []
@@ -2385,9 +2412,19 @@ class OCRWorker(QObject):
             ]
             base_score, _filtered_base = self.score_ocr_items(base_local)
             candidate_score, filtered_candidate = self.score_ocr_items(candidate_local)
+            if not base_local or not filtered_candidate:
+                continue
+            if any(
+                not any(rectangle_coverage(base_item, candidate_item) >= MANGA_ADAPTIVE_MIN_COVERAGE for candidate_item in filtered_candidate)
+                for base_item in base_local
+            ):
+                continue
+            base_text = "".join(normalize_ocr_text(item.get("text", "")) for item in base_local)
+            candidate_text = "".join(normalize_ocr_text(item.get("text", "")) for item in filtered_candidate)
+            text_agreement = difflib.SequenceMatcher(None, base_text, candidate_text).ratio()
             if (
-                not filtered_candidate
-                or candidate_score < base_score + MANGA_ADAPTIVE_SCORE_MARGIN
+                candidate_score < base_score + MANGA_ADAPTIVE_SCORE_MARGIN
+                or text_agreement < MANGA_ADAPTIVE_MIN_TEXT_AGREEMENT
             ):
                 continue
             replace_indexes.update(base_indexes)
@@ -2402,7 +2439,6 @@ class OCRWorker(QObject):
                 if key not in accepted_keys:
                     accepted_keys.add(key)
                     accepted.append(item)
-
         if not replace_indexes:
             return baseline
         adjusted = [
@@ -2639,7 +2675,7 @@ class OCRWorker(QObject):
         self.remember_translation(cache_key, best_threshold)
         return best_threshold
 
-    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False):
+    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False, deadline=None):
         base_threshold = int(self.binary_threshold)
         now_ms = time.monotonic() * 1000.0
         should_refresh_auto_threshold = force_bg_refresh
@@ -2657,12 +2693,16 @@ class OCRWorker(QObject):
 
             prepared_regions = []
             for region_x, region_y, region_w, region_h in regions:
+                if deadline is not None and time.perf_counter() >= deadline:
+                    break
                 crop = img[region_y:region_y + region_h, region_x:region_x + region_w]
                 if crop.size == 0:
                     continue
                 crop_w, crop_h = crop.shape[1], crop.shape[0]
                 prepared_orientations = []
                 for orientation in orientations:
+                    if deadline is not None and time.perf_counter() >= deadline:
+                        break
                     rotated_crop = self.rotate_crop_for_ocr(crop, orientation)
                     if rotated_crop.size == 0:
                         continue
@@ -2697,6 +2737,8 @@ class OCRWorker(QObject):
 
             # 並列 OCR：把所有（閥値, 區域索引, 方向）組合同時丟給 ThreadPoolExecutor
             def _run_one(task):
+                if deadline is not None and time.perf_counter() >= deadline:
+                    return None
                 threshold, region_idx, prepared = task
                 _, binary = cv2.threshold(prepared["gray"], threshold, 255, cv2.THRESH_BINARY)
                 img_final = cv2.bitwise_not(binary)
@@ -2734,25 +2776,48 @@ class OCRWorker(QObject):
             if len(tasks) == 1:
                 # 單任務直接跑，省略 ThreadPoolExecutor 開銷
                 try:
-                    threshold, region_idx, orientation, score, filtered_items = _run_one(tasks[0])
-                    results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
+                    result = _run_one(tasks[0])
+                    if result is not None:
+                        threshold, region_idx, orientation, score, filtered_items = result
+                        results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
                 except Exception:
                     pass
             elif parallel:
                 max_workers = min(len(tasks), 8)
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(_run_one, task): task for task in tasks}
-                    for future in as_completed(futures):
+                executor = ThreadPoolExecutor(max_workers=max_workers)
+                futures = []
+                try:
+                    futures = [executor.submit(_run_one, task) for task in tasks]
+                    if deadline is None:
+                        done, _pending = wait(futures)
+                    else:
+                        remaining = max(0.0, deadline - time.perf_counter())
+                        done, _pending = wait(futures, timeout=remaining)
+                    for future in done:
+                        if deadline is not None and time.perf_counter() >= deadline:
+                            continue
                         try:
-                            threshold, region_idx, orientation, score, filtered_items = future.result()
+                            result = future.result()
+                            if result is None:
+                                continue
+                            threshold, region_idx, orientation, score, filtered_items = result
                             results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
                         except Exception:
                             pass
+                finally:
+                    executor.shutdown(
+                        wait=deadline is None,
+                        cancel_futures=deadline is not None,
+                    )
             else:
                 for task in tasks:
+                    if deadline is not None and time.perf_counter() >= deadline:
+                        break
                     try:
-                        threshold, region_idx, orientation, score, filtered_items = _run_one(task)
-                        results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
+                        result = _run_one(task)
+                        if result is not None:
+                            threshold, region_idx, orientation, score, filtered_items = result
+                            results_map.setdefault((threshold, region_idx), []).append((orientation, score, filtered_items))
                     except Exception:
                         pass
 

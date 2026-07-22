@@ -416,7 +416,7 @@ def test_manga_adaptive_regions_are_bounded_and_offset_aware(qtbot):
 
         assert len(regions) == 2
         assert any(region[3] >= region[2] * 1.3 for region in regions)
-        assert all(0 <= x < 800 and 0 <= y < 1000 for x, y, _w, _h in regions)
+        assert all(0 <= x and 0 <= y and w > 0 and h > 0 and x + w <= 800 and y + h <= 1000 for x, y, w, h in regions)
     finally:
         worker.cleanup()
 
@@ -425,12 +425,12 @@ def test_manga_adaptive_refine_routes_orientation_and_replaces_only_better(qtbot
     worker = OCRWorker()
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
     baseline = [
-        {"text": "古い横文", "x": 100, "y": 100, "w": 300, "h": 100},
-        {"text": "古い縦文", "x": 520, "y": 100, "w": 70, "h": 300},
+        {"text": "改善前的横文", "x": 100, "y": 100, "w": 300, "h": 100},
+        {"text": "改善前的縦文", "x": 520, "y": 100, "w": 70, "h": 300},
     ]
     calls = []
 
-    def run_ocr(_img, _ox, _oy, regions, thresholds, orientations):
+    def run_ocr(_img, _ox, _oy, regions, thresholds, orientations, **_kwargs):
         calls.append((list(regions), list(thresholds), list(orientations)))
         if orientations == [90, 270]:
             return 100, [
@@ -441,7 +441,7 @@ def test_manga_adaptive_refine_routes_orientation_and_replaces_only_better(qtbot
         ]
 
     def score(items):
-        total = sum(20 if "改善" in item["text"] else 10 for item in items)
+        total = sum(20 if "改善された" in item["text"] else 10 for item in items)
         return total, list(items)
 
     worker.run_ocr_with_best_threshold = run_ocr
@@ -481,6 +481,128 @@ def test_manga_adaptive_refine_keeps_baseline_when_candidate_is_weaker(qtbot):
     finally:
         worker.cleanup()
 
+
+def test_manga_adaptive_refine_rejects_partial_candidate(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    baseline = [
+        {"text": "第一段文字", "x": 100, "y": 100, "w": 200, "h": 100},
+        {"text": "第二段文字", "x": 500, "y": 300, "w": 200, "h": 100},
+    ]
+    worker.build_manga_adaptive_regions = Mock(return_value=[(50, 50, 700, 500)])
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(
+            100,
+            [{"text": "第一段文字修正", "x": 100, "y": 100, "w": 200, "h": 100}],
+        )
+    )
+    worker.score_ocr_items = lambda items: (
+        sum(100 if "修正" in item["text"] else 10 for item in items),
+        list(items),
+    )
+    try:
+        assert worker.refine_manga_ocr_items(image, baseline, 100) == baseline
+    finally:
+        worker.cleanup()
+
+
+def test_manga_adaptive_refine_rejects_partial_geometry_candidate(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    baseline = [
+        {"text": "第一段文字", "x": 100, "y": 100, "w": 200, "h": 100},
+        {"text": "第二段文字", "x": 500, "y": 300, "w": 200, "h": 100},
+    ]
+    worker.build_manga_adaptive_regions = Mock(return_value=[(50, 50, 700, 500)])
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(
+            100,
+            [
+                {"text": "第一段文字修正", "x": 100, "y": 100, "w": 100, "h": 100},
+                {"text": "第二段文字修正", "x": 500, "y": 300, "w": 200, "h": 100},
+            ],
+        )
+    )
+    worker.score_ocr_items = lambda items: (
+        sum(100 if "修正" in item["text"] else 10 for item in items),
+        list(items),
+    )
+    try:
+        assert worker.refine_manga_ocr_items(image, baseline, 100) == baseline
+    finally:
+        worker.cleanup()
+
+def test_manga_adaptive_refine_rejects_unrelated_longer_candidate(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    baseline = [
+        {"text": "第一段文字", "x": 100, "y": 100, "w": 200, "h": 100},
+        {"text": "第二段文字", "x": 500, "y": 300, "w": 200, "h": 100},
+    ]
+    worker.build_manga_adaptive_regions = Mock(return_value=[(50, 50, 700, 500)])
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(
+            100,
+            [
+                {"text": "完全不同的錯誤長句一", "x": 100, "y": 100, "w": 200, "h": 100},
+                {"text": "完全不同的錯誤長句二", "x": 500, "y": 300, "w": 200, "h": 100},
+            ],
+        )
+    )
+    worker.score_ocr_items = lambda items: (
+        sum(100 if "錯誤" in item["text"] else 10 for item in items),
+        list(items),
+    )
+    try:
+        assert worker.refine_manga_ocr_items(image, baseline, 100) == baseline
+    finally:
+        worker.cleanup()
+
+
+def test_manga_adaptive_region_uses_half_open_boundaries(qtbot):
+    worker = OCRWorker()
+    try:
+        assert worker.item_center_in_region(
+            {"x": 110, "y": 10, "w": 20, "h": 20},
+            (0, 0, 120, 120),
+        ) is False
+    finally:
+        worker.cleanup()
+
+
+def test_scan_worker_invokes_manga_refine_with_capture_offset(monkeypatch, qtbot):
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.detect_manga_page_region = lambda _img: (0, 0, 800, 1000)
+    baseline = [
+        {"text": "第一段文字", "x": 100, "y": 100, "w": 200, "h": 100},
+        {"text": "第二段文字", "x": 500, "y": 300, "w": 200, "h": 100},
+    ]
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, baseline))
+    worker.refine_manga_ocr_items = Mock(
+        return_value=[
+            {"text": "第一段文字修正", "x": 107, "y": 111, "w": 200, "h": 100},
+            {"text": "第二段文字修正", "x": 507, "y": 311, "w": 200, "h": 100},
+        ]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+
+    try:
+        worker.run_scan_once()
+
+        worker.refine_manga_ocr_items.assert_called_once()
+        call = worker.refine_manga_ocr_items.call_args.args
+        assert call[1] == baseline
+        assert call[2:] == (100, 7, 11)
+        assert finished == [[
+            ["你好", 107, 111, 200, 100],
+            ["你好", 507, 311, 200, 100],
+        ]]
+    finally:
+        worker.cleanup()
 
 def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
