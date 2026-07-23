@@ -163,6 +163,9 @@ MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
 MANGA_GRID_RECOVERY_MAX_ITEMS = 6
 MANGA_GRID_RECOVERY_SCORE_MARGIN = 3
+FULLSCREEN_OCR_DOWNSCALE_TRIGGER = 2400
+FULLSCREEN_OCR_MAX_DIM = 4096
+FULLSCREEN_OCR_MIN_SCALE = 1.5
 DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES = 10
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN = 1
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
@@ -2701,6 +2704,27 @@ class OCRWorker(QObject):
         regions = self.detect_text_dense_regions(img)
         return regions or [full_rect]
 
+    def get_ocr_scale_factor(self, width, height):
+        scale_factor = 3.0
+        max_side = max(int(width), int(height))
+        if self.scan_mode == SCAN_MODE_REGION:
+            max_dim = 1000
+            min_scale = 1.5
+        elif max_side > FULLSCREEN_OCR_DOWNSCALE_TRIGGER:
+            max_dim = FULLSCREEN_OCR_MAX_DIM
+            min_scale = FULLSCREEN_OCR_MIN_SCALE
+        else:
+            return scale_factor
+
+        scaled_width = width * scale_factor
+        scaled_height = height * scale_factor
+        if max(scaled_width, scaled_height) <= max_dim:
+            return scale_factor
+        return max(
+            min_scale,
+            min(max_dim / max(1, width), max_dim / max(1, height)),
+        )
+
     def build_ocr_image(self, img, threshold, scale_factor=3.0):
         h, w = img.shape[:2]
         img_scaled = cv2.resize(img, (int(w * scale_factor), int(h * scale_factor)), interpolation=cv2.INTER_CUBIC)
@@ -2920,14 +2944,7 @@ class OCRWorker(QObject):
                     if rotated_crop.size == 0:
                         continue
                     rot_h, rot_w = rotated_crop.shape[:2]
-                    scale_factor = 3.0
-                    # 框選模式：限制圖片最大邊長 1000px，避免大對話框 OCR 過慢
-                    if self.scan_mode == SCAN_MODE_REGION:
-                        max_dim = 1000
-                        scaled_w = int(rot_w * scale_factor)
-                        scaled_h = int(rot_h * scale_factor)
-                        if scaled_w > max_dim or scaled_h > max_dim:
-                            scale_factor = max(1.5, min(max_dim / rot_w, max_dim / rot_h))
+                    scale_factor = self.get_ocr_scale_factor(rot_w, rot_h)
                     img_scaled = cv2.resize(
                         rotated_crop,
                         (int(rot_w * scale_factor), int(rot_h * scale_factor)),
