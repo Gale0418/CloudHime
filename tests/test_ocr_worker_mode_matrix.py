@@ -670,6 +670,26 @@ def test_local_manga_crop_context_is_opt_in_and_preserves_all_items(monkeypatch,
         worker.cleanup()
 
 
+def test_local_manga_crop_regions_group_nearby_items_and_cover_centers(qtbot):
+    worker = OCRWorker()
+    items = [
+        {"text": "第一段文字", "x": 20, "y": 20, "w": 30, "h": 24},
+        {"text": "第二段文字", "x": 95, "y": 20, "w": 30, "h": 24},
+        {"text": "第三段文字", "x": 170, "y": 20, "w": 30, "h": 24},
+        {"text": "第四段文字", "x": 20, "y": 110, "w": 30, "h": 24},
+        {"text": "第五段文字", "x": 95, "y": 110, "w": 30, "h": 24},
+    ]
+    try:
+        regions = worker.build_local_manga_crop_regions(items, 400, 400)
+        assert 1 <= len(regions) <= 4
+        assert all(
+            any(worker.item_center_in_region(item, region) for region in regions)
+            for item in items
+        )
+        assert all(width * height <= 400 * 400 * 0.30 for _, _, width, height in regions)
+    finally:
+        worker.cleanup()
+
 def test_local_manga_crop_context_fails_open_when_disabled_or_not_all_items_fit(monkeypatch, qtbot):
     image = np.zeros((400, 400, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -679,7 +699,9 @@ def test_local_manga_crop_context_fails_open_when_disabled_or_not_all_items_fit(
     worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "crop"}}])
     items = [
         {"text": "第一段文字", "x": 20 + (index % 5) * 75, "y": 40 + (index // 5) * 90, "w": 30, "h": 24}
-        for index in range(5)
+        for index in range(4)
+    ] + [
+        {"text": "過大的文字區塊", "x": 0, "y": 0, "w": 390, "h": 390}
     ]
 
     try:
