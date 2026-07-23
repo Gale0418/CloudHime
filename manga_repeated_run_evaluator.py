@@ -181,13 +181,27 @@ def summarize_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         if record["anchor_recall"] is not None
     ]
     successful = [record for record in records if not record["error"]]
-    latencies = [_number(record["elapsed_ms"]) for record in successful]
-    nonempty = sum(int(record["item_count"]) > 0 for record in successful)
+    all_latencies = [_number(record["elapsed_ms"]) for record in records]
+    successful_latencies = [_number(record["elapsed_ms"]) for record in successful]
+    nonempty = sum(
+        not record["error"] and int(record["item_count"]) > 0
+        for record in records
+    )
+
+    def latency_summary(values):
+        return {
+            "avg": sum(values) / len(values) if values else None,
+            "median": statistics.median(values) if values else None,
+            "p95": percentile(values),
+            "count": len(values),
+        }
 
     return {
         "run_count": len(records),
         "successful_pages": len(successful),
-        "nonempty_page_rate": nonempty / len(successful) if successful else None,
+        "error_pages": len(records) - len(successful),
+        "nonempty_page_rate": nonempty / len(records) if records else None,
+        "successful_nonempty_page_rate": nonempty / len(successful) if successful else None,
         "anchor_hits": hit_anchors,
         "anchor_count": total_anchors,
         "anchor_recall": hit_anchors / total_anchors if total_anchors else None,
@@ -199,12 +213,10 @@ def summarize_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             if successful
             else None
         ),
-        "latency_ms": {
-            "avg": sum(latencies) / len(latencies) if latencies else None,
-            "median": statistics.median(latencies) if latencies else None,
-            "p95": percentile(latencies),
-            "count": len(latencies),
-        },
+        # Total latency includes failed/timeout pages; successful-only latency is
+        # retained separately so a failing variant cannot look artificially fast.
+        "latency_ms": latency_summary(all_latencies),
+        "successful_latency_ms": latency_summary(successful_latencies),
         "grid_recovery_triggered": sum(
             bool(record["grid_recovery_triggered"]) for record in records
         ),
@@ -448,6 +460,8 @@ def _metadata(backend_chain: Sequence[str], base_threshold: int) -> dict[str, An
         "base_threshold": int(base_threshold),
         "ocr_only": True,
         "multimodal_enabled": False,
+        "drain_deadline_futures": True,
+        "latency_includes_errors": True,
         "environment": {
             name: os.environ.get(name)
             for name in ENV_ALLOWLIST
@@ -481,6 +495,7 @@ def run_repeated_benchmark(
                 backend_chain=chain,
                 grid_recovery=condition == "grid_recovery",
                 base_threshold=base_threshold,
+                drain_deadline_futures=True,
             )
             images = payload.get("images", [])
             if len(images) != len(cases):

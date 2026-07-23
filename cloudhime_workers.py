@@ -3200,7 +3200,7 @@ class OCRWorker(QObject):
                             pass
                 finally:
                     executor.shutdown(
-                        wait=deadline is None,
+                        wait=(deadline is None or getattr(self, "drain_deadline_futures", False)),
                         cancel_futures=deadline is not None,
                     )
             else:

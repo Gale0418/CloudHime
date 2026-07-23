@@ -1051,3 +1051,61 @@ def test_fullscreen_unreliable_manga_ocr_uses_multimodal_page_rescue(monkeypatch
         assert finished == [[["你說什麼！你不是也替我解除了詛咒嗎！", 7, 11, 800, 1000]]]
     finally:
         worker.cleanup()
+
+def test_deadline_executor_barrier_is_evaluator_opt_in(monkeypatch, qtbot):
+    shutdown_calls = []
+
+    class FakeFuture:
+        def result(self):
+            return None
+
+    class FakeExecutor:
+        def __init__(self, max_workers):
+            self.futures = []
+
+        def submit(self, callback, task):
+            future = FakeFuture()
+            self.futures.append(future)
+            return future
+
+        def shutdown(self, **kwargs):
+            shutdown_calls.append(kwargs)
+
+    monkeypatch.setattr(workers_module, "ThreadPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(
+        workers_module,
+        "wait",
+        lambda futures, timeout=None: (set(), set(futures)),
+    )
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker._recognize_with_backends = lambda _image: None
+    worker.extract_raw_items = lambda *_args: []
+    worker.remap_items_from_orientation = lambda items, *_args: items
+    worker.score_ocr_items = lambda items: (0, list(items))
+    try:
+        worker.drain_deadline_futures = False
+        worker.run_ocr_with_best_threshold(
+            image,
+            0,
+            0,
+            ocr_regions=[(0, 0, 80, 80)],
+            candidate_thresholds=[100],
+            orientation_candidates=[0, 90],
+            deadline=1e100,
+        )
+        assert shutdown_calls[-1] == {"wait": False, "cancel_futures": True}
+
+        worker.drain_deadline_futures = True
+        worker.run_ocr_with_best_threshold(
+            image,
+            0,
+            0,
+            ocr_regions=[(0, 0, 80, 80)],
+            candidate_thresholds=[100],
+            orientation_candidates=[0, 90],
+            deadline=1e100,
+        )
+        assert shutdown_calls[-1] == {"wait": True, "cancel_futures": True}
+    finally:
+        worker.cleanup()
