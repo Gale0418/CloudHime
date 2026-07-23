@@ -166,3 +166,33 @@ def test_repeated_benchmark_pairs_conditions_and_keeps_raw_text_out(
         "compared_pages": 2,
     }
     assert all("joined_text" not in record for record in report["records"])
+def test_compare_conditions_exposes_per_repeat_regression():
+    def record(repeat, recall):
+        return {
+            "case_id": "a",
+            "repeat": repeat,
+            "anchor_count": 2,
+            "anchor_hits": int(recall * 2),
+            "anchor_recall": recall,
+            "item_count": 1,
+            "elapsed_ms": 10,
+            "error": "",
+            "grid_recovery_triggered": False,
+            "grid_recovery_accepted": False,
+        }
+
+    comparison = evaluator.compare_conditions(
+        [record(1, 1.0), record(2, 0.0)],
+        [record(1, 0.0), record(2, 1.0)],
+    )
+
+    assert comparison["page_regression"]["equal_pages"] == 1
+    assert comparison["paired_repeat_regression"] == {
+        "improved_observations": 1,
+        "equal_observations": 0,
+        "regressed_observations": 1,
+        "compared_observations": 2,
+        "repeats_with_regression": 1,
+        "repeats_without_regression": 1,
+    }
+    assert [item["page_regression"]["regressed_pages"] for item in comparison["repeat_deltas"]] == [1, 0]
