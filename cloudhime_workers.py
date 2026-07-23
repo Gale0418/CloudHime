@@ -1877,6 +1877,52 @@ class OCRWorker(QObject):
             batch_size=GOOGLE_BATCH_SIZE if not self.has_any_multimodal_ai() else 8,
         )
 
+    def translate_local_manga_crop_batches(self, source_texts, merged_items, batches):
+        """Translate local crop batches and map each result back to its source index."""
+        translated = [None] * len(source_texts or [])
+        providers = [None] * len(source_texts or [])
+        written_indexes = set()
+        for batch in batches or []:
+            try:
+                item_indexes = list(batch.get("item_indexes") or [])
+                image_parts = batch.get("image_parts")
+                if (
+                    not item_indexes
+                    or len(set(item_indexes)) != len(item_indexes)
+                    or not image_parts
+                    or any(
+                        not isinstance(index, int)
+                        or index < 0
+                        or index >= len(source_texts)
+                        or index >= len(merged_items)
+                        for index in item_indexes
+                    )
+                    or any(index in written_indexes for index in item_indexes)
+                ):
+                    continue
+                batch_texts = [source_texts[index] for index in item_indexes]
+                batch_items = [merged_items[index] for index in item_indexes]
+                result = self.translate_items_with_ai_and_providers(
+                    batch_texts,
+                    image_parts,
+                    batch_items,
+                )
+                if not isinstance(result, (list, tuple)) or len(result) != 2:
+                    continue
+                batch_translated, batch_providers = result
+                if (
+                    len(batch_translated) != len(item_indexes)
+                    or len(batch_providers) != len(item_indexes)
+                ):
+                    continue
+                for index, text, provider in zip(item_indexes, batch_translated, batch_providers):
+                    translated[index] = text
+                    providers[index] = provider
+                written_indexes.update(item_indexes)
+            except Exception as exc:
+                logger.info(f"[Manga crop translation] region fallback: {type(exc).__name__}")
+        return translated, providers
+
     def capture_scan_area(self):
         with mss.mss() as sct:
             virtual_monitor = sct.monitors[0] if sct.monitors else None
@@ -2602,7 +2648,7 @@ class OCRWorker(QObject):
             return threshold, baseline
         return candidate_threshold, candidate
 
-    def build_local_manga_crop_context(
+    def build_local_manga_crop_batches(
         self,
         img,
         page_region,
@@ -2610,7 +2656,7 @@ class OCRWorker(QObject):
         offset_x=0,
         offset_y=0,
     ):
-        """Build bounded local-vision context without changing OCR geometry."""
+        """Build region-aware local-vision batches without changing OCR geometry."""
         enabled = os.environ.get(MANGA_CROP_CONTEXT_ENV, "").strip().lower()
         if enabled not in {"1", "true", "yes", "on"}:
             return None
@@ -2628,7 +2674,10 @@ class OCRWorker(QObject):
         available = getattr(provider, "available", None)
         if callable(available) and not available():
             return None
+        if available is not None and not callable(available) and not available:
+            return None
 
+        items = list(items or [])
         img_h, img_w = img.shape[:2]
         regions = self.build_local_manga_crop_regions(
             items,
@@ -2637,14 +2686,26 @@ class OCRWorker(QObject):
             offset_x,
             offset_y,
         )
-        if not regions or any(
-            not any(self.item_center_in_region(item, region, offset_x, offset_y) for region in regions)
-            for item in items
-        ):
+        if not regions:
             return None
 
-        parts = []
+        region_indexes = []
+        covered_indexes = set()
         for region in regions:
+            indexes = [
+                index
+                for index, item in enumerate(items)
+                if index not in covered_indexes
+                and self.item_center_in_region(item, region, offset_x, offset_y)
+            ]
+            if indexes:
+                region_indexes.append((region, indexes))
+                covered_indexes.update(indexes)
+        if len(covered_indexes) != len(items):
+            return None
+
+        batches = []
+        for region, item_indexes in region_indexes:
             clipped = self.clip_region_rect(
                 *region,
                 img_w,
@@ -2661,9 +2722,38 @@ class OCRWorker(QObject):
             except Exception as exc:
                 logger.info(f"[Manga crop context] fallback: {type(exc).__name__}")
                 return None
-            if not crop_parts:
+            if not isinstance(crop_parts, (list, tuple)) or not crop_parts:
                 return None
-            parts.extend(crop_parts)
+            batches.append(
+                {
+                    "region": clipped,
+                    "item_indexes": list(item_indexes),
+                    "image_parts": list(crop_parts),
+                }
+            )
+        return batches or None
+
+    def build_local_manga_crop_context(
+        self,
+        img,
+        page_region,
+        items,
+        offset_x=0,
+        offset_y=0,
+    ):
+        """Build the legacy flattened local-vision context from region batches."""
+        batches = self.build_local_manga_crop_batches(
+            img,
+            page_region,
+            items,
+            offset_x,
+            offset_y,
+        )
+        if not batches:
+            return None
+        parts = []
+        for batch in batches:
+            parts.extend(batch.get("image_parts") or [])
         return parts or None
 
     def split_region_into_tiles(self, rect, cols=2, rows=3, overlap=0.12):
@@ -3567,24 +3657,49 @@ class OCRWorker(QObject):
             self.last_combined_text = current_combined_text
             translated_list = []
             provider_list = []
+            used_local_crop_batches = False
             try:
                 if ai_image_parts is None and self.scan_mode == SCAN_MODE_FULLSCREEN:
-                    crop_context = self.build_local_manga_crop_context(
-                        img,
-                        page_region,
-                        merged_items,
-                        offset_x,
-                        offset_y,
-                    )
-                    if crop_context:
-                        ai_image_parts = crop_context
-                        _log(f"⑦-pre 漫畫局部多模態 context 完成 ({len(crop_context)} parts)")
-                if ai_image_parts is None and self.has_any_multimodal_ai():
-                    _log("⑦-pre 開始 build_ai_image_parts (多模態翻譯)")
-                    ai_image_parts = self.build_ai_image_parts(img)
-                    _log("⑦ build_ai_image_parts 完成")
-                _log("⑧ 開始 translate_items_with_ai_and_providers")
-                translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts, merged_items)
+                    try:
+                        crop_batches = self.build_local_manga_crop_batches(
+                            img,
+                            page_region,
+                            merged_items,
+                            offset_x,
+                            offset_y,
+                        )
+                    except Exception as exc:
+                        crop_batches = None
+                        logger.info(
+                            f"[Manga crop context] full-page fallback: "
+                            f"{type(exc).__name__}"
+                        )
+                    if crop_batches:
+                        try:
+                            translated_list, provider_list = self.translate_local_manga_crop_batches(
+                                source_texts,
+                                merged_items,
+                                crop_batches,
+                            )
+                            used_local_crop_batches = any(
+                                bool(text) for text in translated_list
+                            )
+                            _log(
+                                f"⑦-pre 漫畫局部多模態 batches 完成 "
+                                f"({len(crop_batches)} regions)"
+                            )
+                        except Exception as exc:
+                            logger.info(
+                                f"[Manga crop translation] full-page fallback: "
+                                f"{type(exc).__name__}"
+                            )
+                if not used_local_crop_batches:
+                    if ai_image_parts is None and self.has_any_multimodal_ai():
+                        _log("⑦-pre 開始 build_ai_image_parts (多模態翻譯)")
+                        ai_image_parts = self.build_ai_image_parts(img)
+                        _log("⑦ build_ai_image_parts 完成")
+                    _log("⑧ 開始 translate_items_with_ai_and_providers")
+                    translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts, merged_items)
                 _log(f"⑨ 翻譯完成 (共 {len(translated_list)} 段)")
             except Exception as exc:
                 self.log_ai_debug(f"MULTIMODAL BATCH FAILED: {exc}")
