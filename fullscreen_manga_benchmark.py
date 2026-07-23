@@ -86,8 +86,15 @@ def _fallback_thresholds(threshold: Any) -> list[int]:
     )
 
 
-def _configure_ocr_only_worker(worker: OCRWorker) -> None:
+def _configure_ocr_only_worker(
+    worker: OCRWorker,
+    *,
+    drain_deadline_futures: bool = False,
+) -> None:
     worker.scan_mode = SCAN_MODE_FULLSCREEN
+    # Production keeps the bounded refinement deadline; the evaluator opts into
+    # a barrier so timed-out OCR work cannot overlap the next condition.
+    worker.drain_deadline_futures = bool(drain_deadline_futures)
     worker.auto_threshold_enabled = False
     worker.google_api_key = ""
     worker.use_gemma_translation = False
@@ -270,6 +277,7 @@ def run_benchmark(
     backend_chain: Sequence[str] | None = None,
     grid_recovery: bool = False,
     base_threshold: int = 100,
+    drain_deadline_futures: bool = False,
 ) -> dict[str, Any]:
     chain = _parse_backend_chain(backend_chain)
     worker = OCRWorker()
@@ -279,7 +287,10 @@ def run_benchmark(
     else:
         os.environ.pop("CLOUDHIME_MANGA_GRID_RECOVERY", None)
     try:
-        _configure_ocr_only_worker(worker)
+        _configure_ocr_only_worker(
+            worker,
+            drain_deadline_futures=drain_deadline_futures,
+        )
         worker.reload_ocr_backends(chain, log=False)
         images = [
             _process_image(

@@ -133,8 +133,11 @@ def test_empty_anchor_holdout_has_null_recall_and_latency_p95():
 
     assert summary["anchor_recall"] is None
     assert summary["page_macro_recall"] is None
-    assert summary["latency_ms"]["p95"] is None
-    assert summary["nonempty_page_rate"] is None
+    assert summary["latency_ms"]["p95"] == 12.0
+    assert summary["successful_latency_ms"]["p95"] is None
+    assert summary["error_pages"] == 1
+    assert summary["nonempty_page_rate"] == 0.0
+    assert summary["successful_nonempty_page_rate"] is None
 
 
 def test_repeated_benchmark_pairs_conditions_and_keeps_raw_text_out(
