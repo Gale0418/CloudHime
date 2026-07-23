@@ -47,6 +47,7 @@ GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
     "gemini-2.5-pro": 15,
 }
 TRANSLATION_CACHE_LIMIT = 512
+LOCAL_MULTIMODAL_BATCH_SIZE = 4
 
 
 @dataclass(frozen=True)
@@ -1085,13 +1086,47 @@ class LocalMultimodalProvider:
             self._translation_cache.popitem(last=False)
         return result
     def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
+        if len(texts) > LOCAL_MULTIMODAL_BATCH_SIZE:
+            translated: list[TranslationResult] = []
+            for start in range(0, len(texts), LOCAL_MULTIMODAL_BATCH_SIZE):
+                translated.extend(
+                    self.translate_multimodal(
+                        texts[start:start + LOCAL_MULTIMODAL_BATCH_SIZE],
+                        image_parts,
+                        target_lang=target_lang,
+                    )
+                )
+            return translated
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
         base_prompt = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
         prompt = f"{dictionary_hint}\n\n{base_prompt}" if dictionary_hint else base_prompt
-        raw_text = self._request_chat_completion(
-            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="json_object", max_tokens=1024)
+        payload = self._build_chat_payload(
+            prompt=prompt,
+            image_parts=image_parts,
+            response_format="json_object",
+            max_tokens=1024,
         )
+        try:
+            raw_text = self._request_chat_completion(payload)
+        except error.HTTPError as exc:
+            # llama-server builds without JSON response-format support still accept the same multimodal request as text.
+            if exc.code != 400:
+                raise
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            body_lower = body.lower()
+            format_error = not body or any(
+                marker in body_lower
+                for marker in ("response format", "json_object", "structured output", "json mode")
+            )
+            if not format_error:
+                raise
+            payload["response_format"] = {"type": "text"}
+            raw_text = self._request_chat_completion(payload)
         translated = self._parse_segmented_response(raw_text, len(texts))
         return [TranslationResult(text=item, provider=self.name, model=self.model_name, raw_text=raw_text) for item in translated]
 
