@@ -646,6 +646,81 @@ def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
         worker.cleanup()
 
 
+def test_local_manga_crop_context_is_opt_in_and_preserves_all_items(monkeypatch, qtbot):
+    image = np.zeros((400, 400, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.has_local_multimodal_ai = lambda: True
+    provider = SimpleNamespace(available=lambda: True, transcribe_screenshot=Mock())
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker.build_ai_image_parts = Mock(side_effect=lambda crop: [{"inline_data": {"data": str(crop.shape)}}])
+    items = [
+        {"text": "第一段文字", "x": 80, "y": 90, "w": 60, "h": 36},
+        {"text": "第二段文字", "x": 250, "y": 260, "w": 60, "h": 36},
+    ]
+
+    try:
+        monkeypatch.setenv("CLOUDHIME_MANGA_CROP_CONTEXT", "1")
+        parts = worker.build_local_manga_crop_context(image, (0, 0, 400, 400), items)
+
+        assert parts is not None
+        assert len(parts) == 2
+        assert worker.build_ai_image_parts.call_count == 2
+        assert all(item["text"].startswith("第") for item in items)
+    finally:
+        worker.cleanup()
+
+
+def test_local_manga_crop_context_fails_open_when_disabled_or_not_all_items_fit(monkeypatch, qtbot):
+    image = np.zeros((400, 400, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.has_local_multimodal_ai = lambda: True
+    provider = SimpleNamespace(available=lambda: True, transcribe_screenshot=Mock())
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "crop"}}])
+    items = [
+        {"text": "第一段文字", "x": 20 + (index % 5) * 75, "y": 40 + (index // 5) * 90, "w": 30, "h": 24}
+        for index in range(5)
+    ]
+
+    try:
+        assert worker.build_local_manga_crop_context(image, (0, 0, 400, 400), items) is None
+        monkeypatch.setenv("CLOUDHIME_MANGA_CROP_CONTEXT", "1")
+        assert worker.build_local_manga_crop_context(image, (0, 0, 400, 400), items) is None
+        worker.build_ai_image_parts.assert_not_called()
+    finally:
+        worker.cleanup()
+
+
+def test_scan_worker_uses_local_manga_crop_context_before_full_page_parts(monkeypatch, qtbot):
+    image = np.zeros((400, 400, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.detect_manga_page_region = lambda _img: (0, 0, 400, 400)
+    baseline = [
+        {"text": "第一段文字", "x": 80, "y": 90, "w": 60, "h": 36},
+        {"text": "第二段文字", "x": 250, "y": 260, "w": 60, "h": 36},
+    ]
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, baseline))
+    worker.refine_manga_ocr_items = Mock(return_value=baseline)
+    worker.has_any_multimodal_ai = lambda: True
+    worker.build_local_manga_crop_context = Mock(return_value=[{"inline_data": {"data": "crop"}}])
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["第一段翻譯", "第二段翻譯"], ["local_multimodal", "local_multimodal"])
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("CLOUDHIME_MANGA_CROP_CONTEXT", "1")
+
+    try:
+        worker.run_scan_once()
+
+        worker.build_local_manga_crop_context.assert_called_once()
+        call = worker.translate_items_with_ai_and_providers.call_args.args
+        assert call[1] == [{"inline_data": {"data": "crop"}}]
+    finally:
+        worker.cleanup()
+
+
 def test_portrait_latin_screen_does_not_trigger_manga_rescue(monkeypatch, qtbot):
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
     worker = OCRWorker()

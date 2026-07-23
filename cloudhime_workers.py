@@ -159,6 +159,7 @@ MANGA_ADAPTIVE_SCORE_MARGIN = 5
 MANGA_ADAPTIVE_MIN_TEXT_AGREEMENT = 0.20
 MANGA_ADAPTIVE_MIN_COVERAGE = 0.80
 MANGA_ADAPTIVE_MAX_MS = 600
+MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
 DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES = 10
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN = 1
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
@@ -2450,6 +2451,70 @@ class OCRWorker(QObject):
         _score, filtered_adjusted = self.score_ocr_items(adjusted)
         return filtered_adjusted or baseline
 
+    def build_local_manga_crop_context(
+        self,
+        img,
+        page_region,
+        items,
+        offset_x=0,
+        offset_y=0,
+    ):
+        """Build bounded local-vision context without changing OCR geometry."""
+        enabled = os.environ.get(MANGA_CROP_CONTEXT_ENV, "").strip().lower()
+        if enabled not in {"1", "true", "yes", "on"}:
+            return None
+        if (
+            not page_region
+            or len(items or []) < 2
+            or not self.has_cjk_manga_text(items)
+            or not self.has_local_multimodal_ai()
+        ):
+            return None
+
+        provider = self._get_translation_provider("local_multimodal")
+        if provider is None or not hasattr(provider, "transcribe_screenshot"):
+            return None
+        available = getattr(provider, "available", None)
+        if callable(available) and not available():
+            return None
+
+        img_h, img_w = img.shape[:2]
+        regions = self.build_manga_adaptive_regions(
+            items,
+            img_w,
+            img_h,
+            offset_x,
+            offset_y,
+        )
+        if not regions or any(
+            not any(self.item_center_in_region(item, region, offset_x, offset_y) for region in regions)
+            for item in items
+        ):
+            return None
+
+        parts = []
+        for region in regions:
+            clipped = self.clip_region_rect(
+                *region,
+                img_w,
+                img_h,
+            )
+            if clipped is None:
+                return None
+            x, y, width, height = clipped
+            crop = img[y:y + height, x:x + width]
+            if crop.size == 0:
+                return None
+            try:
+                crop_parts = self.build_ai_image_parts(crop)
+            except Exception as exc:
+                logger.info(f"[Manga crop context] fallback: {type(exc).__name__}")
+                return None
+            if not crop_parts:
+                return None
+            parts.extend(crop_parts)
+        return parts or None
+
     def split_region_into_tiles(self, rect, cols=2, rows=3, overlap=0.12):
         x, y, w, h = [int(v) for v in rect]
         if w <= 0 or h <= 0:
@@ -3326,6 +3391,17 @@ class OCRWorker(QObject):
             translated_list = []
             provider_list = []
             try:
+                if ai_image_parts is None and self.scan_mode == SCAN_MODE_FULLSCREEN:
+                    crop_context = self.build_local_manga_crop_context(
+                        img,
+                        page_region,
+                        merged_items,
+                        offset_x,
+                        offset_y,
+                    )
+                    if crop_context:
+                        ai_image_parts = crop_context
+                        _log(f"⑦-pre 漫畫局部多模態 context 完成 ({len(crop_context)} parts)")
                 if ai_image_parts is None and self.has_any_multimodal_ai():
                     _log("⑦-pre 開始 build_ai_image_parts (多模態翻譯)")
                     ai_image_parts = self.build_ai_image_parts(img)
