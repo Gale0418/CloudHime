@@ -248,6 +248,8 @@ class LocalVisionRuntime:
             "--mmproj", str(assets.projector_path),
             # Avoid a reproducible Windows mmap stall while loading Gemma 3 projector tensors.
             "--no-mmap",
+            # Keep model layers on GPU but avoid WDDM operator offload stalls under VRAM pressure.
+            "--no-op-offload",
             # CloudHime serializes translations, so extra server slots only waste KV memory.
             "--parallel", "1",
             "-c", str(self._context_size),
