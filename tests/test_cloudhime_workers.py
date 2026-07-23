@@ -1135,6 +1135,51 @@ def test_multimodal_segment_repair_retries_multiline_low_coverage():
     assert "reason=low_coverage" in worker.debug_messages[0]
 
 
+def test_translate_items_with_ai_and_providers_fails_open_to_text_route():
+    worker = _make_segment_repair_worker()
+    worker.has_any_multimodal_ai = lambda: True
+
+    def raise_multimodal_failure(*_args, **_kwargs):
+        raise ValueError("degenerate_local_multimodal_response")
+
+    worker.translate_multimodal_gemma = raise_multimodal_failure
+    worker.translate_items_in_batches_with_providers = (
+        lambda source_texts, batch_size=8: (["葡萄酒俱樂部"], ["google"])
+    )
+
+    translated, providers = OCRWorker.translate_items_with_ai_and_providers(
+        worker,
+        ["Wine Club"],
+        [{"image": "x"}],
+    )
+
+    assert translated == ["葡萄酒俱樂部"]
+    assert providers == ["google"]
+
+
+def test_translate_items_with_ai_and_providers_fails_open_when_parser_raises():
+    worker = _make_segment_repair_worker()
+    worker.has_any_multimodal_ai = lambda: True
+    worker.translate_multimodal_gemma = lambda image_parts, source_texts: "payload"
+
+    def raise_parser_failure(*_args, **_kwargs):
+        raise ValueError("malformed_segmented_json")
+
+    worker.parse_segmented_translation_json = raise_parser_failure
+    worker.translate_items_in_batches_with_providers = (
+        lambda source_texts, batch_size=8: (["葡萄酒俱樂部"], ["google"])
+    )
+
+    translated, providers = OCRWorker.translate_items_with_ai_and_providers(
+        worker,
+        ["Wine Club"],
+        [{"image": "x"}],
+    )
+
+    assert translated == ["葡萄酒俱樂部"]
+    assert providers == ["google"]
+
+
 def test_translate_items_with_ai_repairs_parsed_segments_selectively():
     worker = _make_segment_repair_worker()
     worker.has_any_multimodal_ai = lambda: True
