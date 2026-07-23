@@ -1853,10 +1853,22 @@ class OCRWorker(QObject):
         if not source_texts:
             return [], []
         if self.has_any_multimodal_ai() and image_parts:
-            translated = self.translate_multimodal_gemma(image_parts, source_texts)
-            parsed = self.parse_segmented_translation_json(translated, len(source_texts))
-            if parsed:
-                return self._repair_suspicious_multimodal_segments(source_texts, parsed)
+            try:
+                translated = self.translate_multimodal_gemma(image_parts, source_texts)
+                parsed = self.parse_segmented_translation_json(
+                    translated,
+                    len(source_texts),
+                )
+            except Exception as exc:
+                logger.info(
+                    f"[Multimodal translation] text fallback: {type(exc).__name__}"
+                )
+            else:
+                if parsed:
+                    return self._repair_suspicious_multimodal_segments(
+                        source_texts,
+                        parsed,
+                    )
         if len(source_texts) == 1 and merged_items is not None:
             provider_name = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
             provider_obj = self._get_translation_provider(provider_name)
