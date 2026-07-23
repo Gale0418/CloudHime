@@ -646,6 +646,60 @@ def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
         worker.cleanup()
 
 
+@pytest.mark.parametrize(
+    ("candidate_score", "accepted"),
+    [(24, True), (22, False)],
+)
+def test_manga_grid_recovery_is_opt_in_and_score_gated(
+    monkeypatch,
+    qtbot,
+    candidate_score,
+    accepted,
+):
+    image = np.zeros((400, 400, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    baseline = [
+        {"text": "基準文字一", "x": 20, "y": 20, "w": 60, "h": 30},
+        {"text": "基準文字二", "x": 120, "y": 120, "w": 60, "h": 30},
+    ]
+    candidate = [
+        {"text": "候選文字一", "x": 20, "y": 20, "w": 60, "h": 30},
+        {"text": "候選文字二", "x": 120, "y": 120, "w": 60, "h": 30},
+    ]
+    worker.split_region_into_tiles = Mock(return_value=[(0, 0, 200, 200)])
+    worker.run_ocr_with_best_threshold = Mock(return_value=(110, candidate))
+    worker.score_ocr_items = Mock(
+        side_effect=[(20, baseline), (candidate_score, candidate)]
+    )
+
+    try:
+        assert worker.try_manga_grid_recovery(
+            image,
+            (0, 0, 400, 400),
+            baseline,
+            100,
+            [0, 90, 270],
+        ) == (100, baseline)
+        worker.run_ocr_with_best_threshold.assert_not_called()
+
+        monkeypatch.setenv("CLOUDHIME_MANGA_GRID_RECOVERY", "1")
+        threshold, recovered = worker.try_manga_grid_recovery(
+            image,
+            (0, 0, 400, 400),
+            baseline,
+            100,
+            [0, 90, 270],
+        )
+        if accepted:
+            assert threshold == 110
+            assert recovered == candidate
+        else:
+            assert threshold == 100
+            assert recovered == baseline
+        worker.run_ocr_with_best_threshold.assert_called_once()
+    finally:
+        worker.cleanup()
+
 def test_local_manga_crop_context_is_opt_in_and_preserves_all_items(monkeypatch, qtbot):
     image = np.zeros((400, 400, 3), dtype=np.uint8)
     worker = OCRWorker()

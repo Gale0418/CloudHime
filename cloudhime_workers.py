@@ -160,6 +160,9 @@ MANGA_ADAPTIVE_MIN_TEXT_AGREEMENT = 0.20
 MANGA_ADAPTIVE_MIN_COVERAGE = 0.80
 MANGA_ADAPTIVE_MAX_MS = 600
 MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
+MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
+MANGA_GRID_RECOVERY_MAX_ITEMS = 6
+MANGA_GRID_RECOVERY_SCORE_MARGIN = 3
 DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES = 10
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MIN = 1
 AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
@@ -2535,6 +2538,67 @@ class OCRWorker(QObject):
         _score, filtered_adjusted = self.score_ocr_items(adjusted)
         return filtered_adjusted or baseline
 
+    def try_manga_grid_recovery(
+        self,
+        img,
+        page_region,
+        items,
+        threshold,
+        orientation_candidates,
+        offset_x=0,
+        offset_y=0,
+    ):
+        """Optionally retry sparse manga pages with bounded overlapping tiles."""
+        baseline = list(items or [])
+        enabled = os.environ.get(MANGA_GRID_RECOVERY_ENV, "").strip().lower()
+        if enabled not in {"1", "true", "yes", "on"}:
+            return threshold, baseline
+        if (
+            not page_region
+            or not (2 <= len(baseline) <= MANGA_GRID_RECOVERY_MAX_ITEMS)
+            or not self.has_cjk_manga_text(baseline)
+        ):
+            return threshold, baseline
+
+        tile_regions = self.split_region_into_tiles(
+            page_region,
+            cols=2,
+            rows=3,
+            overlap=0.10,
+        )
+        if not tile_regions:
+            return threshold, baseline
+
+        try:
+            base_threshold = int(threshold)
+        except (TypeError, ValueError):
+            base_threshold = int(self.binary_threshold)
+        retry_thresholds = sorted({
+            max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, base_threshold + delta))
+            for delta in (-10, 0, 10)
+        })
+        try:
+            candidate_threshold, candidate = self.run_ocr_with_best_threshold(
+                img,
+                offset_x,
+                offset_y,
+                tile_regions,
+                retry_thresholds,
+                orientation_candidates,
+            )
+        except Exception as exc:
+            logger.info(f"[Manga grid recovery] fallback: {type(exc).__name__}")
+            return threshold, baseline
+
+        candidate = list(candidate or [])
+        if len(candidate) < 2 or not self.has_cjk_manga_text(candidate):
+            return threshold, baseline
+        baseline_score, _ = self.score_ocr_items(baseline)
+        candidate_score, _ = self.score_ocr_items(candidate)
+        if candidate_score < baseline_score + MANGA_GRID_RECOVERY_SCORE_MARGIN:
+            return threshold, baseline
+        return candidate_threshold, candidate
+
     def build_local_manga_crop_context(
         self,
         img,
@@ -3350,9 +3414,11 @@ class OCRWorker(QObject):
             if not filtered_items and self.scan_mode == SCAN_MODE_REGION:
                 self.status_msg.emit("框選區域沒有掃到文字，請框大一點或換個角度。")
 
+        manga_tile_retry_used = False
         if self.scan_mode == SCAN_MODE_FULLSCREEN and len(filtered_items) <= 1 and page_region:
             tile_regions = self.split_region_into_tiles(page_region, cols=2, rows=3, overlap=0.10)
             if tile_regions:
+                manga_tile_retry_used = True
                 self.status_msg.emit("📚 漫畫頁切片重試中...")
                 try:
                     fallback_thresholds = sorted({
@@ -3371,6 +3437,16 @@ class OCRWorker(QObject):
                 except Exception:
                     filtered_items = []
 
+        if (not manga_tile_retry_used and self.scan_mode == SCAN_MODE_FULLSCREEN and page_region):
+            used_threshold, filtered_items = self.try_manga_grid_recovery(
+                img,
+                page_region,
+                filtered_items,
+                used_threshold,
+                ocr_orientations,
+                offset_x,
+                offset_y,
+            )
         if (
             self.scan_mode == SCAN_MODE_FULLSCREEN
             and page_region
