@@ -54,7 +54,12 @@ OCR_PROMPTS = {
 
 def load_cases(manifest_path: str | Path, *, max_cases: int | None = None) -> list[dict[str, Any]]:
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    cases = [case for case in manifest.get("cases", []) if case.get("sample_source")]
+    cases = [
+        case
+        for case in manifest.get("cases", [])
+        if case.get("sample_source")
+        or (case.get("image") and case.get("visible_text_anchors"))
+    ]
     if max_cases is not None:
         cases = cases[: max(1, int(max_cases))]
     return cases
@@ -67,6 +72,8 @@ def normalize_for_match(value: Any) -> str:
 
 def expected_variants(case: dict[str, Any]) -> list[str]:
     expected = case.get("expected", "")
+    if not expected:
+        expected = case.get("visible_text_anchors", [])
     if isinstance(expected, list):
         return [str(item) for item in expected if str(item).strip()]
     return [str(expected)] if str(expected).strip() else []
@@ -143,10 +150,16 @@ def percentile(values: Sequence[float], quantile: float = 0.95) -> float:
     return ordered[index]
 
 
+def case_image_source(case: dict[str, Any]) -> str:
+    return str(case.get("sample_source") or case.get("image") or "")
+
+
 def group_cases_by_image(cases: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for case in cases:
-        grouped.setdefault(str(case["sample_source"]), []).append(case)
+        source = case_image_source(case)
+        if source:
+            grouped.setdefault(source, []).append(case)
     return grouped
 
 
