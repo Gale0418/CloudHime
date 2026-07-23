@@ -220,26 +220,47 @@ def compare_conditions(
 ) -> dict[str, Any]:
     baseline_summary = summarize_records(baseline)
     variant_summary = summarize_records(variant)
-    baseline_by_case: dict[str, list[float]] = defaultdict(list)
-    variant_by_case: dict[str, list[float]] = defaultdict(list)
-    for record in baseline:
-        if record["anchor_recall"] is not None:
-            baseline_by_case[str(record["case_id"])].append(
-                float(record["anchor_recall"])
-            )
-    for record in variant:
-        if record["anchor_recall"] is not None:
-            variant_by_case[str(record["case_id"])].append(
-                float(record["anchor_recall"])
-            )
+
+    def record_key(record: Mapping[str, Any]) -> tuple[str, int]:
+        return (
+            str(record["case_id"]),
+            int(record.get("repeat", 1)),
+        )
+
+    baseline_map = {record_key(record): record for record in baseline}
+    variant_map = {record_key(record): record for record in variant}
+    common_keys = sorted(set(baseline_map) & set(variant_map))
+    pair_deltas: list[dict[str, Any]] = []
+    for key in common_keys:
+        left = baseline_map[key]
+        right = variant_map[key]
+        if left["anchor_recall"] is None or right["anchor_recall"] is None:
+            continue
+        pair_deltas.append(
+            {
+                "case_id": key[0],
+                "repeat": key[1],
+                "baseline_recall": float(left["anchor_recall"]),
+                "variant_recall": float(right["anchor_recall"]),
+                "delta": float(right["anchor_recall"])
+                - float(left["anchor_recall"]),
+            }
+        )
+
+    case_deltas: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for delta in pair_deltas:
+        case_deltas[delta["case_id"]].append(delta)
 
     improved = equal = regressed = 0
     page_deltas: list[dict[str, Any]] = []
-    for case_id in sorted(set(baseline_by_case) | set(variant_by_case)):
-        if not baseline_by_case.get(case_id) or not variant_by_case.get(case_id):
-            continue
-        base_score = sum(baseline_by_case[case_id]) / len(baseline_by_case[case_id])
-        variant_score = sum(variant_by_case[case_id]) / len(variant_by_case[case_id])
+    for case_id in sorted(case_deltas):
+        observations = case_deltas[case_id]
+        base_score = sum(
+            item["baseline_recall"] for item in observations
+        ) / len(observations)
+        variant_score = sum(
+            item["variant_recall"] for item in observations
+        ) / len(observations)
         delta = variant_score - base_score
         if delta > 1e-12:
             improved += 1
@@ -253,11 +274,83 @@ def compare_conditions(
                 "baseline_recall": base_score,
                 "variant_recall": variant_score,
                 "delta": delta,
+                "repeat_count": len(observations),
+                "regressed_repeats": sum(
+                    item["delta"] < -1e-12 for item in observations
+                ),
+            }
+        )
+
+    repeat_deltas: list[dict[str, Any]] = []
+    repeat_ids = sorted(
+        {
+            int(record.get("repeat", 1))
+            for record in baseline
+        }
+        | {
+            int(record.get("repeat", 1))
+            for record in variant
+        }
+    )
+    for repeat in repeat_ids:
+        left_records = [
+            record
+            for record in baseline
+            if int(record.get("repeat", 1)) == repeat
+        ]
+        right_records = [
+            record
+            for record in variant
+            if int(record.get("repeat", 1)) == repeat
+        ]
+        left_summary = summarize_records(left_records)
+        right_summary = summarize_records(right_records)
+        observations = [
+            item
+            for item in pair_deltas
+            if item["repeat"] == repeat
+        ]
+        repeat_deltas.append(
+            {
+                "repeat": repeat,
+                "baseline_anchor_recall": left_summary["anchor_recall"],
+                "variant_anchor_recall": right_summary["anchor_recall"],
+                "anchor_delta": (
+                    right_summary["anchor_recall"]
+                    - left_summary["anchor_recall"]
+                    if left_summary["anchor_recall"] is not None
+                    and right_summary["anchor_recall"] is not None
+                    else None
+                ),
+                "baseline_page_macro_recall": left_summary["page_macro_recall"],
+                "variant_page_macro_recall": right_summary["page_macro_recall"],
+                "page_macro_delta": (
+                    right_summary["page_macro_recall"]
+                    - left_summary["page_macro_recall"]
+                    if left_summary["page_macro_recall"] is not None
+                    and right_summary["page_macro_recall"] is not None
+                    else None
+                ),
+                "page_regression": {
+                    "improved_pages": sum(
+                        item["delta"] > 1e-12 for item in observations
+                    ),
+                    "equal_pages": sum(
+                        abs(item["delta"]) <= 1e-12 for item in observations
+                    ),
+                    "regressed_pages": sum(
+                        item["delta"] < -1e-12 for item in observations
+                    ),
+                    "compared_pages": len(observations),
+                },
             }
         )
 
     base_latency = baseline_summary["latency_ms"]
     variant_latency = variant_summary["latency_ms"]
+    paired_regressions = sum(
+        item["delta"] < -1e-12 for item in pair_deltas
+    )
     return {
         "anchor_recall": {
             "baseline": baseline_summary["anchor_recall"],
@@ -286,6 +379,24 @@ def compare_conditions(
             "regressed_pages": regressed,
             "compared_pages": len(page_deltas),
         },
+        "paired_repeat_regression": {
+            "improved_observations": sum(
+                item["delta"] > 1e-12 for item in pair_deltas
+            ),
+            "equal_observations": sum(
+                abs(item["delta"]) <= 1e-12 for item in pair_deltas
+            ),
+            "regressed_observations": paired_regressions,
+            "compared_observations": len(pair_deltas),
+            "repeats_with_regression": sum(
+                item["page_regression"]["regressed_pages"] > 0
+                for item in repeat_deltas
+            ),
+            "repeats_without_regression": sum(
+                item["page_regression"]["regressed_pages"] == 0
+                for item in repeat_deltas
+            ),
+        },
         "latency_ms": {
             "baseline_avg": base_latency["avg"],
             "variant_avg": variant_latency["avg"],
@@ -296,17 +407,17 @@ def compare_conditions(
             ),
             "baseline_median": base_latency["median"],
             "variant_median": variant_latency["median"],
-            "baseline_p95": base_latency["p95"],
-            "variant_p95": variant_latency["p95"],
             "p95_delta": (
                 variant_latency["p95"] - base_latency["p95"]
                 if base_latency["p95"] is not None and variant_latency["p95"] is not None
                 else None
             ),
+            "baseline_p95": base_latency["p95"],
+            "variant_p95": variant_latency["p95"],
         },
         "page_deltas": page_deltas,
+        "repeat_deltas": repeat_deltas,
     }
-
 
 def _git_value(*args: str) -> str | None:
     try:
