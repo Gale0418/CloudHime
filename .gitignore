@@ -46,3 +46,8 @@ theme_func.txt
 # Generated local test fixtures/review captures; keep source tests and cache code.
 scratch/codex-*/
 .review_exact_image_*/
+
+# Private manga accuracy annotations and local benchmark probes.
+.private_manga_*.json
+.private_manga_*.py
+.private_benchmark_runs/

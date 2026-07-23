@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -95,7 +96,12 @@ def _configure_ocr_only_worker(worker: OCRWorker) -> None:
     worker.japanese_rescue_enabled = False
 
 
-def _run_fullscreen_ocr(worker: OCRWorker, image: Any) -> dict[str, Any]:
+def _run_fullscreen_ocr(
+    worker: OCRWorker,
+    image: Any,
+    *,
+    grid_recovery: bool = False,
+) -> dict[str, Any]:
     detected_page_region = worker.detect_manga_page_region(image)
     page_region = worker.normalize_manga_page_region(image, detected_page_region)
     if page_region:
@@ -137,6 +143,30 @@ def _run_fullscreen_ocr(worker: OCRWorker, image: Any) -> dict[str, Any]:
             )
             items = _normalize_items(items)
 
+    grid_recovery_triggered = False
+    grid_recovery_accepted = False
+    if grid_recovery and page_region and not tile_triggered:
+        recover = getattr(worker, "try_manga_grid_recovery", None)
+        if callable(recover) and 2 <= len(items) <= 6:
+            grid_recovery_triggered = True
+            baseline_items = list(items)
+            try:
+                threshold, recovered_items = recover(
+                    image,
+                    tuple(page_region),
+                    baseline_items,
+                    threshold,
+                    [0, 90, 270],
+                    0,
+                    0,
+                )
+                recovered_items = _normalize_items(recovered_items)
+                if recovered_items != baseline_items:
+                    grid_recovery_accepted = True
+                items = recovered_items
+            except Exception:
+                pass
+
     # Mirror the existing fullscreen multi-region retry without invoking any
     # translation or visual-model path.
     if not page_region and len(ocr_regions) > 1 and len(items) <= 1:
@@ -161,6 +191,8 @@ def _run_fullscreen_ocr(worker: OCRWorker, image: Any) -> dict[str, Any]:
         "threshold": int(threshold) if threshold is not None else None,
         "items": items,
         "tile_triggered": tile_triggered,
+        "grid_recovery_triggered": grid_recovery_triggered,
+        "grid_recovery_accepted": grid_recovery_accepted,
     }
 
 
@@ -174,20 +206,34 @@ def _empty_image_result(image_path: Path, elapsed_ms: float, error: str) -> dict
         "joined_text": "",
         "elapsed_ms": elapsed_ms,
         "tile_triggered": False,
+        "grid_recovery_triggered": False,
+        "grid_recovery_accepted": False,
         "error": error,
     }
 
 
-def _process_image(worker: OCRWorker, image_path: str | Path) -> dict[str, Any]:
+def _process_image(
+    worker: OCRWorker,
+    image_path: str | Path,
+    *,
+    grid_recovery: bool = False,
+    base_threshold: int = 100,
+) -> dict[str, Any]:
     path = Path(image_path)
     started = time.perf_counter()
+    if hasattr(worker, "binary_threshold"):
+        worker.binary_threshold = int(base_threshold)
     image = cv2.imread(str(path), cv2.IMREAD_COLOR)
     if image is None:
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         return _empty_image_result(path, elapsed_ms, "image_unreadable")
 
     try:
-        result = _run_fullscreen_ocr(worker, image)
+        result = _run_fullscreen_ocr(
+            worker,
+            image,
+            grid_recovery=grid_recovery,
+        )
         items = result["items"]
         result.update(
             {
@@ -222,13 +268,28 @@ def run_benchmark(
     image_paths: Sequence[str | Path],
     *,
     backend_chain: Sequence[str] | None = None,
+    grid_recovery: bool = False,
+    base_threshold: int = 100,
 ) -> dict[str, Any]:
     chain = _parse_backend_chain(backend_chain)
     worker = OCRWorker()
+    previous_grid_env = os.environ.get("CLOUDHIME_MANGA_GRID_RECOVERY")
+    if grid_recovery:
+        os.environ["CLOUDHIME_MANGA_GRID_RECOVERY"] = "1"
+    else:
+        os.environ.pop("CLOUDHIME_MANGA_GRID_RECOVERY", None)
     try:
         _configure_ocr_only_worker(worker)
         worker.reload_ocr_backends(chain, log=False)
-        images = [_process_image(worker, path) for path in image_paths]
+        images = [
+            _process_image(
+                worker,
+                path,
+                grid_recovery=grid_recovery,
+                base_threshold=base_threshold,
+            )
+            for path in image_paths
+        ]
         if hasattr(worker, "ocr_backends") and not worker.ocr_backends:
             for image in images:
                 if not image["error"]:
@@ -242,7 +303,13 @@ def run_benchmark(
         result["complete"] = _is_complete(result)
         return result
     finally:
-        worker.cleanup()
+        try:
+            worker.cleanup()
+        finally:
+            if previous_grid_env is None:
+                os.environ.pop("CLOUDHIME_MANGA_GRID_RECOVERY", None)
+            else:
+                os.environ["CLOUDHIME_MANGA_GRID_RECOVERY"] = previous_grid_env
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -255,6 +322,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         dest="backend_chain",
         help="OCR backend chain；可重複指定或用逗號分隔，預設 windows",
+    )
+    parser.add_argument(
+        "--grid-recovery",
+        action="store_true",
+        help="啟用 opt-in 漫畫 2x3 網格恢復",
+    )
+    parser.add_argument(
+        "--base-threshold",
+        type=int,
+        default=100,
+        help="每張圖片開始時重設的基準 threshold",
     )
     parser.add_argument(
         "--require-complete",
@@ -271,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
         result = run_benchmark(
             args.images,
             backend_chain=args.backend_chain,
+            grid_recovery=args.grid_recovery,
+            base_threshold=args.base_threshold,
         )
     except Exception as exc:
         result = {

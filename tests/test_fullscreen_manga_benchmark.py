@@ -227,6 +227,8 @@ def test_json_schema_and_backend_override(monkeypatch, capsys):
         "joined_text",
         "elapsed_ms",
         "tile_triggered",
+        "grid_recovery_triggered",
+        "grid_recovery_accepted",
         "error",
     }
     assert set(item["items"][0]) == {"text", "x", "y", "w", "h"}
