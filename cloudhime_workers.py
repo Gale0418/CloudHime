@@ -2245,10 +2245,84 @@ class OCRWorker(QObject):
     @staticmethod
     def is_degenerate_manga_transcription(text):
         lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
-        if len(lines) < 8:
+        if len(lines) >= 8:
+            counts = {line: lines.count(line) for line in set(lines)}
+            if max(counts.values(), default=0) >= 4 and (len(counts) / len(lines)) < 0.45:
+                return True
+
+        compact = re.sub(r"\s+", "", str(text or ""))
+        if len(compact) < 8:
             return False
-        counts = {line: lines.count(line) for line in set(lines)}
-        return max(counts.values(), default=0) >= 4 and (len(counts) / len(lines)) < 0.45
+        character_counts = [compact.count(char) for char in set(compact)]
+        if max(character_counts, default=0) >= max(6, int(len(compact) * 0.65)):
+            return True
+        max_unit = min(32, len(compact) // 4)
+        for unit_size in range(1, max_unit + 1):
+            if len(compact) % unit_size:
+                continue
+            repeats = len(compact) // unit_size
+            if repeats < 4:
+                continue
+            unit = compact[:unit_size]
+            if unit * repeats == compact:
+                return True
+        return False
+
+    def should_rescue_manga_ocr(self, img, page_region, items):
+        if self.is_unreliable_manga_ocr(items):
+            return True
+        if not page_region or not items or not self.has_cjk_manga_text(items):
+            return False
+
+        try:
+            page_area = max(1, int(page_region[2]) * int(page_region[3]))
+        except (TypeError, ValueError, IndexError):
+            return False
+
+        normalized = []
+        for item in items:
+            text = normalize_ocr_text(item.get("text", ""))
+            try:
+                width = int(item.get("w", 0))
+                height = int(item.get("h", 0))
+            except (TypeError, ValueError):
+                continue
+            if text and width > 0 and height > 0:
+                normalized.append((text, width * height))
+        if not normalized:
+            return False
+
+        compact_text = "".join(text for text, _area in normalized)
+        if self.is_degenerate_manga_transcription("\n".join(text for text, _area in normalized)):
+            return True
+
+        def cjk_ratio(value):
+            characters = [char for char in value if not char.isspace()]
+            if not characters:
+                return 0.0
+            return sum(bool(re.match(r"[぀-ヿ㐀-䶿一-鿿]", char)) for char in characters) / len(characters)
+
+        if any(len(text) >= 6 and cjk_ratio(text) >= 0.65 for text, _area in normalized):
+            return False
+
+        if len(normalized) == 1:
+            text, area = normalized[0]
+            return (
+                len(compact_text) < 8
+                and bool(re.search(r"[^\w぀-ヿ㐀-䶿一-鿿]", compact_text))
+                and area / page_area <= 0.03
+            )
+
+        total_area_ratio = sum(area for _text, area in normalized) / page_area
+        tiny_count = sum(
+            area / page_area <= MANGA_ADAPTIVE_MIN_AREA_RATIO
+            for _text, area in normalized
+        )
+        return (
+            len(normalized) >= 3
+            and tiny_count >= (len(normalized) + 1) // 2
+            and total_area_ratio <= 0.01
+        )
 
     def rescue_unreliable_manga_items(
         self,
@@ -2259,7 +2333,7 @@ class OCRWorker(QObject):
         offset_y,
         image_parts=None,
     ):
-        if not self.is_unreliable_manga_ocr(items):
+        if not self.should_rescue_manga_ocr(img, page_region, items):
             return list(items or []), image_parts
         provider_name = self.resolve_multimodal_provider_name()
         provider = self._get_translation_provider(provider_name) if provider_name else None
@@ -3585,7 +3659,7 @@ class OCRWorker(QObject):
                 or self.has_cjk_manga_text(filtered_items)
             )
             and self.has_any_multimodal_ai()
-            and self.is_unreliable_manga_ocr(filtered_items)
+            and self.should_rescue_manga_ocr(img, page_region, filtered_items)
         ):
             self.status_msg.emit("📖 漫畫文字辨識補救中...")
             filtered_items, ai_image_parts = self.rescue_unreliable_manga_items(

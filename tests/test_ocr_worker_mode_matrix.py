@@ -400,6 +400,45 @@ def test_manga_page_region_does_not_treat_landscape_screen_as_page(qtbot):
         worker.cleanup()
 
 
+def test_manga_visual_rescue_gate_detects_fragments_but_keeps_reasonable_text(qtbot):
+    worker = OCRWorker()
+    image = np.zeros((4096, 2809, 3), dtype=np.uint8)
+    sparse_items = [
+        {"text": "プイ、", "x": 602, "y": 1674, "w": 117, "h": 266},
+        {"text": ": こヾ:", "x": 303, "y": 2167, "w": 14, "h": 60},
+        {"text": "、 子気ジ", "x": 481, "y": 2169, "w": 12, "h": 68},
+        {"text": "いと 3", "x": 2223, "y": 3120, "w": 8, "h": 25},
+        {"text": "、 ゞ:を", "x": 874, "y": 3487, "w": 42, "h": 7},
+        {"text": "・ 0: 0 ン", "x": 1483, "y": 3485, "w": 32, "h": 6},
+    ]
+    reasonable_items = [
+        {"text": "誌雜局見て眼", "x": 715, "y": 2178, "w": 447, "h": 41},
+        {"text": "另一段合理文字", "x": 300, "y": 1200, "w": 220, "h": 50},
+    ]
+    short_fragment = [
+        {"text": "物ツノ /", "x": 48, "y": 391, "w": 23, "h": 119},
+    ]
+    try:
+        assert worker.should_rescue_manga_ocr(
+            image,
+            (0, 0, 2809, 4096),
+            sparse_items,
+        ) is True
+        assert worker.should_rescue_manga_ocr(
+            image,
+            (0, 0, 1562, 2260),
+            reasonable_items,
+        ) is False
+        assert worker.should_rescue_manga_ocr(
+            image,
+            (0, 0, 411, 480),
+            short_fragment,
+        ) is True
+        repeated = "ロ" * 40 + " ご" + "ロ" * 20
+        assert worker.is_degenerate_manga_transcription(repeated) is True
+    finally:
+        worker.cleanup()
+
 def test_manga_ocr_reliability_gate_is_conservative():
     assert OCRWorker.is_unreliable_manga_ocr([]) is True
     assert OCRWorker.is_unreliable_manga_ocr([{"text": "S : / S -- ???"}]) is True
