@@ -1,0 +1,168 @@
+import json
+from pathlib import Path
+
+import pytest
+
+import manga_repeated_run_evaluator as evaluator
+
+
+def _write_manifest(tmp_path: Path, *, anchors: bool = True) -> Path:
+    (tmp_path / "a.png").write_bytes(b"a")
+    (tmp_path / "b.png").write_bytes(b"b")
+    cases = [
+        {
+            "id": "case-a",
+            "image": "a.png",
+            "anchors": ["魔法"],
+        },
+        {
+            "id": "case-b",
+            "image": "b.png",
+            "anchors": ["世界"] if anchors else [],
+        },
+    ]
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps({"version": 1, "cases": cases}), encoding="utf-8")
+    return path
+
+
+def _image_result(text: str, elapsed_ms: float, *, accepted: bool = False) -> dict:
+    return {
+        "joined_text": text,
+        "item_count": 1 if text else 0,
+        "elapsed_ms": elapsed_ms,
+        "error": "",
+        "grid_recovery_triggered": accepted,
+        "grid_recovery_accepted": accepted,
+    }
+
+
+def test_anchor_matching_normalizes_unicode_and_whitespace(tmp_path):
+    manifest = _write_manifest(tmp_path)
+    suite = evaluator.load_suite(manifest)
+    record = evaluator._score_case(
+        suite["cases"][0],
+        _image_result("  魔 法\n"),
+        repeat=1,
+        condition="baseline",
+    )
+
+    assert record["anchor_hits"] == 1
+    assert record["anchor_recall"] == 1.0
+
+
+def test_load_suite_rejects_duplicate_normalized_anchors(tmp_path):
+    (tmp_path / "a.png").write_bytes(b"a")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "image": "a.png",
+                        "anchors": ["魔法", " 魔 法 "],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate anchors"):
+        evaluator.load_suite(manifest)
+
+
+def test_compare_conditions_reports_pooled_and_page_regression():
+    baseline = [
+        {
+            "case_id": "a",
+            "anchor_count": 2,
+            "anchor_hits": 1,
+            "anchor_recall": 0.5,
+            "item_count": 1,
+            "elapsed_ms": 10,
+            "error": "",
+            "grid_recovery_triggered": False,
+            "grid_recovery_accepted": False,
+        },
+        {
+            "case_id": "b",
+            "anchor_count": 2,
+            "anchor_hits": 2,
+            "anchor_recall": 1.0,
+            "item_count": 1,
+            "elapsed_ms": 20,
+            "error": "",
+            "grid_recovery_triggered": False,
+            "grid_recovery_accepted": False,
+        },
+    ]
+    variant = [
+        {**baseline[0], "anchor_hits": 2, "anchor_recall": 1.0, "elapsed_ms": 30},
+        {**baseline[1], "anchor_hits": 1, "anchor_recall": 0.5, "elapsed_ms": 40},
+    ]
+
+    comparison = evaluator.compare_conditions(baseline, variant)
+
+    assert comparison["anchor_recall"]["delta"] == 0.0
+    assert comparison["page_regression"] == {
+        "improved_pages": 1,
+        "equal_pages": 0,
+        "regressed_pages": 1,
+        "compared_pages": 2,
+    }
+    assert comparison["latency_ms"]["avg_delta"] == 20.0
+
+
+def test_empty_anchor_holdout_has_null_recall_and_latency_p95():
+    records = [
+        {
+            "case_id": "holdout",
+            "anchor_count": 0,
+            "anchor_hits": 0,
+            "anchor_recall": None,
+            "item_count": 1,
+            "elapsed_ms": 12,
+            "error": "runtime",
+            "grid_recovery_triggered": False,
+            "grid_recovery_accepted": False,
+        }
+    ]
+
+    summary = evaluator.summarize_records(records)
+
+    assert summary["anchor_recall"] is None
+    assert summary["page_macro_recall"] is None
+    assert summary["latency_ms"]["p95"] is None
+    assert summary["nonempty_page_rate"] is None
+
+
+def test_repeated_benchmark_pairs_conditions_and_keeps_raw_text_out(
+    monkeypatch,
+    tmp_path,
+):
+    manifest = _write_manifest(tmp_path)
+
+    def fake_run(image_paths, **kwargs):
+        grid = kwargs["grid_recovery"]
+        base = 30 if grid else 10
+        images = [
+            _image_result("魔法" if grid else "", base),
+            _image_result("世界" if not grid else "", base + 1),
+        ]
+        return {"images": images}
+
+    monkeypatch.setattr(evaluator.fullscreen_benchmark, "run_benchmark", fake_run)
+    report = evaluator.run_repeated_benchmark(manifest, repeats=2)
+
+    assert report["metadata"]["base_threshold"] == 100
+    assert report["suite"]["case_count"] == 2
+    assert report["conditions"]["baseline"]["anchor_recall"] == 0.5
+    assert report["conditions"]["grid_recovery"]["anchor_recall"] == 0.5
+    assert report["comparison"]["page_regression"] == {
+        "improved_pages": 1,
+        "equal_pages": 0,
+        "regressed_pages": 1,
+        "compared_pages": 2,
+    }
+    assert all("joined_text" not in record for record in report["records"])
