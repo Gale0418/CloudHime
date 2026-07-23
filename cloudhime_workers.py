@@ -20,7 +20,7 @@ import json
 import time
 import threading
 import traceback
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from urllib import request, error
 import numpy as np
@@ -1792,11 +1792,18 @@ class OCRWorker(QObject):
         if not source_texts:
             return []
         if self.has_any_multimodal_ai() and image_parts:
-            translated = self.translate_multimodal_gemma(image_parts, source_texts)
-            parsed = self.parse_segmented_translation_json(translated, len(source_texts))
-            if parsed:
-                repaired, _providers = self._repair_suspicious_multimodal_segments(source_texts, parsed)
-                return repaired
+            try:
+                translated = self.translate_multimodal_gemma(image_parts, source_texts)
+                parsed = self.parse_segmented_translation_json(translated, len(source_texts))
+                if parsed:
+                    if self._has_degenerate_multimodal_segments(source_texts, parsed):
+                        raise ValueError("degenerate_multimodal_translation")
+                    repaired, _providers = self._repair_suspicious_multimodal_segments(source_texts, parsed)
+                    return repaired
+            except Exception as exc:
+                logger.info(
+                    f"[Multimodal translation] text fallback: {type(exc).__name__}"
+                )
         return self.translate_items_in_batches(source_texts, batch_size=GOOGLE_BATCH_SIZE if not self.has_any_multimodal_ai() else 8)
 
     def _is_usable_text_fallback(self, source_text, translated_text):
@@ -1821,6 +1828,36 @@ class OCRWorker(QObject):
                 ]
             )
         )
+
+    @staticmethod
+    def _has_degenerate_multimodal_segments(source_texts, translated_texts):
+        if len(translated_texts) < 4 or len(source_texts) != len(translated_texts):
+            return False
+
+        normalized_sources = [
+            re.sub(r"\s+", "", str(text or ""))
+            for text in source_texts
+        ]
+        if len(set(normalized_sources)) < max(2, len(normalized_sources) // 2):
+            return False
+
+        normalized_translations = [
+            re.sub(r"\s+", "", str(text or ""))
+            for text in translated_texts
+        ]
+        if not all(normalized_translations):
+            return False
+
+        counts = Counter(normalized_translations)
+        dominant_translation, dominant_count = counts.most_common(1)[0]
+        if (
+            dominant_count * 4 < len(normalized_translations) * 3
+            or len(counts) > max(2, len(normalized_translations) // 2)
+        ):
+            return False
+
+        long_source_count = sum(len(source) >= 8 for source in normalized_sources)
+        return long_source_count >= max(2, len(normalized_sources) // 2)
 
     def _repair_suspicious_multimodal_segments(self, source_texts, parsed):
         repaired = list(parsed)
@@ -1859,6 +1896,11 @@ class OCRWorker(QObject):
                     translated,
                     len(source_texts),
                 )
+                if parsed and self._has_degenerate_multimodal_segments(
+                    source_texts,
+                    parsed,
+                ):
+                    raise ValueError("degenerate_multimodal_translation")
             except Exception as exc:
                 logger.info(
                     f"[Multimodal translation] text fallback: {type(exc).__name__}"

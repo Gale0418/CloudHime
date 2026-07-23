@@ -1180,6 +1180,85 @@ def test_translate_items_with_ai_and_providers_fails_open_when_parser_raises():
     assert providers == ["google"]
 
 
+def test_degenerate_multimodal_gate_rejects_long_repeated_outputs():
+    assert OCRWorker._has_degenerate_multimodal_segments(
+        [
+            "This is a long source line one",
+            "This is a long source line two",
+            "This is a long source line three",
+            "This is a long source line four",
+        ],
+        ["這是一個長篇重複翻譯"] * 3 + ["另一個不同結果"],
+    )
+
+
+def test_degenerate_multimodal_gate_allows_short_repeated_exclamations():
+    assert not OCRWorker._has_degenerate_multimodal_segments(
+        ["Oh!", "Oh?", "Oh...", "Oh!!"],
+        ["喔！"] * 4,
+    )
+
+
+def test_degenerate_multimodal_gate_rejects_short_output_for_long_sources():
+    assert OCRWorker._has_degenerate_multimodal_segments(
+        [
+            "This is a long source line one",
+            "This is a long source line two",
+            "This is a long source line three",
+            "This is a long source line four",
+        ],
+        ["無"] * 4,
+    )
+
+
+def test_degenerate_multimodal_gate_allows_repeated_source_lines():
+    assert not OCRWorker._has_degenerate_multimodal_segments(
+        ["這是一段很長的原文"] * 4,
+        ["這是一個長篇重複翻譯"] * 4,
+    )
+
+
+def test_translate_items_with_ai_and_providers_fails_open_on_degenerate_segments():
+    worker = _make_segment_repair_worker()
+    worker.has_any_multimodal_ai = lambda: True
+    worker.translate_multimodal_gemma = lambda image_parts, source_texts: "payload"
+    worker.parse_segmented_translation_json = lambda payload, count: (
+        ["這是一個長篇重複翻譯"] * 3 + ["另一個不同結果"]
+    )
+    worker.translate_items_in_batches_with_providers = (
+        lambda source_texts, batch_size=8: (["文字路由結果"] * len(source_texts), ["google"] * len(source_texts))
+    )
+
+    translated, providers = OCRWorker.translate_items_with_ai_and_providers(
+        worker,
+        ["這是第一段很長的原文", "這是第二段很長的原文", "這是第三段很長的原文", "這是第四段很長的原文"],
+        [{"image": "x"}],
+    )
+
+    assert translated == ["文字路由結果"] * 4
+    assert providers == ["google"] * 4
+
+
+def test_translate_items_with_ai_fails_open_on_degenerate_segments():
+    worker = _make_segment_repair_worker()
+    worker.has_any_multimodal_ai = lambda: True
+    worker.translate_multimodal_gemma = lambda image_parts, source_texts: "payload"
+    worker.parse_segmented_translation_json = lambda payload, count: (
+        ["這是一個長篇重複翻譯"] * 3 + ["另一個不同結果"]
+    )
+    worker.translate_items_in_batches = (
+        lambda source_texts, batch_size=8: ["文字路由結果"] * len(source_texts)
+    )
+
+    translated = OCRWorker.translate_items_with_ai(
+        worker,
+        ["這是第一段很長的原文", "這是第二段很長的原文", "這是第三段很長的原文", "這是第四段很長的原文"],
+        [{"image": "x"}],
+    )
+
+    assert translated == ["文字路由結果"] * 4
+
+
 def test_translate_items_with_ai_repairs_parsed_segments_selectively():
     worker = _make_segment_repair_worker()
     worker.has_any_multimodal_ai = lambda: True
