@@ -11,6 +11,7 @@ import vision_smoke_benchmark as benchmark
 from japanese_ocr_rescue import MeikiCandidate, MeikiCharacter
 from vision_smoke_benchmark import (
     build_parser,
+    case_image_source,
     group_cases_by_image,
     run_smoke,
     image_parts,
@@ -18,6 +19,7 @@ from vision_smoke_benchmark import (
     load_cases,
     percentile,
     score_match,
+    expected_variants,
 )
 
 
@@ -45,6 +47,22 @@ def test_load_cases_honors_max_cases() -> None:
 
     assert len(cases) == 3
     assert all(case["sample_source"] for case in cases)
+
+def test_manga_manifest_uses_image_and_visible_text_anchors() -> None:
+    cases = load_cases(PROJECT_ROOT / "benchmarks" / "manga_cover_cases.json", max_cases=2)
+
+    assert len(cases) == 2
+    assert case_image_source(cases[0]).startswith("example/manga_cover_")
+    assert expected_variants(cases[0]) == cases[0]["visible_text_anchors"]
+
+
+def test_group_cases_accepts_image_manifest_key() -> None:
+    grouped = group_cases_by_image([
+        {"image": "example/manga.jpg", "visible_text_anchors": ["標題"]},
+    ])
+
+    assert list(grouped) == ["example/manga.jpg"]
+
 
 def test_small_image_scale_upscales_short_fixture_only() -> None:
     image_path = PROJECT_ROOT / "example" / "2026-04-30 20 47 05.png"
