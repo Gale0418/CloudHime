@@ -358,6 +358,18 @@ def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, fa
         worker.cleanup()
 
 
+def test_fullscreen_ocr_scale_caps_large_inputs_without_changing_normal_screens(qtbot):
+    worker = OCRWorker()
+    try:
+        worker.scan_mode = SCAN_MODE_FULLSCREEN
+        assert worker.get_ocr_scale_factor(1920, 1080) == 3.0
+        assert worker.get_ocr_scale_factor(2809, 4096) == 1.5
+
+        worker.scan_mode = SCAN_MODE_REGION
+        assert worker.get_ocr_scale_factor(1200, 800) == 1.5
+    finally:
+        worker.cleanup()
+
 def test_manga_page_region_uses_full_portrait_image_for_missing_or_tiny_detection(qtbot):
     worker = OCRWorker()
     image = np.zeros((1200, 900, 3), dtype=np.uint8)
