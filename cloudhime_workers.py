@@ -2316,6 +2316,90 @@ class OCRWorker(QObject):
                 break
         return selected
 
+    def build_local_manga_crop_regions(
+        self,
+        items,
+        img_w,
+        img_h,
+        offset_x=0,
+        offset_y=0,
+    ):
+        """Group nearby OCR items into at most four bounded local-vision crops."""
+        page_area = max(1, int(img_w) * int(img_h))
+        candidates = []
+        for item in items or []:
+            try:
+                x = int(item.get("x", 0)) - int(offset_x)
+                y = int(item.get("y", 0)) - int(offset_y)
+                width = int(item.get("w", 0))
+                height = int(item.get("h", 0))
+            except (TypeError, ValueError):
+                return []
+            if width <= 0 or height <= 0:
+                return []
+            raw = self.clip_region_rect(x, y, width, height, int(img_w), int(img_h))
+            if raw is None:
+                return []
+            raw_ratio = (raw[2] * raw[3]) / page_area
+            if raw_ratio > MANGA_ADAPTIVE_MAX_AREA_RATIO:
+                return []
+            expanded = self.expand_region_rect(
+                raw,
+                max(10, int(raw[2] * 0.10)),
+                max(10, int(raw[3] * 0.10)),
+                int(img_w), int(img_h),
+            )
+            if expanded is None:
+                return []
+            region = expanded
+            if (region[2] * region[3]) / page_area > MANGA_ADAPTIVE_MAX_AREA_RATIO:
+                region = raw
+            candidates.append(region)
+
+        if not candidates:
+            return []
+
+        selected = []
+        for region in candidates:
+            if any(self.rect_overlap_ratio(region, old) >= 0.75 for old in selected):
+                continue
+            selected.append(region)
+
+        max_gap = max(24, min(320, max(int(img_w), int(img_h)) * 0.24))
+        while len(selected) > MANGA_ADAPTIVE_MAX_REGIONS:
+            best = None
+            for first_index in range(len(selected)):
+                first = selected[first_index]
+                for second_index in range(first_index + 1, len(selected)):
+                    second = selected[second_index]
+                    union = self.union_region_rect(first, second)
+                    union_ratio = (union[2] * union[3]) / page_area
+                    if union_ratio > MANGA_ADAPTIVE_MAX_AREA_RATIO:
+                        continue
+                    fx2 = first[0] + first[2]
+                    fy2 = first[1] + first[3]
+                    sx2 = second[0] + second[2]
+                    sy2 = second[1] + second[3]
+                    horizontal_gap = max(0, max(second[0] - fx2, first[0] - sx2))
+                    vertical_gap = max(0, max(second[1] - fy2, first[1] - sy2))
+                    gap = horizontal_gap + vertical_gap
+                    if gap > max_gap and self.rect_overlap_ratio(first, second) < 0.18:
+                        continue
+                    score = (gap, union[2] * union[3])
+                    if best is None or score < best[0]:
+                        best = (score, first_index, second_index, union)
+            if best is None:
+                return []
+            _score, first_index, second_index, union = best
+            selected = [
+                region
+                for index, region in enumerate(selected)
+                if index not in {first_index, second_index}
+            ]
+            selected.append(union)
+
+        return selected
+
     def refine_manga_ocr_items(
         self,
         img,
@@ -2479,7 +2563,7 @@ class OCRWorker(QObject):
             return None
 
         img_h, img_w = img.shape[:2]
-        regions = self.build_manga_adaptive_regions(
+        regions = self.build_local_manga_crop_regions(
             items,
             img_w,
             img_h,
