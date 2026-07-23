@@ -777,7 +777,12 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
     try:
         payload = json.loads(candidate)
     except json.JSONDecodeError:
-        return []
+        # OCR output can contain a literal backslash such as "\\V"; repair only invalid JSON escapes.
+        repaired = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', candidate)
+        try:
+            payload = json.loads(repaired)
+        except json.JSONDecodeError:
+            return []
 
     segments = payload.get("segments")
     if not isinstance(segments, list):
@@ -790,8 +795,11 @@ def parse_segmented_translation_json(text: Any, expected_count: int) -> list[str
             return []
         index = item.get("index")
         translation = item.get("translation", "")
-        if type(index) is not int or not (0 <= index < expected_count):
+        if type(index) is not int:
             return []
+        if not (0 <= index < expected_count):
+            # Models may echo extra page segments; only the requested batch is authoritative.
+            continue
         if index in seen:
             return []
         translation = clean_model_output(str(translation))

@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 
 import pytest
 
@@ -43,6 +44,55 @@ def test_translate_multimodal_parses_segmented_json_response():
 
     assert parsed == ["測試", "選單"]
 
+
+def test_translate_multimodal_retries_plain_text_when_json_mode_is_rejected():
+    provider = make_provider()
+    response_types = []
+
+    def fake_request(payload):
+        response_type = payload["response_format"]["type"]
+        response_types.append(response_type)
+        if response_type == "json_object":
+            raise providers_module.error.HTTPError(
+                url="http://127.0.0.1:8080/v1/chat/completions",
+                code=400,
+                msg="response format unsupported",
+                hdrs=None,
+                fp=None,
+            )
+        return '{"segments":[{"index":0,"translation":"翻譯"}]}'
+
+    provider._request_chat_completion = fake_request
+    result = provider.translate_multimodal(
+        ["原文"],
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+    )
+
+    assert [item.text for item in result] == ["翻譯"]
+    assert response_types == ["json_object", "text"]
+
+def test_translate_multimodal_does_not_retry_context_size_400():
+    provider = make_provider()
+    response_types = []
+
+    def fake_request(payload):
+        response_types.append(payload["response_format"]["type"])
+        raise providers_module.error.HTTPError(
+            url="http://127.0.0.1:8080/v1/chat/completions",
+            code=400,
+            msg="context too small",
+            hdrs=None,
+            fp=BytesIO(b'{"type":"exceed_context_size_error"}'),
+        )
+
+    provider._request_chat_completion = fake_request
+    with pytest.raises(providers_module.error.HTTPError):
+        provider.translate_multimodal(
+            ["原文"],
+            [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+        )
+
+    assert response_types == ["json_object"]
 
 def test_translate_multimodal_prompt_includes_dictionary_hint():
     provider = make_provider()
@@ -204,7 +254,10 @@ def test_local_multimodal_operations_bound_output_tokens():
         payloads.append(payload)
         response_type = payload["response_format"]["type"]
         if response_type == "json_object":
-            return '{"segments":[{"index":0,"translation":"翻譯"}]}'
+            prompt = payload["messages"][0]["content"][0]["text"]
+            count = 4 if "段" in prompt else 1
+            segments = [{"index": index, "translation": "翻譯"} for index in range(count)]
+            return json.dumps({"segments": segments}, ensure_ascii=False)
         return "完整翻譯結果"
 
     provider._request_chat_completion = fake_request
@@ -212,7 +265,8 @@ def test_local_multimodal_operations_bound_output_tokens():
 
     provider.translate("bounded text")
     provider.translate_multimodal(["原文"], image_parts)
+    provider.translate_multimodal(["段"] * 16, image_parts)
     provider.transcribe_screenshot(image_parts)
     provider.translate_screenshot(image_parts, source_text_hint="原文")
 
-    assert [payload["max_tokens"] for payload in payloads] == [512, 1024, 384, 1024]
+    assert [payload["max_tokens"] for payload in payloads] == [512, 1024, 1024, 1024, 1024, 1024, 384, 1024]

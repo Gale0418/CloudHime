@@ -38,6 +38,21 @@ def test_screenshot_validation_is_target_aware():
     assert is_valid_screenshot_translation("翻譯結果", target_lang="zh-TW") is True
 
 
+def test_segmented_translation_ignores_extra_out_of_range_segments():
+    payload = (
+        '{"segments":['
+        '{"index":0,"translation":"測試"},'
+        '{"index":1,"translation":"多餘"}'
+        ']}'
+    )
+
+    assert parse_segmented_translation_json(payload, expected_count=1) == ["測試"]
+
+def test_segmented_translation_repairs_literal_backslash_escape():
+    payload = r'''{"segments":[{"index":0,"translation":"\V(CEEL第 6 話 1)"}]}'''
+
+    assert parse_segmented_translation_json(payload, expected_count=1) == [r"\V(CEEL第 6 話 1)"]
+
 def test_segment_index_rejects_bool():
     payload = '{"segments":[{"index":true,"translation":"測試"}]}'
 
