@@ -230,6 +230,10 @@ class LocalVisionRuntime:
             self._state = state
             return self._state
 
+    def set_gpu_layers(self, gpu_layers: int) -> None:
+        """設定下一次啟動使用的 GPU layer 數；不會自行啟動或停止 process。"""
+        self._gpu_layers = max(0, int(gpu_layers))
+
     def stop(self) -> VisionRuntimeState:
         """終止本 instance 持有的 process；不影響任何其他程序。"""
         self._cancel_event.set()

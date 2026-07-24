@@ -22,6 +22,7 @@ def make_worker_stub():
     worker.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
     worker.local_multimodal_model = ""
     worker.local_multimodal_timeout_seconds = 20
+    worker.local_multimodal_cpu_only = False
 
     def refresh_registry():
         worker.refresh_count += 1
@@ -254,12 +255,14 @@ def test_set_local_multimodal_config_accepts_values_and_refreshes_registry():
         base_url="http://localhost:11434/v1/",
         model_name="vision-local",
         timeout_seconds=45,
+        cpu_only=True,
     )
 
     assert worker.local_multimodal_enabled is True
     assert worker.local_multimodal_base_url == "http://localhost:11434/v1"
     assert worker.local_multimodal_model == "vision-local"
     assert worker.local_multimodal_timeout_seconds == 45
+    assert worker.local_multimodal_cpu_only is True
     assert worker.refresh_count == 1
 
 

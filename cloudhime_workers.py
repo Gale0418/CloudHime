@@ -247,6 +247,7 @@ class OCRWorker(QObject):
         self.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
         self.local_multimodal_model = "gemma-3-4b-it"
         self.local_multimodal_timeout_seconds = 20
+        self.local_multimodal_cpu_only = False
         self.japanese_rescue_enabled = False
         self.google_api_key = ""
         self.gemma_model = DEFAULT_GEMMA_MODEL
@@ -290,6 +291,7 @@ class OCRWorker(QObject):
         try:
             self.local_vision_runtime = LocalVisionRuntime(
                 self._local_vision_assets,
+                gpu_layers=0 if self.local_multimodal_cpu_only else 999,
                 progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
                     self, "progress", f"{progress}|{phase}"
                 ),
@@ -875,7 +877,7 @@ class OCRWorker(QObject):
             self.japanese_rescue_runtime.disable()
             OCRWorker._emit_japanese_rescue_status(self, "disabled", "")
 
-    def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds):
+    def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds, cpu_only=None):
         self.local_multimodal_enabled = bool(enabled)
         if not self.local_multimodal_enabled:
             cancel_event = getattr(self, "_local_vision_cancel_event", None)
@@ -884,6 +886,14 @@ class OCRWorker(QObject):
         self.local_multimodal_base_url = (base_url or "").rstrip("/")
         self.local_multimodal_model = (model_name or "").strip()
         self.local_multimodal_timeout_seconds = max(1, int(timeout_seconds))
+        previous_cpu_only = bool(getattr(self, "local_multimodal_cpu_only", False))
+        self.local_multimodal_cpu_only = (
+            previous_cpu_only if cpu_only is None else bool(cpu_only)
+        )
+        runtime = getattr(self, "local_vision_runtime", None)
+        if runtime is not None and previous_cpu_only != self.local_multimodal_cpu_only:
+            runtime.stop()
+            runtime.set_gpu_layers(0 if self.local_multimodal_cpu_only else 999)
         self._refresh_translation_registry()
 
 
