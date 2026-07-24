@@ -278,6 +278,9 @@ class OCRWorker(QObject):
         self._local_model_cancel_event = threading.Event()
         self._local_vision_executor = ThreadPoolExecutor(max_workers=1)
         self._local_vision_load_future = None
+        self._local_vision_reconfigure_future = None
+        self._local_vision_reconfigure_generation = 0
+        self._local_vision_reconfigure_waiting_for_load = False
         self._local_vision_cancel_event = threading.Event()
         self._japanese_rescue_executor = ThreadPoolExecutor(max_workers=1)
         self._japanese_rescue_load_future = None
@@ -877,6 +880,82 @@ class OCRWorker(QObject):
             self.japanese_rescue_runtime.disable()
             OCRWorker._emit_japanese_rescue_status(self, "disabled", "")
 
+    def _reconfigure_local_vision_runtime(self):
+        runtime = getattr(self, "local_vision_runtime", None)
+        if runtime is None:
+            return
+        runtime.stop()
+        runtime.set_gpu_layers(0 if bool(getattr(self, "local_multimodal_cpu_only", False)) else 999)
+
+    def _submit_local_vision_reconfigure(self, generation):
+        executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
+        if executor is None:
+            OCRWorker._emit_local_vision_status(self, "failed", "vision_executor_missing")
+            return
+        try:
+            future = executor.submit(
+                lambda: OCRWorker._reconfigure_local_vision_runtime(self)
+            )
+        except Exception as exc:
+            self._local_vision_reconfigure_future = None
+            OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
+            return
+
+        self._local_vision_reconfigure_future = future
+        future.add_done_callback(
+            lambda completed: OCRWorker._on_local_vision_reconfigure_done(
+                self, completed, generation
+            )
+        )
+
+    def _on_local_vision_load_finished_for_reconfigure(self, _future):
+        if not getattr(self, "_local_vision_reconfigure_waiting_for_load", False):
+            return
+        self._local_vision_reconfigure_waiting_for_load = False
+        OCRWorker._schedule_local_vision_reconfigure(self)
+
+    def _schedule_local_vision_reconfigure(self):
+        generation = getattr(self, "_local_vision_reconfigure_generation", 0) + 1
+        self._local_vision_reconfigure_generation = generation
+
+        pending = getattr(self, "_local_vision_reconfigure_future", None)
+        if pending is not None and not pending.done():
+            return
+
+        pending_load = getattr(self, "_local_vision_load_future", None)
+        if pending_load is not None and not pending_load.done():
+            if not getattr(self, "_local_vision_reconfigure_waiting_for_load", False):
+                self._local_vision_reconfigure_waiting_for_load = True
+                pending_load.add_done_callback(
+                    lambda completed: OCRWorker._on_local_vision_load_finished_for_reconfigure(
+                        self, completed
+                    )
+                )
+            return
+
+        self._local_vision_reconfigure_waiting_for_load = False
+        OCRWorker._submit_local_vision_reconfigure(self, generation)
+
+    def _on_local_vision_reconfigure_done(self, future, generation):
+        if self._local_vision_reconfigure_future is future:
+            self._local_vision_reconfigure_future = None
+        try:
+            future.result()
+        except Exception as exc:
+            if generation != getattr(self, "_local_vision_reconfigure_generation", generation):
+                OCRWorker._schedule_local_vision_reconfigure(self)
+            else:
+                OCRWorker._emit_local_vision_status(
+                    self, "failed", f"{type(exc).__name__}: {exc}"
+                )
+            return
+
+        if generation != getattr(self, "_local_vision_reconfigure_generation", generation):
+            OCRWorker._schedule_local_vision_reconfigure(self)
+            return
+        if self.use_gemma_translation and self.local_multimodal_enabled:
+            self.request_local_vision_start()
+
     def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds, cpu_only=None):
         self.local_multimodal_enabled = bool(enabled)
         if not self.local_multimodal_enabled:
@@ -892,8 +971,7 @@ class OCRWorker(QObject):
         )
         runtime = getattr(self, "local_vision_runtime", None)
         if runtime is not None and previous_cpu_only != self.local_multimodal_cpu_only:
-            runtime.stop()
-            runtime.set_gpu_layers(0 if self.local_multimodal_cpu_only else 999)
+            OCRWorker._schedule_local_vision_reconfigure(self)
         self._refresh_translation_registry()
 
 
