@@ -43,6 +43,8 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "AppxManifest.xml" in ci
     assert "runFullTrust" in ci
     assert "Cert:\\CurrentUser\\Root" in ci
+    assert "cancel-in-progress: true" in ci
+    assert ci.count("timeout-minutes: 30") == 2
 
     install_smoke = (root / "packaging" / "test_msix_install.ps1").read_text(encoding="utf-8")
     assert "Add-AppxPackage" in install_smoke
