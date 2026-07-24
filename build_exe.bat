@@ -23,10 +23,17 @@ if not exist "assets\bg_light.jpg" (
   set "BUILD_EXIT_CODE=1"
   goto :cleanup
 )
-if not exist "dictionary.json" (
-  echo Missing dictionary.json
+if not exist "assets\cloudhime_logo.png" (
+  echo Missing assets\cloudhime_logo.png
   set "BUILD_EXIT_CODE=1"
   goto :cleanup
+)
+for %%F in (dictionary.json LICENSE THIRD_PARTY_NOTICES.md) do (
+  if not exist "%%F" (
+    echo Missing %%F
+    set "BUILD_EXIT_CODE=1"
+    goto :cleanup
+  )
 )
 
 if exist "%RUNTIME_STAGE%" rmdir /s /q "%RUNTIME_STAGE%"
@@ -111,6 +118,8 @@ python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%APP_NAME%
   --exclude-module lxml ^
   --add-data "assets;assets" ^
   --add-data "dictionary.json;." ^
+  --add-data "LICENSE;." ^
+  --add-data "THIRD_PARTY_NOTICES.md;." ^
   --add-data "%RUNTIME_STAGE%;runtime" ^
   CloudHime.py
 if errorlevel 1 (
