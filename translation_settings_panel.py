@@ -683,6 +683,9 @@ class TranslationSettingsPanel(QWidget):
         self.chk_local_multimodal_enabled.setStyleSheet(
             f"QCheckBox {{ color: {theme.subtext}; background: transparent; border: none; font-size: 12px; font-weight: 700; }}"
         )
+        self.chk_local_multimodal_cpu_only.setStyleSheet(
+            f"QCheckBox {{ color: {theme.subtext}; background: transparent; border: none; font-size: 12px; font-weight: 700; }}"
+        )
         spinbox_style = f"QDoubleSpinBox, QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 4px; }}"
         self.spin_local_gemma_temp.setStyleSheet(spinbox_style)
         self.spin_local_gemma_repeat.setStyleSheet(spinbox_style)
