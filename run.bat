@@ -1,17 +1,24 @@
 @echo off
-set CONDA_PATH=%USERPROFILE%\Miniconda3
-set ENV_NAME=cloudhime_env
+setlocal EnableExtensions
+cd /d "%~dp0"
 
-if not exist "%CONDA_PATH%\Scripts\activate.bat" (
-    echo [ERROR] Miniconda not found! Please run install.bat first.
-    pause
-    exit /b
+set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" (
+    where python >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Python not found. Run install.ps1 first.
+        pause
+        exit /b 1
+    )
+    set "PYTHON_EXE=python"
 )
 
-echo Activating environment %ENV_NAME%...
-call "%CONDA_PATH%\Scripts\activate.bat" %ENV_NAME%
+echo Starting CloudHime with %PYTHON_EXE%...
+"%PYTHON_EXE%" "%~dp0CloudHime.py"
+set "EXIT_CODE=%ERRORLEVEL%"
 
-echo Starting CloudHime...
-python "%~dp0CloudHime.py"
-
+if not "%EXIT_CODE%"=="0" (
+    echo CloudHime exited with code %EXIT_CODE%.
+)
 pause
+endlocal & exit /b %EXIT_CODE%

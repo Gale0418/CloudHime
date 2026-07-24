@@ -259,6 +259,12 @@ class GlobalHotKeyFilter(QAbstractNativeEventFilter):
 # ==========================================
 # 💬 氣泡與覆蓋層
 # ==========================================
+def _resource_path(relative_path):
+    return os.path.abspath(
+        os.path.join(os.path.dirname(__file__), relative_path)
+    ).replace("\\", "/")
+
+
 class TransBubble(QLabel):
     def __init__(self, parent, text, x, y, w, h, is_dark_mode=False, render_mode=REGION_RENDER_BUBBLE,
                  relief_offset_x=0, relief_offset_y=0, relief_font_pt=18, relief_opacity=40, region_rect=None):
@@ -1691,9 +1697,9 @@ class SettingsWindow(QWidget):
         import os
         is_dark = theme.key != "light"
         bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
-        bg_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), bg_image)).replace("\\", "/")
+        bg_image_path = _resource_path(bg_image)
         base_style = theme.window_qss(radius=20, border_width=2).strip().rstrip('}')
-        style_with_bg = base_style + f" background-image: url({bg_image_path}); background-position: center; background-repeat: no-repeat; }}"
+        style_with_bg = base_style + f" background-image: url('{bg_image_path}'); background-position: center; background-repeat: no-repeat; }}"
         self.frame.setStyleSheet(style_with_bg)
         self.header_panel.setStyleSheet(theme.header_qss(radius=16))
         self.card_translate.setStyleSheet(theme.panel_qss("primary", radius=16))
@@ -2466,10 +2472,10 @@ class SettingsWindowRevamp(QWidget):
         )
         import os
         bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
-        bg_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), bg_image)).replace("\\", "/")
+        bg_image_path = _resource_path(bg_image)
         self.backdrop_panel.setStyleSheet(
             f"QFrame#settingsBackdropPanel {{ background-color: {theme.shell_bg}; border: 2px solid {theme.shell_border}; border-radius: 20px; "
-            f"background-image: url('assets/{'bg_dark.jpg' if is_dark else 'bg_light.jpg'}'); background-position: center; background-repeat: no-repeat; }}"
+            f"background-image: url('{bg_image_path}'); background-position: center; background-repeat: no-repeat; }}"
         )
         self.top_panel.setStyleSheet(
             f"QWidget#settingsTopPanel {{ background: transparent; border: none; }}"

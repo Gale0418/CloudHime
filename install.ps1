@@ -1,76 +1,49 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "=============================================="
-Write-Host "       CloudHime Automated Installer"
+Write-Host "       CloudHime Source Development Setup"
 Write-Host "=============================================="
 Write-Host ""
+Write-Host "這是原始碼開發環境腳本，不是 Microsoft Store 安裝器。"
+Write-Host "CloudHime 不需要 Ollama、外部模型服務或使用者手動啟動 server。"
+Write-Host ""
 
-$condaPath = "$env:USERPROFILE\Miniconda3"
-$condaExe = "$condaPath\Scripts\conda.exe"
+$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$venvPath = Join-Path $projectRoot ".venv"
+$pythonExe = Join-Path $venvPath "Scripts\python.exe"
 
-# 1. Install Conda if not found
-if (-not (Test-Path $condaExe)) {
-    Write-Host "[1/5] Miniconda not found. Downloading..."
-    $installerUrl = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
-    $installerPath = "$env:TEMP\miniconda_installer.exe"
-    Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
-    
-    Write-Host "[1/5] Installing Miniconda silently (this may take a few minutes)..."
-    Start-Process -FilePath $installerPath -ArgumentList "/InstallationType=JustMe /RegisterPython=0 /S /D=$condaPath" -Wait -NoNewWindow
-    Remove-Item $installerPath -Force
-    Write-Host "[1/5] Miniconda installation complete."
-} else {
-    Write-Host "[1/5] Miniconda found at $condaPath."
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pythonCommand) {
+    throw "找不到 Python。請先安裝 Python 3.10 或更新版本，再重新執行此腳本。"
 }
 
-# 2. Setup Conda Environment
-$envName = "cloudhime_env"
-Write-Host "[2/5] Setting up conda environment '$envName'..."
-
-# Check if env exists
-$envList = & $condaExe env list
-if ($envList -notmatch $envName) {
-    Write-Host "      Creating new environment..."
-    & $condaExe create -y -n $envName python=3.13
-} else {
-    Write-Host "      Environment '$envName' already exists."
+$pythonVersionOutput = & $pythonCommand.Source --version 2>&1
+if ($pythonVersionOutput -notmatch "Python\s+(\d+)\.(\d+)") {
+    throw "無法判斷 Python 版本，請安裝 Python 3.10 或更新版本。"
+}
+$pythonMajor = [int]$Matches[1]
+$pythonMinor = [int]$Matches[2]
+if (($pythonMajor -lt 3) -or (($pythonMajor -eq 3) -and ($pythonMinor -lt 10))) {
+    throw "Python 3.10 或更新版本是必要條件。"
 }
 
-# 3. Install core dependencies (llama-cpp-python via conda-forge for automatic CUDA support)
-Write-Host "[3/5] Installing core dependencies (llama-cpp-python)..."
-& $condaExe install -y -n $envName -c conda-forge llama-cpp-python
-
-# 4. Install other dependencies via pip
-Write-Host "[4/5] Installing requirements.txt via pip..."
-$pipExe = "$condaPath\envs\$envName\Scripts\pip.exe"
-if (Test-Path "$PSScriptRoot\requirements.txt") {
-    & $pipExe install -r "$PSScriptRoot\requirements.txt"
+if (-not (Test-Path $pythonExe)) {
+    Write-Host "[1/2] 建立本機開發用 Python 虛擬環境..."
+    & $pythonCommand.Source -m venv $venvPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "建立 .venv 失敗。"
+    }
 } else {
-    Write-Host "      requirements.txt not found! Skipping pip install."
+    Write-Host "[1/2] 已找到 .venv。"
 }
 
-# 5. Download Local Model
-Write-Host "[5/5] Checking local Gemma model..."
-$modelDir = "$PSScriptRoot\models"
-$modelFile = "gemma-3-4b-it.Q4_K_M.gguf"
-$modelUrl = "https://huggingface.co/mradermacher/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it.Q4_K_M.gguf"
-$modelPath = Join-Path $modelDir $modelFile
-
-if (-not (Test-Path $modelDir)) {
-    New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
-}
-
-if (-not (Test-Path $modelPath)) {
-    Write-Host "      Model not found. Downloading (approx 1.8GB)..."
-    Write-Host "      This might take a while depending on your internet connection."
-    Invoke-WebRequest -Uri $modelUrl -OutFile $modelPath
-    Write-Host "      Model download complete."
-} else {
-    Write-Host "      Model already exists!"
+Write-Host "[2/2] 安裝 requirements.txt..."
+& $pythonExe -m pip install -r (Join-Path $projectRoot "requirements.txt")
+if ($LASTEXITCODE -ne 0) {
+    throw "requirements.txt 安裝失敗。"
 }
 
 Write-Host ""
-Write-Host "=============================================="
-Write-Host " Installation Complete! You can now start CloudHime."
-Write-Host "=============================================="
-Write-Host ""
+Write-Host "開發環境完成。執行 run.bat 或使用 .venv\Scripts\python.exe CloudHime.py。"
+Write-Host "本地 Gemma 的 runtime 由程式隨附；模型與 projector 會由 CloudHime 管理到使用者 AppData。"
+Write-Host "正式發行請使用 build_exe.bat / MSIX 流程，不要把 .venv 或 models/ 帶進發行包。"

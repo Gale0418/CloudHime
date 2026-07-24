@@ -1,7 +1,15 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 from CloudHime import Controller, OverlayWindow
-from cloudhime_ui import StatusChargeBar
+from cloudhime_ui import StatusChargeBar, _resource_path
+
+
+def test_resource_path_resolves_bundled_assets():
+    asset_path = Path(_resource_path("assets/bg_dark.jpg"))
+
+    assert asset_path == (Path(__file__).resolve().parents[1] / "assets/bg_dark.jpg")
+    assert asset_path.is_file()
 
 
 def test_cloudhime_startup(qtbot, monkeypatch):
