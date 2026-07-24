@@ -30,6 +30,8 @@ def test_release_build_contract_has_required_resources():
     assert 'THIRD_PARTY_NOTICES.md;.' in script
     assert '%RUNTIME_STAGE%;runtime' in script
     assert 'bubble_qss.txt' not in script
+    for optional_module in ('tensorflow', 'keras', 'h5py', 'tensorboard', 'jax', 'jaxlib'):
+        assert f'--exclude-module {optional_module}' in script
     assert (root / 'LICENSE').is_file()
     assert (root / 'THIRD_PARTY_NOTICES.md').is_file()
 
