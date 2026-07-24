@@ -24,8 +24,12 @@ def test_release_build_contract_has_required_resources():
 
     assert 'assets;assets' in script
     assert 'dictionary.json;.' in script
+    assert 'LICENSE;.' in script
+    assert 'THIRD_PARTY_NOTICES.md;.' in script
     assert '%RUNTIME_STAGE%;runtime' in script
     assert 'bubble_qss.txt' not in script
+    assert (root / 'LICENSE').is_file()
+    assert (root / 'THIRD_PARTY_NOTICES.md').is_file()
 
     for filename in RUNTIME_FILES:
         assert (root / "runtime" / filename).is_file()
