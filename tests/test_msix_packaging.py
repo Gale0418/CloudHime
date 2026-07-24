@@ -10,15 +10,19 @@ def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
     ns = {
         "foundation": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
         "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
+        "rescap": "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
     }
     application = manifest.find("foundation:Applications/foundation:Application", ns)
     visual = application.find("uap:VisualElements", ns)
+    capability = manifest.find("foundation:Capabilities/rescap:Capability", ns)
 
     assert application.attrib["Executable"] == "CloudHime.exe"
     assert application.attrib["EntryPoint"] == "Windows.FullTrustApplication"
     assert visual.attrib["Square150x150Logo"] == "__LOGO_PATH__"
     assert visual.attrib["Square44x44Logo"] == "__LOGO_PATH__"
     assert visual.attrib["BackgroundColor"] == "#F4F7FB"
+    assert capability is not None
+    assert capability.attrib["Name"] == "runFullTrust"
 
 
 def test_msix_builder_requires_windows_sdk_and_expands_manifest():
