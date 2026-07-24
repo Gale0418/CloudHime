@@ -51,3 +51,4 @@ scratch/codex-*/
 .private_manga_*.json
 .private_manga_*.py
 .private_benchmark_runs/
+.venv/

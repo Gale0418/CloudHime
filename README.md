@@ -61,13 +61,12 @@
 
 ### 直接執行 (Release)
 如果你是下載打包好的版本，請直接執行 `dist/CloudHime/CloudHime.exe`。
-> `install.bat` / `install.ps1` 目前主要用來準備本地 Gemma 測試環境與模型，仍偏向開發中的輔助腳本。
+> `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
 ### 從原始碼運行 (Source)
 1. 確保你有 Python 3.10+ 環境。
-2. 安裝依賴：`pip install -r requirements.txt`
-3. 若要準備本地 Gemma 模型，可另外執行 `install.bat` 或 `install.ps1`
-4. 執行：`python CloudHime.py`
+2. 執行 `install.bat` 建立開發環境；本地 Gemma 模型與 projector 會由 CloudHime 在需要時下載、驗證並管理到使用者 AppData。
+3. 執行 `run.bat`
 
 ---
 
