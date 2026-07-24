@@ -12,7 +12,7 @@
     <DisplayName>__DISPLAY_NAME__</DisplayName>
     <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
     <Description>__DESCRIPTION__</Description>
-    <Logo>assets\cloudhime_logo.png</Logo>
+    <Logo>__LOGO_PATH__</Logo>
   </Properties>
   <Resources>
     <Resource Language="en-US" />
@@ -33,8 +33,8 @@
         AppListEntry="default"
         DisplayName="__DISPLAY_NAME__"
         Description="__DESCRIPTION__"
-        Square150x150Logo="assets\cloudhime_logo.png"
-        Square44x44Logo="assets\cloudhime_logo.png" />
+        Square150x150Logo="__LOGO_PATH__"
+        Square44x44Logo="__LOGO_PATH__" />
     </Application>
   </Applications>
 </Package>
