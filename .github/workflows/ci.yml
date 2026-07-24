@@ -124,6 +124,7 @@ jobs:
           Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $certificatePassword | Out-Null
           Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
           Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
+          Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
           & $signtool.FullName sign /fd SHA256 /a /f $pfxPath /p "ci-only" $package
           if ($LASTEXITCODE -ne 0) {
             throw "signtool failed to sign the MSIX package."
@@ -131,4 +132,5 @@ jobs:
           pwsh -NoLogo -NoProfile -File packaging/test_msix_install.ps1 -PackagePath $package
           Remove-Item -LiteralPath ("Cert:\CurrentUser\My\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath ("Cert:\CurrentUser\TrustedPeople\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ("Cert:\CurrentUser\Root\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
           Get-Item -LiteralPath $package, $upload | Select-Object FullName, Length
