@@ -198,6 +198,9 @@ class TranslationSettingsPanel(QWidget):
         self.chk_local_multimodal_enabled = QCheckBox("")
         self.chk_local_multimodal_enabled.toggled.connect(self.on_local_multimodal_enabled_changed)
         tuning_layout.addWidget(self.chk_local_multimodal_enabled)
+        self.chk_local_multimodal_cpu_only = QCheckBox("")
+        self.chk_local_multimodal_cpu_only.toggled.connect(self.on_local_multimodal_cpu_only_changed)
+        tuning_layout.addWidget(self.chk_local_multimodal_cpu_only)
 
         self.chk_japanese_ocr_rescue_enabled = QCheckBox("")
         self.chk_japanese_ocr_rescue_enabled.toggled.connect(self.on_japanese_ocr_rescue_enabled_changed)
@@ -308,6 +311,11 @@ class TranslationSettingsPanel(QWidget):
         if hasattr(self.controller, "on_local_multimodal_base_url_changed"):
             self.controller.on_local_multimodal_base_url_changed(self.input_local_multimodal_base_url.text())
 
+    def on_local_multimodal_cpu_only_changed(self, checked):
+        if hasattr(self.controller, "on_local_multimodal_cpu_only_changed"):
+            self.controller.on_local_multimodal_cpu_only_changed(checked)
+        self.update_local_multimodal_state()
+
     def on_local_multimodal_model_changed(self):
         if hasattr(self.controller, "on_local_multimodal_model_changed"):
             self.controller.on_local_multimodal_model_changed(self.input_local_multimodal_model.text())
@@ -320,6 +328,7 @@ class TranslationSettingsPanel(QWidget):
     def update_local_multimodal_state(self):
         enabled = self.chk_local_multimodal_enabled.isEnabled() and self.chk_local_multimodal_enabled.isChecked()
         has_embedded = getattr(self.controller.worker, "local_vision_runtime", None) is not None
+        self.chk_local_multimodal_cpu_only.setEnabled(enabled and has_embedded)
         self.chk_japanese_ocr_rescue_enabled.setEnabled(enabled)
         is_custom_url_visible = not has_embedded
 
@@ -394,6 +403,9 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_local_multimodal.setText(translation_tools.ui_text(lang, "translation_local_multimodal_group"))
         self.chk_local_multimodal_enabled.setText(
             translation_tools.ui_text(lang, "translation_local_multimodal_enabled")
+        )
+        self.chk_local_multimodal_cpu_only.setText(
+            translation_tools.ui_text(lang, "translation_local_multimodal_cpu_only")
         )
         self.chk_japanese_ocr_rescue_enabled.setText(
             translation_tools.ui_text(lang, "translation_japanese_ocr_rescue_enabled")
@@ -539,6 +551,10 @@ class TranslationSettingsPanel(QWidget):
         self.chk_local_multimodal_enabled.blockSignals(True)
         self.chk_local_multimodal_enabled.setChecked(getattr(self.controller, "local_multimodal_enabled", False))
         self.chk_local_multimodal_enabled.blockSignals(False)
+
+        self.chk_local_multimodal_cpu_only.blockSignals(True)
+        self.chk_local_multimodal_cpu_only.setChecked(getattr(self.controller, "local_multimodal_cpu_only", False))
+        self.chk_local_multimodal_cpu_only.blockSignals(False)
 
         self.chk_japanese_ocr_rescue_enabled.blockSignals(True)
         self.chk_japanese_ocr_rescue_enabled.setChecked(

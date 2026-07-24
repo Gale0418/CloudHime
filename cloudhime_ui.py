@@ -2642,6 +2642,7 @@ class Controller(QWidget):
         self.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
         self.local_multimodal_model = "gemma-3-4b-it"
         self.local_multimodal_timeout_seconds = 20
+        self.local_multimodal_cpu_only = False
         self.local_model_state = "stopped"
         self.local_model_detail = ""
         self.local_vision_state = "stopped"
@@ -2954,6 +2955,7 @@ class Controller(QWidget):
             "local_multimodal_base_url": str(getattr(self.worker, "local_multimodal_base_url", getattr(self, "local_multimodal_base_url", "http://127.0.0.1:8080/v1")) or "http://127.0.0.1:8080/v1"),
             "local_multimodal_model": str(getattr(self.worker, "local_multimodal_model", getattr(self, "local_multimodal_model", "gemma-3-4b-it")) or "gemma-3-4b-it"),
             "local_multimodal_timeout_seconds": int(getattr(self.worker, "local_multimodal_timeout_seconds", getattr(self, "local_multimodal_timeout_seconds", 20))),
+            "local_multimodal_cpu_only": bool(getattr(self.worker, "local_multimodal_cpu_only", getattr(self, "local_multimodal_cpu_only", False))),
             "japanese_ocr_rescue_enabled": bool(getattr(self, "japanese_ocr_rescue_enabled", False)),
             "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
@@ -3114,11 +3116,13 @@ class Controller(QWidget):
             self.local_multimodal_base_url = str(settings.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1").rstrip("/")
             self.local_multimodal_model = str(settings.get("local_multimodal_model", "gemma-3-4b-it") or "gemma-3-4b-it").strip()
             self.local_multimodal_timeout_seconds = safe_int(settings.get("local_multimodal_timeout_seconds", 20), 20, 1, 300)
+            self.local_multimodal_cpu_only = bool(settings.get("local_multimodal_cpu_only", False))
             self.worker.set_local_multimodal_config(
                 enabled=self.local_multimodal_enabled,
                 base_url=self.local_multimodal_base_url,
                 model_name=self.local_multimodal_model,
                 timeout_seconds=self.local_multimodal_timeout_seconds,
+                cpu_only=self.local_multimodal_cpu_only,
             )
             self.japanese_ocr_rescue_enabled = bool(settings.get("japanese_ocr_rescue_enabled", False))
             self.worker.set_japanese_rescue_enabled(
@@ -3511,6 +3515,7 @@ class Controller(QWidget):
             base_url=self.local_multimodal_base_url,
             model_name=self.local_multimodal_model,
             timeout_seconds=self.local_multimodal_timeout_seconds,
+            cpu_only=self.local_multimodal_cpu_only,
         )
         rescue_setter = getattr(self.worker, "set_japanese_rescue_enabled", None)
         if callable(rescue_setter):
@@ -3544,6 +3549,10 @@ class Controller(QWidget):
 
     def on_local_multimodal_timeout_changed(self, timeout_seconds):
         self.local_multimodal_timeout_seconds = max(1, min(300, int(timeout_seconds)))
+        self._push_local_multimodal_config()
+
+    def on_local_multimodal_cpu_only_changed(self, cpu_only):
+        self.local_multimodal_cpu_only = bool(cpu_only)
         self._push_local_multimodal_config()
 
     def toggle_ai_translation(self, checked):
