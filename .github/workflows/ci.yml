@@ -14,6 +14,57 @@ jobs:
   build-and-test:
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            paths: >-
+              tests/test_cloudhime_core.py
+              tests/test_cloudhime_logging.py
+              tests/test_exact_image_cache_benchmark.py
+              tests/test_exact_image_cache.py
+              tests/test_hybrid_search_benchmark.py
+              tests/test_manga_cover_manifest.py
+              tests/test_manga_repeated_run_evaluator.py
+              tests/test_msix_packaging.py
+              tests/test_provider_health.py
+              tests/test_release_packaging.py
+              tests/test_settings_store.py
+              tests/test_translation_helpers.py
+              tests/test_translation_providers.py
+          - name: ocr
+            paths: >-
+              tests/test_cloudhime_workers.py
+              tests/test_japanese_ocr_worker_integration.py
+              tests/test_ocr_backend_thread_safety.py
+              tests/test_ocr_refinement.py
+              tests/test_ocr_text_processing.py
+              tests/test_ocr_worker_mode_matrix.py
+          - name: runtime
+            paths: >-
+              tests/test_japanese_ocr_assets.py
+              tests/test_japanese_ocr_rescue.py
+              tests/test_japanese_ocr_runtime.py
+              tests/test_local_gemma_integration.py
+              tests/test_local_multimodal_provider.py
+              tests/test_local_vision_assets.py
+              tests/test_local_vision_integration.py
+              tests/test_local_vision_runtime.py
+              tests/test_managed_asset_store.py
+          - name: ui
+            paths: >-
+              tests/test_cloudhime_ui_smoke.py
+              tests/test_relief_settings.py
+              tests/test_settings_window_theme_polish.py
+              tests/test_translation_panel_advanced.py
+          - name: benchmarks
+            paths: >-
+              tests/test_fullscreen_manga_benchmark.py
+              tests/test_ocr_benchmark.py
+              tests/test_speed_benchmark.py
+              tests/test_translation_e2e_benchmark.py
+              tests/test_vision_smoke_benchmark.py
 
     steps:
       - uses: actions/checkout@v4
@@ -40,11 +91,11 @@ jobs:
         run: |
           python -m py_compile CloudHime.py cloudhime_core.py cloudhime_ui.py cloudhime_workers.py translation_providers.py cloudhime_logging.py
 
-      - name: Run Tests
+      - name: Run Tests (${{ matrix.name }})
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m pytest -q tests
+          python -m pytest -q ${{ matrix.paths }}
 
   msix-contract:
     runs-on: windows-latest
@@ -53,7 +104,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build MSIX contract package
+      - name: Prepare MSIX contract fixture
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
@@ -72,20 +124,45 @@ jobs:
           foreach ($runtimeFile in $runtimeFiles) {
             Set-Content -LiteralPath (Join-Path $internalRoot "runtime/$runtimeFile") -Value "CloudHime CI runtime placeholder" -Encoding ascii
           }
-          pwsh -NoLogo -NoProfile -File packaging/build_msix.ps1 -DistDir $dummyDist -OutputDir $outputDir -Version 0.1.0.0 -Publisher "CN=CloudHime CI" -CreateUpload
+          Write-Host "MSIX fixture prepared at $dummyDist"
+
+      - name: Build MSIX package
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
+          $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
+          $builder = Join-Path $env:GITHUB_WORKSPACE "packaging/build_msix.ps1"
+          Write-Host "Building package with $builder"
+          pwsh -NoLogo -NoProfile -File $builder -DistDir $dummyDist -OutputDir $outputDir -Version 0.1.0.0 -Publisher "CN=CloudHime CI" -CreateUpload
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSIX builder exited with code $LASTEXITCODE."
+          }
           $package = Join-Path $outputDir "CloudHime-0.1.0.0-x64.msix"
+          $upload = Join-Path $outputDir "CloudHime-0.1.0.0-x64.msixupload"
           if (-not (Test-Path -LiteralPath $package)) {
             throw "MSIX contract package was not created."
           }
-          $upload = Join-Path $outputDir "CloudHime-0.1.0.0-x64.msixupload"
           if (-not (Test-Path -LiteralPath $upload)) {
             throw "MSIX upload artifact was not created."
           }
+          Get-Item -LiteralPath $package, $upload | Select-Object FullName, Length
+
+      - name: Inspect and sign MSIX package
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
+          $package = Join-Path $outputDir "CloudHime-0.1.0.0-x64.msix"
           $unpackDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-unpacked"
           New-Item -ItemType Directory -Force -Path $unpackDir | Out-Null
           $makeappx = Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin") -Filter "makeappx.exe" -Recurse -File |
             Sort-Object FullName -Descending | Select-Object -First 1
-          & $makeappx.FullName unpack /p $package /d $unpackDir /o
+          if ($null -eq $makeappx) {
+            throw "makeappx.exe was not found on the Windows runner."
+          }
+          Write-Host "Unpacking with $($makeappx.FullName)"
+          & $makeappx.FullName unpack /v /p $package /d $unpackDir /o
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to unpack MSIX contract package."
           }
@@ -110,6 +187,12 @@ jobs:
           if ($null -eq $fullTrustCapability) {
             throw "Unpacked MSIX manifest is missing the runFullTrust capability."
           }
+          $runtimeFiles = @(
+            "llama-server.exe", "llama-server-impl.dll", "llama-common.dll",
+            "llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu-x64.dll",
+            "ggml-cuda.dll", "mtmd.dll", "libomp140.x86_64.dll",
+            "cublas64_12.dll", "cublasLt64_12.dll", "cudart64_12.dll"
+          )
           foreach ($runtimeFile in $runtimeFiles) {
             $runtimePath = Join-Path $unpackDir "_internal/runtime/$runtimeFile"
             if (-not (Test-Path -LiteralPath $runtimePath)) {
@@ -131,12 +214,27 @@ jobs:
           Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
           Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
           Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+          Write-Host "Signing $package with $($signtool.FullName)"
           & $signtool.FullName sign /fd SHA256 /a /f $pfxPath /p "ci-only" $package
           if ($LASTEXITCODE -ne 0) {
             throw "signtool failed to sign the MSIX package."
           }
+
+      - name: Install and uninstall MSIX package
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $package = Join-Path (Join-Path $env:RUNNER_TEMP "cloudhime-msix-output") "CloudHime-0.1.0.0-x64.msix"
           pwsh -NoLogo -NoProfile -File packaging/test_msix_install.ps1 -PackagePath $package
-          Remove-Item -LiteralPath ("Cert:\CurrentUser\My\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath ("Cert:\CurrentUser\TrustedPeople\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath ("Cert:\CurrentUser\Root\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
-          Get-Item -LiteralPath $package, $upload | Select-Object FullName, Length
+
+      - name: Clean up CI signing certificate
+        if: always()
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          foreach ($store in @("My", "TrustedPeople", "Root")) {
+            Get-ChildItem -Path ("Cert:\CurrentUser\" + $store) -ErrorAction SilentlyContinue |
+              Where-Object { $_.Subject -eq "CN=CloudHime CI" } |
+              Remove-Item -Force -ErrorAction SilentlyContinue
+          }
+

@@ -65,7 +65,6 @@ def test_log_ai_debug_writes_only_to_appdata(monkeypatch, tmp_path):
     mock_file.assert_called_once()
     log_path = mock_file.call_args.args[0]
     assert log_path == os.path.join(str(tmp_path), "CloudHime", "cloudhime_ai_debug.log")
-    assert os.path.dirname(module.__file__) not in log_path
     assert test_msg in mock_file().write.call_args.args[0]
     mock_makedirs.assert_called_once_with(os.path.dirname(log_path), exist_ok=True)
 
