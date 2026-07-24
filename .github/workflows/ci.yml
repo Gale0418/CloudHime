@@ -40,3 +40,53 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           python -m pytest -q tests
+
+  msix-contract:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build MSIX contract package
+        shell: pwsh
+        run: |
+          $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
+          $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
+          New-Item -ItemType Directory -Force -Path $dummyDist, $outputDir | Out-Null
+          Set-Content -LiteralPath (Join-Path $dummyDist "CloudHime.exe") -Value "CloudHime MSIX contract placeholder" -Encoding ascii
+          $internalRoot = Join-Path $dummyDist "_internal"
+          New-Item -ItemType Directory -Force -Path (Join-Path $internalRoot "assets"), (Join-Path $internalRoot "runtime") | Out-Null
+          Copy-Item -LiteralPath "assets/cloudhime_logo.png" -Destination (Join-Path $internalRoot "assets/cloudhime_logo.png")
+          $runtimeFiles = @(
+            "llama-server.exe", "llama-server-impl.dll", "llama-common.dll",
+            "llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu-x64.dll",
+            "ggml-cuda.dll", "mtmd.dll", "libomp140.x86_64.dll",
+            "cublas64_12.dll", "cublasLt64_12.dll", "cudart64_12.dll"
+          )
+          foreach ($runtimeFile in $runtimeFiles) {
+            Set-Content -LiteralPath (Join-Path $internalRoot "runtime/$runtimeFile") -Value "CloudHime CI runtime placeholder" -Encoding ascii
+          }
+          pwsh -NoLogo -NoProfile -File packaging/build_msix.ps1 -DistDir $dummyDist -OutputDir $outputDir -Version 0.1.0.0 -Publisher "CN=CloudHime CI" -CreateUpload
+          $package = Join-Path $outputDir "CloudHime-0.1.0.0-x64.msix"
+          if (-not (Test-Path -LiteralPath $package)) {
+            throw "MSIX contract package was not created."
+          }
+          $upload = Join-Path $outputDir "CloudHime-0.1.0.0-x64.msixupload"
+          if (-not (Test-Path -LiteralPath $upload)) {
+            throw "MSIX upload artifact was not created."
+          }
+          $unpackDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-unpacked"
+          New-Item -ItemType Directory -Force -Path $unpackDir | Out-Null
+          $makeappx = Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin") -Filter "makeappx.exe" -Recurse -File |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          & $makeappx.FullName unpack /p $package /d $unpackDir /o
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to unpack MSIX contract package."
+          }
+          foreach ($runtimeFile in $runtimeFiles) {
+            $runtimePath = Join-Path $unpackDir "_internal/runtime/$runtimeFile"
+            if (-not (Test-Path -LiteralPath $runtimePath)) {
+              throw "MSIX omitted required runtime file: $runtimeFile"
+            }
+          }
+          Get-Item -LiteralPath $package, $upload | Select-Object FullName, Length
