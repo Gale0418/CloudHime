@@ -31,11 +31,18 @@ def _local_setup_note(english: bool) -> str:
 
 def _failure_guidance(detail: str, english: bool) -> str:
     code = str(detail or "").lower()
-    if "timeout" in code or "cuda" in code or "memory" in code:
+    gpu_failure = any(token in code for token in ("cuda", "vram", "out of memory", "ggml_cuda"))
+    if gpu_failure:
         return _pick(
             english,
-            "Model startup timed out. Close GPU-heavy apps and retry; CPU fallback is available but slower.",
-            "模型啟動逾時。請關閉佔用 GPU 的程式後重試；CPU 仍可用，但速度較慢。",
+            "GPU startup failed. Close GPU-heavy apps and retry; CloudHime will try CPU fallback when possible.",
+            "GPU 啟動失敗。請關閉佔用 GPU 的程式後重試；CloudHime 會在可能時嘗試 CPU 備援。",
+        )
+    if "timeout" in code:
+        return _pick(
+            english,
+            "Model startup timed out. Close GPU-heavy apps and retry; Google Translate remains available.",
+            "模型啟動逾時。請關閉佔用 GPU 的程式後重試；Google 翻譯仍可使用。",
         )
     if any(token in code for token in ("asset", "hash", "sha", "model_missing", "projector")):
         return _pick(
@@ -62,7 +69,7 @@ def _failure_guidance(detail: str, english: bool) -> str:
     )
 
 
-def _progress_label(detail: str, english: bool) -> str:
+def _progress_label(detail: str, english: bool, mode: str = "") -> str:
     raw = str(detail or "")
     progress = ""
     phase = raw
@@ -81,7 +88,10 @@ def _progress_label(detail: str, english: bool) -> str:
         "model_loaded": ("Checking local service", "確認本地服務"),
         "starting_server": ("Starting embedded runtime", "啟動內建推論元件"),
     }
-    en, zh = labels.get(phase, ("Preparing local Gemma", "準備本地 Gemma"))
+    if phase == "initializing" and str(mode or "").lower() == "cpu":
+        en, zh = "Initializing CPU", "初始化 CPU"
+    else:
+        en, zh = labels.get(phase, ("Preparing local Gemma", "準備本地 Gemma"))
     label = _pick(english, en, zh)
     suffix = f" {progress}%" if progress.isdigit() else ""
     return label + suffix
@@ -154,7 +164,7 @@ def assess_provider_health(
     detail = str(local_vision_detail if local_multimodal_enabled else local_model_detail or "")
 
     if state == "progress":
-        progress_label = _progress_label(detail, english)
+        progress_label = _progress_label(detail, english, local_vision_mode)
         return ProviderHealth(
             "local_progress",
             _pick(english, f"{progress_label} - {label}", f"{progress_label} - {label}"),

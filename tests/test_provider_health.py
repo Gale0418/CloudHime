@@ -77,9 +77,20 @@ def test_local_timeout_is_actionable_without_exposing_raw_stderr():
 
     assert health.code == "local_failed"
     assert "Close GPU-heavy apps" in health.detail
+    assert "CPU fallback" in health.detail
     assert "PRIVATE" not in health.detail
     assert "USER TEXT" not in health.detail
 
+
+def test_cpu_progress_uses_cpu_label():
+    health = _health(
+        local_vision_state="progress",
+        local_vision_mode="cpu",
+        local_vision_detail="70|initializing",
+    )
+
+    assert health.code == "local_progress"
+    assert "Initializing CPU" in health.summary
 
 def test_missing_embedded_runtime_requests_repair():
     health = _health(embedded_runtime_available=False)
