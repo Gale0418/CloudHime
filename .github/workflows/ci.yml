@@ -83,6 +83,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to unpack MSIX contract package."
           }
+          $manifestPath = Join-Path $unpackDir "AppxManifest.xml"
+          if (-not (Test-Path -LiteralPath $manifestPath)) {
+            throw "MSIX did not contain AppxManifest.xml after unpack."
+          }
+          [xml]$unpackedManifest = Get-Content -LiteralPath $manifestPath -Raw
+          $namespaceManager = New-Object System.Xml.XmlNamespaceManager($unpackedManifest.NameTable)
+          $namespaceManager.AddNamespace("foundation", "http://schemas.microsoft.com/appx/manifest/foundation/windows10")
+          $namespaceManager.AddNamespace("uap", "http://schemas.microsoft.com/appx/manifest/uap/windows10")
+          $namespaceManager.AddNamespace("rescap", "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities")
+          $application = $unpackedManifest.SelectSingleNode("/foundation:Package/foundation:Applications/foundation:Application", $namespaceManager)
+          $visualElements = $application.SelectSingleNode("uap:VisualElements", $namespaceManager)
+          $fullTrustCapability = $unpackedManifest.SelectSingleNode("/foundation:Package/foundation:Capabilities/rescap:Capability[@Name='runFullTrust']", $namespaceManager)
+          if ($null -eq $application -or $application.Executable -ne "CloudHime.exe" -or $application.EntryPoint -ne "Windows.FullTrustApplication") {
+            throw "Unpacked MSIX manifest has an unexpected desktop application entrypoint."
+          }
+          if ($null -eq $visualElements -or $visualElements.BackgroundColor -ne "#F4F7FB") {
+            throw "Unpacked MSIX manifest has an unexpected visual background color."
+          }
+          if ($null -eq $fullTrustCapability) {
+            throw "Unpacked MSIX manifest is missing the runFullTrust capability."
+          }
           foreach ($runtimeFile in $runtimeFiles) {
             $runtimePath = Join-Path $unpackDir "_internal/runtime/$runtimeFile"
             if (-not (Test-Path -LiteralPath $runtimePath)) {

@@ -8,7 +8,7 @@ param(
     [string]$DisplayName = "CloudHime",
     [string]$Description = "Windows screen translation assistant",
     [string]$Version = "0.1.0.0",
-    [ValidateSet("x86", "x64", "arm64", "neutral")]
+    [ValidateSet("x64")]
     [string]$Architecture = "x64",
     [string]$MakeAppxPath = "",
     [switch]$CreateUpload

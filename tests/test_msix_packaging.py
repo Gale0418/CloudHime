@@ -30,6 +30,7 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     script = (root / "packaging" / "build_msix.ps1").read_text(encoding="utf-8")
 
     assert "makeappx.exe" in script
+    assert '[ValidateSet("x64")]' in script
     assert "_internal\\assets\\cloudhime_logo.png" in script
     assert "$packagingSucceeded" in script
     assert "Package.appxmanifest.in" in script
@@ -37,3 +38,7 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "makeappx pack /d" in script
     assert "THIRD_PARTY_NOTICES.md" in (root / "build_exe.bat").read_text(encoding="utf-8")
     assert (root / "assets" / "cloudhime_logo.png").is_file()
+
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "AppxManifest.xml" in ci
+    assert "runFullTrust" in ci
