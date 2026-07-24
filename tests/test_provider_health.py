@@ -92,6 +92,17 @@ def test_cpu_progress_uses_cpu_label():
     assert health.code == "local_progress"
     assert "Initializing CPU" in health.summary
 
+def test_text_progress_ignores_vision_mode():
+    health = _health(
+        local_multimodal_enabled=False,
+        local_model_state="progress",
+        local_model_detail="70|initializing",
+        local_vision_mode="cpu",
+    )
+
+    assert health.code == "local_progress"
+    assert "Initializing GPU" in health.summary
+
 def test_missing_embedded_runtime_requests_repair():
     health = _health(embedded_runtime_available=False)
 
