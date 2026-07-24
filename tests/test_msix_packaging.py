@@ -18,6 +18,7 @@ def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
     assert application.attrib["EntryPoint"] == "Windows.FullTrustApplication"
     assert visual.attrib["Square150x150Logo"] == "__LOGO_PATH__"
     assert visual.attrib["Square44x44Logo"] == "__LOGO_PATH__"
+    assert visual.attrib["BackgroundColor"] == "#F4F7FB"
 
 
 def test_msix_builder_requires_windows_sdk_and_expands_manifest():
