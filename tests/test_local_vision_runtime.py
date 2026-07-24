@@ -23,6 +23,7 @@ Task 2：LocalVisionRuntime 生命週期 – TDD 單元測試。
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 import threading
@@ -31,6 +32,7 @@ from typing import Iterator, List, Optional
 
 import pytest
 
+import local_vision_runtime as runtime_module
 from local_vision_assets import VisionAssets
 from local_vision_runtime import LocalVisionRuntime, VisionRuntimeState
 
@@ -434,8 +436,14 @@ def test_start_command_includes_context_size(fake_assets):
     assert args[idx + 1] == "4096"
 
 
-def test_managed_model_hash_mismatch_blocks_start(fake_assets):
+def test_managed_model_hash_mismatch_blocks_start(fake_assets, monkeypatch):
     """受管模型即使大小正確，hash 不符也不得啟動 runtime。"""
+    monkeypatch.setitem(runtime_module.ASSET_SHA256, "model_path", "0" * 64)
+    monkeypatch.setitem(
+        runtime_module.ASSET_SHA256,
+        "projector_path",
+        hashlib.sha256(fake_assets.projector_path.read_bytes()).hexdigest(),
+    )
     managed_assets = VisionAssets(
         server_path=fake_assets.server_path,
         model_path=fake_assets.model_path,
@@ -456,6 +464,7 @@ def test_managed_model_hash_mismatch_blocks_start(fake_assets):
 
     assert state.name == "missing"
     assert "asset_sha256_mismatch" in state.detail
+    assert fake_assets.model_path.name in state.detail
     assert popen.call_count == 0
 
 def test_start_gpu_mode_uses_ngl_999(fake_assets):

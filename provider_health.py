@@ -164,7 +164,8 @@ def assess_provider_health(
     detail = str(local_vision_detail if local_multimodal_enabled else local_model_detail or "")
 
     if state == "progress":
-        progress_label = _progress_label(detail, english, local_vision_mode)
+        progress_mode = local_vision_mode if local_multimodal_enabled else ""
+        progress_label = _progress_label(detail, english, progress_mode)
         return ProviderHealth(
             "local_progress",
             _pick(english, f"{progress_label} - {label}", f"{progress_label} - {label}"),
