@@ -153,6 +153,7 @@ def test_controller_local_multimodal_toggle_pushes_complete_config():
         "base_url": "http://localhost:11434/v1",
         "model_name": "vision-local",
         "timeout_seconds": 45,
+        "cpu_only": False,
     }]
     assert controller.save_count == 1
 
