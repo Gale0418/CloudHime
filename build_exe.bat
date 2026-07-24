@@ -90,6 +90,7 @@ if errorlevel 1 (
 if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
 if exist "%ZIP_FILE%" del /f /q "%ZIP_FILE%"
 
+rem Keep the release independent from optional TensorFlow/Keras OCR environments.
 echo Building %APP_NAME% release...
 python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%APP_NAME%" ^
   --exclude-module PyQt5 ^
@@ -109,6 +110,12 @@ python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%APP_NAME%
   --exclude-module scipy ^
   --exclude-module matplotlib ^
   --exclude-module IPython ^
+  --exclude-module tensorflow ^
+  --exclude-module keras ^
+  --exclude-module h5py ^
+  --exclude-module tensorboard ^
+  --exclude-module jax ^
+  --exclude-module jaxlib ^
   --exclude-module jupyter ^
   --exclude-module jupyter_core ^
   --exclude-module jupyter_client ^
