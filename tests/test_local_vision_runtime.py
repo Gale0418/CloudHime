@@ -434,6 +434,30 @@ def test_start_command_includes_context_size(fake_assets):
     assert args[idx + 1] == "4096"
 
 
+def test_managed_model_hash_mismatch_blocks_start(fake_assets):
+    """受管模型即使大小正確，hash 不符也不得啟動 runtime。"""
+    managed_assets = VisionAssets(
+        server_path=fake_assets.server_path,
+        model_path=fake_assets.model_path,
+        projector_path=fake_assets.projector_path,
+        managed=True,
+    )
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=managed_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start()
+
+    assert state.name == "missing"
+    assert "asset_sha256_mismatch" in state.detail
+    assert popen.call_count == 0
+
 def test_start_gpu_mode_uses_ngl_999(fake_assets):
     """首次 GPU 啟動必須使用 -ngl 999。"""
     popen = FakePopen([RunningProcess()])
@@ -549,6 +573,35 @@ def test_health_check_retries_until_ready(fake_assets):
     assert state.name == "ready"
 
 
+def test_health_timeout_respects_total_deadline(fake_assets):
+    """HTTP timeout 不能讓總暖身時間超過 health_retries 的預算。"""
+    observed_timeouts = []
+    clock = {"now": 0.0}
+
+    def monotonic():
+        return clock["now"]
+
+    def timed_urlopen(_url, timeout=None):
+        observed_timeouts.append(timeout)
+        clock["now"] += float(timeout or 0.0)
+        raise OSError("connection refused")
+
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([RunningProcess()]),
+        urlopen=timed_urlopen,
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        monotonic=monotonic,
+        health_retries=3,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start()
+
+    assert state.name == "failed"
+    assert observed_timeouts == [pytest.approx(1.5)]
+
 def test_health_timeout_returns_failed(fake_assets):
     """所有健康檢查嘗試均失敗 → state.name == 'failed'，detail 含 'health_timeout'。"""
     runtime = _make_runtime(fake_assets, health=[False, False, False], health_retries=3)
@@ -618,6 +671,25 @@ def test_start_is_idempotent_while_starting(fake_assets):
 # 6. CUDA/VRAM 失敗 → 只重試一次 CPU mode
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+def test_common_cuda_initialization_errors_trigger_cpu_fallback(fake_assets):
+    """常見 CUDA 初始化錯誤也必須進入單次 CPU fallback。"""
+    cuda_proc = ExitedProcess("no CUDA-capable device is available")
+    cpu_proc = RunningProcess()
+    popen = FakePopen([cuda_proc, cpu_proc])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        health_retries=3,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    state = runtime.start()
+    assert state.name == "ready"
+    assert state.mode == "cpu"
+    assert popen.call_count == 2
 
 def test_cuda_start_failure_retries_once_in_cpu_mode(fake_assets):
     """

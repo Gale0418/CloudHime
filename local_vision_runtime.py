@@ -28,12 +28,14 @@ import os
 import subprocess
 from collections import deque
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 
 from local_vision_assets import (
     ASSET_MINIMUM_BYTES,
+    ASSET_SHA256,
     VisionAssetError,
     VisionAssets,
     verify_asset,
@@ -67,6 +69,12 @@ _CUDA_ERROR_KEYWORDS = (
     "failed to load model",
     "ggml_cuda_init",
     "gpu initialization failed",
+    "no cuda-capable device",
+    "cuda driver version is insufficient",
+    "failed to initialize cuda",
+    "could not initialize cuda",
+    "cuda initialization failed",
+    "cuda unavailable",
 )
 
 
@@ -132,6 +140,7 @@ class LocalVisionRuntime:
         urlopen: Optional[Callable] = None,
         port_allocator: Optional[Callable[[], int]] = None,
         sleep: Optional[Callable[[float], None]] = None,
+        monotonic: Optional[Callable[[], float]] = None,
         health_retries: int = _DEFAULT_HEALTH_RETRIES,
         context_size: int = 4096,
         gpu_layers: int = 999,
@@ -142,7 +151,8 @@ class LocalVisionRuntime:
         self._popen_factory = popen_factory
         self._urlopen = urlopen or _default_urlopen()
         self._port_allocator = port_allocator or _default_port_allocator()
-        self._sleep = sleep or __import__("time").sleep
+        self._sleep = sleep or time.sleep
+        self._monotonic = monotonic or time.monotonic
         self._health_retries = health_retries
         self._context_size = max(512, int(context_size))
         self._gpu_layers = max(0, int(gpu_layers))
@@ -315,9 +325,14 @@ class LocalVisionRuntime:
         drain_thread = threading.Thread(target=_drain, daemon=True)
         drain_thread.start()
 
+        deadline = self._monotonic() + (self._health_retries * _HEALTH_SLEEP_SEC)
         for _ in range(self._health_retries):
             if self._cancel_event.is_set():
                 return _STOPPED
+
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                break
 
             # 先確認 process 是否提早退出
             if proc.poll() is not None:
@@ -330,10 +345,10 @@ class LocalVisionRuntime:
                     mode=mode,
                 )
 
-            # 嘗試健康端點 [FIX-4] 確保 response.close()
+            # 將 HTTP timeout 限制在總暖身 deadline 內，避免每次 2 秒累加超出預算。
             resp = None
             try:
-                resp = self._urlopen(health_url, timeout=2)
+                resp = self._urlopen(health_url, timeout=min(2.0, remaining))
                 base_url = f"http://127.0.0.1:{port}/v1"
                 self._report_progress("ready", 100)
                 return VisionRuntimeState(
@@ -348,7 +363,10 @@ class LocalVisionRuntime:
                     except Exception:
                         pass
 
-            self._sleep(_HEALTH_SLEEP_SEC)
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                break
+            self._sleep(min(_HEALTH_SLEEP_SEC, remaining))
 
         # 全部嘗試耗盡 → health_timeout
         drain_thread.join(timeout=_STDERR_JOIN_TIMEOUT)
@@ -396,12 +414,12 @@ class LocalVisionRuntime:
         for field, path, missing_code in field_map:
             min_bytes = self._asset_minimum_bytes.get(field, 0)
             try:
-                verify_asset(path, None, minimum_bytes=min_bytes)
+                expected_sha = ASSET_SHA256[field] if self._assets.managed else None
+                verify_asset(path, expected_sha, minimum_bytes=min_bytes)
             except VisionAssetError as exc:
                 if exc.code == "asset_missing":
                     return f"{missing_code}: {path.name}"
-                # asset_too_small
-                return f"asset_too_small: {path.name} ({exc.detail})"
+                return f"{exc.code}: {path.name} ({exc.detail})"
         return ""
 
     # ── 內部：process 清理 ────────────────────────────────────────────────────
