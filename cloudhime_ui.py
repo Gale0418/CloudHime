@@ -3122,7 +3122,7 @@ class Controller(QWidget):
                 base_url=self.local_multimodal_base_url,
                 model_name=self.local_multimodal_model,
                 timeout_seconds=self.local_multimodal_timeout_seconds,
-                cpu_only=self.local_multimodal_cpu_only,
+                cpu_only=bool(getattr(self, "local_multimodal_cpu_only", False)),
             )
             self.japanese_ocr_rescue_enabled = bool(settings.get("japanese_ocr_rescue_enabled", False))
             self.worker.set_japanese_rescue_enabled(
@@ -3515,7 +3515,7 @@ class Controller(QWidget):
             base_url=self.local_multimodal_base_url,
             model_name=self.local_multimodal_model,
             timeout_seconds=self.local_multimodal_timeout_seconds,
-            cpu_only=self.local_multimodal_cpu_only,
+            cpu_only=bool(getattr(self, "local_multimodal_cpu_only", False)),
         )
         rescue_setter = getattr(self.worker, "set_japanese_rescue_enabled", None)
         if callable(rescue_setter):
