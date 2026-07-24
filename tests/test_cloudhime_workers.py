@@ -266,6 +266,101 @@ def test_set_local_multimodal_config_accepts_values_and_refreshes_registry():
     assert worker.refresh_count == 1
 
 
+def test_local_multimodal_mode_change_is_async_and_restarts():
+    calls = []
+    submitted = []
+
+    class Executor:
+        def submit(self, callback):
+            future = Future()
+            submitted.append((callback, future))
+            return future
+
+    class Runtime:
+        def stop(self):
+            calls.append("stop")
+
+        def set_gpu_layers(self, layers):
+            calls.append(("layers", layers))
+
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.local_vision_runtime = Runtime()
+    worker._local_vision_executor = Executor()
+    worker._local_vision_load_future = None
+    worker.request_local_vision_start = lambda: calls.append("restart")
+
+    OCRWorker.set_local_multimodal_config(
+        worker,
+        enabled=True,
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="vision-local",
+        timeout_seconds=20,
+        cpu_only=True,
+    )
+
+    assert calls == []
+    assert len(submitted) == 1
+    callback, future = submitted.pop()
+    callback()
+    future.set_result(None)
+    assert calls == ["stop", ("layers", 0), "restart"]
+
+
+def test_local_multimodal_mode_changes_during_startup_are_coalesced():
+    calls = []
+    submitted = []
+    loading = Future()
+
+    class Executor:
+        def submit(self, callback):
+            future = Future()
+            submitted.append((callback, future))
+            return future
+
+    class Runtime:
+        def stop(self):
+            calls.append("stop")
+
+        def set_gpu_layers(self, layers):
+            calls.append(("layers", layers))
+
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.local_multimodal_enabled = True
+    worker.local_vision_runtime = Runtime()
+    worker._local_vision_executor = Executor()
+    worker._local_vision_load_future = loading
+    worker.request_local_vision_start = lambda: calls.append("restart")
+
+    OCRWorker.set_local_multimodal_config(
+        worker,
+        enabled=True,
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="vision-local",
+        timeout_seconds=20,
+        cpu_only=True,
+    )
+    OCRWorker.set_local_multimodal_config(
+        worker,
+        enabled=True,
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="vision-local",
+        timeout_seconds=20,
+        cpu_only=False,
+    )
+
+    assert submitted == []
+    loading.set_result(None)
+    assert len(submitted) == 1
+    callback, future = submitted.pop()
+    callback()
+    future.set_result(None)
+
+    assert calls == ["stop", ("layers", 999), "restart"]
+    assert worker.local_multimodal_cpu_only is False
+
+
 def test_multimodal_routing_local_model():
     worker = make_worker_stub()
     worker.use_gemma_translation = True
