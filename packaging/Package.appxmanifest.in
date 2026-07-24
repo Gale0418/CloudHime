@@ -34,7 +34,8 @@
         DisplayName="__DISPLAY_NAME__"
         Description="__DESCRIPTION__"
         Square150x150Logo="__LOGO_PATH__"
-        Square44x44Logo="__LOGO_PATH__" />
+        Square44x44Logo="__LOGO_PATH__"
+        BackgroundColor="#F4F7FB" />
     </Application>
   </Applications>
 </Package>
