@@ -42,7 +42,7 @@ def test_anchor_matching_normalizes_unicode_and_whitespace(tmp_path):
     suite = evaluator.load_suite(manifest)
     record = evaluator._score_case(
         suite["cases"][0],
-        _image_result("  魔 法\n"),
+        _image_result("  魔 法\n", elapsed_ms=0.0),
         repeat=1,
         condition="baseline",
     )
