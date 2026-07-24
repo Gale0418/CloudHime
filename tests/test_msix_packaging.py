@@ -16,8 +16,8 @@ def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
 
     assert application.attrib["Executable"] == "CloudHime.exe"
     assert application.attrib["EntryPoint"] == "Windows.FullTrustApplication"
-    assert visual.attrib["Square150x150Logo"] == r"assets\cloudhime_logo.png"
-    assert visual.attrib["Square44x44Logo"] == r"assets\cloudhime_logo.png"
+    assert visual.attrib["Square150x150Logo"] == "__LOGO_PATH__"
+    assert visual.attrib["Square44x44Logo"] == "__LOGO_PATH__"
 
 
 def test_msix_builder_requires_windows_sdk_and_expands_manifest():
@@ -25,6 +25,8 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     script = (root / "packaging" / "build_msix.ps1").read_text(encoding="utf-8")
 
     assert "makeappx.exe" in script
+    assert "_internal\\assets\\cloudhime_logo.png" in script
+    assert "$packagingSucceeded" in script
     assert "Package.appxmanifest.in" in script
     assert "Windows.FullTrustApplication" not in script
     assert "makeappx pack /d" in script
