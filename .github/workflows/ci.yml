@@ -53,7 +53,7 @@ jobs:
           $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
           $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
           New-Item -ItemType Directory -Force -Path $dummyDist, $outputDir | Out-Null
-          Set-Content -LiteralPath (Join-Path $dummyDist "CloudHime.exe") -Value "CloudHime MSIX contract placeholder" -Encoding ascii
+          Copy-Item -LiteralPath (Join-Path $env:WINDIR "System32\cmd.exe") -Destination (Join-Path $dummyDist "CloudHime.exe")
           $internalRoot = Join-Path $dummyDist "_internal"
           New-Item -ItemType Directory -Force -Path (Join-Path $internalRoot "assets"), (Join-Path $internalRoot "runtime") | Out-Null
           Copy-Item -LiteralPath "assets/cloudhime_logo.png" -Destination (Join-Path $internalRoot "assets/cloudhime_logo.png")
@@ -110,4 +110,25 @@ jobs:
               throw "MSIX omitted required runtime file: $runtimeFile"
             }
           }
+          $signtool = Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin") -Filter "signtool.exe" -Recurse -File |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $signtool) {
+            throw "signtool.exe was not found on the Windows runner."
+          }
+          $signingDir = Join-Path $env:RUNNER_TEMP "cloudhime-signing"
+          New-Item -ItemType Directory -Force -Path $signingDir | Out-Null
+          $certificate = New-SelfSignedCertificate -Type CodeSigningCert -KeyExportPolicy Exportable -Subject "CN=CloudHime CI" -CertStoreLocation Cert:\CurrentUser\My
+          $pfxPath = Join-Path $signingDir "cloudhime-ci.pfx"
+          $cerPath = Join-Path $signingDir "cloudhime-ci.cer"
+          $certificatePassword = ConvertTo-SecureString "ci-only" -AsPlainText -Force
+          Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $certificatePassword | Out-Null
+          Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
+          Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
+          & $signtool.FullName sign /fd SHA256 /a /f $pfxPath /p "ci-only" $package
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool failed to sign the MSIX package."
+          }
+          pwsh -NoLogo -NoProfile -File packaging/test_msix_install.ps1 -PackagePath $package
+          Remove-Item -LiteralPath ("Cert:\CurrentUser\My\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ("Cert:\CurrentUser\TrustedPeople\" + $certificate.Thumbprint) -ErrorAction SilentlyContinue
           Get-Item -LiteralPath $package, $upload | Select-Object FullName, Length

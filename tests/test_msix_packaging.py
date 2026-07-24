@@ -42,3 +42,9 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "AppxManifest.xml" in ci
     assert "runFullTrust" in ci
+
+    install_smoke = (root / "packaging" / "test_msix_install.ps1").read_text(encoding="utf-8")
+    assert "Add-AppxPackage" in install_smoke
+    assert "Start-Process" in install_smoke
+    assert "Remove-AppxPackage" in install_smoke
+    assert "Refusing to modify an existing package" in install_smoke
