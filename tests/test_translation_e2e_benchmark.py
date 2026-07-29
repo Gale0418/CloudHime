@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -176,7 +177,8 @@ def test_cli_json_reads_manifest_and_predictions_without_model() -> None:
     completed = subprocess.run(
         [sys.executable, str(script), str(manifest), "-", "--json"],
         input=json.dumps(predictions, ensure_ascii=False),
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     output = json.loads(completed.stdout)
     assert output["case_count"] == 6

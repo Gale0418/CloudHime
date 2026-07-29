@@ -42,7 +42,18 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "AppxManifest.xml" in ci
     assert "runFullTrust" in ci
-    assert "Cert:\\CurrentUser\\Root" in ci
+    assert "Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople" in ci
+    assert "Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\\CurrentUser\\TrustedPeople" not in ci
+    assert "Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\\CurrentUser\\Root" not in ci
+    assert "Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\\LocalMachine\\Root" not in ci
+    assert '$stores = @("Cert:\\CurrentUser\\My", "Cert:\\LocalMachine\\TrustedPeople")' in ci
+    assert "Get-ChildItem -Path $store -ErrorAction Stop" in ci
+    assert 'foreach ($store in @("My", "TrustedPeople", "Root"))' not in ci
+    assert "CLOUDHIME_CI_CERT_THUMBPRINT" in ci
+    assert ci.count("$_.Thumbprint -eq $thumbprint") >= 2
+    assert 'Where-Object { $_.Subject -eq "CN=CloudHime CI" }' not in ci
+    assert "Remove-Item -Force -ErrorAction Stop" in ci
+    assert "Failed to remove CI signing certificate" in ci
     assert "cancel-in-progress: true" in ci
     assert "name: CI" in ci
     assert "fail-fast: false" in ci
