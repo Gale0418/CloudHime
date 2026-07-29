@@ -256,7 +256,14 @@ def run_smoke(
             rescue_request_ms = 0.0
             rescue_triggered = False
             rescue_adopted = False
+            rescue_decision_completed = False
             rescue_candidate = ""
+            rescue_baseline = ""
+            rescue_second = ""
+            rescue_trusted_text = ""
+            rescue_first_similarity = None
+            rescue_second_similarity = None
+            rescue_shadow_actual = ""
             try:
                 stage_started = time.perf_counter()
                 try:
@@ -283,6 +290,8 @@ def run_smoke(
                 stage_started = time.perf_counter()
                 try:
                     actual = result.text.strip()
+                    rescue_baseline = actual
+                    rescue_shadow_actual = rescue_baseline
                 finally:
                     postprocess_ms = (time.perf_counter() - stage_started) * 1000.0
 
@@ -310,8 +319,16 @@ def run_smoke(
                             decision_started = time.perf_counter()
                             decision = decide_rescue_text(actual, rescued, candidate)
                             postprocess_ms += (time.perf_counter() - decision_started) * 1000.0
+                            rescue_second = rescued
+                            rescue_decision_completed = True
+                            rescue_trusted_text = str(getattr(decision, "trusted_text", "") or "")
+                            rescue_first_similarity = getattr(decision, "first_similarity", None)
+                            rescue_second_similarity = getattr(decision, "second_similarity", None)
                             actual = decision.selected_text
-                            rescue_adopted = decision.adopted
+                            rescue_adopted = bool(decision.adopted)
+                            rescue_shadow_actual = (
+                                rescue_second if rescue_adopted else rescue_candidate
+                            )
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
             latency_ms = (time.perf_counter() - request_started) * 1000.0
@@ -320,6 +337,12 @@ def run_smoke(
                     "sample_source": sample_source,
                     "categories": sorted({str(case.get("category", "")) for case in image_cases}),
                     "actual": actual,
+                    "rescue_baseline": rescue_baseline,
+                    "rescue_second": rescue_second,
+                    "rescue_trusted_text": rescue_trusted_text,
+                    "rescue_first_similarity": rescue_first_similarity,
+                    "rescue_second_similarity": rescue_second_similarity,
+                    "rescue_shadow_actual": rescue_shadow_actual,
                     "latency_ms": latency_ms,
                     "hint_ms": hint_ms,
                     "image_encode_ms": image_encode_ms,
@@ -329,6 +352,7 @@ def run_smoke(
                     "rescue_request_ms": rescue_request_ms,
                     "rescue_triggered": rescue_triggered,
                     "rescue_adopted": rescue_adopted,
+                    "rescue_decision_completed": rescue_decision_completed,
                     "rescue_candidate": rescue_candidate,
                     "ocr_hint": ocr_hint_text,
                     "error": error,
@@ -340,6 +364,10 @@ def run_smoke(
                         "category": case.get("category", ""),
                         "sample_source": sample_source,
                         "expected": expected_variants(case),
+                        "baseline_actual": rescue_baseline,
+                        "baseline_match_score": score_match(rescue_baseline, case),
+                        "shadow_actual": rescue_shadow_actual,
+                        "shadow_match_score": score_match(rescue_shadow_actual, case),
                         "actual": actual,
                         "line_match": line_match(actual, case),
                         "match_score": score_match(actual, case),
@@ -365,6 +393,20 @@ def run_smoke(
     meiki_latencies = [float(result["meiki_ms"]) for result in image_results]
     rescue_latencies = [float(result["rescue_request_ms"]) for result in image_results]
     successful_cases = [result for result in results if result["actual"] and not result["error"]]
+    baseline_match_scores = [float(result["baseline_match_score"]) for result in results]
+    shadow_match_scores = [float(result["shadow_match_score"]) for result in results]
+    shadow_improved_cases = sum(
+        shadow > baseline
+        for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
+    )
+    shadow_equal_cases = sum(
+        shadow == baseline
+        for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
+    )
+    shadow_regressed_cases = sum(
+        shadow < baseline
+        for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
+    )
     successful_images = [result for result in image_results if result["actual"] and not result["error"]]
     runtime_mode = "cpu" if force_cpu else state.mode
     return {
@@ -386,6 +428,11 @@ def run_smoke(
         "line_match_cases": sum(float(result["line_match"]) for result in results),
         "average_line_match": mean(float(result["line_match"]) for result in results),
         "average_match_score": mean(float(result["match_score"]) for result in results),
+        "baseline_average_match_score": mean(baseline_match_scores),
+        "shadow_average_match_score": mean(shadow_match_scores),
+        "shadow_improved_cases": shadow_improved_cases,
+        "shadow_equal_cases": shadow_equal_cases,
+        "shadow_regressed_cases": shadow_regressed_cases,
         "average_latency_ms": mean(latencies),
         "p95_latency_ms": percentile(latencies),
         "average_hint_ms": mean(hint_latencies),
@@ -397,6 +444,12 @@ def run_smoke(
         "average_rescue_request_ms": mean(rescue_latencies),
         "rescue_triggered_images": sum(bool(result["rescue_triggered"]) for result in image_results),
         "rescue_adopted_images": sum(bool(result["rescue_adopted"]) for result in image_results),
+        "rescue_shadow_candidate_fallbacks": sum(
+            bool(result["rescue_triggered"])
+            and bool(result["rescue_decision_completed"])
+            and not bool(result["rescue_adopted"])
+            for result in image_results
+        ),
         "image_results": image_results,
         "results": results,
     }
