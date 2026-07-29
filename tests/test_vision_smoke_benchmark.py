@@ -4,7 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import cv2
-import pytest
 import numpy as np
 import pytest
 
