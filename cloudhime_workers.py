@@ -3504,12 +3504,12 @@ class OCRWorker(QObject):
                 source_text_hint=build_verification_hint(candidate),
             ).text
             decision = decide_rescue_text(first_text, second, candidate)
-            if decision.adopted:
-                logger.info(
-                    "[Japanese rescue] adopted first=%.3f second=%.3f",
-                    decision.first_similarity,
-                    decision.second_similarity,
-                )
+            logger.info(
+                "[Japanese rescue] outcome=%s first_similarity=%.3f second_similarity=%.3f",
+                "adopted" if decision.adopted else "rejected",
+                decision.first_similarity,
+                decision.second_similarity,
+            )
             return decision.selected_text
         except Exception as exc:
             logger.warning(f"[Japanese rescue] fallback to baseline: {type(exc).__name__}: {exc}")

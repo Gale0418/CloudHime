@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
+
 
 import numpy as np
 
@@ -76,3 +78,25 @@ def test_worker_keeps_baseline_when_second_transcription_is_worse():
     image = np.zeros((50, 300, 3), dtype=np.uint8)
 
     assert worker.rescue_japanese_text(image, FIRST) == FIRST
+    assert worker.local_multimodal_provider.calls == 1
+
+
+def test_worker_rejected_log_contains_outcome_and_scores_without_ocr_text(caplog):
+    worker = _worker("完全不同")
+    image = np.zeros((50, 300, 3), dtype=np.uint8)
+
+    with caplog.at_level(logging.INFO, logger="CloudHime"):
+        assert worker.rescue_japanese_text(image, FIRST) == FIRST
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "[Japanese rescue]" in record.getMessage()
+    ]
+    assert len(messages) == 1
+    message = messages[0]
+    assert "outcome=rejected" in message
+    assert "first_similarity=" in message
+    assert "second_similarity=" in message
+    assert FIRST not in message
+    assert "完全不同" not in message
