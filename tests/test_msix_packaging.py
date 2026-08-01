@@ -57,7 +57,23 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "cancel-in-progress: true" in ci
     assert "name: CI" in ci
     assert "fail-fast: false" in ci
-    assert "Run Tests (" + "$" + "{{ matrix.name }})" in ci
+    ui_step_start = ci.index("      - name: Run Tests (" + "$" + "{{ matrix.name }})")
+    ui_step_end = ci.index("  msix-contract:", ui_step_start)
+    ui_step = ci[ui_step_start:ui_step_end]
+    assert "if (\'" + "$" + "{{ matrix.name }}\' -eq \'ui\')" in ui_step
+    assert "foreach ($testFile in $uiTestFiles)" in ui_step
+    assert "shell: pwsh" in ui_step
+    assert "Running isolated UI test file" in ui_step
+    ui_file_start = ui_step.index("$uiTestFiles = @(")
+    ui_file_end = ui_step.index("            )", ui_file_start)
+    ui_file_block = ui_step[ui_file_start:ui_file_end]
+    for ui_file in ("tests/test_cloudhime_ui_smoke.py", "tests/test_relief_settings.py", "tests/test_settings_window_theme_polish.py", "tests/test_translation_panel_advanced.py"):
+        assert ui_file in ui_file_block
+    assert "$pytestProcess.WaitForExit(120000)" in ui_step
+    assert "if (-not $completed)" in ui_step
+    assert "Stop-Process -Id $pytestProcess.Id -Force" in ui_step
+    assert 'throw "UI test file timed out after 120 seconds: $testFile"' in ui_step
+    assert ui_step.count("if ($pytestProcess.ExitCode -ne 0) { exit $pytestProcess.ExitCode }") == 1
     assert "Build MSIX package" in ci
     assert "Inspect and sign MSIX package" in ci
     assert "Install and uninstall MSIX package" in ci

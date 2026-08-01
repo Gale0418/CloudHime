@@ -94,8 +94,29 @@ jobs:
       - name: Run Tests (${{ matrix.name }})
         env:
           QT_QPA_PLATFORM: offscreen
+        shell: pwsh
         run: |
-          python -m pytest -q ${{ matrix.paths }}
+          if ('${{ matrix.name }}' -eq 'ui') {
+            $uiTestFiles = @(
+              'tests/test_cloudhime_ui_smoke.py'
+              'tests/test_relief_settings.py'
+              'tests/test_settings_window_theme_polish.py'
+              'tests/test_translation_panel_advanced.py'
+            )
+            foreach ($testFile in $uiTestFiles) {
+              Write-Host "Running isolated UI test file: $testFile"
+              $pytestProcess = Start-Process -FilePath "python" -ArgumentList @("-m", "pytest", "-q", $testFile) -PassThru -NoNewWindow
+              $completed = $pytestProcess.WaitForExit(120000)
+              if (-not $completed) {
+                Stop-Process -Id $pytestProcess.Id -Force
+                throw "UI test file timed out after 120 seconds: $testFile"
+              }
+              if ($pytestProcess.ExitCode -ne 0) { exit $pytestProcess.ExitCode }
+            }
+          } else {
+            python -m pytest -q ${{ matrix.paths }}
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
   msix-contract:
     runs-on: windows-latest
