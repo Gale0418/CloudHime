@@ -1,5 +1,10 @@
 from pathlib import Path
+import shutil
+import subprocess
+import uuid
 import xml.etree.ElementTree as ET
+
+import pytest
 
 
 def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
@@ -30,6 +35,8 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     script = (root / "packaging" / "build_msix.ps1").read_text(encoding="utf-8")
 
     assert "makeappx.exe" in script
+    assert "verify_release_dist.ps1" in script
+    assert "PreflightOnly" in script
     assert '[ValidateSet("x64")]' in script
     assert "_internal\\assets\\cloudhime_logo.png" in script
     assert "$packagingSucceeded" in script
@@ -82,6 +89,130 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
 
     install_smoke = (root / "packaging" / "test_msix_install.ps1").read_text(encoding="utf-8")
     assert "Add-AppxPackage" in install_smoke
+    assert "PSEdition" in install_smoke
+    assert "WindowsPowerShell\\v1.0\\powershell.exe" in install_smoke
+    assert "-WindowStyle Hidden" in install_smoke
     assert "Start-Process" in install_smoke
     assert "Remove-AppxPackage" in install_smoke
     assert "Refusing to modify an existing package" in install_smoke
+
+
+def _powershell_executable():
+    return shutil.which("pwsh") or shutil.which("powershell")
+
+
+def _write_release_fixture(powershell, root):
+    root_literal = str(root).replace("'", "''")
+    runtime_files = (
+        "llama-server.exe",
+        "llama-server-impl.dll",
+        "llama-common.dll",
+        "llama.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu-x64.dll",
+        "ggml-cuda.dll",
+        "mtmd.dll",
+        "libomp140.x86_64.dll",
+        "cublas64_12.dll",
+        "cublasLt64_12.dll",
+        "cudart64_12.dll",
+    )
+    runtime_literal = ", ".join(f'"{filename}"' for filename in runtime_files)
+    command = f"""
+$root = '{root_literal}'
+New-Item -ItemType Directory -Force -Path (Join-Path $root '_internal\\assets'), (Join-Path $root '_internal\\runtime'), (Join-Path $root '_internal\\certifi') | Out-Null
+Set-Content -LiteralPath (Join-Path $root 'CloudHime.exe') -Value 'exe' -Encoding ascii
+Set-Content -LiteralPath (Join-Path $root '_internal\\certifi\\cacert.pem') -Value 'public CA bundle' -Encoding ascii
+Set-Content -LiteralPath (Join-Path $root '_internal\\assets\\cloudhime_logo.png') -Value 'png' -Encoding ascii
+foreach ($releaseFile in @('dictionary.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) {{
+    Set-Content -LiteralPath (Join-Path $root "_internal\\$releaseFile") -Value 'fixture' -Encoding ascii
+}}
+foreach ($runtimeFile in @({runtime_literal})) {{
+    Set-Content -LiteralPath (Join-Path $root "_internal\\runtime\\$runtimeFile") -Value 'runtime' -Encoding ascii
+}}
+"""
+    subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", command],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def _remove_release_fixture(powershell, root):
+    root_literal = str(root).replace("'", "''")
+    command = f"if (Test-Path -LiteralPath '{root_literal}') {{ Remove-Item -LiteralPath '{root_literal}' -Recurse -Force }}"
+    subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", command],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+def test_release_dist_preflight_validates_a_realistic_bundle():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    temp_root = root / f".tmp-msix-preflight-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    try:
+        _write_release_fixture(powershell, fixture)
+        result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "ready" in result.stdout.lower()
+
+        invalid_cases = (
+            (fixture / "models.gguf", b"must stay in AppData", "AppData"),
+            (fixture / ".env.production", b"must stay out of the package", "secrets"),
+            (fixture / "dev-signing.pfx", b"must stay in package", "signing material"),
+            (fixture / "_internal" / "runtime" / "llama.dll", b"", "required llama/ggml runtime"),
+        )
+        for invalid_path, payload, expected_message in invalid_cases:
+            invalid_path.write_bytes(payload)
+            rejected = subprocess.run(
+                [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            assert rejected.returncode != 0
+            assert expected_message in (rejected.stdout + rejected.stderr)
+            if invalid_path.name == "llama.dll":
+                invalid_path.write_bytes(b"runtime")
+            else:
+                invalid_path.unlink()
+    finally:
+        if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-preflight-"):
+            _remove_release_fixture(powershell, temp_root)
+
+def test_real_release_dist_preflight_when_available():
+    powershell = _powershell_executable()
+    dist = Path(__file__).resolve().parents[1] / "dist" / "CloudHime"
+    if not powershell or not dist.is_dir():
+        pytest.skip("local PyInstaller dist is not available")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(dist)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

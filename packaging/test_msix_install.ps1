@@ -12,6 +12,33 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Appx cmdlets are hosted by Windows PowerShell on some machines, so bridge from pwsh.
+if ($PSVersionTable.PSEdition -eq "Core") {
+    $windowsPowerShell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
+        throw "Windows PowerShell 5.1 is required for Appx deployment cmdlets."
+    }
+    $forwardedArgs = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $PSCommandPath,
+        "-PackagePath",
+        $PackagePath,
+        "-IdentityName",
+        $IdentityName,
+        "-ExecutableName",
+        $ExecutableName,
+        "-LaunchWaitSeconds",
+        $LaunchWaitSeconds
+    )
+    & $windowsPowerShell @forwardedArgs
+    exit $LASTEXITCODE
+}
+
 $package = (Resolve-Path -LiteralPath $PackagePath).Path
 $existing = @(Get-AppxPackage -Name $IdentityName -ErrorAction SilentlyContinue)
 if ($existing.Count -gt 0) {
@@ -34,7 +61,7 @@ try {
         throw "Installed package is missing $ExecutableName."
     }
 
-    $process = Start-Process -FilePath $executablePath -PassThru
+    $process = Start-Process -FilePath $executablePath -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds $LaunchWaitSeconds
     if ($process.HasExited -and $process.ExitCode -ne 0) {
         throw "Packaged executable exited with code $($process.ExitCode)."
