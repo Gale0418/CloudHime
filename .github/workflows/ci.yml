@@ -26,6 +26,7 @@ jobs:
               tests/test_exact_image_cache.py
               tests/test_hybrid_search_benchmark.py
               tests/test_knowledge_pack_store.py
+              tests/test_knowledge_search.py
               tests/test_manga_cover_manifest.py
               tests/test_manga_repeated_run_evaluator.py
               tests/test_msix_packaging.py
@@ -90,7 +91,7 @@ jobs:
 
       - name: Syntax Check
         run: |
-          python -m py_compile CloudHime.py cloudhime_core.py cloudhime_ui.py cloudhime_workers.py translation_providers.py cloudhime_logging.py knowledge_pack_store.py
+          python -m py_compile CloudHime.py cloudhime_core.py cloudhime_ui.py cloudhime_workers.py translation_providers.py cloudhime_logging.py knowledge_pack_store.py knowledge_search.py
 
       - name: Run Tests (${{ matrix.name }})
         env:

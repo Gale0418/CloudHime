@@ -38,3 +38,19 @@ The llama.cpp runtime executable and its required libraries are application runt
 CloudHime downloads pinned, unmodified ONNX files from the publishers' Hugging Face repositories and verifies their exact sizes and SHA-256 digests before use. Corresponding model sources and revision history remain available at the repository links above.
 
 These components are used locally through ONNX Runtime on the CPU.
+## Knowledge research providers
+
+### DDGS
+
+- Project: https://github.com/deedy5/duckduckgo_search
+- Package: `ddgs` 9.14.4
+- License: MIT
+
+DDGS is a pinned local package dependency for the Knowledge Research provider, but it is lazy-loaded and used only after the user explicitly starts Knowledge Research. Normal OCR and translation do not call it. Search results are treated as untrusted candidates and are not facts until validated by later extraction and source checks.
+
+### Jina Reader
+
+- Service: https://jina.ai/reader/
+- Reader endpoint: `https://r.jina.ai`
+
+Jina Reader is an optional external service, not a bundled runtime dependency. CloudHime sends a selected public URL only after explicit Knowledge Research. Requests are bounded by timeout, response size, and public-URL checks; network failure leaves the existing OCR and translation paths available.
