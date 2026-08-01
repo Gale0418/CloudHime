@@ -85,15 +85,29 @@ foreach ($required in @(
     }
 }
 
-$logoCandidates = @(
-    "assets\cloudhime_logo.png",
-    "_internal\assets\cloudhime_logo.png"
-)
-$logoRelativePath = $logoCandidates |
-    Where-Object { Test-Path -LiteralPath (Join-Path $dist $_) } |
-    Select-Object -First 1
-if (-not $logoRelativePath) {
-    throw "Required release asset not found: assets\cloudhime_logo.png or _internal\assets\cloudhime_logo.png"
+$logoCandidates = @{
+    "44" = @(
+        "assets\cloudhime_logo_44.png",
+        "_internal\assets\cloudhime_logo_44.png"
+    )
+    "50" = @(
+        "assets\cloudhime_logo_50.png",
+        "_internal\assets\cloudhime_logo_50.png"
+    )
+    "150" = @(
+        "assets\cloudhime_logo_150.png",
+        "_internal\assets\cloudhime_logo_150.png"
+    )
+}
+$logoRelativePaths = @{}
+foreach ($size in @("44", "50", "150")) {
+    $logoRelativePath = $logoCandidates[$size] |
+        Where-Object { Test-Path -LiteralPath (Join-Path $dist $_) } |
+        Select-Object -First 1
+    if (-not $logoRelativePath) {
+        throw "Required release asset not found for $($size)x$($size) logo."
+    }
+    $logoRelativePaths[$size] = $logoRelativePath
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -123,7 +137,9 @@ try {
         "__PUBLISHER_DISPLAY_NAME__" = Escape-XmlValue $PublisherDisplayName
         "__DISPLAY_NAME__" = Escape-XmlValue $DisplayName
         "__DESCRIPTION__" = Escape-XmlValue $Description
-        "__LOGO_PATH__" = Escape-XmlValue ($logoRelativePath -replace "/", "\")
+        "__LOGO_44_PATH__" = Escape-XmlValue ($logoRelativePaths["44"] -replace "/", "\")
+        "__LOGO_50_PATH__" = Escape-XmlValue ($logoRelativePaths["50"] -replace "/", "\")
+        "__LOGO_150_PATH__" = Escape-XmlValue ($logoRelativePaths["150"] -replace "/", "\")
     }
     foreach ($token in $replacements.Keys) {
         $manifest = $manifest.Replace($token, $replacements[$token])

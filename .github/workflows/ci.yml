@@ -136,7 +136,9 @@ jobs:
           Copy-Item -LiteralPath (Join-Path $env:WINDIR "System32\cmd.exe") -Destination (Join-Path $dummyDist "CloudHime.exe")
           $internalRoot = Join-Path $dummyDist "_internal"
           New-Item -ItemType Directory -Force -Path (Join-Path $internalRoot "assets"), (Join-Path $internalRoot "runtime") | Out-Null
-          Copy-Item -LiteralPath "assets/cloudhime_logo.png" -Destination (Join-Path $internalRoot "assets/cloudhime_logo.png")
+          foreach ($logoFile in @("cloudhime_logo.png", "cloudhime_logo_44.png", "cloudhime_logo_50.png", "cloudhime_logo_150.png")) {
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "assets/$logoFile") -Destination (Join-Path $internalRoot "assets/$logoFile")
+          }
           foreach ($releaseFile in @("dictionary.json", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
             Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $releaseFile) -Destination (Join-Path $internalRoot $releaseFile)
           }

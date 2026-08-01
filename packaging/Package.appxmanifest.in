@@ -13,7 +13,7 @@
     <DisplayName>__DISPLAY_NAME__</DisplayName>
     <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
     <Description>__DESCRIPTION__</Description>
-    <Logo>__LOGO_PATH__</Logo>
+    <Logo>__LOGO_50_PATH__</Logo>
   </Properties>
   <Resources>
     <Resource Language="en-US" />
@@ -37,8 +37,8 @@
         AppListEntry="default"
         DisplayName="__DISPLAY_NAME__"
         Description="__DESCRIPTION__"
-        Square150x150Logo="__LOGO_PATH__"
-        Square44x44Logo="__LOGO_PATH__"
+        Square150x150Logo="__LOGO_150_PATH__"
+        Square44x44Logo="__LOGO_44_PATH__"
         BackgroundColor="#F4F7FB" />
     </Application>
   </Applications>
