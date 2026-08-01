@@ -23,8 +23,9 @@ def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
 
     assert application.attrib["Executable"] == "CloudHime.exe"
     assert application.attrib["EntryPoint"] == "Windows.FullTrustApplication"
-    assert visual.attrib["Square150x150Logo"] == "__LOGO_PATH__"
-    assert visual.attrib["Square44x44Logo"] == "__LOGO_PATH__"
+    assert visual.attrib["Square150x150Logo"] == "__LOGO_150_PATH__"
+    assert visual.attrib["Square44x44Logo"] == "__LOGO_44_PATH__"
+    assert "__LOGO_50_PATH__" in manifest_path.read_text(encoding="utf-8")
     assert visual.attrib["BackgroundColor"] == "#F4F7FB"
     assert capability is not None
     assert capability.attrib["Name"] == "runFullTrust"
@@ -38,13 +39,20 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "verify_release_dist.ps1" in script
     assert "PreflightOnly" in script
     assert '[ValidateSet("x64")]' in script
-    assert "_internal\\assets\\cloudhime_logo.png" in script
+    assert "_internal\\assets\\cloudhime_logo_44.png" in script
+    assert "_internal\\assets\\cloudhime_logo_50.png" in script
+    assert "_internal\\assets\\cloudhime_logo_150.png" in script
+    assert "__LOGO_44_PATH__" in script
+    assert "__LOGO_50_PATH__" in script
+    assert "__LOGO_150_PATH__" in script
     assert "$packagingSucceeded" in script
     assert "Package.appxmanifest.in" in script
     assert "Windows.FullTrustApplication" not in script
     assert "makeappx pack /d" in script
     assert "THIRD_PARTY_NOTICES.md" in (root / "build_exe.bat").read_text(encoding="utf-8")
     assert (root / "assets" / "cloudhime_logo.png").is_file()
+    for logo_size in ("44", "50", "150"):
+        assert (root / "assets" / f"cloudhime_logo_{logo_size}.png").is_file()
 
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "AppxManifest.xml" in ci
@@ -140,6 +148,12 @@ foreach ($runtimeFile in @({runtime_literal})) {{
         encoding="utf-8",
         errors="replace",
     )
+    source_root = Path(__file__).resolve().parents[1]
+    for logo_size in ("44", "50", "150"):
+        shutil.copyfile(
+            source_root / "assets" / f"cloudhime_logo_{logo_size}.png",
+            root / "_internal" / "assets" / f"cloudhime_logo_{logo_size}.png",
+        )
 
 
 def _remove_release_fixture(powershell, root):
@@ -174,6 +188,21 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "ready" in result.stdout.lower()
+
+        logo_path = fixture / "_internal" / "assets" / "cloudhime_logo_44.png"
+        valid_logo = logo_path.read_bytes()
+        for invalid_logo in (valid_logo[:20], valid_logo[:-1] + bytes([valid_logo[-1] ^ 1])):
+            logo_path.write_bytes(invalid_logo)
+            rejected_logo = subprocess.run(
+                [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            assert rejected_logo.returncode != 0
+            assert "44x44" in (rejected_logo.stdout + rejected_logo.stderr)
+            logo_path.write_bytes(valid_logo)
 
         invalid_cases = (
             (fixture / "models.gguf", b"must stay in AppData", "AppData"),

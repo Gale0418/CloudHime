@@ -38,7 +38,141 @@ function Find-NonEmptyFile {
     return $null
 }
 
-$executable = Join-Path $dist "CloudHime.exe"
+function Get-PngCrc32 {
+    param(
+        [byte[]]$Bytes,
+        [int]$Start,
+        [int]$Count
+    )
+
+    [uint32]$crc = [uint32]::MaxValue
+    for ($index = $Start; $index -lt ($Start + $Count); $index++) {
+        $crc = $crc -bxor [uint32]$Bytes[$index]
+        for ($bit = 0; $bit -lt 8; $bit++) {
+            if (($crc -band [uint32]1) -ne 0) {
+                $crc = ($crc -shr 1) -bxor [uint32]3988292384
+            } else {
+                $crc = $crc -shr 1
+            }
+        }
+    }
+    return $crc -bxor [uint32]::MaxValue
+}
+
+function Read-PngUInt32 {
+    param(
+        [byte[]]$Bytes,
+        [int]$Start
+    )
+
+    return ([uint64]$Bytes[$Start] -shl 24) -bor
+        ([uint64]$Bytes[$Start + 1] -shl 16) -bor
+        ([uint64]$Bytes[$Start + 2] -shl 8) -bor
+        [uint64]$Bytes[$Start + 3]
+}
+
+function Find-PngWithDimensions {
+    param(
+        [string[]]$RelativeCandidates,
+        [int]$ExpectedWidth,
+        [int]$ExpectedHeight
+    )
+
+    foreach ($relativePath in $RelativeCandidates) {
+        $candidate = Join-Path $dist $relativePath
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            continue
+        }
+        $fileInfo = Get-Item -LiteralPath $candidate
+        if ($fileInfo.Length -le 0 -or $fileInfo.Length -ge 204800) {
+            continue
+        }
+        $bytes = [IO.File]::ReadAllBytes($candidate)
+        if ($bytes.Length -lt 33) {
+            continue
+        }
+
+        $signature = [byte[]](137, 80, 78, 71, 13, 10, 26, 10)
+        $signatureMatches = $true
+        for ($index = 0; $index -lt $signature.Length; $index++) {
+            if ($bytes[$index] -ne $signature[$index]) {
+                $signatureMatches = $false
+                break
+            }
+        }
+        if (-not $signatureMatches) {
+            continue
+        }
+
+        $offset = 8
+        $hasHeader = $false
+        $hasImageData = $false
+        $hasEnd = $false
+        $width = 0
+        $height = 0
+        $valid = $true
+        while ($offset -lt $bytes.Length) {
+            if ($offset + 12 -gt $bytes.Length) {
+                $valid = $false
+                break
+            }
+            $chunkLength = Read-PngUInt32 $bytes $offset
+            if ($chunkLength -gt [int]::MaxValue -or ([int64]$offset + 12 + $chunkLength) -gt $bytes.Length) {
+                $valid = $false
+                break
+            }
+            $chunkLengthInt = [int]$chunkLength
+            $chunkTypeOffset = $offset + 4
+            $chunkDataOffset = $offset + 8
+            $chunkCrcOffset = $chunkDataOffset + $chunkLengthInt
+            $chunkType = [Text.Encoding]::ASCII.GetString($bytes, $chunkTypeOffset, 4)
+            $actualCrc = Get-PngCrc32 $bytes $chunkTypeOffset (4 + $chunkLengthInt)
+            $expectedCrc = Read-PngUInt32 $bytes $chunkCrcOffset
+            if ($actualCrc -ne $expectedCrc) {
+                $valid = $false
+                break
+            }
+
+            switch ($chunkType) {
+                "IHDR" {
+                    if ($hasHeader -or $chunkLengthInt -ne 13) {
+                        $valid = $false
+                        break
+                    }
+                    $width = [int](Read-PngUInt32 $bytes $chunkDataOffset)
+                    $height = [int](Read-PngUInt32 $bytes ($chunkDataOffset + 4))
+                    $hasHeader = $true
+                }
+                "IDAT" {
+                    $hasImageData = $true
+                }
+                "IEND" {
+                    if ($chunkLengthInt -ne 0 -or $hasEnd) {
+                        $valid = $false
+                        break
+                    }
+                    $hasEnd = $true
+                }
+            }
+            if (-not $valid) {
+                break
+            }
+            $offset += 12 + $chunkLengthInt
+            if ($hasEnd) {
+                if ($offset -ne $bytes.Length) {
+                    $valid = $false
+                }
+                break
+            }
+        }
+
+        if ($valid -and $hasHeader -and $hasImageData -and $hasEnd -and
+            $width -eq $ExpectedWidth -and $height -eq $ExpectedHeight) {
+            return $relativePath
+        }
+    }
+    return $null
+}$executable = Join-Path $dist "CloudHime.exe"
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Release dist is missing CloudHime.exe"
 }
@@ -52,6 +186,18 @@ $logoRelativePath = Find-NonEmptyFile @(
 )
 if (-not $logoRelativePath) {
     throw "Release dist is missing a non-empty cloudhime_logo.png"
+}
+
+$logoRelativePaths = @{}
+foreach ($logoSize in @(44, 50, 150)) {
+    $logoPath = Find-PngWithDimensions @(
+        "assets\cloudhime_logo_$($logoSize).png",
+        "_internal\assets\cloudhime_logo_$($logoSize).png"
+    ) $logoSize $logoSize
+    if (-not $logoPath) {
+        throw "Release dist is missing a valid $($logoSize)x$($logoSize) cloudhime logo."
+    }
+    $logoRelativePaths[$logoSize] = $logoPath
 }
 
 foreach ($requiredFile in @("dictionary.json", "LICENSE", "THIRD_PARTY_NOTICES.md")) {

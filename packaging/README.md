@@ -16,7 +16,7 @@ CreateUpload also produces a manually assembled .msixupload archive containing t
 
     pwsh -File packaging/build_msix.ps1 -DistDir dist/CloudHime -PreflightOnly
 
-這個檢查會確認啟動檔、logo、字典、授權 notices、llama/ggml runtime 與敏感檔案規則，也會拒絕把 GGUF、projector、簽章材料或已生成的 MSIX 檔案帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
+這個檢查會確認啟動檔、主 logo、44x44 / 50x50 / 150x150 MSIX 圖示、字典、授權 notices、llama/ggml runtime 與敏感檔案規則，也會拒絕把 GGUF、projector、簽章材料或已生成的 MSIX 檔案帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
 
 ## Local MSIX install smoke
 
