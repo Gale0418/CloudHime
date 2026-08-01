@@ -137,6 +137,9 @@ jobs:
           $internalRoot = Join-Path $dummyDist "_internal"
           New-Item -ItemType Directory -Force -Path (Join-Path $internalRoot "assets"), (Join-Path $internalRoot "runtime") | Out-Null
           Copy-Item -LiteralPath "assets/cloudhime_logo.png" -Destination (Join-Path $internalRoot "assets/cloudhime_logo.png")
+          foreach ($releaseFile in @("dictionary.json", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $releaseFile) -Destination (Join-Path $internalRoot $releaseFile)
+          }
           $runtimeFiles = @(
             "llama-server.exe", "llama-server-impl.dll", "llama-common.dll",
             "llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu-x64.dll",

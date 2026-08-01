@@ -11,7 +11,8 @@ param(
     [ValidateSet("x64")]
     [string]$Architecture = "x64",
     [string]$MakeAppxPath = "",
-    [switch]$CreateUpload
+    [switch]$CreateUpload,
+    [switch]$PreflightOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,6 +63,15 @@ $stage = Join-Path (Split-Path -Parent $output) "CloudHime-msix-stage"
 $package = Join-Path $output "CloudHime-$Version-$Architecture.msix"
 $upload = Join-Path $output "CloudHime-$Version-$Architecture.msixupload"
 $uploadZip = "$upload.zip"
+$validator = Join-Path $PSScriptRoot "verify_release_dist.ps1"
+if (-not (Test-Path -LiteralPath $validator -PathType Leaf)) {
+    throw "Release dist validator not found: $validator"
+}
+& $validator -DistDir $dist
+if ($PreflightOnly) {
+    Write-Host "Release dist preflight passed. Use the same DistDir with Windows SDK tools to build MSIX."
+    return
+}
 $makeappx = Resolve-MakeAppx $MakeAppxPath
 $packagingSucceeded = $false
 

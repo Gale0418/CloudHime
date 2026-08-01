@@ -9,3 +9,15 @@ makeappx.exe 由 Windows SDK 提供。預設開發 Publisher 只適合本機驗�
 模型與 projector 不放進 MSIX；CloudHime 會將受管模型下載到使用者 AppData，並驗證版本與 SHA-256。THIRD_PARTY_NOTICES.md 與 LICENSE 會由 PyInstaller release bundle 隨包提供。
 
 CreateUpload also produces a manually assembled .msixupload archive containing the MSIX. Public symbols are optional and are not included by this builder yet.
+
+## Release dist preflight
+
+在尚未安裝 Windows SDK 的開發機上，可以先驗證真正會被放入 MSIX 的 PyInstaller bundle：
+
+    pwsh -File packaging/build_msix.ps1 -DistDir dist/CloudHime -PreflightOnly
+
+這個檢查會確認啟動檔、logo、字典、授權 notices、llama/ggml runtime 與敏感檔案規則，也會拒絕把 GGUF、projector、簽章材料或已生成的 MSIX 檔案帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
+
+## Local MSIX install smoke
+
+`packaging/test_msix_install.ps1` 會在 `pwsh` 呼叫時自動轉交 Windows PowerShell 5.1，因為部分 Windows 的 Appx cmdlet 無法由 PowerShell 7 載入。開發測試憑證只能用於本機 sideload；Store identity、publisher 與正式簽章仍必須由 Partner Center／正式憑證處理。
