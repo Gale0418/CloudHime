@@ -128,6 +128,7 @@ python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%APP_NAME%
   --add-data "LICENSE;." ^
   --add-data "THIRD_PARTY_NOTICES.md;." ^
   --add-data "%RUNTIME_STAGE%;runtime" ^
+  --manifest "packaging\CloudHime.exe.manifest" ^
   CloudHime.py
 if errorlevel 1 (
   set "BUILD_EXIT_CODE=1"
