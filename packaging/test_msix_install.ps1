@@ -13,6 +13,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$helperPath = Join-Path $PSScriptRoot "msix_install_helpers.ps1"
+if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
+    throw "MSIX install helper not found: $helperPath"
+}
+. $helperPath
+
 # Appx cmdlets are hosted by Windows PowerShell on some machines, so bridge from pwsh.
 if ($PSVersionTable.PSEdition -eq "Core") {
     $windowsPowerShell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -72,9 +78,7 @@ finally {
     if ($null -ne $process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
-    if ($null -ne $installed) {
-        Remove-AppxPackage -Package $installed.PackageFullName -ErrorAction SilentlyContinue
-    }
+    Remove-AppxPackageForCleanup -InstalledPackage $installed -IdentityName $IdentityName | Out-Null
 
     for ($attempt = 0; $attempt -lt 10; $attempt++) {
         if (-not (Get-AppxPackage -Name $IdentityName -ErrorAction SilentlyContinue)) {

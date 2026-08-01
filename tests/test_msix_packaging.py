@@ -107,8 +107,53 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "-WindowStyle Hidden" in install_smoke
     assert "Start-Process" in install_smoke
     assert "Remove-AppxPackage" in install_smoke
+    assert "msix_install_helpers.ps1" in install_smoke
+    assert "Remove-AppxPackageForCleanup" in install_smoke
+    assert (root / "packaging" / "msix_install_helpers.ps1").is_file()
     assert "Refusing to modify an existing package" in install_smoke
 
+
+def test_msix_cleanup_helper_retries_and_selects_newest_package():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the MSIX cleanup helper test")
+
+    helper = Path(__file__).resolve().parents[1] / "packaging" / "msix_install_helpers.ps1"
+    helper_literal = str(helper).replace("'", "''")
+    command = f"""
+$ErrorActionPreference = "Stop"
+. '{helper_literal}'
+$script:queryCount = 0
+$script:removedPackage = $null
+function global:Get-AppxPackage {{
+    [CmdletBinding()]
+    param([string]$Name)
+    $script:queryCount += 1
+    if ($script:queryCount -eq 1) {{ return @() }}
+    return @(
+        [pscustomobject]@{{ Version = [version]"0.1.0.0"; PackageFullName = "CloudHime_0.1.0.0_x64__old" }},
+        [pscustomobject]@{{ Version = [version]"0.2.0.0"; PackageFullName = "CloudHime_0.2.0.0_x64__new" }}
+    )
+}}
+function global:Remove-AppxPackage {{
+    [CmdletBinding()]
+    param([string]$Package)
+    $script:removedPackage = $Package
+}}
+$package = Remove-AppxPackageForCleanup -InstalledPackage $null -IdentityName "CloudHime" -MaxAttempts 3
+if ($package.PackageFullName -ne "CloudHime_0.2.0.0_x64__new") {{ throw "Newest package was not selected." }}
+if ($script:removedPackage -ne "CloudHime_0.2.0.0_x64__new") {{ throw "Selected package was not removed." }}
+if ($script:queryCount -ne 2) {{ throw "Expected one retry, got $script:queryCount queries." }}
+"""
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", command],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 def _powershell_executable():
     return shutil.which("pwsh") or shutil.which("powershell")
