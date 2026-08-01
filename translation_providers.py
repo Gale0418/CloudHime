@@ -788,10 +788,18 @@ class LocalGemmaProvider:
             self.enabled = bool(enabled)
         if "gemma_enabled" in kwargs and kwargs["gemma_enabled"] is not None:
             self.enabled = bool(kwargs["gemma_enabled"])
+        generation_params_changed = False
         if "temperature" in kwargs and kwargs["temperature"] is not None:
-            self.temperature = float(kwargs["temperature"])
+            temperature = float(kwargs["temperature"])
+            generation_params_changed = generation_params_changed or temperature != self.temperature
+            self.temperature = temperature
         if "repeat_penalty" in kwargs and kwargs["repeat_penalty"] is not None:
-            self.repeat_penalty = float(kwargs["repeat_penalty"])
+            repeat_penalty = float(kwargs["repeat_penalty"])
+            generation_params_changed = generation_params_changed or repeat_penalty != self.repeat_penalty
+            self.repeat_penalty = repeat_penalty
+        if generation_params_changed:
+            self._translation_cache.clear()
+            self._context_buffer.clear()
 
         if self.enabled and (reload_needed or not previous_enabled):
             self._load_model()
@@ -858,7 +866,7 @@ class LocalGemmaProvider:
             return
         resolved_target = target_lang or self.target_lang
 
-        cache_key = ("local_gemma", self.model_path, normalized, resolved_target, self.gemma_prompt)
+        cache_key = ("local_gemma", self.model_path, normalized, resolved_target, self.gemma_prompt, self.temperature, self.repeat_penalty)
         cached = self._get_cached(cache_key)
         if cached is not None:
             yield str(cached)
@@ -911,6 +919,8 @@ class LocalGemmaProvider:
             normalized,
             resolved_target,
             self.gemma_prompt,
+            self.temperature,
+            self.repeat_penalty,
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
