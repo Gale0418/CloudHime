@@ -128,6 +128,34 @@ def test_local_gemma_update_config_loads_on_disabled_to_enabled():
     assert load_calls == [True]
 
 
+def test_local_gemma_cache_isolated_when_generation_params_change():
+    class FakeLocalLlm:
+        def __init__(self):
+            self.prompts = []
+            self.responses = iter(("first", "second"))
+
+        def create_completion(self, prompt, **kwargs):
+            self.prompts.append(prompt)
+            return {"choices": [{"text": next(self.responses)}]}
+
+    provider = LocalGemmaProvider(
+        enabled=False,
+        temperature=0.2,
+        repeat_penalty=1.15,
+    )
+    provider.enabled = True
+    provider._llm = FakeLocalLlm()
+
+    first = provider.translate("hello")
+    provider.update_config(temperature=0.35)
+    second = provider.translate("hello")
+
+    assert first.from_cache is False
+    assert second.from_cache is False
+    assert second.text == "second"
+    assert len(provider._llm.prompts) == 2
+    assert "first" not in provider._llm.prompts[1]
+
 def test_local_multimodal_translate_checks_availability_before_empty_input():
     provider = LocalMultimodalProvider(enabled=False)
     provider._request_chat_completion = lambda payload: pytest.fail("request should not run")
