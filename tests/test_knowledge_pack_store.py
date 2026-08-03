@@ -154,3 +154,49 @@ def test_clear_active_is_persistent(tmp_path):
     reopened = KnowledgePackStore(root)
     assert reopened.active_pack() is None
     assert reopened.list_packs()[0].title == "轉生重騎士"
+
+def test_corrupt_catalog_recovers_valid_pack_files_before_saving(tmp_path):
+    root = tmp_path / "packs"
+    store = KnowledgePackStore(root)
+    first = store.save_pack("First")
+    second = store.save_pack("Second")
+    (root / "catalog.json").write_text("{not-json", encoding="utf-8")
+
+    third = KnowledgePackStore(root).save_pack("Third")
+
+    reopened = KnowledgePackStore(root)
+    assert {item.title for item in reopened.list_packs()} == {"First", "Second", "Third"}
+    assert reopened.get_pack(first["pack_id"], first["revision"]) is not None
+    assert reopened.get_pack(second["pack_id"], second["revision"]) is not None
+    assert reopened.get_pack(third["pack_id"], third["revision"]) is not None
+    assert reopened.active_pack() is None
+
+def test_recovery_ignores_noncanonical_pack_filename(tmp_path):
+    root = tmp_path / "packs"
+    store = KnowledgePackStore(root)
+    first = store.save_pack("First")
+    second = store.save_pack("Second")
+    canonical = next(root.glob("*r2.json"))
+    canonical.rename(root / ("renamed-" + canonical.name))
+    (root / "catalog.json").write_text("{not-json", encoding="utf-8")
+
+    recovered = KnowledgePackStore(root).list_packs()
+
+    assert {item.title for item in recovered} == {"First"}
+    assert first["revision"] == 1
+    assert second["revision"] == 2
+
+
+def test_malformed_current_catalog_recovers_from_pack_files(tmp_path):
+    root = tmp_path / "packs"
+    store = KnowledgePackStore(root)
+    saved = store.save_pack("Saved")
+    (root / "catalog.json").write_text(
+        '{"schema_version": 1, "packs": null, "active": null}',
+        encoding="utf-8",
+    )
+
+    recovered = KnowledgePackStore(root).get_pack(saved["pack_id"], saved["revision"])
+
+    assert recovered is not None
+    assert recovered["title"] == "Saved"

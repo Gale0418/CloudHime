@@ -197,6 +197,7 @@ def test_compare_conditions_exposes_per_repeat_regression():
         "compared_observations": 2,
         "repeats_with_regression": 1,
         "repeats_without_regression": 1,
+        "repeats_without_comparison": 0,
     }
     assert [item["page_regression"]["regressed_pages"] for item in comparison["repeat_deltas"]] == [1, 0]
 
@@ -249,3 +250,23 @@ def test_load_suite_rejects_normalized_draft_status(tmp_path):
 
     with pytest.raises(ValueError, match="ground-truth eligible"):
         evaluator.load_suite(manifest)
+
+def test_compare_conditions_does_not_count_uncompared_repeat_as_clean():
+    base = {
+        "case_id": "a",
+        "repeat": 3,
+        "anchor_count": 0,
+        "anchor_hits": 0,
+        "anchor_recall": None,
+        "item_count": 0,
+        "elapsed_ms": 10,
+        "error": "runtime",
+        "grid_recovery_triggered": False,
+        "grid_recovery_accepted": False,
+    }
+    comparison = evaluator.compare_conditions([base], [dict(base)])
+
+    summary = comparison["paired_repeat_regression"]
+    assert summary["repeats_with_regression"] == 0
+    assert summary["repeats_without_regression"] == 0
+    assert summary["repeats_without_comparison"] == 1

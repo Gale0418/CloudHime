@@ -385,26 +385,64 @@ class KnowledgePackStore:
             next_catalog = dict(catalog)
             next_catalog["active"] = None
             _write_json_atomic(self.paths.catalog_file, next_catalog)
+    def _recover_catalog_from_files(self) -> dict[str, Any]:
+        """Rebuild a non-active catalog from valid pack files after corruption."""
+        records: dict[str, dict[str, Any]] = {}
+        try:
+            names = os.listdir(self.paths.root)
+        except OSError:
+            names = []
+        for name in names:
+            if not name.startswith("pack-") or not name.endswith(".json"):
+                continue
+            try:
+                with (self.paths.root / name).open("r", encoding="utf-8") as stream:
+                    document = _normalize_pack_document(json.load(stream))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                continue
+            if document is None:
+                continue
+            if name != _pack_filename(document["pack_id"], document["revision"]):
+                continue
+            record = {
+                "pack_id": document["pack_id"],
+                "revision": document["revision"],
+                "title": document["title"],
+                "aliases": document["aliases"],
+                "updated_at": str(document.get("updated_at", "")),
+            }
+            current = records.get(record["pack_id"])
+            if current is None or record["revision"] >= current["revision"]:
+                records[record["pack_id"]] = record
+        return {
+            "schema_version": KNOWLEDGE_PACK_SCHEMA_VERSION,
+            "active": None,
+            "packs": list(records.values()),
+        }
+
     def _read_catalog(self) -> dict[str, Any]:
         try:
             with self.paths.catalog_file.open("r", encoding="utf-8") as stream:
                 payload = json.load(stream)
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            return _empty_catalog()
+            return self._recover_catalog_from_files()
         if not isinstance(payload, dict) or payload.get("schema_version") != KNOWLEDGE_PACK_SCHEMA_VERSION:
-            return _empty_catalog()
+            return self._recover_catalog_from_files()
+        raw_packs = payload.get("packs")
+        if not isinstance(raw_packs, list):
+            return self._recover_catalog_from_files()
 
         records: dict[str, dict[str, Any]] = {}
-        for raw_record in payload.get("packs", []):
+        for raw_record in raw_packs:
             if not isinstance(raw_record, dict):
-                continue
+                return self._recover_catalog_from_files()
             try:
                 pack_id = _validate_pack_id(raw_record.get("pack_id"))
                 revision = _validate_revision(raw_record.get("revision"))
                 title = _validate_title(raw_record.get("title"))
                 aliases = _string_list(raw_record.get("aliases", []), "aliases")
             except KnowledgePackValidationError:
-                continue
+                return self._recover_catalog_from_files()
             record = {
                 "pack_id": pack_id,
                 "revision": revision,
