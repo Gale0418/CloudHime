@@ -10,63 +10,39 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+permissions:
+  contents: read
+
 jobs:
+  test-inventory:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.inventory.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build test matrix from inventory
+        id: inventory
+        shell: pwsh
+        run: |
+          $inventory = Get-Content -LiteralPath "ci/test_groups.json" -Raw | ConvertFrom-Json
+          $groups = @($inventory.groups | ForEach-Object {
+            [pscustomobject]@{
+              name = $_.name
+              paths = ($_.test_files -join " ")
+            }
+          })
+          $matrix = [pscustomobject]@{ include = $groups } | ConvertTo-Json -Compress -Depth 10
+          "matrix=$matrix" >> $env:GITHUB_OUTPUT
+          Write-Host "CI test inventory loaded: $($groups.Count) groups"
+
   build-and-test:
+    needs: test-inventory
     runs-on: windows-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: core
-            paths: >-
-              tests/test_cloudhime_core.py
-              tests/test_cloudhime_logging.py
-              tests/test_exact_image_cache_benchmark.py
-              tests/test_exact_image_cache.py
-              tests/test_hybrid_search_benchmark.py
-              tests/test_knowledge_pack_store.py
-              tests/test_knowledge_search.py
-              tests/test_manga_cover_manifest.py
-              tests/test_manga_repeated_run_evaluator.py
-              tests/test_msix_packaging.py
-              tests/test_provider_health.py
-              tests/test_release_packaging.py
-              tests/test_settings_store.py
-              tests/test_translation_helpers.py
-              tests/test_translation_providers.py
-          - name: ocr
-            paths: >-
-              tests/test_cloudhime_workers.py
-              tests/test_japanese_ocr_worker_integration.py
-              tests/test_ocr_backend_thread_safety.py
-              tests/test_ocr_refinement.py
-              tests/test_ocr_text_processing.py
-              tests/test_ocr_worker_mode_matrix.py
-          - name: runtime
-            paths: >-
-              tests/test_japanese_ocr_assets.py
-              tests/test_japanese_ocr_rescue.py
-              tests/test_japanese_ocr_runtime.py
-              tests/test_local_gemma_integration.py
-              tests/test_local_multimodal_provider.py
-              tests/test_local_vision_assets.py
-              tests/test_local_vision_integration.py
-              tests/test_local_vision_runtime.py
-              tests/test_managed_asset_store.py
-          - name: ui
-            paths: >-
-              tests/test_cloudhime_ui_smoke.py
-              tests/test_relief_settings.py
-              tests/test_settings_window_theme_polish.py
-              tests/test_translation_panel_advanced.py
-          - name: benchmarks
-            paths: >-
-              tests/test_fullscreen_manga_benchmark.py
-              tests/test_ocr_benchmark.py
-              tests/test_speed_benchmark.py
-              tests/test_translation_e2e_benchmark.py
-              tests/test_vision_smoke_benchmark.py
+      matrix: ${{ fromJSON(needs.test-inventory.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -91,21 +67,16 @@ jobs:
 
       - name: Syntax Check
         run: |
-          python -m py_compile CloudHime.py cloudhime_core.py cloudhime_ui.py cloudhime_workers.py translation_providers.py cloudhime_logging.py knowledge_pack_store.py knowledge_search.py
+          python -m compileall -q -x '(^|[\\/])(\.venv|build|dist)([\\/]|$)' .
 
       - name: Run Tests (${{ matrix.name }})
         env:
           QT_QPA_PLATFORM: offscreen
         shell: pwsh
         run: |
+          $testFiles = '${{ matrix.paths }}' -split '\\s+' | Where-Object { $_ }
           if ('${{ matrix.name }}' -eq 'ui') {
-            $uiTestFiles = @(
-              'tests/test_cloudhime_ui_smoke.py'
-              'tests/test_relief_settings.py'
-              'tests/test_settings_window_theme_polish.py'
-              'tests/test_translation_panel_advanced.py'
-            )
-            foreach ($testFile in $uiTestFiles) {
+            foreach ($testFile in $testFiles) {
               Write-Host "Running isolated UI test file: $testFile"
               $pytestProcess = Start-Process -FilePath "python" -ArgumentList @("-m", "pytest", "-q", $testFile) -PassThru -NoNewWindow
               $completed = $pytestProcess.WaitForExit(120000)
@@ -116,7 +87,7 @@ jobs:
               if ($pytestProcess.ExitCode -ne 0) { exit $pytestProcess.ExitCode }
             }
           } else {
-            python -m pytest -q ${{ matrix.paths }}
+            python -m pytest -q @testFiles
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
