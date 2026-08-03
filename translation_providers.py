@@ -14,7 +14,7 @@ from urllib import error, request
 
 from deep_translator import GoogleTranslator
 
-from model_catalog import REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
+from model_catalog import get_model_spec, REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
 from translation_contracts import TranslationProvider, TranslationResult
 from knowledge_prompt_context import KnowledgePromptContext
 from translation_helpers import (
@@ -352,10 +352,8 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             self._prune_timestamps(model_name)
 
     def _request_timeout_seconds(self, model_name: str) -> int:
-        model_name = (model_name or "").strip().lower()
-        if model_name in {"gemma-4-31b-it", "gemini-2.5-pro"}:
-            return 60
-        return 30
+        spec = get_model_spec(model_name)
+        return spec.timeout_seconds if spec is not None else 30
 
     def _should_retry_request(self, exc: Exception) -> bool:
         if isinstance(exc, error.HTTPError):

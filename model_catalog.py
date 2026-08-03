@@ -49,7 +49,7 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
     ),
     ModelSpec(
         "gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite", "gemini", "remote",
-        True, True, "preview", 30, "gemini-3.1-flash-lite",
+        True, True, "stable", 30, "gemini-3.1-flash-lite",
     ),
     ModelSpec(
         "translategemma-4b-it-local", "TranslateGemma (Local)", "gemma", "local",
@@ -77,7 +77,7 @@ WORKER_MODEL_CHOICES = tuple(
     for model_id in WORKER_MODEL_IDS
 )
 WORKER_DEFAULT_MODEL = "gemma-3-27b-it"
-REGISTRY_DEFAULT_MODEL = "gemma-4-31b-it"
+REGISTRY_DEFAULT_MODEL = WORKER_DEFAULT_MODEL
 
 
 def get_model_spec(model_id: str) -> ModelSpec | None:

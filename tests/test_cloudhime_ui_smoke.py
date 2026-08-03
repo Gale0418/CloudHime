@@ -291,6 +291,9 @@ def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypat
         def delete(self):
             self.value = None
 
+        def mark_legacy_sources_disabled(self):
+            self.legacy_sources_disabled = True
+
     store = FakeSecretStore()
     env_path = tmp_path / "CloudHime" / ".env"
     monkeypatch.setattr(cloudhime_ui, "APPDATA_ENV_PATH", str(env_path))
@@ -312,7 +315,53 @@ def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypat
     assert not env_path.exists()
     Controller._persist_pending_api_key(controller)
     assert store.value == "secret-key"
+    assert store.legacy_sources_disabled is True
     assert controller.worker.google_api_key == "secret-key"
+
+def test_clearing_api_key_does_not_disable_local_gemma(monkeypatch):
+    import cloudhime_ui
+
+    class FakeLineEdit:
+        def __init__(self):
+            self.value = "secret-key"
+
+        def text(self):
+            return self.value
+
+        def blockSignals(self, _blocked):
+            return None
+
+        def setText(self, value):
+            self.value = value
+
+    class FakeSecretStore:
+        def set(self, _value):
+            return None
+
+        def delete(self):
+            return None
+
+        def mark_legacy_sources_disabled(self):
+            return None
+
+    toggles = []
+    controller = Controller.__new__(Controller)
+    controller.secret_store = FakeSecretStore()
+    controller.worker = SimpleNamespace(
+        google_api_key="secret-key",
+        use_gemma_translation=True,
+        gemma_model="gemma-3-4b-it-local",
+        set_google_api_key=lambda value: setattr(controller.worker, "google_api_key", value),
+    )
+    controller.input_api_key = FakeLineEdit()
+    controller.settings_window = None
+    controller.schedule_save_settings = lambda: None
+    controller.toggle_ai_translation = lambda enabled: toggles.append(enabled)
+
+    Controller.on_api_key_changed(controller, "")
+
+    assert controller.worker.google_api_key == ""
+    assert toggles == []
 
 def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):
     import cloudhime_ui

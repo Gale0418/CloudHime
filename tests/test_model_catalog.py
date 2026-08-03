@@ -7,6 +7,8 @@ from model_catalog import (
     REMOTE_TRANSLATION_MODEL_IDS,
     WORKER_MODEL_CHOICES,
     WORKER_MODEL_IDS,
+    WORKER_DEFAULT_MODEL,
+    REGISTRY_DEFAULT_MODEL,
     get_model_spec,
 )
 from translation_providers import GemmaTranslationProvider, SUPPORTED_GEMMA_MODEL_NAMES
@@ -41,6 +43,15 @@ def test_catalog_specs_expose_required_policy_fields():
 def test_provider_supported_models_are_catalog_remote_models():
     assert tuple(SUPPORTED_GEMMA_MODEL_NAMES) == REMOTE_TRANSLATION_MODEL_IDS
     assert GemmaTranslationProvider(google_api_key="test").supported_models == REMOTE_TRANSLATION_MODEL_IDS
+
+
+def test_all_remote_entrypoints_share_the_catalog_default_and_timeout_policy():
+    provider = GemmaTranslationProvider(google_api_key="test")
+
+    assert WORKER_DEFAULT_MODEL == REGISTRY_DEFAULT_MODEL
+    assert provider.gemma_model == REGISTRY_DEFAULT_MODEL
+    assert provider._request_timeout_seconds("gemma-4-26b-a4b-it") == get_model_spec("gemma-4-26b-a4b-it").timeout_seconds
+    assert get_model_spec("gemini-3.1-flash-lite").lifecycle == "stable"
 
 def test_invalid_model_update_returns_observable_warning_after_supported_models_change():
     provider = GemmaTranslationProvider(google_api_key="test")
