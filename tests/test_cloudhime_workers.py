@@ -915,7 +915,7 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
     assert refreshes == [True]
 
 
-def test_failed_vision_runtime_restores_local_text_provider():
+def test_failed_vision_runtime_keeps_local_server_route_unavailable():
     future = Future()
     future.set_result(SimpleNamespace(name="failed", detail="health_timeout", base_url="", mode="gpu"))
     registrations = []
@@ -940,12 +940,12 @@ def test_failed_vision_runtime_restores_local_text_provider():
 
     OCRWorker._on_local_vision_load_done(worker, future)
 
-    assert registrations == [("gemma", local_text_provider)]
-    assert loads == [True]
+    assert registrations == []
+    assert loads == []
     assert statuses == [("failed", "health_timeout")]
 
 
-def test_failed_vision_runtime_preserves_remote_text_provider():
+def test_failed_vision_runtime_keeps_remote_text_provider_unchanged():
     future = Future()
     future.set_result(SimpleNamespace(name="failed", detail="health_timeout", base_url="", mode="gpu"))
     registrations = []
@@ -965,10 +965,10 @@ def test_failed_vision_runtime_preserves_remote_text_provider():
 
     OCRWorker._on_local_vision_load_done(worker, future)
 
-    assert registrations == [("gemma", remote_provider)]
+    assert registrations == []
 
 
-def test_vision_runtime_exception_preserves_remote_text_provider():
+def test_vision_runtime_exception_keeps_remote_text_provider_unchanged():
     future = Future()
     future.set_exception(RuntimeError("startup failed"))
     registrations = []
@@ -987,7 +987,7 @@ def test_vision_runtime_exception_preserves_remote_text_provider():
 
     OCRWorker._on_local_vision_load_done(worker, future)
 
-    assert registrations == [("gemma", remote_provider)]
+    assert registrations == []
     assert statuses == [("failed", "RuntimeError: startup failed")]
 
 def test_request_local_vision_start_does_not_submit_duplicate_future():
@@ -1563,3 +1563,87 @@ def test_shutdown_local_model_loader_closes_local_provider():
     OCRWorker.shutdown_local_model_loader(worker)
 
     assert calls == ["closed"]
+
+
+def test_local_model_registry_uses_server_provider_before_runtime_ready():
+    from translation_providers import (
+        GemmaTranslationProvider,
+        GoogleTranslationProvider,
+        LocalMultimodalProvider,
+    )
+
+    class FakeEmbeddedProvider:
+        name = "local_gemma"
+
+        def __init__(self):
+            self.enabled = False
+            self.update_calls = []
+
+        def update_config(self, **kwargs):
+            self.update_calls.append(kwargs)
+            self.enabled = kwargs.get("enabled", self.enabled)
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    worker.google_api_key = ""
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.active_gemma_model = worker.gemma_model
+    worker.use_gemma_translation = True
+    worker.gemma_prompt = ""
+    worker.screenshot_gemma_prompt = ""
+    worker.gemma_auto_switch_enabled = False
+    worker.translation_target_lang = "zh-TW"
+    worker.local_gemma_temperature = 0.2
+    worker.local_gemma_repeat_penalty = 1.15
+    worker.local_multimodal_enabled = False
+    worker.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+    worker.local_multimodal_model = "gemma-3-4b-it"
+    worker.local_multimodal_timeout_seconds = 20
+    worker.google_translation_provider = GoogleTranslationProvider(target_lang="zh-TW")
+    worker.gemma_translation_provider = GemmaTranslationProvider(
+        google_api_key="",
+        gemma_model="gemma-3-27b-it",
+        target_lang="zh-TW",
+    )
+    worker.local_gemma_provider = FakeEmbeddedProvider()
+    worker.local_multimodal_provider = LocalMultimodalProvider(
+        target_lang="zh-TW",
+        enabled=False,
+    )
+    worker.local_vision_runtime = SimpleNamespace(
+        _state=SimpleNamespace(name="starting", detail="")
+    )
+    calls = []
+    worker.request_local_model_load = lambda: calls.append("embedded")
+    worker.request_local_vision_start = lambda: calls.append("server")
+
+    OCRWorker._refresh_translation_registry(worker)
+
+    assert worker.translation_registry.get("gemma") is worker.local_multimodal_provider
+    assert worker.local_gemma_provider.enabled is False
+    assert calls == ["server"]
+
+
+def test_failed_vision_runtime_never_restores_embedded_local_model():
+    future = Future()
+    future.set_result(SimpleNamespace(name="failed", detail="health_timeout", base_url="", mode="gpu"))
+    registrations = []
+    loads = []
+    local_multimodal = SimpleNamespace(update_runtime=lambda *args, **kwargs: None)
+    worker = SimpleNamespace(
+        _local_vision_load_future=future,
+        local_multimodal_provider=local_multimodal,
+        local_gemma_provider=SimpleNamespace(),
+        gemma_translation_provider=SimpleNamespace(),
+        _is_local_model_active=lambda: True,
+        local_multimodal_model="gemma-3-4b-it",
+        translation_registry=SimpleNamespace(register=lambda *args: registrations.append(args)),
+        request_local_model_load=lambda: loads.append(True),
+        local_vision_status=SimpleNamespace(emit=lambda *args: None),
+    )
+
+    OCRWorker._on_local_vision_load_done(worker, future)
+
+    assert registrations == []
+    assert loads == []
