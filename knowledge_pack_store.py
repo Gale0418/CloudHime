@@ -344,6 +344,19 @@ class KnowledgePackStore:
             )
         return tuple(summaries)
 
+    def find_pack_for_title(self, title: str) -> dict[str, Any] | None:
+        """Return the newest local pack whose title or alias matches *title*."""
+        if not isinstance(title, str):
+            return None
+        normalized = " ".join(title.split()).casefold()
+        if not normalized:
+            return None
+        for summary in self.list_packs():
+            candidates = (summary.title, *summary.aliases)
+            if any(" ".join(value.split()).casefold() == normalized for value in candidates):
+                return self.get_pack(summary.pack_id, summary.revision)
+        return None
+
     def get_pack(self, pack_id: str, revision: int | None = None) -> dict[str, Any] | None:
         try:
             normalized_id = _validate_pack_id(pack_id)
