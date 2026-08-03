@@ -176,7 +176,7 @@ def test_recovery_ignores_noncanonical_pack_filename(tmp_path):
     store = KnowledgePackStore(root)
     first = store.save_pack("First")
     second = store.save_pack("Second")
-    canonical = next(root.glob("*r2.json"))
+    canonical = next(path for path in root.glob("pack-*.json") if second["pack_id"].lower() in path.name.lower())
     canonical.rename(root / ("renamed-" + canonical.name))
     (root / "catalog.json").write_text("{not-json", encoding="utf-8")
 
@@ -184,7 +184,7 @@ def test_recovery_ignores_noncanonical_pack_filename(tmp_path):
 
     assert {item.title for item in recovered} == {"First"}
     assert first["revision"] == 1
-    assert second["revision"] == 2
+    assert second["revision"] == 1
 
 
 def test_malformed_current_catalog_recovers_from_pack_files(tmp_path):

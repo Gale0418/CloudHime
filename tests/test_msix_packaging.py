@@ -100,7 +100,7 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     ui_step = ci[ui_step_start:ui_step_end]
     assert "if (\'" + "$" + "{{ matrix.name }}\' -eq \'ui\')" in ui_step
     assert "foreach ($testFile in $testFiles)" in ui_step
-    assert "-split \'\\\\s+\'" in ui_step
+    assert r"-split '\s+'" in ui_step
     assert "shell: pwsh" in ui_step
     assert "Running isolated UI test file" in ui_step
     assert "$pytestProcess.WaitForExit(120000)" in ui_step

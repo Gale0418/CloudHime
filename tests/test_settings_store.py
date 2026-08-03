@@ -126,7 +126,7 @@ def test_load_settings_prefers_appdata_on_equal_mtime(tmp_path):
     install_dir.mkdir()
     paths = create_settings_paths(str(install_dir), str(appdata_dir))
     appdata_file = appdata_dir / "CloudHime" / "cloudhime_settings.json"
-    appdata_file.parent.mkdir()
+    appdata_file.parent.mkdir(parents=True)
     appdata_file.write_text('{"source": "appdata"}', encoding="utf-8")
     legacy_file = install_dir / "cloudhime_settings.json"
     legacy_file.write_text('{"source": "legacy"}', encoding="utf-8")
