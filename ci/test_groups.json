@@ -20,6 +20,7 @@
         "tests/test_knowledge_retrieval.py",
         "tests/test_knowledge_search.py",
         "tests/test_model_catalog.py",
+        "tests/test_ocr_backend_installer.py",
         "tests/test_manga_cover_manifest.py",
         "tests/test_manga_repeated_run_evaluator.py",
         "tests/test_msix_packaging.py",
