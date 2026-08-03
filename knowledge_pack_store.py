@@ -309,6 +309,23 @@ class KnowledgePackStore:
             ] + [record]
             _write_json_atomic(self.paths.catalog_file, next_catalog)
             return document
+    def save_pack_non_active(
+        self,
+        title: str,
+        *,
+        aliases: Iterable[str] = (),
+        entries: Iterable[dict[str, Any]] = (),
+        sources: Iterable[dict[str, Any]] = (),
+        pack_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist a pack revision without changing the active revision."""
+        return self.save_pack(
+            title,
+            aliases=aliases,
+            entries=entries,
+            sources=sources,
+            pack_id=pack_id,
+        )
     def list_packs(self) -> tuple[KnowledgePackSummary, ...]:
         catalog = self._read_catalog()
         summaries: list[KnowledgePackSummary] = []
