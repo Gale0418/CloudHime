@@ -91,6 +91,8 @@ from settings_store import (
 from ocr_backend_panel import OcrBackendSettingsPanel
 from translation_settings_panel import TranslationSettingsPanel
 from knowledge_pack_store import KnowledgePackStore, create_knowledge_pack_paths
+from knowledge_builder_worker import KnowledgeBuildWorker
+from knowledge_research_service import KnowledgeResearchService
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -1774,6 +1776,10 @@ class SettingsWindowRevamp(QWidget):
         self.old_pos = None
         self._ai_requested = False
         self._knowledge_title_dirty = False
+        self.controller.knowledge_build_progress.connect(self.on_knowledge_build_progress)
+        self.controller.knowledge_build_finished.connect(self.on_knowledge_build_finished)
+        self.controller.knowledge_build_error.connect(self.on_knowledge_build_error)
+        self.controller.knowledge_build_cancelled.connect(self.on_knowledge_build_cancelled)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setMinimumSize(1400, 780)
         self.resize(1422, 800)
@@ -1828,7 +1834,7 @@ class SettingsWindowRevamp(QWidget):
         self.btn_close.setText("✕")
         self.btn_close.setFixedSize(36, 36)
         self.btn_close.setCursor(Qt.PointingHandCursor)
-        self.btn_close.clicked.connect(self.hide)
+        self.btn_close.clicked.connect(self.on_cancel_clicked)
         top_row.addWidget(self.btn_close)
         top.addLayout(top_row)
 
@@ -2276,7 +2282,9 @@ class SettingsWindowRevamp(QWidget):
         self.input_knowledge_title.setPlaceholderText(
             translation_tools.ui_text(lang, "settings_knowledge_placeholder")
         )
-        self.btn_knowledge_action.setText(self._knowledge_action_text())
+        if not self._knowledge_is_building():
+            self.btn_knowledge_action.setText(self._knowledge_action_text())
+            self._refresh_knowledge_status()
         self.btn_reset_defaults.setText(f"↻  {translation_tools.ui_text(lang, 'settings_reset_defaults')}")
         self.btn_cancel.setText(translation_tools.ui_text(lang, "settings_cancel"))
         self.btn_save.setText(f"✓  {translation_tools.ui_text(lang, 'settings_save')}")
@@ -2343,9 +2351,16 @@ class SettingsWindowRevamp(QWidget):
         self.hide()
 
     def on_cancel_clicked(self):
+        if self._knowledge_is_building():
+            cancel = getattr(self.controller, "cancel_knowledge_research", None)
+            if callable(cancel):
+                cancel()
         self._knowledge_title_dirty = False
         self._sync_knowledge_from_controller(force=True)
         self.hide()
+
+    def _knowledge_is_building(self):
+        return bool(self.btn_knowledge_action.property("knowledgeBuilding"))
 
     def _knowledge_action_text(self):
         lang = self._current_ui_language()
@@ -2360,8 +2375,13 @@ class SettingsWindowRevamp(QWidget):
     def _refresh_knowledge_status(self):
         title = self.input_knowledge_title.text().strip()
         lang = self._current_ui_language()
+        if self._knowledge_is_building():
+            self.input_knowledge_title.setEnabled(False)
+            self.btn_knowledge_action.setEnabled(False)
+            return
+        self.input_knowledge_title.setEnabled(True)
         pack = self._knowledge_pack_for_title(title)
-        self.btn_knowledge_action.setEnabled(bool(title) and not self.btn_knowledge_action.property("knowledgeBuilding"))
+        self.btn_knowledge_action.setEnabled(bool(title))
         self.btn_knowledge_action.setText(self._knowledge_action_text())
         if not title:
             self.lbl_knowledge_status.setText("")
@@ -2371,18 +2391,24 @@ class SettingsWindowRevamp(QWidget):
             self.lbl_knowledge_status.setText(translation_tools.ui_text(lang, "settings_knowledge_missing"))
 
     def on_knowledge_title_changed(self, _text):
+        if self._knowledge_is_building():
+            return
         self._knowledge_title_dirty = True
         self._refresh_knowledge_status()
 
     def on_knowledge_action_clicked(self):
         title = self.input_knowledge_title.text().strip()
-        if not title:
+        if not title or self._knowledge_is_building():
             self._refresh_knowledge_status()
             return
         starter = getattr(self.controller, "start_knowledge_research", None)
         self.btn_knowledge_action.setProperty("knowledgeBuilding", True)
+        self.input_knowledge_title.setEnabled(False)
         self.btn_knowledge_action.setEnabled(False)
         self.btn_knowledge_action.setText(
+            translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_building")
+        )
+        self.lbl_knowledge_status.setText(
             translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_building")
         )
         started = False
@@ -2397,7 +2423,44 @@ class SettingsWindowRevamp(QWidget):
                 translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_unavailable")
             )
 
+    def on_knowledge_build_progress(self, progress):
+        if not self._knowledge_is_building():
+            return
+        try:
+            percent = max(0, min(100, int(getattr(progress, "percent", 0) or 0)))
+        except (TypeError, ValueError):
+            percent = 0
+        self.lbl_knowledge_status.setText(
+            translation_tools.ui_text(
+                self._current_ui_language(),
+                "settings_knowledge_progress",
+                percent=percent,
+            )
+        )
+
+    def _finish_knowledge_build_ui(self):
+        self.btn_knowledge_action.setProperty("knowledgeBuilding", False)
+        self.input_knowledge_title.setEnabled(True)
+        self._refresh_knowledge_status()
+
+    def on_knowledge_build_finished(self, _title, _pack):
+        self._finish_knowledge_build_ui()
+        self.lbl_knowledge_status.setText(
+            translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_ready")
+        )
+
+    def on_knowledge_build_error(self, _job_id, _error):
+        self._finish_knowledge_build_ui()
+        self.lbl_knowledge_status.setText(
+            translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_failed")
+        )
+
+    def on_knowledge_build_cancelled(self, _job_id):
+        self._finish_knowledge_build_ui()
+
     def _sync_knowledge_from_controller(self, force=False):
+        if self._knowledge_is_building():
+            return
         if not force and getattr(self, "_knowledge_title_dirty", False):
             self._refresh_knowledge_status()
             return
@@ -2716,6 +2779,10 @@ class Controller(QWidget):
     DEFAULT_SCREENSHOT_GEMMA_PROMPT = translation_tools.DEFAULT_SCREENSHOT_SYSTEM_PROMPT
 
     request_scan = Signal()
+    knowledge_build_progress = Signal(object)
+    knowledge_build_finished = Signal(str, object)
+    knowledge_build_error = Signal(str, object)
+    knowledge_build_cancelled = Signal(str)
 
     def __init__(self, overlay):
         super().__init__()
@@ -2760,6 +2827,9 @@ class Controller(QWidget):
         self.local_multimodal_cpu_only = False
         self.local_model_state = "stopped"
         self.local_model_detail = ""
+        self.knowledge_build_worker = None
+        self.knowledge_build_service = None
+        self.knowledge_build_title = ""
         self.local_vision_state = "stopped"
         self.local_vision_detail = ""
         self.japanese_ocr_rescue_enabled = False
@@ -3083,9 +3153,75 @@ class Controller(QWidget):
         self._load_knowledge_pack_for_title(normalized)
         return self.active_knowledge_pack
 
-    def start_knowledge_research(self, _title):
-        """Hook for the future injected DDGS/Jina/Gemma builder; fail open for now."""
-        return False
+    def start_knowledge_research(self, title):
+        """Start an explicit DDGS -> Jina -> Gemma4 candidate build."""
+        normalized_title = " ".join(str(title or "").split())[:240]
+        if not normalized_title:
+            return False
+        current_worker = getattr(self, "knowledge_build_worker", None)
+        if current_worker is not None and current_worker.is_running():
+            return False
+        api_key = str(getattr(self.worker, "google_api_key", "") or "").strip()
+        if not api_key:
+            return False
+        try:
+            service = KnowledgeResearchService(
+                google_api_key=api_key,
+                max_sources=8,
+            )
+            builder = KnowledgeBuildWorker(
+                research_builder=lambda cancel_event: service.build_research_draft(
+                    normalized_title,
+                    cancel_event,
+                ),
+                extractor=lambda draft, cancel_event: service.extract_candidate(
+                    draft,
+                    cancel_event,
+                ),
+                store=self.knowledge_pack_store,
+                on_progress=self.knowledge_build_progress.emit,
+                on_finished=self._on_knowledge_build_finished,
+                on_error=self._on_knowledge_build_error,
+                on_cancelled=self.knowledge_build_cancelled.emit,
+            )
+        except Exception as exc:
+            logger.warning(f"[Knowledge] research setup failed: {exc}")
+            return False
+        self.knowledge_build_service = service
+        self.knowledge_build_worker = builder
+        self.knowledge_build_title = normalized_title
+        builder.start()
+        return True
+
+    def cancel_knowledge_research(self):
+        worker = getattr(self, "knowledge_build_worker", None)
+        return bool(worker is not None and worker.cancel())
+
+    def _on_knowledge_build_finished(self, result):
+        worker = getattr(self, "knowledge_build_worker", None)
+        if worker is None:
+            return
+        try:
+            # The explicit Research button is the owner-confirmation action. The
+            # resulting pack remains non-active until the Settings Save action.
+            saved = worker.promote(result, owner_confirmed=True)
+            pack = self.knowledge_pack_store.get_pack(
+                saved.get("pack_id"),
+                saved.get("revision"),
+            ) or saved
+            draft = getattr(result, "research_draft", None)
+            draft = draft if isinstance(draft, dict) else {}
+            title = str(
+                draft.get("title", "")
+                or getattr(self, "knowledge_build_title", "")
+                or ""
+            )
+            self.knowledge_build_finished.emit(title, pack)
+        except Exception as exc:
+            self._on_knowledge_build_error(result.job_id, exc)
+
+    def _on_knowledge_build_error(self, job_id, error):
+        self.knowledge_build_error.emit(str(job_id), error)
 
     def get_settings_payload(self):
         payload = {
@@ -4284,6 +4420,10 @@ class Controller(QWidget):
             )
 
     def close_app(self):
+        self.cancel_knowledge_research()
+        knowledge_worker = getattr(self, "knowledge_build_worker", None)
+        if knowledge_worker is not None:
+            knowledge_worker.wait_for_all(2.0)
         self.save_settings()
         if hasattr(self, 'worker'):
             self.worker.cleanup()

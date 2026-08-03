@@ -396,6 +396,34 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             raise last_exc
         raise RuntimeError("request_failed")
 
+    def generate_structured_text(
+        self,
+        prompt: str,
+        *,
+        max_output_tokens: int = 4096,
+        temperature: float = 0.1,
+    ) -> str:
+        """Request bounded JSON text for explicit Knowledge research operations."""
+        normalized_prompt = str(prompt or "").strip()
+        if not normalized_prompt:
+            raise ValueError("knowledge_prompt_empty")
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+        model_name = self.normalize_gemma_model(self.gemma_model)
+        if not self._can_call(model_name):
+            raise ValueError("gemma_rate_limited")
+        payload = self._request(
+            model_name,
+            normalized_prompt,
+            max_output_tokens=max(1, min(8192, int(max_output_tokens))),
+            temperature=max(0.0, min(1.0, float(temperature))),
+            response_mime_type="application/json",
+        )
+        raw_text = extract_gemma_text(payload).strip()
+        if not raw_text:
+            raise ValueError("empty_structured_response")
+        return raw_text
+
     def _stream_request(self, model_name: str, prompt: str, *, image_parts=None, max_output_tokens: int = 1024, temperature: float = 0.2):
         """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
         req_body = {
