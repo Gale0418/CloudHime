@@ -50,8 +50,9 @@ def test_fuzzy_matching_is_bounded_and_short_queries_do_not_match():
 
 
 def test_limits_and_invalid_requests_are_explicit():
-    data = pack(*(entry(f"Term {index}") for index in range(12)))
-    assert len(retrieve(data, "Term 1", max_results=1)) == 1
+    data = pack(*(entry(f"Term {index}", aliases=["Term"]) for index in range(12)))
+    assert len(retrieve(data, "Term", max_results=1)) == 1
+    assert len(retrieve(data, "Term", max_results=2)) == 2
     with pytest.raises(KnowledgeRetrievalError, match="max_results"):
         retrieve(data, "Term", max_results=0)
     with pytest.raises(KnowledgeRetrievalError, match="query"):
@@ -91,3 +92,12 @@ def test_source_ids_are_bounded_and_match_type_is_line_safe():
     context = build_evidence_context((hit,))
     assert "match=fuzzy INJECT" in context
     assert "match=fuzzy\nINJECT" not in context
+
+def test_contains_match_recovers_terms_inside_ocr_sentence():
+    hits = retrieve(pack(entry("聖騎士")), "聖騎士の攻撃")
+    assert hits[0].match_type == "contains"
+    assert hits[0].name == "聖騎士"
+
+def test_fuzzy_matching_rejects_oversized_comparisons():
+    oversized = entry("a" * 2_000, description=None, source_ids=[])
+    assert retrieve(pack(oversized), "a" * 256, fuzzy_threshold=0.1) == ()

@@ -7,6 +7,7 @@
 # ==========================================
 
 import os
+from copy import deepcopy
 import sys
 from pathlib import Path
 from cloudhime_logging import logger
@@ -76,6 +77,7 @@ from ocr_refinement import (
 )
 import translation_helpers as translation_tools
 from exact_image_cache import ExactImageCache
+from knowledge_retrieval import pack_revision_token
 import localization
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
@@ -214,6 +216,8 @@ class OCRWorker(QObject):
         self.hud_memory = OrderedDict()
         self.preferred_text_memory = OrderedDict()
         self.exact_image_cache = ExactImageCache(max_entries=4, max_bytes=32 * 1024 * 1024)
+        self.active_knowledge_pack = None
+        self.knowledge_revision_token = "knowledge-pack:none"
         self.gemma_call_timestamps = {model_name: [] for model_name in SUPPORTED_GEMMA_MODEL_NAMES}
         self._translation_registry_batch_depth = 0
         self._translation_registry_batch_dirty = False
@@ -729,6 +733,28 @@ class OCRWorker(QObject):
         self.last_results = []
         self.last_provider = ""
 
+    def set_knowledge_pack(self, pack):
+        """Set the active pack snapshot and invalidate all translation/image memories."""
+        if pack is None:
+            normalized = None
+            revision_token = "knowledge-pack:none"
+        else:
+            normalized = deepcopy(dict(pack))
+            revision_token = pack_revision_token(normalized)
+        if revision_token == getattr(self, "knowledge_revision_token", "knowledge-pack:none"):
+            return
+        for provider in (
+            getattr(self, "gemma_translation_provider", None),
+            getattr(self, "local_gemma_provider", None),
+            getattr(self, "local_multimodal_provider", None),
+        ):
+            setter = getattr(provider, "set_knowledge_pack", None)
+            if setter is not None:
+                setter(normalized)
+        self.active_knowledge_pack = normalized
+        self.knowledge_revision_token = revision_token
+        self._clear_translation_memories()
+
     def _exact_image_cache_context(self, offset_x, offset_y):
         region = getattr(self, "scan_region", None)
         if region is None:
@@ -753,6 +779,7 @@ class OCRWorker(QObject):
 
         return (
             "exact-image-v1",
+            getattr(self, "knowledge_revision_token", "knowledge-pack:none"),
             getattr(self, "scan_mode", SCAN_MODE_FULLSCREEN),
             getattr(self, "region_render_mode", REGION_RENDER_BUBBLE),
             region_key,
