@@ -199,3 +199,53 @@ def test_compare_conditions_exposes_per_repeat_regression():
         "repeats_without_regression": 1,
     }
     assert [item["page_regression"]["regressed_pages"] for item in comparison["repeat_deltas"]] == [1, 0]
+
+def test_load_suite_rejects_unconfirmed_ground_truth_manifest(tmp_path):
+    image = tmp_path / "draft.png"
+    image.write_bytes(b"draft")
+    manifest = tmp_path / "draft.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "status": "draft_requires_owner_confirmation",
+                "ground_truth_eligible": False,
+                "cases": [{"image": "draft.png", "anchors": ["文字"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ground-truth eligible"):
+        evaluator.load_suite(manifest)
+
+def test_load_suite_rejects_false_ground_truth_without_status(tmp_path):
+    manifest = tmp_path / "draft.json"
+    manifest.write_text(
+        json.dumps({"ground_truth_eligible": False, "cases": [{"image": "missing.png", "anchors": ["文字"]}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ground-truth eligible"):
+        evaluator.load_suite(manifest)
+
+
+def test_load_suite_rejects_non_boolean_ground_truth_flag(tmp_path):
+    manifest = tmp_path / "draft.json"
+    manifest.write_text(
+        json.dumps({"ground_truth_eligible": "false", "cases": [{"image": "missing.png", "anchors": ["文字"]}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must be a boolean"):
+        evaluator.load_suite(manifest)
+
+
+def test_load_suite_rejects_normalized_draft_status(tmp_path):
+    manifest = tmp_path / "draft.json"
+    manifest.write_text(
+        json.dumps({"status": "  DRAFT_REQUIRES_OWNER_CONFIRMATION  ", "cases": [{"image": "missing.png", "anchors": ["文字"]}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ground-truth eligible"):
+        evaluator.load_suite(manifest)

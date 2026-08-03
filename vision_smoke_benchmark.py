@@ -264,6 +264,7 @@ def run_smoke(
             rescue_first_similarity = None
             rescue_second_similarity = None
             rescue_shadow_actual = ""
+            rescue_error = ""
             try:
                 stage_started = time.perf_counter()
                 try:
@@ -296,39 +297,47 @@ def run_smoke(
                     postprocess_ms = (time.perf_counter() - stage_started) * 1000.0
 
                 if japanese_rescue:
-                    source_image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-                    if source_image is not None and rescue_gate(
-                        actual,
-                        image_width=source_image.shape[1],
-                        image_height=source_image.shape[0],
-                    ):
-                        rescue_stage = time.perf_counter()
-                        candidate = japanese_rescuer.run(source_image)
-                        meiki_ms = (time.perf_counter() - rescue_stage) * 1000.0
-                        rescue_candidate = candidate.text
-                        if is_usable_meiki_candidate(candidate, actual):
-                            rescue_triggered = True
+                    try:
+                        source_image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                        if source_image is not None and rescue_gate(
+                            actual,
+                            image_width=source_image.shape[1],
+                            image_height=source_image.shape[0],
+                        ):
                             rescue_stage = time.perf_counter()
-                            rescued = provider.transcribe_screenshot(
-                                parts,
-                                ocr_prompt=ocr_prompt,
-                                source_text_hint=build_verification_hint(candidate),
-                            ).text.strip()
-                            rescue_request_ms = (time.perf_counter() - rescue_stage) * 1000.0
-                            model_request_ms += rescue_request_ms
-                            decision_started = time.perf_counter()
-                            decision = decide_rescue_text(actual, rescued, candidate)
-                            postprocess_ms += (time.perf_counter() - decision_started) * 1000.0
-                            rescue_second = rescued
-                            rescue_decision_completed = True
-                            rescue_trusted_text = str(getattr(decision, "trusted_text", "") or "")
-                            rescue_first_similarity = getattr(decision, "first_similarity", None)
-                            rescue_second_similarity = getattr(decision, "second_similarity", None)
-                            actual = decision.selected_text
-                            rescue_adopted = bool(decision.adopted)
-                            rescue_shadow_actual = (
-                                rescue_second if rescue_adopted else rescue_candidate
-                            )
+                            candidate = japanese_rescuer.run(source_image)
+                            meiki_ms = (time.perf_counter() - rescue_stage) * 1000.0
+                            rescue_candidate = candidate.text
+                            if is_usable_meiki_candidate(candidate, actual):
+                                rescue_triggered = True
+                                rescue_stage = time.perf_counter()
+                                try:
+                                    rescued = provider.transcribe_screenshot(
+                                        parts,
+                                        ocr_prompt=ocr_prompt,
+                                        source_text_hint=build_verification_hint(candidate),
+                                    ).text.strip()
+                                except Exception as exc:
+                                    rescue_error = f"{type(exc).__name__}: {exc}"
+                                else:
+                                    decision_started = time.perf_counter()
+                                    decision = decide_rescue_text(actual, rescued, candidate)
+                                    postprocess_ms += (time.perf_counter() - decision_started) * 1000.0
+                                    rescue_second = rescued
+                                    rescue_trusted_text = str(getattr(decision, "trusted_text", "") or "")
+                                    rescue_first_similarity = getattr(decision, "first_similarity", None)
+                                    rescue_second_similarity = getattr(decision, "second_similarity", None)
+                                    actual = decision.selected_text
+                                    rescue_adopted = bool(decision.adopted)
+                                    rescue_decision_completed = True
+                                    rescue_shadow_actual = (
+                                        rescue_second if rescue_adopted else rescue_candidate
+                                    )
+                                finally:
+                                    rescue_request_ms = (time.perf_counter() - rescue_stage) * 1000.0
+                                    model_request_ms += rescue_request_ms
+                    except Exception as exc:
+                        rescue_error = f"{type(exc).__name__}: {exc}"
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
             latency_ms = (time.perf_counter() - request_started) * 1000.0
@@ -343,6 +352,7 @@ def run_smoke(
                     "rescue_first_similarity": rescue_first_similarity,
                     "rescue_second_similarity": rescue_second_similarity,
                     "rescue_shadow_actual": rescue_shadow_actual,
+                    "rescue_error": rescue_error,
                     "latency_ms": latency_ms,
                     "hint_ms": hint_ms,
                     "image_encode_ms": image_encode_ms,
@@ -373,6 +383,7 @@ def run_smoke(
                         "match_score": score_match(actual, case),
                         "latency_ms": latency_ms,
                         "error": error,
+                        "rescue_error": rescue_error,
                     }
                 )
     finally:

@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 import settings_store
@@ -93,3 +94,47 @@ def test_save_settings_does_not_fallback_to_install_directory(monkeypatch, tmp_p
         save_settings_data(paths, {"language": "en"})
 
     assert not (install_dir / "cloudhime_settings.json").exists()
+
+def test_normalize_settings_payload_sanitizes_local_gemma_parameters():
+    normalized = normalize_settings_payload(
+        {
+            "local_gemma_temperature": "oops",
+            "local_gemma_repeat_penalty": None,
+        },
+        region_opacity=40,
+    )
+    low = normalize_settings_payload(
+        {"local_gemma_temperature": -1, "local_gemma_repeat_penalty": 0.5},
+        region_opacity=40,
+    )
+    high = normalize_settings_payload(
+        {"local_gemma_temperature": 2, "local_gemma_repeat_penalty": 3},
+        region_opacity=40,
+    )
+
+    assert normalized["local_gemma_temperature"] == 0.2
+    assert normalized["local_gemma_repeat_penalty"] == 1.15
+    assert low["local_gemma_temperature"] == 0.0
+    assert low["local_gemma_repeat_penalty"] == 1.0
+    assert high["local_gemma_temperature"] == 1.0
+    assert high["local_gemma_repeat_penalty"] == 2.0
+
+
+def test_load_settings_prefers_appdata_on_equal_mtime(tmp_path):
+    install_dir = tmp_path / "install"
+    appdata_dir = tmp_path / "appdata"
+    install_dir.mkdir()
+    paths = create_settings_paths(str(install_dir), str(appdata_dir))
+    appdata_file = appdata_dir / "CloudHime" / "cloudhime_settings.json"
+    appdata_file.parent.mkdir()
+    appdata_file.write_text('{"source": "appdata"}', encoding="utf-8")
+    legacy_file = install_dir / "cloudhime_settings.json"
+    legacy_file.write_text('{"source": "legacy"}', encoding="utf-8")
+    timestamp = 1_700_000_000
+    os.utime(appdata_file, (timestamp, timestamp))
+    os.utime(legacy_file, (timestamp, timestamp))
+
+    payload, loaded_from = load_settings_data(paths)
+
+    assert payload == {"source": "appdata"}
+    assert loaded_from == str(appdata_file)

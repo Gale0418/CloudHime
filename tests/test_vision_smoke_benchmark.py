@@ -300,6 +300,10 @@ def test_japanese_rescue_rejection_keeps_actual_and_shadows_candidate(
     assert case_result["baseline_actual"] == "baseline"
     assert case_result["shadow_actual"] == ("baseline" if second_raises else "候選")
     assert result["rescue_shadow_candidate_fallbacks"] == (0 if second_raises else 1)
+    assert bool(image_result["rescue_error"]) is second_raises
+    assert result["successful_images"] == 1
+    assert result["successful_cases"] == 1
+    assert benchmark._is_complete(result)
 
 
 def test_japanese_rescue_without_trigger_does_not_add_provider_call(monkeypatch, tmp_path) -> None:
