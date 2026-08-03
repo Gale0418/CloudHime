@@ -40,7 +40,19 @@ def _run_command(command: list[str]) -> tuple[bool, str]:
     return completed.returncode == 0, output
 
 
+def _is_packaged_runtime() -> bool:
+    """Optional Python packages cannot be installed from a frozen release bundle."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def _packaged_install_message() -> str:
+    return "Optional OCR backend installation is unavailable in packaged builds. Use Windows OCR or install the backend in source mode."
+
+
 def install_tesseract_runtime() -> tuple[bool, str]:
+    if _is_packaged_runtime():
+        return False, _packaged_install_message()
+
     winget = shutil.which("winget")
     if winget:
         command = [
@@ -96,6 +108,8 @@ def install_backend_packages(name: str) -> Tuple[bool, str]:
         return False, "Unknown OCR backend."
     if backend_name == "windows":
         return True, "Windows OCR does not need installation."
+    if _is_packaged_runtime():
+        return False, _packaged_install_message()
 
     messages: list[str] = []
     if spec.pip_packages:
