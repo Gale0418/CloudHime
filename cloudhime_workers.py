@@ -420,21 +420,23 @@ class OCRWorker(QObject):
             embedded_runtime = getattr(self, "local_vision_runtime", None)
             runtime_state = getattr(embedded_runtime, "_state", None)
             has_embedded_runtime = embedded_runtime is not None
-            uses_shared_local_runtime = (
-                selected_local_model
-                and config.local_multimodal_enabled
-                and has_embedded_runtime
-                and (runtime_state is None or runtime_state.name != "failed")
-            )
+            local_text_runtime_required = bool(config.gemma_enabled and selected_local_model)
+            self._local_text_runtime_required = local_text_runtime_required
+
+            # Production local text and vision share the HTTP llama-server.
+            # Keep the in-process provider disabled during this transition; its
+            # class remains available for compatibility and later removal.
             self.local_gemma_provider.update_config(
                 gemma_prompt=config.gemma_prompt,
                 target_lang=config.target_lang,
-                enabled=bool(config.gemma_enabled and selected_local_model and not uses_shared_local_runtime),
+                enabled=False,
                 temperature=config.local_gemma_temperature,
                 repeat_penalty=config.local_gemma_repeat_penalty,
             )
             self.local_multimodal_provider.target_lang = config.target_lang
-            self.local_multimodal_provider.enabled = config.local_multimodal_enabled
+            self.local_multimodal_provider.enabled = bool(
+                config.local_multimodal_enabled or local_text_runtime_required
+            )
             self.local_multimodal_provider.timeout_seconds = config.local_multimodal_timeout_seconds
             if has_embedded_runtime:
                 if runtime_state is None or runtime_state.name != "ready":
@@ -447,17 +449,20 @@ class OCRWorker(QObject):
                     config.local_multimodal_model,
                     ready=config.local_multimodal_enabled,
                 )
-            active_gemma = self.local_gemma_provider if selected_local_model else self.gemma_translation_provider
-            active_gemma.name = "gemma"
+
+            if selected_local_model:
+                active_gemma = self.local_multimodal_provider
+            else:
+                active_gemma = self.gemma_translation_provider
+                active_gemma.name = "gemma"
             self.translation_registry = TranslationProviderRegistry([
                 active_gemma,
                 self.google_translation_provider,
                 self.local_multimodal_provider,
             ])
-            if uses_shared_local_runtime:
+            if selected_local_model:
                 self.translation_registry.register("gemma", self.local_multimodal_provider)
             self.translation_registry_error_code = ""
-            self.request_local_model_load()
             self.request_local_vision_start()
         except Exception as exc:
             self.translation_registry_error_code = "translation_registry_refresh_failed"
@@ -603,7 +608,9 @@ class OCRWorker(QObject):
             )
         return self.local_vision_runtime.start()
     def request_local_vision_start(self):
-        if not self.use_gemma_translation or not self.local_multimodal_enabled:
+        if not self.use_gemma_translation or not (
+            self.local_multimodal_enabled or getattr(self, "_local_text_runtime_required", False)
+        ):
             return
         if getattr(self, "local_vision_runtime", None) is None:
             OCRWorker._emit_local_vision_status(self, "failed", "runtime_missing")
@@ -665,11 +672,9 @@ class OCRWorker(QObject):
             state = future.result()
         except Exception as exc:
             self.local_multimodal_provider.update_runtime("", "", False)
-            OCRWorker._restore_configured_text_provider(self)
-
             OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
             return
-            
+
         self.local_multimodal_provider.update_runtime(
             state.base_url if state.name == "ready" else "",
             getattr(self, "local_multimodal_model", "gemma-3-4b-it") if state.name == "ready" else "",
@@ -677,9 +682,6 @@ class OCRWorker(QObject):
         )
         if state.name == "ready":
             self._refresh_translation_registry()
-        else:
-            OCRWorker._restore_configured_text_provider(self)
-            self.request_local_model_load()
         OCRWorker._emit_local_vision_status(self, state.name, state.detail)
 
     request_local_vision_load = request_local_vision_start
@@ -4028,7 +4030,3 @@ class OCRWorker(QObject):
             self.last_results = []
         self.finished.emit([])
         self.show_ui.emit()
-
-
-
-
