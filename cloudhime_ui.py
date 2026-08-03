@@ -94,6 +94,7 @@ from translation_settings_panel import TranslationSettingsPanel
 from knowledge_pack_store import KnowledgePackStore, create_knowledge_pack_paths
 from knowledge_builder_worker import KnowledgeBuildWorker
 from knowledge_research_service import KnowledgeResearchService
+from secret_store import SecretStore, SecretStoreError
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -118,6 +119,7 @@ HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_GEMMA_MODEL = WORKER_DEFAULT_MODEL
 SETTINGS_PATHS = create_settings_paths(os.path.dirname(__file__))
+API_KEY_SECRET_PATH = appdata_companion_path(SETTINGS_PATHS, "google_api_key.dpapi")
 APPDATA_ENV_PATH = appdata_companion_path(SETTINGS_PATHS, ".env")
 LEGACY_ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 UI_ERROR_LOG_PATH = appdata_companion_path(SETTINGS_PATHS, "cloudhime_ui_errors.log")
@@ -2836,6 +2838,8 @@ class Controller(QWidget):
         self.active_work_title = ""
         self.active_knowledge_pack = None
         self.knowledge_pack_store = KnowledgePackStore(create_knowledge_pack_paths(SETTINGS_PATHS))
+        self.secret_store = SecretStore(API_KEY_SECRET_PATH)
+        self.pending_api_key = None
         self.ui_language = localization.DEFAULT_UI_LANGUAGE
         self.cooldown_total_ms = 5000
         self.cooldown_end_time = 0.0
@@ -2855,6 +2859,9 @@ class Controller(QWidget):
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
         self.save_timer.timeout.connect(self.save_settings)
+        self.api_key_save_timer = QTimer(self)
+        self.api_key_save_timer.setSingleShot(True)
+        self.api_key_save_timer.timeout.connect(self._persist_pending_api_key)
         self.gemma_prompt_timer = QTimer(self)
         self.gemma_prompt_timer.setSingleShot(True)
         self.gemma_prompt_timer.timeout.connect(self._apply_pending_gemma_prompt)
@@ -3056,6 +3063,21 @@ class Controller(QWidget):
     def schedule_save_settings(self):
         if hasattr(self, "save_timer"):
             self.save_timer.start(250)
+
+    def _persist_pending_api_key(self):
+        pending = getattr(self, "pending_api_key", None)
+        if pending is None:
+            return True
+        try:
+            if pending:
+                self.secret_store.set(pending)
+            else:
+                self.secret_store.delete()
+        except SecretStoreError as exc:
+            logger.error("Failed to persist encrypted API key: %s", exc)
+            return False
+        self.pending_api_key = None
+        return True
 
     def _tr(self, key, fallback=None, **params):
         return localization.tr(key, self.ui_language, fallback=fallback, **params)
@@ -3352,16 +3374,25 @@ class Controller(QWidget):
             self.region_relief_font_pt = safe_int(settings.get("region_relief_font_pt", self.region_relief_font_pt), self.region_relief_font_pt, MIN_BUBBLE_FONT_PT, 48)
             self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
+            secret_api_key = ""
+            try:
+                secret_api_key = self.secret_store.get()
+            except SecretStoreError as exc:
+                logger.warning("Failed to read encrypted API key store: %s", exc)
+
             env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
-            
-            # Read the AppData copy first, with the install-adjacent file kept as a migration fallback.
             if not env_api_key:
                 env_api_key = _read_api_key_from_env_files(
                     (APPDATA_ENV_PATH, LEGACY_ENV_PATH)
                 )
 
             legacy_api_key = str(settings.get("google_api_key", "") or "").strip()
-            api_key = env_api_key or legacy_api_key
+            api_key = secret_api_key or env_api_key or legacy_api_key
+            if not secret_api_key and api_key:
+                try:
+                    self.secret_store.set(api_key)
+                except SecretStoreError as exc:
+                    logger.warning("Failed to migrate legacy API key to encrypted store: %s", exc)
             self.worker.set_google_api_key(api_key)
             if self.input_api_key.text() != api_key:
                 self.input_api_key.blockSignals(True)
@@ -3662,24 +3693,9 @@ class Controller(QWidget):
 
     def on_api_key_changed(self, text):
         self.worker.set_google_api_key(text)
-        
-        # Store user secrets beside settings, never in the read-only package directory.
-        env_path = APPDATA_ENV_PATH
-        try:
-            os.makedirs(os.path.dirname(env_path), exist_ok=True)
-            env_vars = {}
-            if os.path.exists(env_path):
-                with open(env_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if "=" in line:
-                            k, v = line.strip().split("=", 1)
-                            env_vars[k] = v
-            env_vars[API_KEY_ENV_VAR] = text.strip()
-            with open(env_path, "w", encoding="utf-8") as f:
-                for k, v in env_vars.items():
-                    f.write(f"{k}={v}\n")
-        except Exception as e:
-            logger.error(f"Failed to save API key to AppData: {e}")
+        self.pending_api_key = str(text or "").strip()
+        if hasattr(self, "api_key_save_timer"):
+            self.api_key_save_timer.start(500)
 
         if self.input_api_key.text() != text:
             self.input_api_key.blockSignals(True)
@@ -4419,6 +4435,7 @@ class Controller(QWidget):
         knowledge_worker = getattr(self, "knowledge_build_worker", None)
         if knowledge_worker is not None:
             knowledge_worker.wait_for_all(2.0)
+        self._persist_pending_api_key()
         self.save_settings()
         if hasattr(self, 'worker'):
             self.worker.cleanup()

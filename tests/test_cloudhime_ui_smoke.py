@@ -265,7 +265,7 @@ def test_controller_japanese_rescue_status_is_bilingual(qtbot):
         assert controller.charge_bar.progress == 40
         assert expected in controller.charge_bar.label
         assert expected in messages[-1]
-def test_api_key_is_persisted_beside_appdata_settings(monkeypatch, tmp_path):
+def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypatch, tmp_path):
     import cloudhime_ui
 
     class FakeLineEdit:
@@ -281,10 +281,22 @@ def test_api_key_is_persisted_beside_appdata_settings(monkeypatch, tmp_path):
         def setText(self, value):
             self.value = value
 
+    class FakeSecretStore:
+        def __init__(self):
+            self.value = None
+
+        def set(self, value):
+            self.value = value
+
+        def delete(self):
+            self.value = None
+
+    store = FakeSecretStore()
     env_path = tmp_path / "CloudHime" / ".env"
     monkeypatch.setattr(cloudhime_ui, "APPDATA_ENV_PATH", str(env_path))
 
     controller = Controller.__new__(Controller)
+    controller.secret_store = store
     controller.worker = SimpleNamespace(
         google_api_key="",
         use_gemma_translation=False,
@@ -296,8 +308,10 @@ def test_api_key_is_persisted_beside_appdata_settings(monkeypatch, tmp_path):
     controller.toggle_ai_translation = lambda _enabled: None
 
     Controller.on_api_key_changed(controller, "secret-key")
-
-    assert env_path.read_text(encoding="utf-8") == f"{cloudhime_ui.API_KEY_ENV_VAR}=secret-key\n"
+    assert store.value is None
+    assert not env_path.exists()
+    Controller._persist_pending_api_key(controller)
+    assert store.value == "secret-key"
     assert controller.worker.google_api_key == "secret-key"
 
 def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):

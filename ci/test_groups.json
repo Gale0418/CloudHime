@@ -25,6 +25,7 @@
         "tests/test_msix_packaging.py",
         "tests/test_provider_health.py",
         "tests/test_release_packaging.py",
+        "tests/test_secret_store.py",
         "tests/test_settings_store.py",
         "tests/test_translation_helpers.py",
         "tests/test_translation_providers.py"
