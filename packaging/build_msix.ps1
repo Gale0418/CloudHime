@@ -40,9 +40,14 @@ function Resolve-MakeAppx {
 
     $kitsRoot = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin"
     if (Test-Path -LiteralPath $kitsRoot) {
-        $candidate = Get-ChildItem -LiteralPath $kitsRoot -Filter "makeappx.exe" -Recurse -File |
-            Sort-Object FullName -Descending |
+        $candidates = @(Get-ChildItem -LiteralPath $kitsRoot -Filter "makeappx.exe" -Recurse -File |
+            Sort-Object FullName -Descending)
+        $candidate = $candidates |
+            Where-Object { $_.FullName -match 'x64[\\/]makeappx\.exe$' } |
             Select-Object -First 1
+        if (-not $candidate) {
+            $candidate = $candidates | Select-Object -First 1
+        }
         if ($candidate) {
             return $candidate.FullName
         }
