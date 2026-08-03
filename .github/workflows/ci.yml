@@ -74,7 +74,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         shell: pwsh
         run: |
-          $testFiles = '${{ matrix.paths }}' -split '\\s+' | Where-Object { $_ }
+          $testFiles = '${{ matrix.paths }}' -split '\s+' | Where-Object { $_ }
           if ('${{ matrix.name }}' -eq 'ui') {
             foreach ($testFile in $testFiles) {
               Write-Host "Running isolated UI test file: $testFile"
