@@ -170,6 +170,16 @@ def test_managed_assets_put_models_in_local_appdata_and_runtime_in_app(tmp_path)
     assert assets.projector_path.parent == assets.model_path.parent
 
 
+def test_gemma_manifest_uses_published_model_size():
+    """鎖定 Hugging Face revision 的實際 GGUF byte size，避免自我拒收。"""
+    spec = next(
+        spec
+        for spec in vision_assets_module.GEMMA_ASSET_MANIFEST
+        if spec.name == "gemma-3-4b-it.Q4_K_M.gguf"
+    )
+
+    assert spec.size == 2_489_757_856
+
 def test_preferred_assets_keep_complete_legacy_install(tmp_path, monkeypatch):
     app = tmp_path / "app"
     legacy = resolve_vision_assets(app)
