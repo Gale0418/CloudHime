@@ -50,8 +50,10 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Windows.FullTrustApplication" not in script
     assert "makeappx pack /d" in script
     build_exe = (root / "build_exe.bat").read_text(encoding="utf-8")
-    assert "THIRD_PARTY_NOTICES.md" in build_exe
-    assert r'--manifest "packaging\CloudHime.exe.manifest" ^' in build_exe
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+    assert "THIRD_PARTY_NOTICES.md" in spec
+    assert "manifest='packaging\\\\CloudHime.exe.manifest'" in spec
+    assert "CloudHime.spec" in build_exe
     exe_manifest = (root / "packaging" / "CloudHime.exe.manifest").read_text(encoding="utf-8")
     assert "<dpiAware>true/pm</dpiAware>" in exe_manifest
     assert "<dpiAwareness>PerMonitorV2</dpiAwareness>" in exe_manifest

@@ -79,10 +79,17 @@ for %%F in (runtime\ggml-cpu-*.dll) do (
 )
 
 rem CloudHime ships a lightweight Windows OCR build.
-rem Optional OCR backends are installed on demand from the app, so they stay out of the release bundle.
+rem Optional OCR backends are source-mode only; packaged builds do not install Python packages.
 python -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
   echo PyInstaller is not installed. Run "python -m pip install pyinstaller -r requirements.txt" first.
+  set "BUILD_EXIT_CODE=1"
+  goto :cleanup
+)
+
+python -c "import ddgs, lxml, primp, fake_useragent, certifi" >nul 2>&1
+if errorlevel 1 (
+  echo Missing DDGS runtime dependencies. Install requirements.txt before building the packaged release.
   set "BUILD_EXIT_CODE=1"
   goto :cleanup
 )
@@ -92,44 +99,7 @@ if exist "%ZIP_FILE%" del /f /q "%ZIP_FILE%"
 
 rem Keep the release independent from optional TensorFlow/Keras OCR environments.
 echo Building %APP_NAME% release...
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%APP_NAME%" ^
-  --exclude-module PyQt5 ^
-  --exclude-module PyQt6 ^
-  --exclude-module PySide2 ^
-  --hidden-import winrt.windows.media.ocr ^
-  --hidden-import winrt.windows.globalization ^
-  --hidden-import winrt.windows.graphics.imaging ^
-  --hidden-import winrt.windows.storage.streams ^
-  --exclude-module easyocr ^
-  --exclude-module rapidocr ^
-  --exclude-module rapidocr_onnxruntime ^
-  --exclude-module pytesseract ^
-  --exclude-module torch ^
-  --exclude-module torchvision ^
-  --exclude-module pandas ^
-  --exclude-module scipy ^
-  --exclude-module matplotlib ^
-  --exclude-module IPython ^
-  --exclude-module tensorflow ^
-  --exclude-module keras ^
-  --exclude-module h5py ^
-  --exclude-module tensorboard ^
-  --exclude-module jax ^
-  --exclude-module jaxlib ^
-  --exclude-module jupyter ^
-  --exclude-module jupyter_core ^
-  --exclude-module jupyter_client ^
-  --exclude-module ipykernel ^
-  --exclude-module pydantic ^
-  --exclude-module pydantic_core ^
-  --exclude-module lxml ^
-  --add-data "assets;assets" ^
-  --add-data "dictionary.json;." ^
-  --add-data "LICENSE;." ^
-  --add-data "THIRD_PARTY_NOTICES.md;." ^
-  --add-data "%RUNTIME_STAGE%;runtime" ^
-  --manifest "packaging\CloudHime.exe.manifest" ^
-  CloudHime.py
+python -m PyInstaller --noconfirm --clean CloudHime.spec
 if errorlevel 1 (
   set "BUILD_EXIT_CODE=1"
   goto :cleanup
