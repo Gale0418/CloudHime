@@ -1761,6 +1761,39 @@ class SettingsWindow(QWidget):
         self.old_pos = None
         super().mouseReleaseEvent(event)
 
+HISTORY_EXPORT_SCHEMA_VERSION = 1
+
+
+def _json_safe_history_value(value):
+    if isinstance(value, tuple):
+        return [_json_safe_history_value(item) for item in value]
+    if isinstance(value, list):
+        return [_json_safe_history_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe_history_value(item) for key, item in value.items()}
+    return value
+
+
+def build_translation_history_export_payload(cache):
+    records = []
+    for key, value in (cache or {}).items():
+        records.append({
+            "key": _json_safe_history_value(key),
+            "value": _json_safe_history_value(value),
+        })
+    payload = {"schema_version": HISTORY_EXPORT_SCHEMA_VERSION, "records": records}
+    try:
+        json.dumps(payload, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TypeError("translation_history_not_serializable") from exc
+    return payload
+
+
+def write_translation_history_export(path, cache):
+    payload = build_translation_history_export_payload(cache)
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(payload, fp, ensure_ascii=False, indent=2, allow_nan=False)
+
 class SettingsWindowRevamp(QWidget):
     def __init__(self, controller):
         super().__init__()
@@ -2757,18 +2790,16 @@ class SettingsWindowRevamp(QWidget):
 # ==========================================
     def export_history(self):
         try:
-            import json
-            cache = getattr(self.controller.worker, 'translation_cache', {})
+            cache = getattr(self.controller.worker, "translation_cache", {})
             if not cache:
                 QMessageBox.information(self, "提示", "目前沒有翻譯歷史紀錄。")
                 return
             path, _ = QFileDialog.getSaveFileName(self, "匯出翻譯歷史", "cloudhime_history.json", "JSON Files (*.json)")
             if path:
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(cache, f, ensure_ascii=False, indent=2)
+                write_translation_history_export(path, cache)
                 QMessageBox.information(self, "成功", f"翻譯歷史已匯出至 {path}")
-        except Exception as e:
-            QMessageBox.warning(self, "錯誤", f"匯出失敗: {e}")
+        except Exception as exc:
+            QMessageBox.warning(self, "錯誤", f"匯出失敗: {exc}")
 
 class Controller(QWidget):
 

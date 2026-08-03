@@ -37,25 +37,16 @@ def appdata_companion_path(paths: SettingsPaths, filename: str) -> str:
 
 
 def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None]:
-    candidates: list[tuple[float, dict[str, Any], str]] = []
+    # AppData is canonical whenever it contains a valid settings object.
     for settings_path in (paths.appdata_file, paths.legacy_file):
         try:
             with open(settings_path, "r", encoding="utf-8") as fp:
                 payload = json.load(fp)
             if isinstance(payload, dict):
-                try:
-                    mtime = os.path.getmtime(settings_path)
-                except Exception:
-                    mtime = 0.0
-                candidates.append((mtime, payload, settings_path))
+                return payload, settings_path
         except Exception:
             continue
-    if candidates:
-        candidates.sort(key=lambda item: (item[0], item[2] != paths.legacy_file))
-        _, payload, settings_path = candidates[-1]
-        return payload, settings_path
     return {}, None
-
 
 def save_settings_data(paths: SettingsPaths, payload: dict[str, Any]) -> None:
     target = paths.appdata_file
@@ -147,6 +138,22 @@ def resolve_ui_language(settings: dict[str, Any], fallback: str = localization.D
     return localization.normalize_ui_language(settings.get("ui_language", fallback), fallback=fallback)
 
 
+def coerce_bool(value: Any, fallback: bool = False) -> bool:
+    """Parse persisted booleans without treating the string "false" as true."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value in (0, 1):
+            return bool(value)
+        return fallback
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "yes", "on", "1"}:
+            return True
+        if normalized in {"false", "no", "off", "0", ""}:
+            return False
+    return fallback
+
 def normalize_settings_payload(
     payload: dict[str, Any],
     region_opacity: int,
@@ -174,9 +181,9 @@ def normalize_settings_payload(
     )
     normalized["local_gemma_temperature"] = clamp_local_gemma_temperature(normalized.get("local_gemma_temperature", 0.2))
     normalized["local_gemma_repeat_penalty"] = clamp_local_gemma_repeat_penalty(normalized.get("local_gemma_repeat_penalty", 1.15))
-    normalized["local_multimodal_enabled"] = bool(normalized.get("local_multimodal_enabled", False))
-    normalized["local_multimodal_cpu_only"] = bool(normalized.get("local_multimodal_cpu_only", False))
-    normalized["japanese_ocr_rescue_enabled"] = bool(normalized.get("japanese_ocr_rescue_enabled", False))
+    normalized["local_multimodal_enabled"] = coerce_bool(normalized.get("local_multimodal_enabled", False))
+    normalized["local_multimodal_cpu_only"] = coerce_bool(normalized.get("local_multimodal_cpu_only", False))
+    normalized["japanese_ocr_rescue_enabled"] = coerce_bool(normalized.get("japanese_ocr_rescue_enabled", False))
     normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")
     normalized["local_multimodal_model"] = str(normalized.get("local_multimodal_model", "") or "")
     normalized["local_multimodal_timeout_seconds"] = clamp_local_multimodal_timeout(

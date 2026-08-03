@@ -120,7 +120,7 @@ def test_normalize_settings_payload_sanitizes_local_gemma_parameters():
     assert high["local_gemma_repeat_penalty"] == 2.0
 
 
-def test_load_settings_prefers_appdata_on_equal_mtime(tmp_path):
+def test_load_settings_prefers_appdata_when_legacy_is_newer(tmp_path):
     install_dir = tmp_path / "install"
     appdata_dir = tmp_path / "appdata"
     install_dir.mkdir()
@@ -132,7 +132,7 @@ def test_load_settings_prefers_appdata_on_equal_mtime(tmp_path):
     legacy_file.write_text('{"source": "legacy"}', encoding="utf-8")
     timestamp = 1_700_000_000
     os.utime(appdata_file, (timestamp, timestamp))
-    os.utime(legacy_file, (timestamp, timestamp))
+    os.utime(legacy_file, (timestamp + 3600, timestamp + 3600))
 
     payload, loaded_from = load_settings_data(paths)
 
@@ -144,3 +144,33 @@ def test_normalize_settings_payload_sanitizes_active_work_title():
 
     assert normalized["active_work_title"] == "Princess Synergy"
     assert invalid["active_work_title"] == ""
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (True, True),
+        (False, False),
+        (1, True),
+        (0, False),
+        ("true", True),
+        ("false", False),
+        ("yes", True),
+        ("no", False),
+        ("on", True),
+        ("off", False),
+        ("unknown", False),
+    ],
+)
+def test_normalize_settings_payload_coerces_boolean_values(value, expected):
+    normalized = normalize_settings_payload(
+        {
+            "local_multimodal_enabled": value,
+            "local_multimodal_cpu_only": value,
+            "japanese_ocr_rescue_enabled": value,
+        },
+        region_opacity=40,
+    )
+
+    assert normalized["local_multimodal_enabled"] is expected
+    assert normalized["local_multimodal_cpu_only"] is expected
+    assert normalized["japanese_ocr_rescue_enabled"] is expected

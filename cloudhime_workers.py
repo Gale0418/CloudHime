@@ -82,6 +82,7 @@ import localization
 from model_catalog import WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
+from translation_contracts import TranslationResult
 from local_vision_runtime import LocalVisionRuntime
 from local_vision_assets import (
     ensure_vision_model_assets,
@@ -263,6 +264,7 @@ class OCRWorker(QObject):
         self.auto_threshold_refresh_interval_ms = DEFAULT_AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES * 60 * 1000
         self.last_auto_threshold_refresh_ms = 0.0
         self.translation_registry = None
+        self.translation_registry_error_code = ""
         
         # 狀態標記
         
@@ -404,8 +406,6 @@ class OCRWorker(QObject):
         try:
             config = self._build_translation_registry_config()
             self.google_translation_provider.set_target_lang(config.target_lang)
-            
-            # API Provider config
             self.gemma_translation_provider.update_config(
                 google_api_key=config.google_api_key,
                 gemma_model=config.gemma_model,
@@ -416,23 +416,26 @@ class OCRWorker(QObject):
                 auto_switch_enabled=config.gemma_auto_switch_enabled,
                 supported_models=config.supported_models,
             )
-            
-            # Local Provider config
-            self.local_gemma_provider.update_config(
-                gemma_prompt=config.gemma_prompt,
-                target_lang=config.target_lang,
-                gemma_enabled=config.gemma_enabled,
-                temperature=config.local_gemma_temperature,
-                repeat_penalty=config.local_gemma_repeat_penalty
-            )
-            
-            self.local_multimodal_provider.target_lang = config.target_lang
-            self.local_multimodal_provider.enabled = config.local_multimodal_enabled
-            self.local_multimodal_provider.timeout_seconds = config.local_multimodal_timeout_seconds
+            selected_local_model = config.gemma_model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"}
             embedded_runtime = getattr(self, "local_vision_runtime", None)
             runtime_state = getattr(embedded_runtime, "_state", None)
             has_embedded_runtime = embedded_runtime is not None
-            
+            uses_shared_local_runtime = (
+                selected_local_model
+                and config.local_multimodal_enabled
+                and has_embedded_runtime
+                and (runtime_state is None or runtime_state.name != "failed")
+            )
+            self.local_gemma_provider.update_config(
+                gemma_prompt=config.gemma_prompt,
+                target_lang=config.target_lang,
+                enabled=bool(config.gemma_enabled and selected_local_model and not uses_shared_local_runtime),
+                temperature=config.local_gemma_temperature,
+                repeat_penalty=config.local_gemma_repeat_penalty,
+            )
+            self.local_multimodal_provider.target_lang = config.target_lang
+            self.local_multimodal_provider.enabled = config.local_multimodal_enabled
+            self.local_multimodal_provider.timeout_seconds = config.local_multimodal_timeout_seconds
             if has_embedded_runtime:
                 if runtime_state is None or runtime_state.name != "ready":
                     self.local_multimodal_provider.update_runtime("", "", ready=False)
@@ -444,16 +447,8 @@ class OCRWorker(QObject):
                     config.local_multimodal_model,
                     ready=config.local_multimodal_enabled,
                 )
-            
-            uses_shared_local_runtime = (
-                config.gemma_model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"}
-                and config.local_multimodal_enabled
-                and has_embedded_runtime
-                and (runtime_state is None or runtime_state.name != "failed")
-            )
-            active_gemma = self.local_gemma_provider if config.gemma_model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"} else self.gemma_translation_provider
+            active_gemma = self.local_gemma_provider if selected_local_model else self.gemma_translation_provider
             active_gemma.name = "gemma"
-            
             self.translation_registry = TranslationProviderRegistry([
                 active_gemma,
                 self.google_translation_provider,
@@ -461,10 +456,12 @@ class OCRWorker(QObject):
             ])
             if uses_shared_local_runtime:
                 self.translation_registry.register("gemma", self.local_multimodal_provider)
+            self.translation_registry_error_code = ""
             self.request_local_model_load()
             self.request_local_vision_start()
-        except Exception:
-            self.translation_registry = None
+        except Exception as exc:
+            self.translation_registry_error_code = "translation_registry_refresh_failed"
+            logger.error(f"[TranslationRegistry] {self.translation_registry_error_code} type={type(exc).__name__}")
 
     def _prepare_and_load_local_model(self):
         assets = getattr(self, "_local_vision_assets", None)
@@ -705,6 +702,11 @@ class OCRWorker(QObject):
         cancel_event = getattr(self, "_local_model_cancel_event", None)
         if cancel_event is not None:
             cancel_event.set()
+        provider = getattr(self, "local_gemma_provider", None)
+        if provider is not None:
+            close = getattr(provider, "close", None)
+            if callable(close):
+                close()
         executor = getattr(self, "_local_model_executor", None)
         if executor is not None:
             try:
@@ -1294,10 +1296,6 @@ class OCRWorker(QObject):
             if not normalized_text:
                 return ""
             result = provider.translate(normalized_text)
-            self.log_translation_debug(
-                f"google single {'hit' if getattr(result, 'from_cache', False) else 'miss'} "
-                f"source={normalized_text!r}"
-            )
             return result.text
         return translation_tools.translate_text_google(
             text,
@@ -1525,23 +1523,33 @@ class OCRWorker(QObject):
             return list(items)
         return merge_google_lines_into_items(google_lines, items)
 
-    def translate_text_gemma(self, text):
+    def _translate_text_gemma_result(self, text):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
-            return ""
+            return TranslationResult(text="", provider="gemma")
         provider = self._get_translation_provider("gemma")
         if provider is not None:
             result = provider.translate(normalized_text)
-            provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
-            self.active_gemma_model = provider_model
+            reported_model = str(getattr(result, "model", None) or "").strip()
+            if reported_model in SUPPORTED_GEMMA_MODEL_NAMES:
+                self.active_gemma_model = reported_model
+            elif not self._is_local_model_active():
+                self.active_gemma_model = self.normalize_gemma_model(self.gemma_model)
             self.sync_gemma_call_timestamps_from_provider(provider)
-            return self.convert_to_trad(result.text)
+            return TranslationResult(
+                text=self.convert_to_trad(result.text),
+                provider=getattr(result, "provider", None) or getattr(provider, "name", "gemma"),
+                model=result.model,
+                raw_text=getattr(result, "raw_text", None),
+                from_cache=getattr(result, "from_cache", False),
+                requested_provider=getattr(result, "requested_provider", None),
+                fallback_reason=getattr(result, "fallback_reason", None),
+            )
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
         if not self.can_call_gemma(model_name):
             raise ValueError("gemma_rate_limited")
-
         target_lang = getattr(
             self,
             "translation_target_lang",
@@ -1551,42 +1559,35 @@ class OCRWorker(QObject):
         cache_key = ("gemma", model_name, normalized_text, target_lang, effective_prompt)
         cached = self.get_cached_translation(cache_key)
         if cached is not None:
-            return cached
-
+            return TranslationResult(text=cached, provider="gemma", model=model_name, from_cache=True)
         req_body = {
-            "contents": [{
-                "parts": [{
-                    "text": effective_prompt
-                }]
-            }],
+            "contents": [{"parts": [{"text": effective_prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
                 "topP": 0.9,
                 "topK": 32,
                 "maxOutputTokens": 1024,
-                "responseMimeType": "text/plain"
-            }
+                "responseMimeType": "text/plain",
+            },
         }
         req = request.Request(
             GOOGLE_API_ENDPOINT.format(model=model_name),
             data=json.dumps(req_body).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.google_api_key,
-            },
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.google_api_key},
             method="POST",
         )
         self.record_gemma_call(model_name)
         with request.urlopen(req, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
-
         translated = self.clean_model_output(self.extract_gemma_text(payload))
         if not translated:
             raise ValueError("empty_gemma_response")
-
         translated = self.convert_to_trad(translated)
         self.remember_translation(cache_key, translated)
-        return translated
+        return TranslationResult(text=translated, provider="gemma", model=model_name)
+
+    def translate_text_gemma(self, text):
+        return self._translate_text_gemma_result(text).text
 
     def translate_multimodal_gemma(self, image_parts, source_texts):
         if not source_texts:
@@ -1699,7 +1700,7 @@ class OCRWorker(QObject):
                 translated,
                 target_lang=self.translation_target_lang,
             )
-            primary_provider = provider_name or self.get_current_ai_provider()
+            primary_provider = getattr(result, "provider", None) or provider_name or self.get_current_ai_provider()
             if fallback_reason:
                 self._log_translation_fallback_reason(
                     fallback_reason,
@@ -1817,8 +1818,8 @@ class OCRWorker(QObject):
         return translated
 
     def translate_text_gemma_with_provider(self, text):
-        translated = self.translate_text_gemma(text)
-        return translated, self.get_current_ai_provider()
+        result = self._translate_text_gemma_result(text)
+        return result.text, result.provider
 
     def translate_text_preferred(self, text):
         normalized_text = normalize_ocr_text(text)
@@ -1837,8 +1838,7 @@ class OCRWorker(QObject):
             return "", ""
         if self.has_ai_text_provider():
             try:
-                translated = self.translate_text_gemma(normalized_text)
-                return translated, self.get_current_ai_provider()
+                return self.translate_text_gemma_with_provider(normalized_text)
             except (error.URLError, error.HTTPError, TimeoutError, ValueError):
                 pass
         translated = self.translate_text_google(normalized_text)
@@ -1855,10 +1855,10 @@ class OCRWorker(QObject):
         if self.has_ai_text_provider():
             combined_source = "\n".join(normalized_texts)
             try:
-                translated = self.translate_text_gemma(combined_source)
+                translated, provider = self.translate_text_gemma_with_provider(combined_source)
                 batch_result = self.split_translated_lines(translated, len(normalized_texts))
                 if len(batch_result) == len(normalized_texts):
-                    return batch_result, self.get_current_ai_provider()
+                    return batch_result, provider
             except (error.URLError, error.HTTPError, TimeoutError, ValueError):
                 pass
         batch_result = self.translate_text_google_batch(normalized_texts)

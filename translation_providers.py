@@ -633,8 +633,20 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
-            translated_text, raw_text = cached
-            return TranslationResult(text=str(translated_text), provider=self.name, model=model_name, raw_text=raw_text, from_cache=True)
+            if isinstance(cached, tuple) and len(cached) >= 5:
+                translated_text, raw_text, actual_provider, requested_provider, fallback_reason = cached
+            else:
+                translated_text, raw_text = cached
+                actual_provider, requested_provider, fallback_reason = self.name, None, None
+            return TranslationResult(
+                text=str(translated_text),
+                provider=actual_provider,
+                model=model_name,
+                raw_text=raw_text,
+                from_cache=True,
+                requested_provider=requested_provider,
+                fallback_reason=fallback_reason,
+            )
 
         last_raw_text = ""
         translated = ""
@@ -649,19 +661,13 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
             custom_prompt = "\n\n".join(part for part in (self.screenshot_gemma_prompt, dictionary_hint) if part)
             prompt = build_screenshot_prompt_with_override(
-                source_text_hint,
-                retry_note,
-                custom_prompt,
-                target_lang=resolved_target,
+                source_text_hint, retry_note, custom_prompt, target_lang=resolved_target
             )
             evidence = self._knowledge_evidence_for_texts((source_text_hint or "",), max_chars=1_800)
             prompt = self._prepend_knowledge_evidence(prompt, evidence)
             try:
                 payload = self._request(
-                    model_name,
-                    prompt,
-                    image_parts=image_parts,
-                    max_output_tokens=2048,
+                    model_name, prompt, image_parts=image_parts, max_output_tokens=2048,
                     temperature=0.0 if attempt_index else 0.1,
                     # gemma-3-27b-it does not support JSON mode for screenshot requests.
                     # Keep the prompt JSON-shaped, but let the model answer in plain text so
@@ -690,57 +696,67 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                     continue
                 raise
             last_raw_text = extract_gemma_text(payload)
-            translated = clean_screenshot_translation_output(
-                last_raw_text, target_lang=resolved_target
-            )
-            is_valid = is_valid_screenshot_translation(
-                translated, target_lang=resolved_target
-            )
+            translated = clean_screenshot_translation_output(last_raw_text, target_lang=resolved_target)
+            is_valid = is_valid_screenshot_translation(translated, target_lang=resolved_target)
             if debug_log is not None:
-                debug_log(
-                    "\n".join([
-                        f"[screenshot attempt {attempt_index + 1}] model={model_name}",
-                        f"valid={is_valid}",
-                        f"raw={last_raw_text if last_raw_text else '<empty>'}",
-                        f"cleaned={translated if translated else '<empty>'}",
-                    ])
-                )
+                debug_log("\n".join([f"[screenshot attempt {attempt_index + 1}] model={model_name}", f"valid={is_valid}", f"raw={last_raw_text if last_raw_text else '<empty>'}", f"cleaned={translated if translated else '<empty>'}"]))
             if is_valid:
                 break
             translated = ""
         if not translated:
+            actual_provider = self.name
+            requested_provider = None
+            fallback_reason = None
             if source_text_hint:
                 try:
-                    translated_result = self.translate(source_text_hint, target_lang=target_lang)
+                    translated_result = self.translate(source_text_hint, target_lang=resolved_target)
                     translated = translated_result.text if translated_result else ""
+                    actual_provider = translated_result.provider if translated_result else self.name
+                    requested_provider = (
+                        (translated_result.requested_provider or self.name)
+                        if translated_result else self.name
+                    )
+                    fallback_reason = (
+                        (translated_result.fallback_reason or "screenshot_fallback")
+                        if translated_result else "screenshot_fallback"
+                    )
                 except Exception:
                     try:
-                        translated = GoogleTranslator(
-                            source=detect_source_language(source_text_hint),
-                            target=resolved_target,
-                        ).translate(clean_model_output(source_text_hint)).strip()
+                        translated = GoogleTranslator(source=detect_source_language(source_text_hint), target=resolved_target).translate(clean_model_output(source_text_hint)).strip()
+                        actual_provider = "google"
+                        requested_provider = self.name
+                        fallback_reason = "screenshot_fallback"
                     except Exception:
                         translated = ""
             if debug_log is not None:
-                debug_log(
-                    "\n".join([
-                        f"[screenshot failed] model={model_name}",
-                        f"last_raw={last_raw_text if last_raw_text else '<empty>'}",
-                    ])
-                )
+                debug_log("\n".join([f"[screenshot failed] model={model_name}", f"last_raw={last_raw_text if last_raw_text else '<empty>'}"]))
             if translated:
-                self._remember(cache_key, (translated, last_raw_text))
-                return TranslationResult(text=translated, provider=self.name, model=model_name, raw_text=last_raw_text)
+                self._remember(cache_key, (translated, last_raw_text, actual_provider, requested_provider, fallback_reason))
+                return TranslationResult(text=translated, provider=actual_provider, model=model_name, raw_text=last_raw_text, requested_provider=requested_provider, fallback_reason=fallback_reason)
             raise ValueError("empty_gemma_screenshot_response")
+        actual_provider = self.name
+        requested_provider = None
+        fallback_reason = None
         if source_text_hint and self._should_fallback_to_text_translation(source_text_hint, translated):
             try:
                 source_lang = detect_source_language(source_text_hint)
-                translator = GoogleTranslator(source=source_lang, target=target_lang or self.target_lang)
-                translated = clean_model_output(translator.translate(clean_model_output(source_text_hint)).strip()) or translated
+                candidate = clean_model_output(GoogleTranslator(source=source_lang, target=resolved_target).translate(clean_model_output(source_text_hint)).strip())
+                if candidate:
+                    translated = candidate
+                    actual_provider = "google"
+                    requested_provider = self.name
+                    fallback_reason = "screenshot_fallback"
             except Exception:
-                translated = self.translate(source_text_hint, target_lang=target_lang).text or translated
-        self._remember(cache_key, (translated, last_raw_text))
-        return TranslationResult(text=translated, provider=self.name, model=model_name, raw_text=last_raw_text)
+                try:
+                    translated_result = self.translate(source_text_hint, target_lang=resolved_target)
+                    translated = translated_result.text or translated
+                    actual_provider = translated_result.provider
+                    requested_provider = translated_result.requested_provider
+                    fallback_reason = translated_result.fallback_reason
+                except Exception:
+                    pass
+        self._remember(cache_key, (translated, last_raw_text, actual_provider, requested_provider, fallback_reason))
+        return TranslationResult(text=translated, provider=actual_provider, model=model_name, raw_text=last_raw_text, requested_provider=requested_provider, fallback_reason=fallback_reason)
 
     def transcribe_screenshot(
         self,
@@ -856,13 +872,42 @@ class LocalGemmaProvider(KnowledgePromptContext):
         if generation_params_changed:
             self._translation_cache.clear()
             self._context_buffer.clear()
-
-        if self.enabled and (reload_needed or not previous_enabled):
+        if not self.enabled:
+            self._release_model()
+        elif reload_needed or not previous_enabled:
+            if reload_needed:
+                self._release_model()
             self._load_model()
+    def _release_model(self) -> None:
+        llm = self._llm
+        self._llm = None
+        self._translation_cache.clear()
+        self._context_buffer.clear()
+        if llm is None:
+            return
+        closer = getattr(llm, "close", None)
+        if not callable(closer):
+            return
+        try:
+            closer()
+        except Exception as exc:
+            self.last_load_error = f"model_close_failed: {type(exc).__name__}"
+
+
+    def close(self) -> None:
+        self.enabled = False
+        self._release_model()
+
+
+    def unload(self) -> None:
+        self.close()
+
 
     def _load_model(self):
+        if self._llm is not None and self.enabled and self.model_path and os.path.exists(self.model_path):
+            return True
+        self._release_model()
         if not self.enabled or not self.model_path or not os.path.exists(self.model_path):
-            self._llm = None
             return False
         self.last_load_error = ""
         try:
@@ -927,7 +972,10 @@ class LocalGemmaProvider(KnowledgePromptContext):
         cache_key = ("local_gemma", self.model_path, normalized, resolved_target, self.gemma_prompt, self.temperature, self.repeat_penalty, self.knowledge_revision_token)
         cached = self._get_cached(cache_key)
         if cached is not None:
-            yield str(cached)
+            if isinstance(cached, TranslationResult):
+                yield cached.text
+            else:
+                yield str(cached)
             return
 
         prompt = self._build_prompt(normalized, resolved_target)
@@ -970,7 +1018,6 @@ class LocalGemmaProvider(KnowledgePromptContext):
         resolved_target = target_lang or self.target_lang
         if not self.available() or not self._llm:
             raise ValueError("local_model_unavailable")
-
         cache_key = (
             "local_gemma",
             self.model_path,
@@ -983,8 +1030,17 @@ class LocalGemmaProvider(KnowledgePromptContext):
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
+            if isinstance(cached, TranslationResult):
+                return TranslationResult(
+                    text=cached.text,
+                    provider=cached.provider,
+                    model=cached.model,
+                    raw_text=cached.raw_text,
+                    from_cache=True,
+                    requested_provider=cached.requested_provider,
+                    fallback_reason=cached.fallback_reason,
+                )
             return TranslationResult(text=str(cached), provider=self.name, model="local", from_cache=True)
-
         prompt = self._build_prompt(normalized, resolved_target)
         response = self._llm.create_completion(
             prompt,
@@ -995,17 +1051,28 @@ class LocalGemmaProvider(KnowledgePromptContext):
         raw_text = response["choices"][0]["text"]
         translated = clean_model_output_multiline(raw_text)
         translated = self._apply_post_processing(normalized, translated)
-
+        actual_provider = self.name
+        requested_provider = None
+        fallback_reason = None
         if self._is_bad_translation(normalized, translated):
             translated = self._fallback_translate(normalized, resolved_target)
             raw_text += " [Fallback]"
-
+            actual_provider = "google"
+            requested_provider = self.name
+            fallback_reason = "bad_translation"
         if not translated:
             raise ValueError("empty_local_response")
-
-        self._remember(cache_key, translated)
+        result = TranslationResult(
+            text=translated,
+            provider=actual_provider,
+            model="local",
+            raw_text=raw_text,
+            requested_provider=requested_provider,
+            fallback_reason=fallback_reason,
+        )
+        self._remember(cache_key, result)
         self._context_buffer.append((normalized, translated, resolved_target))
-        return TranslationResult(text=translated, provider=self.name, model="local", raw_text=raw_text)
+        return result
 
     def _apply_post_processing(self, source: str, translated: str) -> str:
         return append_missing_dictionary_terms(source, translated, self._dictionary)

@@ -57,13 +57,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-qt
-          if (Test-Path requirements.txt) {
-            Get-Content requirements.txt |
-              Where-Object { $_.Trim() -and $_.Trim() -ne 'llama-cpp-python' } |
-              Set-Content requirements-ci.txt
-            pip install -r requirements-ci.txt
-            Remove-Item requirements-ci.txt -Force
+          if (-not (Test-Path requirements-ci.txt)) {
+            throw "requirements-ci.txt is missing."
           }
+          pip install -r requirements-ci.txt
 
       - name: Syntax Check
         run: |

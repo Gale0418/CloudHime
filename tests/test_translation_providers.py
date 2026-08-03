@@ -202,3 +202,77 @@ def test_local_multimodal_cache_is_isolated_by_runtime_endpoint():
     assert first.text == "first endpoint"
     assert second.text == "second endpoint"
     assert second.from_cache is False
+
+def test_local_gemma_fallback_reports_google_and_preserves_attribution_on_cache_hit(monkeypatch):
+    class EchoLlm:
+        def create_completion(self, prompt, **kwargs):
+            return {"choices": [{"text": "same source"}]}
+
+    monkeypatch.setattr(
+        "translation_providers.GoogleTranslator",
+        lambda source, target: FakeTranslator("翻譯結果"),
+    )
+    provider = LocalGemmaProvider(enabled=False)
+    provider.enabled = True
+    provider._llm = EchoLlm()
+
+    first = provider.translate("same source")
+    second = provider.translate("same source")
+
+    assert first.provider == "google"
+    assert first.requested_provider == "local_gemma"
+    assert first.fallback_reason == "bad_translation"
+    assert second.provider == "google"
+    assert second.requested_provider == "local_gemma"
+    assert second.fallback_reason == "bad_translation"
+    assert second.from_cache is True
+
+
+def test_local_gemma_close_is_idempotent_and_releases_reference_on_close_failure():
+    class ClosableLlm:
+        def __init__(self, raises=False):
+            self.calls = 0
+            self.raises = raises
+
+        def close(self):
+            self.calls += 1
+            if self.raises:
+                raise RuntimeError("close failed")
+
+    provider = LocalGemmaProvider(enabled=False)
+    provider.enabled = True
+    provider._llm = ClosableLlm(raises=True)
+    provider._translation_cache["key"] = "value"
+    provider._context_buffer.append(("source", "translation", "zh-TW"))
+
+    provider.close()
+    provider.close()
+
+    assert provider.enabled is False
+    assert provider._llm is None
+    assert not provider._translation_cache
+    assert not provider._context_buffer
+    assert provider.last_load_error == "model_close_failed: RuntimeError"
+
+def test_local_gemma_update_config_disable_releases_model():
+    class ClosableLlm:
+        def __init__(self):
+            self.calls = 0
+
+        def close(self):
+            self.calls += 1
+
+    provider = LocalGemmaProvider(enabled=False)
+    provider.enabled = True
+    llm = ClosableLlm()
+    provider._llm = llm
+    provider._translation_cache["key"] = "value"
+    provider._context_buffer.append(("source", "translation", "zh-TW"))
+
+    provider.update_config(enabled=False)
+
+    assert provider.enabled is False
+    assert provider._llm is None
+    assert llm.calls == 1
+    assert not provider._translation_cache
+    assert not provider._context_buffer

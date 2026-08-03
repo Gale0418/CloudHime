@@ -56,3 +56,12 @@ def test_ci_matrix_runner_splits_paths_on_whitespace():
 
     assert "-split '\\s+'" in workflow
     assert "-split '\\\\s+'" not in workflow
+
+
+def test_ci_uses_explicit_requirements_without_in_process_llama():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci_requirements = (ROOT / "requirements-ci.txt").read_text(encoding="utf-8")
+
+    assert "pip install -r requirements-ci.txt" in workflow
+    assert "Where-Object { $_.Trim() -and $_.Trim() -ne 'llama-cpp-python' }" not in workflow
+    assert "llama-cpp-python" not in ci_requirements

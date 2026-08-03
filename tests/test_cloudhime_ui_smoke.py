@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+import pytest
 from types import SimpleNamespace
 
 from CloudHime import Controller, OverlayWindow
@@ -377,3 +379,48 @@ def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):
     assert cloudhime_ui._read_api_key_from_env_files(
         (str(appdata_path), str(legacy_path))
     ) == "legacy-key"
+
+def test_history_export_payload_is_json_safe_and_preserves_unicode():
+    from cloudhime_ui import build_translation_history_export_payload
+
+    payload = build_translation_history_export_payload({("日文", "zh-TW"): "繁體中文"})
+
+    assert payload == {
+        "schema_version": 1,
+        "records": [{"key": ["日文", "zh-TW"], "value": "繁體中文"}],
+    }
+    json.dumps(payload, ensure_ascii=False)
+
+
+def test_history_export_payload_supports_empty_history():
+    from cloudhime_ui import build_translation_history_export_payload
+
+    assert build_translation_history_export_payload({}) == {
+        "schema_version": 1,
+        "records": [],
+    }
+
+
+def test_history_export_payload_rejects_unserializable_value():
+    from cloudhime_ui import build_translation_history_export_payload
+
+    with pytest.raises(TypeError, match="translation_history_not_serializable"):
+        build_translation_history_export_payload({("key",): object()})
+
+
+def test_history_export_payload_rejects_non_finite_value():
+    from cloudhime_ui import build_translation_history_export_payload
+
+    with pytest.raises(TypeError, match="translation_history_not_serializable"):
+        build_translation_history_export_payload({("key",): float("nan")})
+
+def test_history_export_write_failure_is_explicit(monkeypatch, tmp_path):
+    from cloudhime_ui import write_translation_history_export
+
+    def fail_open(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("builtins.open", fail_open)
+
+    with pytest.raises(OSError, match="disk full"):
+        write_translation_history_export(tmp_path / "history.json", {("key",): "value"})

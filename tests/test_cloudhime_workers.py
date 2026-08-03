@@ -1432,3 +1432,134 @@ def test_screenshot_provider_fallback_records_actual_provider_once():
     assert translated == "葡萄酒俱樂部"
     assert worker._last_screenshot_translation_provider == "google"
     assert calls == ["Wine Club"]
+
+
+def test_refresh_translation_registry_disables_local_provider_for_remote_model():
+    worker = OCRWorker.__new__(OCRWorker)
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    worker.google_api_key = "test-key"
+    worker.gemma_model = "gemma-4-31b-it"
+    worker.gemma_prompt = ""
+    worker.screenshot_gemma_prompt = ""
+    worker.use_gemma_translation = True
+    worker.gemma_auto_switch_enabled = False
+    worker.translation_target_lang = "zh-TW"
+    worker.local_gemma_temperature = 0.2
+    worker.local_gemma_repeat_penalty = 1.15
+    worker.local_multimodal_enabled = False
+    worker.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+    worker.local_multimodal_model = "vision-local"
+    worker.local_multimodal_timeout_seconds = 20
+    worker.local_vision_runtime = None
+    worker.request_local_model_load = lambda: None
+    worker.request_local_vision_start = lambda: None
+    local_config = {}
+
+    class Provider:
+        def __init__(self, name):
+            self.name = name
+
+        def available(self):
+            return True
+
+    worker.google_translation_provider = SimpleNamespace(set_target_lang=lambda value: None, name="google")
+    worker.gemma_translation_provider = Provider("gemma")
+    worker.gemma_translation_provider.update_config = lambda **kwargs: None
+    worker.local_gemma_provider = Provider("local_gemma")
+    worker.local_gemma_provider.update_config = lambda **kwargs: local_config.update(kwargs)
+    worker.local_multimodal_provider = Provider("local_multimodal")
+    worker.local_multimodal_provider.enabled = False
+    worker.local_multimodal_provider.timeout_seconds = 20
+    worker.local_multimodal_provider.update_runtime = lambda *args, **kwargs: None
+
+    OCRWorker._refresh_translation_registry(worker)
+
+    assert local_config["enabled"] is False
+
+
+def test_refresh_translation_registry_exposes_bounded_error_code(monkeypatch):
+    worker = OCRWorker.__new__(OCRWorker)
+    worker._translation_registry_batch_depth = 0
+    worker.translation_registry = "last-known-good"
+    worker._build_translation_registry_config = lambda: (_ for _ in ()).throw(
+        RuntimeError("secret prompt and API key must not be logged")
+    )
+    messages = []
+    monkeypatch.setattr(workers_module.logger, "error", messages.append)
+
+    OCRWorker._refresh_translation_registry(worker)
+
+    assert worker.translation_registry_error_code == "translation_registry_refresh_failed"
+    assert worker.translation_registry == "last-known-good"
+    assert messages
+    assert "translation_registry_refresh_failed" in messages[0]
+    assert "secret prompt" not in messages[0]
+    assert "API key" not in messages[0]
+
+
+def test_worker_reports_actual_provider_from_gemma_result():
+    from translation_contracts import TranslationResult
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.active_gemma_model = worker.gemma_model
+    worker.convert_to_trad = lambda text: text
+    worker.normalize_gemma_model = lambda model: model
+    worker.sync_gemma_call_timestamps_from_provider = lambda provider: None
+    worker.get_current_ai_provider = lambda: "gemma-3"
+
+    class Provider:
+        def translate(self, text):
+            return TranslationResult(
+                text="Google 翻譯",
+                provider="google",
+                model="local",
+                requested_provider="local_gemma",
+                fallback_reason="bad_translation",
+            )
+
+    worker._get_translation_provider = lambda name: Provider()
+
+    translated, provider = OCRWorker.translate_text_gemma_with_provider(worker, "source")
+
+    assert translated == "Google 翻譯"
+    assert provider == "google"
+    assert worker.active_gemma_model == worker.gemma_model
+
+
+def test_worker_uses_provider_attribution_from_screenshot_result():
+    worker = _make_segment_repair_worker()
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.scan_mode = "region"
+    worker.region_render_mode = "screenshot"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    provider = SimpleNamespace(
+        translate_screenshot=lambda image_parts, **kwargs: SimpleNamespace(
+            text="翻譯結果",
+            model="local",
+            provider="google",
+            requested_provider="local_multimodal",
+            fallback_reason="server_fallback",
+        )
+    )
+    worker._get_translation_provider = lambda name: provider
+    worker.normalize_gemma_model = lambda model: model
+    worker.sync_gemma_call_timestamps_from_provider = lambda value: None
+    worker.convert_to_trad = lambda text: text
+
+    translated = OCRWorker.translate_screenshot_gemma(worker, [{"image": "x"}], "Wine Club")
+
+    assert translated == "翻譯結果"
+    assert worker._last_screenshot_translation_provider == "google"
+
+def test_shutdown_local_model_loader_closes_local_provider():
+    calls = []
+    worker = OCRWorker.__new__(OCRWorker)
+    worker._local_model_cancel_event = None
+    worker._local_model_executor = None
+    worker.local_gemma_provider = SimpleNamespace(close=lambda: calls.append("closed"))
+
+    OCRWorker.shutdown_local_model_loader(worker)
+
+    assert calls == ["closed"]
