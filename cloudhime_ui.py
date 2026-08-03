@@ -2995,6 +2995,11 @@ class Controller(QWidget):
         load_t0 = time.perf_counter()
         startup_log("Controller.load_settings start")
         settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
+        settings = normalize_settings_payload(
+            settings,
+            resolve_region_opacity(settings, self.region_frame_opacity),
+            resolve_ui_language(settings, self.ui_language),
+        )
         self.settings_data = settings
         self.worker.begin_translation_registry_batch()
         self.set_ui_language(resolve_ui_language(settings, self.ui_language), persist=False, refresh=True)

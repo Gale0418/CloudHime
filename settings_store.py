@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from dataclasses import dataclass
@@ -49,7 +50,7 @@ def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None
         except Exception:
             continue
     if candidates:
-        candidates.sort(key=lambda item: (item[0], item[2] == paths.legacy_file))
+        candidates.sort(key=lambda item: (item[0], item[2] != paths.legacy_file))
         _, payload, settings_path = candidates[-1]
         return payload, settings_path
     return {}, None
@@ -87,6 +88,26 @@ def clamp_percent(value: Any, fallback: int = 40) -> int:
     except Exception:
         numeric = int(fallback)
     return max(0, min(100, numeric))
+
+
+def clamp_local_gemma_temperature(value: Any, fallback: float = 0.2) -> float:
+    try:
+        numeric = float(value)
+    except Exception:
+        numeric = float(fallback)
+    if not math.isfinite(numeric):
+        numeric = float(fallback)
+    return max(0.0, min(1.0, numeric))
+
+
+def clamp_local_gemma_repeat_penalty(value: Any, fallback: float = 1.15) -> float:
+    try:
+        numeric = float(value)
+    except Exception:
+        numeric = float(fallback)
+    if not math.isfinite(numeric):
+        numeric = float(fallback)
+    return max(1.0, min(2.0, numeric))
 
 
 def clamp_local_multimodal_timeout(value: Any, fallback: int = 20) -> int:
@@ -144,8 +165,8 @@ def normalize_settings_payload(
         ui_language if ui_language is not None else normalized.get("ui_language", localization.DEFAULT_UI_LANGUAGE),
         fallback=localization.DEFAULT_UI_LANGUAGE,
     )
-    normalized["local_gemma_temperature"] = float(normalized.get("local_gemma_temperature", 0.2))
-    normalized["local_gemma_repeat_penalty"] = float(normalized.get("local_gemma_repeat_penalty", 1.15))
+    normalized["local_gemma_temperature"] = clamp_local_gemma_temperature(normalized.get("local_gemma_temperature", 0.2))
+    normalized["local_gemma_repeat_penalty"] = clamp_local_gemma_repeat_penalty(normalized.get("local_gemma_repeat_penalty", 1.15))
     normalized["local_multimodal_enabled"] = bool(normalized.get("local_multimodal_enabled", False))
     normalized["local_multimodal_cpu_only"] = bool(normalized.get("local_multimodal_cpu_only", False))
     normalized["japanese_ocr_rescue_enabled"] = bool(normalized.get("japanese_ocr_rescue_enabled", False))

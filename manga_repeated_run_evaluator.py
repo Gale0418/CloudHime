@@ -66,6 +66,19 @@ def _resolve_image(manifest_path: Path, image: str) -> Path:
 def load_suite(path: str | Path) -> dict[str, Any]:
     manifest_path = Path(path).resolve()
     manifest = _read_json(manifest_path)
+    if "ground_truth_eligible" in manifest:
+        eligible = manifest["ground_truth_eligible"]
+        if not isinstance(eligible, bool):
+            raise ValueError("ground_truth_eligible must be a boolean")
+        if not eligible:
+            raise ValueError("manifest is not ground-truth eligible; owner confirmation is required")
+    if "status" in manifest:
+        status = manifest["status"]
+        if not isinstance(status, str):
+            raise ValueError("manifest status must be text")
+        normalized_status = unicodedata.normalize("NFKC", status).strip().casefold()
+        if normalized_status.startswith("draft"):
+            raise ValueError("manifest is not ground-truth eligible; owner confirmation is required")
     cases = manifest.get("cases")
     if not isinstance(cases, list) or not cases:
         raise ValueError("manifest must contain a non-empty cases list")
