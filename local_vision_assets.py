@@ -27,6 +27,8 @@ GEMMA_PROJECTOR_SHA256 = "8c0fb064b019a6972856aaae2c7e4792858af3ca4561be2dbf6491
 _GEMMA_REPOSITORY = "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF"
 _MANAGED_DIR = Path("CloudHime") / "models" / "gemma-3-4b-it" / f"ggml-org-{GEMMA_ASSET_REVISION[:8]}"
 _RECEIPT_NAME = ".verified.json"
+_LEGACY_RECEIPT_DIR = Path("CloudHime") / "models"
+_LEGACY_RECEIPT_NAME = ".legacy-gemma-3-4b-it.verified.json"
 _ASSET_LOCK = threading.Lock()
 
 GEMMA_ASSET_MANIFEST = (
@@ -114,7 +116,7 @@ def resolve_preferred_vision_assets(
     app_root: Path,
     local_appdata: Path | None = None,
 ) -> VisionAssets:
-    """既有完整隨程式模型優先，否則改用 AppData 受管資產。"""
+    """快速解析隨程式模型；完整性驗證在背景資產暖身階段執行。"""
     legacy = resolve_vision_assets(app_root)
     if (
         _has_exact_size(legacy.model_path, GEMMA_MODEL_SIZE)
@@ -130,8 +132,30 @@ def ensure_vision_model_assets(
     cancel_event=None,
     opener=None,
 ) -> VisionAssets:
-    """下載並驗證受管模型；驗證收據可避免每次啟動重算 3.34 GB 雜湊。"""
+    """背景驗證模型資產；receipt 可避免後續啟動重算 3.34 GB 雜湊。"""
     if not assets.managed:
+        with _ASSET_LOCK:
+            if _legacy_receipt_matches(assets, None):
+                if progress_callback:
+                    progress_callback("checking_assets", 80)
+                return assets
+            if progress_callback:
+                progress_callback("checking_disk", 0)
+            failures = _verify_resolved_assets(assets)
+            if failures:
+                raise VisionAssetError(
+                    "legacy_asset_invalid",
+                    path=assets.model_path,
+                    detail=failures[0].strip(),
+                )
+            try:
+                _write_legacy_receipt(assets, None)
+            except OSError:
+                # A read-only packaged install may not be able to cache the receipt;
+                # the current asset is still verified and can be used this run.
+                pass
+            if progress_callback:
+                progress_callback("checking_assets", 80)
         return assets
     root = assets.model_path.parent
     with _ASSET_LOCK:
@@ -196,6 +220,68 @@ def _has_exact_size(path: Path, expected_size: int) -> bool:
         return path.is_file() and path.stat().st_size == expected_size
     except OSError:
         return False
+
+
+def _legacy_receipt_path(local_appdata: Path | None) -> Path:
+    return _local_appdata_root(local_appdata) / _LEGACY_RECEIPT_DIR / _LEGACY_RECEIPT_NAME
+
+
+def _legacy_receipt_matches(assets: VisionAssets, local_appdata: Path | None) -> bool:
+    try:
+        payload = json.loads(_legacy_receipt_path(local_appdata).read_text(encoding="utf-8"))
+        if payload.get("revision") != GEMMA_ASSET_REVISION:
+            return False
+        entries = payload.get("assets", {})
+        for field_name, expected_sha in ASSET_SHA256.items():
+            path = getattr(assets, field_name)
+            stat = path.stat()
+            entry = entries.get(field_name, {})
+            if (
+                entry.get("path") != str(path.resolve())
+                or entry.get("size") != stat.st_size
+                or entry.get("mtime_ns") != stat.st_mtime_ns
+                or entry.get("sha256") != expected_sha
+            ):
+                return False
+        return True
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def _write_legacy_receipt(assets: VisionAssets, local_appdata: Path | None) -> None:
+    receipt = _legacy_receipt_path(local_appdata)
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    entries = {}
+    for field_name, expected_sha in ASSET_SHA256.items():
+        path = getattr(assets, field_name)
+        stat = path.stat()
+        entries[field_name] = {
+            "path": str(path.resolve()),
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": expected_sha,
+        }
+    payload = {"revision": GEMMA_ASSET_REVISION, "assets": entries}
+    temporary: Path | None = None
+    try:
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=f"{receipt.name}.{os.getpid()}.",
+            suffix=".tmp",
+            dir=receipt.parent,
+        )
+        temporary = Path(temporary_name)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(payload, stream, ensure_ascii=True, indent=2)
+            stream.write("\n")
+        os.replace(temporary, receipt)
+        temporary = None
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except (FileNotFoundError, OSError):
+                pass
+
 
 
 def _receipt_matches(root: Path) -> bool:

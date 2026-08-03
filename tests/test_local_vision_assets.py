@@ -179,12 +179,50 @@ def test_preferred_assets_keep_complete_legacy_install(tmp_path, monkeypatch):
         "_has_exact_size",
         lambda path, expected: path in complete,
     )
-
     selected = resolve_preferred_vision_assets(app, tmp_path / "local")
 
     assert selected == legacy
     assert selected.managed is False
 
+
+def test_ensure_legacy_assets_rejects_hash_mismatch(tmp_path, monkeypatch):
+    assets = resolve_vision_assets(tmp_path / "app")
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_legacy_receipt_matches",
+        lambda assets, local_appdata: False,
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_verify_resolved_assets",
+        lambda assets: ["  [ERROR] model_path: asset_sha256_mismatch"],
+    )
+
+    with pytest.raises(VisionAssetError, match="legacy_asset_invalid"):
+        ensure_vision_model_assets(assets)
+
+
+def test_ensure_legacy_assets_writes_receipt_after_verification(tmp_path, monkeypatch):
+    assets = resolve_vision_assets(tmp_path / "app")
+    writes = []
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_legacy_receipt_matches",
+        lambda assets, local_appdata: False,
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_verify_resolved_assets",
+        lambda assets: [],
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_write_legacy_receipt",
+        lambda assets, local_appdata: writes.append((assets, local_appdata)),
+    )
+
+    assert ensure_vision_model_assets(assets) is assets
+    assert writes == [(assets, None)]
 
 def test_ensure_managed_assets_writes_and_reuses_verification_receipt(tmp_path, monkeypatch):
     assets = resolve_managed_vision_assets(tmp_path / "app", tmp_path / "local")
