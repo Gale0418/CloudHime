@@ -14,6 +14,7 @@ from urllib import error, request
 from deep_translator import GoogleTranslator
 
 from translation_contracts import TranslationProvider, TranslationResult
+from knowledge_prompt_context import KnowledgePromptContext
 from translation_helpers import (
     append_missing_dictionary_terms,
     apply_dictionary_pre_translation,
@@ -175,7 +176,7 @@ class GoogleTranslationProvider:
         return [item for item in translated if item is not None]
 
 
-class GemmaTranslationProvider:
+class GemmaTranslationProvider(KnowledgePromptContext):
     name = "gemma"
 
     def __init__(
@@ -200,6 +201,7 @@ class GemmaTranslationProvider:
         self.gemma_model = self.normalize_gemma_model(gemma_model)
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._call_timestamps: dict[str, list[float]] = {name: [] for name in self.supported_models}
+        self._init_knowledge_prompt_context()
         self._dictionary = load_translation_dictionary()
 
     def update_config(
@@ -262,7 +264,9 @@ class GemmaTranslationProvider:
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(text, self._dictionary)
         custom_prompt = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
-        return build_gemma_prompt_with_override(text, custom_prompt, resolved_target, self.gemma_model)
+        base_prompt = build_gemma_prompt_with_override(text, custom_prompt, resolved_target, self.gemma_model)
+        evidence = self._knowledge_evidence_for_texts((text,), max_chars=1_800)
+        return self._prepend_knowledge_evidence(base_prompt, evidence)
 
     def _build_multimodal_prompt(self, texts, target_lang: str | None = None) -> str:
         """多模態版，自訂 prompt 附加在前面（保留原有格式）。"""
@@ -270,9 +274,10 @@ class GemmaTranslationProvider:
         base = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
         dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
         custom = "\n\n".join(part for part in (self.gemma_prompt.strip(), dictionary_hint) if part)
-        if not custom:
-            return base
-        return f"{custom}\n\n{base}"
+        if custom:
+            base = f"{custom}\n\n{base}"
+        evidence = self._knowledge_evidence_for_texts(texts, max_chars=2_400)
+        return self._prepend_knowledge_evidence(base, evidence)
 
     def _normalize_compare_text(self, text: Any) -> str:
         normalized = clean_model_output(text)
@@ -432,7 +437,7 @@ class GemmaTranslationProvider:
         if not self._can_call(model_name):
             raise ValueError("gemma_rate_limited")
         # 快取命中時直接 yield 完整結果
-        cache_key = ("gemma", model_name, normalized, resolved_target, self.gemma_prompt)
+        cache_key = ("gemma", model_name, normalized, resolved_target, self.gemma_prompt, self.knowledge_revision_token)
         cached = self._get_cached(cache_key)
         if cached is not None:
             yield str(cached)
@@ -468,6 +473,7 @@ class GemmaTranslationProvider:
             normalized,
             resolved_target,
             self.gemma_prompt,
+            self.knowledge_revision_token,
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -527,6 +533,7 @@ class GemmaTranslationProvider:
             hashlib.sha1(image_seed.encode("utf-8")).hexdigest(),
             resolved_target,
             self.gemma_prompt,
+            self.knowledge_revision_token,
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -577,6 +584,7 @@ class GemmaTranslationProvider:
             resolved_target,
             self.screenshot_gemma_prompt,
             hashlib.sha1((source_text_hint or "").encode("utf-8")).hexdigest(),
+            self.knowledge_revision_token,
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -601,6 +609,8 @@ class GemmaTranslationProvider:
                 custom_prompt,
                 target_lang=resolved_target,
             )
+            evidence = self._knowledge_evidence_for_texts((source_text_hint or "",), max_chars=1_800)
+            prompt = self._prepend_knowledge_evidence(prompt, evidence)
             try:
                 payload = self._request(
                     model_name,
@@ -740,7 +750,7 @@ class GemmaTranslationProvider:
         self._remember(cache_key, (transcription, raw_text))
         return TranslationResult(text=transcription, provider=self.name, model=model_name, raw_text=raw_text)
 
-class LocalGemmaProvider:
+class LocalGemmaProvider(KnowledgePromptContext):
     name = "local_gemma"
 
     def __init__(
@@ -763,6 +773,7 @@ class LocalGemmaProvider:
         self.last_load_error = ""
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._context_buffer = deque(maxlen=3)
+        self._init_knowledge_prompt_context()
         self._dictionary = load_translation_dictionary()
         self._load_model()
 
@@ -855,6 +866,8 @@ class LocalGemmaProvider:
 
         custom_prompt = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
         raw_prompt = build_gemma_prompt_with_override(text, custom_prompt, resolved_target)
+        evidence = self._knowledge_evidence_for_texts((text,), max_chars=1_800)
+        raw_prompt = self._prepend_knowledge_evidence(raw_prompt, evidence)
         prompt += f"<start_of_turn>user\n{raw_prompt}<end_of_turn>\n<start_of_turn>model\n"
         return prompt
 
@@ -866,7 +879,7 @@ class LocalGemmaProvider:
             return
         resolved_target = target_lang or self.target_lang
 
-        cache_key = ("local_gemma", self.model_path, normalized, resolved_target, self.gemma_prompt, self.temperature, self.repeat_penalty)
+        cache_key = ("local_gemma", self.model_path, normalized, resolved_target, self.gemma_prompt, self.temperature, self.repeat_penalty, self.knowledge_revision_token)
         cached = self._get_cached(cache_key)
         if cached is not None:
             yield str(cached)
@@ -921,6 +934,7 @@ class LocalGemmaProvider:
             self.gemma_prompt,
             self.temperature,
             self.repeat_penalty,
+            self.knowledge_revision_token,
         )
         cached = self._get_cached(cache_key)
         if cached is not None:
@@ -970,7 +984,7 @@ class LocalGemmaProvider:
             raise RuntimeError(f"Fallback translation failed: {e}")
 
 
-class LocalMultimodalProvider:
+class LocalMultimodalProvider(KnowledgePromptContext):
     name = "local_multimodal"
 
     def __init__(self, *, base_url: str = "", model_name: str = "", target_lang: str = "zh-TW", enabled: bool = False, timeout_seconds: int = 20):
@@ -982,6 +996,7 @@ class LocalMultimodalProvider:
         self._runtime_ready = bool(self.base_url and self.model_name)
         self._dictionary = load_translation_dictionary()
         self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
+        self._init_knowledge_prompt_context()
 
     def available(self) -> bool:
         return self.enabled and self._runtime_ready and bool(self.base_url) and bool(self.model_name)
@@ -1054,7 +1069,7 @@ class LocalMultimodalProvider:
         if not normalized:
             return TranslationResult(text="", provider=self.name, model=self.model_name)
         resolved_target = target_lang or self.target_lang
-        cache_key = (self.base_url, self.model_name, normalized, resolved_target)
+        cache_key = (self.base_url, self.model_name, normalized, resolved_target, self.knowledge_revision_token)
         cached = self._translation_cache.get(cache_key)
         if cached is not None:
             self._translation_cache.move_to_end(cache_key)
@@ -1073,6 +1088,8 @@ class LocalMultimodalProvider:
             resolved_target,
             self.model_name,
         )
+        evidence = self._knowledge_evidence_for_texts((normalized,), max_chars=1_800)
+        prompt = self._prepend_knowledge_evidence(prompt, evidence)
         raw_text = self._request_chat_completion(
             self._build_chat_payload(
                 prompt=prompt,
@@ -1111,6 +1128,8 @@ class LocalMultimodalProvider:
         dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
         base_prompt = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
         prompt = f"{dictionary_hint}\n\n{base_prompt}" if dictionary_hint else base_prompt
+        evidence = self._knowledge_evidence_for_texts(texts, max_chars=2_400)
+        prompt = self._prepend_knowledge_evidence(prompt, evidence)
         payload = self._build_chat_payload(
             prompt=prompt,
             image_parts=image_parts,
@@ -1191,6 +1210,8 @@ class LocalMultimodalProvider:
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
         prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=resolved_target)
+        evidence = self._knowledge_evidence_for_texts((source_text_hint or "",), max_chars=1_800)
+        prompt = self._prepend_knowledge_evidence(prompt, evidence)
         raw_text = self._request_chat_completion(
             self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text", max_tokens=1024)
         )

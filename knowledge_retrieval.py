@@ -9,6 +9,7 @@ from typing import Any, Iterable, Mapping
 
 
 MAX_QUERY_LENGTH = 256
+MAX_FUZZY_LENGTH = 256
 MAX_RESULTS = 8
 MAX_ENTRIES = 100
 MAX_ALIASES = 20
@@ -93,8 +94,10 @@ def pack_revision_token(pack: Mapping[str, Any]) -> str:
 
 def _entry_candidates(entry: Mapping[str, Any]) -> tuple[str, str, tuple[str, ...], tuple[str, ...], str]:
     name = _clean_text(entry.get("name"), "entry name", required=True)
-    kind = _clean_text(entry.get("kind", "other"), "entry kind", required=True, limit=64)
-    description = _clean_text(entry.get("description", ""), "entry description", limit=2_000)
+    raw_kind = entry.get("kind", "other")
+    kind = _clean_text("other" if raw_kind is None else raw_kind, "entry kind", required=True, limit=64)
+    raw_description = entry.get("description", "")
+    description = _clean_text("" if raw_description is None else raw_description, "entry description", limit=2_000)
     raw_aliases = entry.get("aliases", [])
     if raw_aliases is None:
         raw_aliases = []
@@ -123,13 +126,22 @@ def _entry_candidates(entry: Mapping[str, Any]) -> tuple[str, str, tuple[str, ..
 
 
 def _match(query: str, term: str, fuzzy_threshold: float) -> tuple[str, float] | None:
-    if _compact(query) == _compact(term):
+    compact_query = _compact(query)
+    compact_term = _compact(term)
+    folded_query = compact_query.casefold()
+    folded_term = compact_term.casefold()
+    if compact_query == compact_term:
         return "exact", 1.0
-    if _folded(query) == _folded(term):
+    if folded_query == folded_term:
         return "casefold", 0.98
-    if len(_folded(query)) < 3 or len(_folded(term)) < 3:
+    if len(folded_term) >= 2 and folded_term in folded_query:
+        coverage = len(folded_term) / max(len(folded_query), len(folded_term))
+        return "contains", round(0.93 + min(coverage, 1.0) * 0.05, 4)
+    if len(folded_query) < 3 or len(folded_term) < 3:
         return None
-    score = SequenceMatcher(None, _folded(query), _folded(term)).ratio()
+    if len(folded_query) > MAX_FUZZY_LENGTH or len(folded_term) > MAX_FUZZY_LENGTH:
+        return None
+    score = SequenceMatcher(None, folded_query, folded_term).ratio()
     if score >= fuzzy_threshold:
         return "fuzzy", round(score, 4)
     return None
@@ -166,10 +178,10 @@ def retrieve(
                 continue
             candidate = (match[0], match[1], term)
             if best is None or (
-                {"exact": 0, "casefold": 1, "fuzzy": 2}[candidate[0]],
+                {"exact": 0, "casefold": 1, "contains": 2, "fuzzy": 3}[candidate[0]],
                 -candidate[1],
             ) < (
-                {"exact": 0, "casefold": 1, "fuzzy": 2}[best[0]],
+                {"exact": 0, "casefold": 1, "contains": 2, "fuzzy": 3}[best[0]],
                 -best[1],
             ):
                 best = candidate
@@ -191,7 +203,7 @@ def retrieve(
         )
     ranked.sort(
         key=lambda hit: (
-            {"exact": 0, "casefold": 1, "fuzzy": 2}.get(hit.match_type, 3),
+            {"exact": 0, "casefold": 1, "contains": 2, "fuzzy": 3}.get(hit.match_type, 4),
             -hit.score,
             _folded(hit.name),
         )
