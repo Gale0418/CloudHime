@@ -15,6 +15,7 @@ SETTINGS_FILENAME = "cloudhime_settings.json"
 SETTINGS_APP_DIR = "CloudHime"
 RELIEF_OFFSET_MIN = -500
 RELIEF_OFFSET_MAX = 500
+ACTIVE_WORK_TITLE_MAX = 240
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,12 @@ def normalize_settings_payload(
     normalized.pop("region_relief_gap_px", None)
     normalized["region_relief_opacity"] = opacity
     normalized["region_frame_opacity"] = opacity
+    active_work_title = normalized.get("active_work_title", "")
+    normalized["active_work_title"] = (
+        " ".join(active_work_title.split())[:ACTIVE_WORK_TITLE_MAX]
+        if isinstance(active_work_title, str)
+        else ""
+    )
     normalized["ui_language"] = localization.normalize_ui_language(
         ui_language if ui_language is not None else normalized.get("ui_language", localization.DEFAULT_UI_LANGUAGE),
         fallback=localization.DEFAULT_UI_LANGUAGE,

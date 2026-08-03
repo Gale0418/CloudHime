@@ -138,3 +138,9 @@ def test_load_settings_prefers_appdata_on_equal_mtime(tmp_path):
 
     assert payload == {"source": "appdata"}
     assert loaded_from == str(appdata_file)
+def test_normalize_settings_payload_sanitizes_active_work_title():
+    normalized = normalize_settings_payload({"active_work_title": "  Princess   Synergy  "}, region_opacity=40)
+    invalid = normalize_settings_payload({"active_work_title": 123}, region_opacity=40)
+
+    assert normalized["active_work_title"] == "Princess Synergy"
+    assert invalid["active_work_title"] == ""

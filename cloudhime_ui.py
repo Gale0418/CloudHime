@@ -90,6 +90,7 @@ from settings_store import (
 )
 from ocr_backend_panel import OcrBackendSettingsPanel
 from translation_settings_panel import TranslationSettingsPanel
+from knowledge_pack_store import KnowledgePackStore, create_knowledge_pack_paths
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
@@ -1772,6 +1773,7 @@ class SettingsWindowRevamp(QWidget):
         self.setObjectName("settingsWindowRevamp")
         self.old_pos = None
         self._ai_requested = False
+        self._knowledge_title_dirty = False
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setMinimumSize(1400, 780)
         self.resize(1422, 800)
@@ -1864,6 +1866,33 @@ class SettingsWindowRevamp(QWidget):
         self.cmb_ui_language_chip.currentIndexChanged.connect(self.on_ui_language_changed)
         language_chip_layout.addWidget(self.cmb_ui_language_chip)
         chip_row.addWidget(language_chip)
+
+        knowledge_chip = QWidget()
+        knowledge_chip_layout = QHBoxLayout(knowledge_chip)
+        knowledge_chip_layout.setContentsMargins(0, 0, 0, 0)
+        knowledge_chip_layout.setSpacing(4)
+        self.lbl_knowledge_work = QLabel("📖")
+        self.lbl_knowledge_work.setFixedWidth(24)
+        self.lbl_knowledge_work.setAlignment(Qt.AlignCenter)
+        knowledge_chip_layout.addWidget(self.lbl_knowledge_work)
+        self.input_knowledge_title = QLineEdit()
+        self.input_knowledge_title.setMinimumWidth(180)
+        self.input_knowledge_title.setMaximumWidth(420)
+        self.input_knowledge_title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.input_knowledge_title.textChanged.connect(self.on_knowledge_title_changed)
+        knowledge_chip_layout.addWidget(self.input_knowledge_title)
+        self.lbl_knowledge_status = QLabel("")
+        self.lbl_knowledge_status.setMinimumWidth(112)
+        self.lbl_knowledge_status.setMaximumWidth(190)
+        self.lbl_knowledge_status.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.lbl_knowledge_status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        knowledge_chip_layout.addWidget(self.lbl_knowledge_status)
+        self.btn_knowledge_action = QPushButton("")
+        self.btn_knowledge_action.setCursor(Qt.PointingHandCursor)
+        self.btn_knowledge_action.setMinimumWidth(124)
+        self.btn_knowledge_action.clicked.connect(self.on_knowledge_action_clicked)
+        knowledge_chip_layout.addWidget(self.btn_knowledge_action)
+        chip_row.addWidget(knowledge_chip, 1)
         chip_row.addStretch()
         top.addLayout(chip_row)
 
@@ -2148,7 +2177,7 @@ class SettingsWindowRevamp(QWidget):
         self.btn_cancel = QPushButton("")
         self.btn_cancel.setCursor(Qt.PointingHandCursor)
         self.btn_cancel.setMinimumWidth(110)
-        self.btn_cancel.clicked.connect(self.hide)
+        self.btn_cancel.clicked.connect(self.on_cancel_clicked)
         self.btn_save = QPushButton("✓")
         self.btn_save.setCursor(Qt.PointingHandCursor)
         self.btn_save.setMinimumWidth(120)
@@ -2243,6 +2272,11 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_theme_mode.setToolTip(translation_tools.ui_text(lang, "settings_theme_mode"))
         self.lbl_ui_language.setText("🌐")
         self.lbl_ui_language.setToolTip(translation_tools.ui_text(lang, "settings_ui_language"))
+        self.lbl_knowledge_work.setToolTip(translation_tools.ui_text(lang, "settings_knowledge_placeholder"))
+        self.input_knowledge_title.setPlaceholderText(
+            translation_tools.ui_text(lang, "settings_knowledge_placeholder")
+        )
+        self.btn_knowledge_action.setText(self._knowledge_action_text())
         self.btn_reset_defaults.setText(f"↻  {translation_tools.ui_text(lang, 'settings_reset_defaults')}")
         self.btn_cancel.setText(translation_tools.ui_text(lang, "settings_cancel"))
         self.btn_save.setText(f"✓  {translation_tools.ui_text(lang, 'settings_save')}")
@@ -2301,9 +2335,77 @@ class SettingsWindowRevamp(QWidget):
             self.refresh_localized_texts()
 
     def on_save_clicked(self):
+        if hasattr(self.controller, "commit_active_work_title"):
+            self.controller.commit_active_work_title(self.input_knowledge_title.text())
         if hasattr(self.controller, "save_settings"):
             self.controller.save_settings()
+        self._knowledge_title_dirty = False
         self.hide()
+
+    def on_cancel_clicked(self):
+        self._knowledge_title_dirty = False
+        self._sync_knowledge_from_controller(force=True)
+        self.hide()
+
+    def _knowledge_action_text(self):
+        lang = self._current_ui_language()
+        if self._knowledge_pack_for_title(self.input_knowledge_title.text()) is not None:
+            return translation_tools.ui_text(lang, "settings_knowledge_update")
+        return translation_tools.ui_text(lang, "settings_knowledge_research")
+
+    def _knowledge_pack_for_title(self, title):
+        finder = getattr(self.controller, "find_knowledge_pack", None)
+        return finder(title) if callable(finder) else None
+
+    def _refresh_knowledge_status(self):
+        title = self.input_knowledge_title.text().strip()
+        lang = self._current_ui_language()
+        pack = self._knowledge_pack_for_title(title)
+        self.btn_knowledge_action.setEnabled(bool(title) and not self.btn_knowledge_action.property("knowledgeBuilding"))
+        self.btn_knowledge_action.setText(self._knowledge_action_text())
+        if not title:
+            self.lbl_knowledge_status.setText("")
+        elif pack is not None:
+            self.lbl_knowledge_status.setText(translation_tools.ui_text(lang, "settings_knowledge_ready"))
+        else:
+            self.lbl_knowledge_status.setText(translation_tools.ui_text(lang, "settings_knowledge_missing"))
+
+    def on_knowledge_title_changed(self, _text):
+        self._knowledge_title_dirty = True
+        self._refresh_knowledge_status()
+
+    def on_knowledge_action_clicked(self):
+        title = self.input_knowledge_title.text().strip()
+        if not title:
+            self._refresh_knowledge_status()
+            return
+        starter = getattr(self.controller, "start_knowledge_research", None)
+        self.btn_knowledge_action.setProperty("knowledgeBuilding", True)
+        self.btn_knowledge_action.setEnabled(False)
+        self.btn_knowledge_action.setText(
+            translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_building")
+        )
+        started = False
+        try:
+            started = bool(starter(title)) if callable(starter) else False
+        except Exception:
+            started = False
+        if not started:
+            self.btn_knowledge_action.setProperty("knowledgeBuilding", False)
+            self._refresh_knowledge_status()
+            self.lbl_knowledge_status.setText(
+                translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_unavailable")
+            )
+
+    def _sync_knowledge_from_controller(self, force=False):
+        if not force and getattr(self, "_knowledge_title_dirty", False):
+            self._refresh_knowledge_status()
+            return
+        title = str(getattr(self.controller, "active_work_title", "") or "")
+        self.input_knowledge_title.blockSignals(True)
+        self.input_knowledge_title.setText(title)
+        self.input_knowledge_title.blockSignals(False)
+        self._refresh_knowledge_status()
 
     def eventFilter(self, obj, event):
         return super().eventFilter(obj, event)
@@ -2394,6 +2496,7 @@ class SettingsWindowRevamp(QWidget):
     def sync_from_controller(self):
         theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
         self.refresh_localized_texts()
+        self._sync_knowledge_from_controller()
         ocr_backend_panel = getattr(self, "ocr_backend_panel", None)
         if ocr_backend_panel is not None:
             ocr_backend_panel.sync_from_controller()
@@ -2540,6 +2643,18 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent"))
         self.cmb_theme_mode_chip.setStyleSheet(theme.combo_qss(radius=6))
         self.cmb_ui_language_chip.setStyleSheet(theme.combo_qss(radius=6))
+        self.input_knowledge_title.setStyleSheet(
+            f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 5px 8px; }}"
+            f"QLineEdit:focus {{ border: 2px solid {theme.accent}; }}"
+        )
+        self.lbl_knowledge_status.setStyleSheet(
+            f"color: {theme.subtext}; background: transparent; border: none; font-size: 11px;"
+        )
+        self.btn_knowledge_action.setStyleSheet(
+            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; border-radius: 6px; padding: 6px 9px; }}"
+            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
+            f"QPushButton:disabled {{ color: {theme.subtext}; background-color: {theme.control_disabled_bg}; border-color: {theme.border}; }}"
+        )
         self.slider_relief_offset_x.setStyleSheet(slider_style)
         render_button_style = (
             f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
@@ -2653,6 +2768,9 @@ class Controller(QWidget):
         self.selected_region = None
         self.last_scan_results = []
         self.settings_data = {}
+        self.active_work_title = ""
+        self.active_knowledge_pack = None
+        self.knowledge_pack_store = KnowledgePackStore(create_knowledge_pack_paths(SETTINGS_PATHS))
         self.ui_language = localization.DEFAULT_UI_LANGUAGE
         self.cooldown_total_ms = 5000
         self.cooldown_end_time = 0.0
@@ -2935,6 +3053,40 @@ class Controller(QWidget):
         if hasattr(self, "btn_now"):
             self.btn_now.setText(self._tr("controller.button.now", fallback="立即翻譯"))
 
+    def find_knowledge_pack(self, title):
+        try:
+            return self.knowledge_pack_store.find_pack_for_title(title)
+        except Exception as exc:
+            logger.warning(f"[Knowledge] local pack lookup failed: {exc}")
+            return None
+
+    def _load_knowledge_pack_for_title(self, title):
+        normalized = " ".join(str(title or "").split())
+        pack = self.find_knowledge_pack(normalized) if normalized else None
+        self.active_knowledge_pack = pack
+        setter = getattr(self.worker, "set_knowledge_pack", None)
+        if callable(setter):
+            try:
+                setter(pack)
+            except Exception as exc:
+                logger.warning(f"[Knowledge] runtime pack load failed: {exc}")
+                self.active_knowledge_pack = None
+        return pack
+
+    def commit_active_work_title(self, title):
+        normalized = normalize_settings_payload(
+            {"active_work_title": title},
+            int(self.region_frame_opacity),
+            self.get_ui_language(),
+        ).get("active_work_title", "")
+        self.active_work_title = normalized
+        self._load_knowledge_pack_for_title(normalized)
+        return self.active_knowledge_pack
+
+    def start_knowledge_research(self, _title):
+        """Hook for the future injected DDGS/Jina/Gemma builder; fail open for now."""
+        return False
+
     def get_settings_payload(self):
         payload = {
             "gemma_model": self.worker.gemma_model,
@@ -2971,6 +3123,7 @@ class Controller(QWidget):
             "theme_mode": self.theme_mode,
             "binary_threshold": int(self.worker.binary_threshold),
             "ui_language": self.get_ui_language(),
+            "active_work_title": getattr(self, "active_work_title", ""),
         }
         return normalize_settings_payload(payload, int(self.region_frame_opacity), self.get_ui_language())
 
@@ -3001,6 +3154,8 @@ class Controller(QWidget):
             resolve_ui_language(settings, self.ui_language),
         )
         self.settings_data = settings
+        self.active_work_title = str(settings.get("active_work_title", "") or "").strip()
+        self._load_knowledge_pack_for_title(self.active_work_title)
         self.worker.begin_translation_registry_batch()
         self.set_ui_language(resolve_ui_language(settings, self.ui_language), persist=False, refresh=True)
 

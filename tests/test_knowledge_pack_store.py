@@ -200,3 +200,10 @@ def test_malformed_current_catalog_recovers_from_pack_files(tmp_path):
 
     assert recovered is not None
     assert recovered["title"] == "Saved"
+def test_find_pack_for_title_matches_title_and_alias_casefold(tmp_path):
+    store = KnowledgePackStore(tmp_path / "packs")
+    saved = store.save_pack("Princess Synergy", aliases=["プリンセス・シナジー"])
+
+    assert store.find_pack_for_title(" princess synergy ")["pack_id"] == saved["pack_id"]
+    assert store.find_pack_for_title("プリンセス・シナジー")["title"] == "Princess Synergy"
+    assert store.find_pack_for_title("unknown") is None
