@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import cv2
+import numpy as np
 
 from cloudhime_workers import (
     AUTO_THRESHOLD_MAX,
@@ -42,6 +43,17 @@ def _parse_backend_chain(values: Sequence[str] | None) -> list[str]:
             if name and name not in chain:
                 chain.append(name)
     return chain
+
+
+def _read_image(path: str | Path, flags: int = cv2.IMREAD_COLOR) -> Any | None:
+    """Read an image through Python's Unicode-aware file API on Windows."""
+    try:
+        encoded = np.fromfile(str(path), dtype=np.uint8)
+        if encoded.size == 0:
+            return None
+        return cv2.imdecode(encoded, flags)
+    except (OSError, ValueError, cv2.error):
+        return None
 
 
 def _as_rect(value: Any) -> list[int] | None:
@@ -230,7 +242,7 @@ def _process_image(
     started = time.perf_counter()
     if hasattr(worker, "binary_threshold"):
         worker.binary_threshold = int(base_threshold)
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    image = _read_image(path)
     if image is None:
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         return _empty_image_result(path, elapsed_ms, "image_unreadable")

@@ -16,10 +16,39 @@ def _synthetic_image() -> np.ndarray:
 
 def _mock_image_load(monkeypatch) -> None:
     monkeypatch.setattr(
-        benchmark.cv2,
-        "imread",
+        benchmark,
+        "_read_image",
         lambda *_args, **_kwargs: _synthetic_image(),
     )
+
+
+def test_read_image_uses_unicode_safe_decode(monkeypatch):
+    encoded = np.array([1, 2, 3], dtype=np.uint8)
+    decoded = _synthetic_image()
+    image_path = Path("轉生重騎士_テスト") / "001.jpg"
+    file_calls = []
+    decode_calls = []
+
+    monkeypatch.setattr(
+        benchmark.np,
+        "fromfile",
+        lambda path, dtype: file_calls.append((path, dtype)) or encoded,
+    )
+
+    def fake_decode(buffer, flags):
+        decode_calls.append((buffer, flags))
+        return decoded
+
+    monkeypatch.setattr(benchmark.cv2, "imdecode", fake_decode)
+
+    result = benchmark._read_image(image_path)
+
+    assert result is decoded
+    assert file_calls == [(str(image_path), np.uint8)]
+    assert len(decode_calls) == 1
+    received_buffer, received_flags = decode_calls[0]
+    assert np.array_equal(received_buffer, encoded)
+    assert received_flags == benchmark.cv2.IMREAD_COLOR
 
 
 class FakeWorker:
@@ -237,7 +266,7 @@ def test_json_schema_and_backend_override(monkeypatch, capsys):
 def test_error_and_require_complete_gate(monkeypatch, capsys):
     FakeWorker.instances.clear()
     monkeypatch.setattr(benchmark, "OCRWorker", FakeWorker)
-    monkeypatch.setattr(benchmark.cv2, "imread", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(benchmark, "_read_image", lambda *_args, **_kwargs: None)
 
     assert benchmark.main(["--require-complete", "missing.png"]) == 1
     payload = json.loads(capsys.readouterr().out)
