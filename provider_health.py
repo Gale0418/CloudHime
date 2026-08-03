@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-LOCAL_MODEL_IDS = frozenset({"gemma-3-4b-it-local", "translategemma-4b-it-local"})
+from model_catalog import LOCAL_MODEL_IDS
+
+
 
 
 @dataclass(frozen=True)

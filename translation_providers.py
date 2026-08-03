@@ -6,6 +6,7 @@ import difflib
 import re
 import time
 import os
+import threading
 from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
@@ -13,6 +14,7 @@ from urllib import error, request
 
 from deep_translator import GoogleTranslator
 
+from model_catalog import REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
 from translation_contracts import TranslationProvider, TranslationResult
 from knowledge_prompt_context import KnowledgePromptContext
 from translation_helpers import (
@@ -38,8 +40,8 @@ from translation_helpers import (
 
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GOOGLE_STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
-DEFAULT_GEMMA_MODEL = "gemma-4-31b-it"
-SUPPORTED_GEMMA_MODEL_NAMES = ("gemma-4-26b-a4b-it", "gemma-4-31b-it", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite")
+DEFAULT_GEMMA_MODEL = REGISTRY_DEFAULT_MODEL
+SUPPORTED_GEMMA_MODEL_NAMES = REMOTE_TRANSLATION_MODEL_IDS
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
     "gemma-3-1b-it": 30,
@@ -198,8 +200,10 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         self.gemma_prompt = (gemma_prompt or "").strip()
         self.screenshot_gemma_prompt = (screenshot_gemma_prompt or "").strip()
         self.supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
+        self.last_config_warning = ""
         self.gemma_model = self.normalize_gemma_model(gemma_model)
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
+        self._rate_limit_lock = threading.RLock()
         self._call_timestamps: dict[str, list[float]] = {name: [] for name in self.supported_models}
         self._init_knowledge_prompt_context()
         self._dictionary = load_translation_dictionary()
@@ -215,9 +219,20 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         gemma_enabled: bool | None = None,
         auto_switch_enabled: bool | None = None,
         supported_models: Sequence[str] | None = None,
-    ) -> None:
+    ) -> str | None:
+        self.last_config_warning = ""
         if google_api_key is not None:
             self.google_api_key = (google_api_key or "").strip()
+        if supported_models is not None:
+            new_supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
+            if new_supported_models != self.supported_models:
+                with self._rate_limit_lock:
+                    previous_timestamps = self._call_timestamps
+                    self.supported_models = new_supported_models
+                    self._call_timestamps = {
+                        name: list(previous_timestamps.get(name, []))
+                        for name in self.supported_models
+                    }
         if gemma_model is not None:
             self.gemma_model = self.normalize_gemma_model(gemma_model)
         if gemma_prompt is not None:
@@ -230,22 +245,22 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             self.enabled = bool(gemma_enabled)
         if auto_switch_enabled is not None:
             self.auto_switch_enabled = bool(auto_switch_enabled)
-        if supported_models is not None:
-            new_supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
-            if new_supported_models != self.supported_models:
-                previous_timestamps = self._call_timestamps
-                self.supported_models = new_supported_models
-                self._call_timestamps = {
-                    name: list(previous_timestamps.get(name, []))
-                    for name in self.supported_models
-                }
+        return self.last_config_warning or None
 
     def available(self) -> bool:
         return bool(self.google_api_key)
 
     def normalize_gemma_model(self, model_name: str | None) -> str:
-        model_name = (model_name or "").strip()
-        return model_name if model_name in self.supported_models else DEFAULT_GEMMA_MODEL
+        requested = (model_name or "").strip()
+        if requested in self.supported_models:
+            return requested
+        fallback = DEFAULT_GEMMA_MODEL
+        if fallback not in self.supported_models and self.supported_models:
+            fallback = self.supported_models[0]
+        self.last_config_warning = (
+            f"invalid_model:{requested or '<empty>'};fallback={fallback}"
+        )
+        return fallback
 
     def _get_cached(self, cache_key: Any):
         cached = self._translation_cache.get(cache_key)
@@ -302,35 +317,39 @@ class GemmaTranslationProvider(KnowledgePromptContext):
 
     def _prune_timestamps(self, model_name: str) -> None:
         cutoff = time.monotonic() - GEMMA_RATE_LIMIT_WINDOW_SEC
-        self._call_timestamps[model_name] = [ts for ts in self._call_timestamps.get(model_name, []) if ts >= cutoff]
+        with self._rate_limit_lock:
+            self._call_timestamps[model_name] = [
+                ts for ts in self._call_timestamps.get(model_name, []) if ts >= cutoff
+            ]
 
     def _max_calls_for_model(self, model_name: str) -> int:
         model_name = (model_name or "").strip().lower()
         return GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL.get(model_name, 15)
 
     def _can_call(self, model_name: str) -> bool:
-        self._prune_timestamps(model_name)
-        current_calls = len(self._call_timestamps.get(model_name, []))
-        return current_calls < self._max_calls_for_model(model_name)
+        with self._rate_limit_lock:
+            self._prune_timestamps(model_name)
+            current_calls = len(self._call_timestamps.get(model_name, []))
+            return current_calls < self._max_calls_for_model(model_name)
 
     def _record_call(self, model_name: str) -> None:
-        self._prune_timestamps(model_name)
-        self._call_timestamps.setdefault(model_name, []).append(time.monotonic())
+        with self._rate_limit_lock:
+            self._prune_timestamps(model_name)
+            self._call_timestamps.setdefault(model_name, []).append(time.monotonic())
 
     def _wait_if_needed(self, model_name: str) -> None:
-        """如果需要，等待直到可以進行下一次調用"""
-        self._prune_timestamps(model_name)
-        timestamps = self._call_timestamps.get(model_name, [])
+        """如果需要，等待直到可以進行下一次調用。"""
+        with self._rate_limit_lock:
+            self._prune_timestamps(model_name)
+            timestamps = list(self._call_timestamps.get(model_name, []))
+            wait_time = 0.0
+            if len(timestamps) >= self._max_calls_for_model(model_name):
+                wait_time = GEMMA_RATE_LIMIT_WINDOW_SEC - (time.monotonic() - timestamps[0])
 
-        if len(timestamps) >= self._max_calls_for_model(model_name):
-            # 計算需要等待的時間
-            oldest_timestamp = timestamps[0]
-            wait_time = GEMMA_RATE_LIMIT_WINDOW_SEC - (time.monotonic() - oldest_timestamp)
-
-            if wait_time > 0:
-                print(f"⏳ 速率限制：等待 {wait_time:.1f} 秒避免429錯誤...")
-                time.sleep(wait_time + 1)  # 額外1秒緩衝
-                self._prune_timestamps(model_name)
+        if wait_time > 0:
+            print(f"⏳ 速率限制：等待 {wait_time:.1f} 秒避免429錯誤...")
+            time.sleep(wait_time + 1)
+            self._prune_timestamps(model_name)
 
     def _request_timeout_seconds(self, model_name: str) -> int:
         model_name = (model_name or "").strip().lower()
