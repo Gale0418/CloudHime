@@ -419,9 +419,13 @@ def compare_conditions(
             ),
             "repeats_without_regression": sum(
                 item["page_regression"]["regressed_pages"] == 0
+                and item["page_regression"]["compared_pages"] > 0
                 for item in repeat_deltas
             ),
-        },
+            "repeats_without_comparison": sum(
+                item["page_regression"]["compared_pages"] == 0
+                for item in repeat_deltas
+            ),        },
         "latency_ms": {
             "baseline_avg": base_latency["avg"],
             "variant_avg": variant_latency["avg"],
