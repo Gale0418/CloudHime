@@ -38,6 +38,12 @@ def test_msix_builder_prefers_x64_makeappx_for_large_payloads():
     assert "x64[\\\\/]makeappx" in script
     assert "Where-Object" in script
 
+def test_ci_msix_signing_prefers_x64_signtool():
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "x64[\\\\/]signtool" in ci
+
 def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     root = Path(__file__).resolve().parents[1]
     script = (root / "packaging" / "build_msix.ps1").read_text(encoding="utf-8")
