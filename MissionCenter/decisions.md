@@ -1,0 +1,423 @@
+# Decisions
+
+| 日期 | 決策 | 原因 |
+| --- | --- | --- |
+| 2026-04-29 | 設定頁採用寬版三欄 | 更接近 image2 mockup，也比 2x2 卡片更像商業化設定面板 |
+| 2026-04-29 | 頂部只保留 Theme / UI Language chip | 使用者指定放在顏色模式旁邊，且不讓文字標籤擠壞排版 |
+| 2026-04-29 | 只搬 UI，不重寫功能 | 現有 controller、signal、設定儲存已可用，重寫風險高 |
+| 2026-04-29 | MissionCenter 主表清掉舊任務 | HUD 由 tasks.md 驅動，舊 Done 任務會干擾新任務生命週期 |
+| 2026-06-22 | logging 修法採最小退化策略 | 使用者先要完成第 1 項，因此只在 `FileHandler` 建立失敗時退化為 console-only，不同步重寫成 lazy logger |
+| 2026-06-22 | UI smoke 執行期卡住拆成下一個 Ready 任務 | 這是新發現的獨立缺口，先避免擴大本輪 logging collection 修復範圍 |
+| 2026-06-23 | UI smoke 測試採副作用隔離策略 | 這支 smoke test 的目的是驗證 UI 建立與收尾；將 host settings / hotkey 讀寫隔離後，才能穩定驗證 lifecycle 而不依賴主機環境 |
+| 2026-06-23 | 先做本地多模態實機驗證與最小接線 | 目前自動化 routing regression 已綠燈，但真正風險落在本機服務、模型與截圖 / OCR refine 串接；先補可驗證的最小設定接線與真機 smoke，比直接擴成完整 UI 大改更能降低不確定性 |
+| 2026-06-23 | 產品北極星改為「翻譯準確優先、翻譯快速第二、Microsoft Store 為最終目標」 | 使用者已明確拍板優先順序；若先做包裝或花俏功能，會放大尚未被量測與驗證的品質問題 |
+| 2026-06-23 | 本地多模態 Sprint 3 降為 Backlog，先切產品化 Milestone 1 | 目前最缺的是基準、量測與字典修正工作流；沒有這些前置，後續效能或商店化工作都缺乏驗收標尺 |
+| 2026-06-23 | 設定頁上架前 polish 採最小整理，不重做骨架 | 最新實機截圖與 Gemini review 都支持保留三欄；真正值得動的是可讀性、進階參數收納與資訊層級，而不是整套重設計 |
+| 2026-08-04 | MSIX 發佈採「開發自簽＋Microsoft Store 正式代簽」雙軌 | 自簽免費且適合本機／CI，但不能要求一般使用者手動信任憑證；Store 可免費代簽並提供受信任安裝與更新。開發 Publisher 固定 `CN=CloudHime Development`，正式 Identity／Publisher 必須從 Partner Center 原樣複製；Azure Artifact Signing／OV 不在目前範圍 |
+| 2026-08-04 | Partner Center 僅先完成個人帳號，不建立 CloudHime 產品 | CloudHime 尚未達到 release candidate；已唯讀確認帳號為個人、狀態使用中、公開 Publisher=WindSheep、產品數 0，詳細資料驗證仍處理中。新產品、名稱保留、Product identity、套件上傳與送審全部延後 |
+
+| 2026-06-28 | 準確度 benchmark 先以 25 個 seed case 起步，而不是硬追 50 張圖片 | 目前最重要的是先建立可重複跑的 ground truth 與分類方式；一張圖可拆成多個 case，先求案例品質與覆蓋面，再逐步擴充數量 |
+| 2026-07-01 | 速度 benchmark 先採本機 deterministic 三段量測，不呼叫外部翻譯 API 或本地模型 | CH-T17 的目標是建立穩定可重跑的耗時尺；真機 API / 模型延遲容易受網路、冷啟動與硬體狀態污染，後續可再以同格式追加實機量測 |
+| 2026-07-02 | 字典修正採共用 helper 加 provider 接線，不先做大型 UI | CH-T18 的驗收重點是專有名詞能穩定覆蓋；先讓 Google / Gemma / Local Gemma / Local multimodal 共同使用同一份字典，再把 UI 與真機截圖體感留到後續任務 |
+| 2026-07-02 | 本地多模態設定採既有 Translation 進階區最小接線 | CH-T13 只新增可操作欄位與既有保存 / 載入 / worker 套用流程，不新增獨立設定頁；URL / model 改用 editingFinished 套用以降低高頻刷新風險 |
+| 2026-07-10 | CH-E6 Hybrid Search 第一刀採 local-first 離線基準，不先引入 Optuna | 使用者明確要求準確度優先、速度第二，且線上 Gemma4 太慢；先用現有 seed 圖片與 Windows OCR 量化 OCR 前處理/threshold 改善空間，避免過早新增依賴或改 runtime 路由 |
+| 2026-07-10 | 本地模型採內嵌 GGUF + llama-cpp-python；Ollama 明確排除於產品需求之外 | 使用者不應被要求安裝外部模型服務；CloudHime 直接載入隨程式提供的 `models/gemma-3-4b-it.Q4_K_M.gguf`，實機驗證也以此路徑為準 |
+
+| 2026-07-13 | 多模態實機採內嵌 llama-server + Gemma 3 GGUF + mmproj，啟動策略為 GPU 優先、載入訊號明確的 health timeout 才單次 CPU fallback | 真機已在 GPU ready 並完成 example 圖片翻譯；不要求使用者安裝 Ollama，並避免一般 timeout 被誤判為可降級 |
+| 2026-07-13 | 多模態 smoke 固定使用 example/2026-07-10 00 37 20.png 並檢查「模型」視覺內容 | 該例圖有清楚可驗證文字；較細長的 617x95 圖片曾產生無法通過清理器的亂碼，不適合作為穩定 smoke fixture |
+| 2026-07-13 | 圖片 OCR smoke 以 line-match 為主指標、相似度為 fallback | 一張圖片的 OCR 常含多行，而 manifest expected 是逐行 case；直接比較整張輸出會錯誤懲罰正確的額外行。line-match 先驗證 expected 行是否出現，再用 match score 量化漏字 / 誤字。 |
+| 2026-07-13 | context size 先保留 4096，不因併行 GPU 資源衝突直接改成 2048 | `-c 2048` 在目前既有 llama-server 佔 VRAM 的狀態仍未通過 GPU health；沒有隔離條件就無法證明是品質或速度改善，先記為待重跑 A/B。 |
+
+| 2026-07-13 | CH-T34 Hybrid OCR hint A/B | 保留 Windows OCR hint 作為多模態弱提示，不改原圖、不把 hint 當答案 | 4 unique images / 5 cases：average_match 0.9714 -> 0.9867；日文 0.8571 -> 0.9333；平均延遲 15.94s -> 15.97s，符合準確度優先、速度第二 |
+| 2026-07-13 | CH-T34 prompt / scale 淘汰 | 不採用 strict OCR、日文專用 prompt 或 3x 小圖放大 | strict=0.963、日文 prompt=0.960、3x 與 baseline 同分且略慢；避免把無效變因帶入正式路徑 |
+| 2026-07-14 | CH-T34 GPU-only benchmark 閘門與分段計時 | 保留 GPU 優先，但 benchmark 不能把 CPU fallback 或 -ngl 0 當成 GPU 成功；新增 --require-gpu、--gpu-layers，並量測 hint / encode / model request / postprocess | 目前外部 Dreamsprite llama-server 佔用 VRAM，-ngl 20/1 與 context 512 仍 health timeout；先保留 4096 預設，不在資源未隔離前宣稱 GPU A/B 完成 |
+| 2026-07-14 | CloudHime 發布目標固定為 Microsoft Store，採 MSIX-first 評估 | 現有 install.ps1 / install.bat / build_exe.bat 是開發者 bootstrap / PyInstaller 流程，不等於商店交付；MSIX 能提供 Store 發布、安裝與更新整合 | 先做 CH-T23 / CH-T24 / CH-T26 的 research 與路徑收斂，不在核心品質基準尚未收斂前直接製作商店包；模型資產約 3.34 GB raw，需另決策 |
+| 2026-07-14 | 模型分發採核心 MSIX + app-managed model asset download | 讓只用 Google / Windows OCR 的使用者不用先下載約 3.34 GB；需要本地 Gemma 時仍由 CloudHime 自己管理模型，不引入 Conda、pip 或 Ollama | 模型資產放使用者可寫 AppData，必須有版本、SHA-256、續傳、取消、進度與磁碟空間檢查；Store optional package 留作後續評估，第一版不依賴 |
+## 2026-07-15：日文 OCR 採選擇性專用 rescue，不全面灌入 OCR hint
+
+- 決策：保留 Gemma 3 baseline prompt 作主要 OCR；strict prompt 與全面 Windows OCR hint 均淘汰。
+- 採用：只在高假名比例（>=0.25）且寬高比（>=3.0）的圖片，才評估 meiki 字元 confidence；候選平均 confidence >=0.75、低信心比例 >0 且 <=0.25 且與 Gemma 分歧時，最多追加一次原圖驗證。
+- 防退化：第二次結果只有在對 meiki 高信心字元的相似度嚴格提升時才採用。
+- 產品邊界：目前只加入 benchmark；正式接線移至 CH-T35，先處理 LGPL-3.0、AppData 下載、SHA-256、進度與背景 CPU 暖身。
+- 原因：25-case 從 0.9892 提升到 0.9949，失敗日文達完全正確；其他六張未觸發，維持原輸出與速度路徑。
+
+## 2026-07-15：CH-T35 正式路由與模型配送
+
+- 第一版採使用者明確勾選後，由 CloudHime 下載未修改的 meiki ONNX 到 %LOCALAPPDATA%\CloudHime\models\japanese-ocr；核心 MSIX 不綁約 44 MiB 權重，也不採 Store optional package。
+- 資產固定版本、revision、大小與 SHA-256，支援 .part 續傳；驗證成功後才以原子取代啟用。套件固定 meikiocr==0.3.1，執行使用 CPUExecutionProvider，不占 Gemma GPU。
+- rescue 僅在「本地多模態已啟用 + 日文 rescue 已啟用 + 高假名寬字幕 gate 通過」時執行；任何下載、初始化、OCR 或驗證錯誤都保留原始 Gemma 結果。
+- UI 的啟用、下載、暖身、完成與失敗狀態同時提供繁中與英文；本流程直接使用程式內模型與本機 CPU，與 Ollama 無關。
+- meikiocr 程式碼為 Apache-2.0，官方 detection / recognition 模型卡標示 LGPL-3.0；已加入 THIRD_PARTY_NOTICES.md 與來源連結。Microsoft Store 送審前仍需做一次正式授權審查。
+
+## 2026-07-16：CH-T36 翻譯文字採系統 UI 字體與 Qt fallback
+
+- 採用 QFontDatabase 的系統 GeneralFont 作全域 UI 字體，保留 Windows 預設 hinting；翻譯泡泡從 parent widget 複製同一個 QFont，排版量測、浮雕單行寬度與實際繪製不再分裂。
+- 不打包 Microsoft JhengHei 等商用系統字體，也不在第一版內建 Noto / Source Han CJK；避免授權風險與核心 MSIX 增加數十 MiB。
+- 暫不提供任意系統字體下拉選單，避免使用者選到缺少繁中或符號 glyph 的字體。未來只有在實際需求成立時，才做具字元覆蓋驗證的進階選擇或可選 OFL 字體資產。
+- 此決策同時適用繁中與英文 UI，並依賴 Qt / Windows 的逐字元 fallback 處理混合拉丁字、繁中與日文符號。
+
+## 2026-07-16：CH-T26 Gemma 受管資產與 Store 邊界
+
+- 模型與 projector 固定使用官方 `ggml-org/gemma-3-4b-it-GGUF` revision `ab31416aceb30cd095cb34cc27eea120940964e4`，並鎖定 exact size / SHA-256；不再依賴 mutable `main` 或 `latest` 作產品執行路徑。
+- GGUF / mmproj 放 `%LOCALAPPDATA%\CloudHime\models\gemma-3-4b-it`；`llama-server.exe` 與 DLL 視為核心套件 runtime，不在安裝後下載可執行碼，降低 Microsoft Store 審查風險。
+- 保留現有 app-root `models/` 的 exact-size 相容路徑，讓開發機與既有安裝不必重新下載；新安裝使用 AppData 受管路徑。
+- 首次下載支援 `.part` Range 續傳、取消、磁碟空間檢查、SHA-256 與原子 promote；完整驗證後寫入 revision / size / mtime 收據，後續啟動不重算 3.34 GB hash。
+- Gemma Terms notice 已加入 THIRD_PARTY_NOTICES；正式 Store 送審前仍須在乾淨 Windows/MSIX onboarding smoke 一併確認條款呈現與接受流程。
+## 2026-07-16：聯合專家審查收斂方向
+
+- Store / 供應鏈與 UX 兩席一致把 AppData 唯讀邊界列為立即風險，CH-T24 已先修正並進入 Review。
+- ML / OCR 席指出目前速度與 vision benchmark 會高估端到端品質，先建立 CH-T37，再做 Hybrid / Gemma 參數搜尋。
+- 準度優先的下一個 correctness gate 是 CH-T38：target language 與 prompt 必須隔離所有翻譯記憶。
+- 保留一個可行的新點子：只對完全相同影像做 OCR 前置短路；近似 MSE / perceptual hash 未經動態遊戲資料集驗證前不得上線，以免漏字幕。
+- 發布 release gate 固定為無 Python / Conda / pip / Ollama 的乾淨 Windows + MSIX smoke。
+
+## 2026-07-16：CH-T37 / CH-T38 correctness gate 與漫畫 holdout
+
+- 端到端評估採 source group 與 image 雙重 split-disjoint；case id、image、語言、reference、prediction id 與 stage 名先正規化，空白 model output 視為 missing 並對品質聚合貢獻零分。
+- 準確度仍優先於速度：品質權重固定為翻譯字元分數 0.65、必要術語召回 0.20、OCR 字元相似度 0.15；速度分開記錄 capture / OCR / encode / runtime / model / fallback / total 的 avg、p95 與 coverage。
+- Google、Gemma、Local Gemma、Local multimodal 與 screenshot output validation 的有效 target language 必須一致；cache key 同時隔離 target、prompt/model 與 local endpoint，設定切換會清除 worker translation memories。
+- 漫畫封面只作未調參的 test holdout。六張素材皆由 Wikimedia Commons 提供公版標記與來源頁；保留原始影像，不做銳化或二值化後再當 ground truth，以免把前處理偏好洩漏進基準。
+- CodeRabbit 只審 code、tests 與 manifests，不上傳 GGUF、圖片與 runtime binary；本次兩輪有效審查由 18 項收斂至 3 項，再由聚焦與整合測試驗證，不追加第三輪額度。
+## 2026-07-16 CH-T19 OCR 分列權威實作
+
+- 決策：normalize、內容過濾、CJK join 與水平分列只保留 ocr_quality.py 一份權威實作；舊模組維持相容轉送。
+- 決策：混合高度候選可用垂直重疊進入同列，但必須與列內每個既有成員相容，禁止高 bbox 成為上下列橋樑。
+- 非目標：本階段不推測垂直漫畫閱讀順序、不調 provider fallback、不新增 OCR 依賴。
+
+## 2026-07-16 CH-T20 fallback 品質契約
+
+- 決策：fallback 只由可解釋原因碼觸發，不再以單行字數比例覆蓋正確短譯。
+- 決策：繁中目標下平假名視為未翻句子；片假名專名可與中文共存。英文目標下，沒有英文字母的漢字或假名輸出視為來源字系殘留。
+- 決策：多模態分段結果只修可疑段；fallback 自身仍不合格時保留原圖片結果，避免二次錯譯。screenshot 空結果只由外層執行一次文字 fallback，並保存實際 provider attribution。
+
+## 2026-07-16 CH-T25 provider 健檢與 onboarding 契約
+
+- Google 基本翻譯可直接使用；只有遠端 AI 模型需要 Google API key，設定完成不等同已連線，真正連線檢查留到翻譯開始時。
+- 本地 Gemma 由 CloudHime 管理下載、驗證、載入與暖身；使用者不需安裝 Ollama、Python、Conda 或 pip。CPU ready 必須明示可用但較慢，GPU ready 才是建議主路徑。
+- 錯誤提示以可行動分類呈現，不直接顯示原始 stderr：timeout/CUDA/記憶體、資產/雜湊、runtime/server、port 與一般失敗各自提供修復方向。
+- 本地純文字模型即使 vision runtime 缺失仍可使用；只有啟用本地多模態時，才把 embedded runtime 缺失視為修復項目。
+## 2026-07-18：CH-T40 採碰撞安全、記憶體有界的精確畫面快取
+
+- 決策：使用 `CRC32 + shape/dtype/context` 作快速索引，但任何命中都必須再以 `np.array_equal` 比對不可變快照；不採 perceptual hash 或 OCR-text-only shortcut，準確度優先。
+- 決策：容量同時限制 4 entries 與 32 MiB retained bytes，並涵蓋 metadata 深層物件；新快照配置前先淘汰舊 entry，避免 4K 動態畫面同時保留兩份快照。
+- 決策：只快取所有段落都有可信 provider 的成功翻譯；exception、空結果、來源文字 fallback 不快取，避免一次暫時失敗變成持久空白或錯譯。
+- 決策：快取上下文納入 threshold 與 Japanese rescue readiness；閾值自動校正或 rescue runtime ready 後，同一圖片仍會重新 OCR／翻譯。
+- 決策：移除僅依 OCR 合併文字重用 `last_results` 的捷徑，並把 multimodal fallback cache 加入影像 digest，避免同文字不同畫面誤用舊翻譯。
+- 不採用：Gemini 建議全面停用 fullscreen cache。實測 4K miss 約 8.07ms、hit 約 19.53ms，相對 15 秒級模型流程很小；改採預先淘汰降低配置峰值，保留靜態全螢幕場景的巨大收益。
+
+## 2026-07-18：CH-T41 慢碟與 rescue 仲裁決策
+
+- 本機多模態 cold start health 預算採 240 秒，依據 D 槽 mmproj 851 MiB 冷讀實測 86.54 秒；前提是背景執行、stderr 分段進度可見、stop() 可立即取消且不得在取消後 CPU fallback。
+- benchmark 必須使用正式 JapaneseOCRRuntime、受管資產與 preferred vision assets；--require-complete 將部分成功視為失敗，避免把缺案例的結果當成最佳解。
+- 2026-07-18 正式路徑未重現舊版 rescue 採納：Meiki 候選較 baseline 接近 ground truth，但二次 Gemma 驗證拒絕。不得為單一歌詞直接採納候選；下一輪以漫畫 holdout 與更多日文字幕做穩健仲裁評估。
+- .part 在取消後刻意保留供 Range 續傳；只有 size / SHA-256 驗證成功才原子 promote，這是可恢復下載策略，不視為資源洩漏。
+## 2026-07-18 CH-T42 漫畫 OCR 路由決策
+
+- 決策：Windows OCR 保留為快速主路徑；目前 Gemma 3 4B 全圖 OCR 與 OCR hint A/B 均未勝過傳統 OCR，不升格為主要辨識器。
+- 決策：多模態只在可信漫畫頁且 OCR 明確不可靠時保底；任意直式 Latin 畫面不得觸發，模型截斷、重複退化或例外皆保留原 OCR。
+- 決策：局部漫畫頁只傳 page crop，不把整個多螢幕截圖送入模型；輸出座標仍映回原螢幕。
+- 下一方向：先做文字區域／分格候選與閱讀順序，再用人工 holdout 評估；不以這 15 張反覆調 prompt 或 threshold。
+
+## 2026-07-18 CH-T43 有界漫畫精修決策
+
+- 不採固定 2x3 tiles 作一般預設：15 張 aggregate anchor recall 完全不變，平均延遲超過兩倍，OCR 呼叫由 3 增至 21。
+- 採 OCR-first bounded refinement：只處理已有 CJK 且至少兩段文字的全螢幕漫畫頁；候選由粗掃描 bbox 產生，最多 4 區。
+- 直框只試 90/270，其他框只試 0 度；沿用粗掃描 threshold，不展開三閾值搜尋。全方向與三閾值實測皆更慢且曾造成頁面退步。
+- 原始框與加 padding 後的最終框都不得超過頁面 30%；候選局部分數必須至少高 5，否則保留 baseline。任何精修例外 fail-open。
+- 私人圖片、anchor manifest 與逐頁輸出不進版控；MissionCenter 只保存 aggregate 指標。
+## 2026-07-23 CH-T43 coverage 與 deadline 修正
+
+- 候選幾何覆蓋由 35% 收緊為 80%，避免只辨識到半個 baseline 框就覆蓋可信原文；候選必須覆蓋該區域全部 baseline items，否則整區保留 baseline。
+- 增加 normalize 後 SequenceMatcher 文字一致性 0.20；這只作保守仲裁，不宣稱語意正確性，因 OCR score 仍不是 ground truth。
+- 精修期限以 monotonic deadline 傳入 OCR scheduling 與 future collection；到期取消未開始 future、放棄逾時結果，但不強行終止正在使用 Windows OCR engine 的執行緒。
+- 最新 15 張 A/B 只有 1 個 anchor 淨收益，故不把 threshold／Hybrid Search 繼續放寬；下一個高價值方向是局部多模態 crop 與文字區域／分格偵測。
+## 2026-07-23：Knowledge Pack 未來工作邊界
+
+- DDGS 是 CloudHime 發行包內建依賴；開發者負責安裝與打包，一般 EXE／Microsoft Store 使用者不得被要求執行 pip。
+- 搜尋是 optional、best-effort／experimental 能力；DDGS import、backend、rate limit 或 upstream 變更只可讓 Research 顯示不可用或失敗，不得影響既有 OCR／翻譯啟動。
+- DDGS 只負責取得候選 URL，正文固定交由無 API Key 的 Jina Reader 讀取；SearchProvider 必須抽象化，以便未來替換 backend。
+- 設定頁頂部採可編輯 `QComboBox`：下拉列出既有 packs，也允許輸入新作品；控制區與 Theme／Language 同列並沿用既有 styling。此項取代 2026-04-29「頂部只保留 Theme / UI Language chip」的舊範圍。
+- Research／Update 是明確的立即資料操作；建立完成的 pack 獨立保存，但只有按 Save 才切換 runtime active pack。
+- Cancel 只放棄尚未儲存的 active work title／pack 選擇，不刪除已建立 pack。
+- 第一版不提供刪除 UI、不新增 Knowledge Card，也不因輸入或切換作品文字而自動連網。
+- DDGS 授權與 attribution 必須保留；不得宣稱 DDGS 搜尋具有商業 SLA 或官方搜尋引擎授權。
+
+## 2026-07-24：Local Vision GPU offload 參數
+
+- 實機在目前 Windows WDDM／VRAM 使用狀態下，預設 operator offload 搭配 Gemma 3 mmproj 會長時間停在 `load_tensors`；單純 text GGUF 可約 8 秒 ready。
+- `--no-op-offload` 保留 `-ngl 999` 的 GPU 權重載入，但避開 operator offload stall；實機約 9.6 秒 ready，request 可取得 HTTP 200。
+- 第一版先固定此參數，不做裝置遙測或高階顯卡 A/B；準確度需以同一批漫畫與 holdout 實測，不能由啟動成功推論品質不變。
+## 2026-07-24：Local multimodal 分批與 JSON 容錯
+
+- local Gemma 多模態一次最多送 4 段 OCR source text；超過就沿用同一組圖片 context 分批，避免 8～15 段造成截斷或錯誤 JSON。
+- JSON response 的 extra out-of-range segment 只忽略本批以外 index；缺段／重複／非法 index 仍 fail，避免把幻覺結果當完整翻譯。
+- llama-server 的 400 只有明確 response-format／JSON 類錯誤才改用 text；`exceed_context_size_error` 等 400 不重試，減少無效等待。
+- 實機 A/B 顯示 crop 對整頁截斷頁有救援價值，但 4 頁 crop 平均較慢且沒有 ground-truth 足以證明語意提升；先維持 opt-in。
+## 2026-07-24：Local crop bounded grouping
+
+- local multimodal crop 專用分組器最多輸出 4 個 region；合併依鄰近距離與 union 面積排序，單一 region 不得超過頁面 30%。
+- 所有 item center 無法被 bounded regions 覆蓋、item 尺寸超界、crop 編碼失敗或 provider 未 ready 時，一律 fail-open 回整頁 context。
+- 15 張正式漫畫幾何 gate 為 14/15；剩餘頁面若要提高覆蓋率需引入文字區域／分格偵測或局部切片，不直接放寬面積上限。
+- 新分組不接到既有 OCR adaptive refinement，避免影響 threshold、OCR bbox、閱讀順序與目前已驗證的 29/83 -> 30/83 結果。
+## 2026-07-24：Manga grid recovery gate
+
+- grid recovery 不覆蓋既有 OCR item；它只在 baseline item 數 2～6 時以 2x3 overlap tiles 做候選重試。
+- 接受條件是候選仍有至少 2 個 CJK item 且 score >= baseline + 3；否則保留 baseline。既有 <=1 item tile fallback 設旗標，避免重跑同一輪。
+- 15 張實機單輪結果顯示 35/83 -> 38/83，但 Windows OCR 有非決定性；這是探索結果，不是 release claim。
+- CLOUDHIME_MANGA_GRID_RECOVERY 預設關閉；若 repeated-run canonical evaluator 無法證明零 regression，不能直接開啟。
+
+## 2026-07-24 CH-T43 repeated-run evaluator 與 grid 決策
+
+- 決策：以獨立 manga_repeated_run_evaluator.py 保存 paired baseline／grid 摘要；同一 manifest、相同圖片順序、交錯 condition order、每頁 SHA-256，避免把單次 Windows OCR 波動當成準度提升。
+- 決策：同時報 pooled anchor recall 與 page macro recall，並列出 improved／equal／regressed pages；沒有 anchors 的 holdout 只報 nonempty、錯誤與 latency，recall 必須是 null。
+- 決策：目前 15 張一次 run 雖有 +6 anchors、0 regressions，但平均延遲增加約 2.38 秒；5 張 holdout 也顯示 grid 約慢 7.48 秒，所以不改產品預設。
+- 限制：這一版 repeated run 在同一 Python process 內以每個 condition 新建 OCRWorker；正式 release gate 仍需固定 5 repeats，必要時再升級成 subprocess isolation。
+## 2026-07-24 CH-T43 per-repeat paired comparison
+
+- 決策：任何多輪 benchmark 必須以 (case_id, repeat) 對齊 baseline／variant；跨 repeat 平均只作 page-level summary，不得代替 per-repeat stability。
+- 決策：先保存 evaluator 統計修正，再跑 5-repeat；subprocess isolation 保留為波動／順序效應出現後的下一級驗證，不提前擴大範圍。
+- CodeRabbit：本輪 staged evaluator review 回報 0 findings，但 reviewed context 超出兩個變更檔；未來需要獨立審查時採 isolated review directory 或 --base-commit。
+## 2026-07-24 CH-T43 oversized fullscreen OCR decision
+
+- 決策：全螢幕超大圖片先做 bounded resize，再進既有 OCR pipeline；只改變超過 2400px 長邊的輸入，正常螢幕保持 3x 行為。
+- 決策：FULLSCREEN_OCR_MAX_DIM=4096、FULLSCREEN_OCR_MIN_SCALE=1.5 是資源安全上限，不是準度調參；公開 holdout anchor 0/6，因此不以它宣稱品質提升。
+- 決策：grid recovery 只作明確 opt-in 的探索工具；公開 6 張一次 run 的平均延遲約 2.22s -> 12.66s，p95 約 6.25s -> 52.85s，暫不進入自動閾值或預設掃描路徑。
+## 2026-07-24 CH-T43 region-aware crop decision
+
+- 決策：下一階段先採用 region-aware crop mapping，再考慮新的文字區域偵測或 lazy grid；目前的主要缺口是多模態 context 與 source text 對不上，而不是再增加昂貴 OCR 重試。
+- 決策：CLOUDHIME_MANGA_CROP_CONTEXT 與 CLOUDHIME_MANGA_GRID_RECOVERY 仍預設關閉；本 lane 只改善 opt-in 路徑，不改一般掃描速度或 OCR geometry。
+- 決策：crop 的準度收益尚未被 holdout 語意 ground truth 證明；進入產品預設前仍需固定 GPU runtime、4 張 crop-enabled A/B、5-repeat paired evidence，且不得有 regression。
+## 2026-07-24 CH-T43 multimodal rescue gate 收斂
+
+- 決策：多模態仍以準度優先，但只有 OCR 輸出呈現低資訊碎片、極小候選區域或明確重複退化時才自動 rescue；合理的長段 CJK 直接保留，避免把正常頁面變成昂貴的全頁重試。
+- 決策：候選重複字／重複短單位視為退化輸出，拒絕其覆蓋 baseline；rescue、編碼失敗、provider 未 ready 與例外都維持 fail-open。
+- 實機 GPU probe 顯示 Gemma 3 4B 純 `japanese_ocr` 6 張公版封面皆非空但 anchor 僅 2/6，strict prompt 與 OCR hint 更差；因此本輪不把 local multimodal 宣稱為 OCR 替代，也不打開全局預設。
+- 速度基線：暖 GPU 的多模態 request 約 1.675s 平均、p95 2.391s；這是模型 request latency，不包含首次模型／mmproj 載入，不能冒充完整冷啟動速度。
+- CodeRabbit 本輪隔離審查受 free CLI rate limit 阻擋，未取得有效 findings；在額度恢復前維持人工檢查與 focused regression，不能記成 clean review。
+## 2026-07-24 CH-T43 evaluator barrier 與 5-repeat 收斂
+
+- 決策：產品掃描保留 bounded adaptive refinement deadline；只有 paired evaluator 透過 `drain_deadline_futures=True` 等待已啟動 OCR future，避免下一個 condition 與上一個 timeout 工作重疊。
+- 決策：evaluator 的總 latency 與 nonempty rate 將 error／timeout 頁納入分母，另保留 successful-only latency，避免失敗 variant 看起來更快。
+- Current HEAD 5-repeat 已證明 grid 在固定 15 張 annotated pages 上 5 improved、10 equal、0 regressed，5 repeats 無 regression；但平均延遲約增加 2.44 秒、p95 增加約 5.26 秒，grid 仍只能 opt-in。
+- Gemini 的臨時 manga_cover prompt probe 沒有超過既有 japanese_ocr；不以單次 3/6 類似 anchor 或輸出幻覺作產品升格依據。
+- 下一步優先做低成本文字區域／分格候選 proposal，另建 multimodal translation quality evaluator；不再用 OCR-only anchor 結果直接宣稱 local Gemma 已能取代 OCR。
+## 2026-07-24：CH-T43 evaluator barrier CodeRabbit review
+
+- 決策：保留 evaluator-only drain_deadline_futures=True；產品掃描仍維持 bounded、非等待的 deadline 行為。
+- 決策：總 latency 納入 error／timeout 頁，並另報 successful-only latency；避免失敗 variant 看似更快。
+- 審查：隔離 repo 僅含 5 個 staged 檔案，CodeRabbit review completed，findings=0；無需追加修正。
+
+## 2026-07-24：漫畫多模態品質評估器
+
+- 決策：vision smoke evaluator 同時接受既有 sample_source／xpected 與漫畫 holdout 的 image／isible_text_anchors，不複製第二套 GPU runtime。
+- 決策：dense-region detector 的離線 probe 對目前封面／漫畫頁召回不穩定，不接入預設 OCR；先以可重現的多模態品質數據引導下一輪裁切／prompt 實驗。
+- GPU evidence：6/6 成功，anchor 2/6，average_match=0.497，平均 request=1.758s，p95=2.674s。
+
+- 審查：本階段 CodeRabbit 隔離 review reviewedFiles=7，findings=0；未發現需要修正的問題。
+
+- A/B 結論：在相同 6 張公版封面、Gemma 3 4B GPU、context=4096 下，japanese_ocr 同時優於 baseline／strict_ocr 的非空率、anchor 命中與相似度；後兩者也沒有速度優勢。
+- 下一步：優先研究直排／裝飾標題的局部 crop 與 orientation hint，仍須以 holdout evaluator 驗證，不用 prompt 堆疊替代測量。
+
+- 方向策略決策：OCR bbox 的 vertical aspect ratio 只能描述候選框形狀，不能證明視覺模型需要旋轉；原圖可能已包含正確閱讀方向或混合內容。暫不加入自動旋轉。
+
+- 多視角結論：原圖＋灰階或 tight crop 在小樣本上只持平、明顯變慢，且仍有退化輸出；目前最穩定的視覺輸入仍是單一原圖。
+- 全頁結論：15 張 fixed annotated pages 上 local Gemma direct OCR 低於 Windows OCR（28/83 vs 31/83），因此不擴大全頁 rescue。
+- 下一個品質方向：把 local multimodal 當 translation context，另外建立 shadow evaluator／候選採用 gate；不改既有 OCR text 與 bbox contract。
+
+## 2026-07-24：Multimodal translation fail-open
+
+- 決策：local multimodal segmented translation 若 provider request 或 parser 失敗，必須退回既有 text provider route；多模態成功路徑行為與 request 次數不變。
+- CodeRabbit：隔離 v6 review 提出 1 個 minor 測試缺口（parser exception）；已補測並通過，沒有需要追加的產品修正。
+
+
+## 2026-07-24：Multimodal segmented translation repetition gate
+
+- 決策：只攔截「來源至少半數不同、結果至少 75% 重複且最多兩種譯文」的退化分段結果，避免模型把多段內容複製成同一句。
+- 保護：來源本身重複時不啟用這個 gate；provider 觸發 ValueError 後由既有 worker fail-open 回到文字翻譯 provider。
+- 審查狀態：CodeRabbit 本時段已使用 3/3，未對本 stage 宣稱通過；Git checkpoint 等待 review。
+
+
+## 2026-07-24：Move multimodal degeneration gate to worker
+
+- Gemini review：原本「75% 完全相同譯文」會把 Oh／Oh?／Oh... 等合理短句誤判為退化；provider 不應承擔漫畫語義業務規則。
+- 決策：gate 移至 OCRWorker，並限制為長譯文、來源足夠多樣、至少半數來源為長句；同一來源重複與短語氣詞直接放行。
+- 降級：worker 觸發後沿用既有 text provider fail-open，不增加成功路徑推論次數。
+- 審查狀態：Gemini 已完成只讀設計 review；CodeRabbit 本時段仍 3/3，待下一時段 isolated review 後才提交。
+
+
+## 2026-07-24：CodeRabbit v7 checkpoint
+
+- Gemini follow-up：不要用譯文長度單獨豁免；長來源本身已能排除短語氣詞，卻能捕捉全部輸出「無／空白」的短退化。
+- CodeRabbit：隔離 repo coderabbit-worker-gate-v7，只審查 cloudhime_workers.py 與 tests/test_cloudhime_workers.py，findings=0；因無 Git remote 使用 CLI free allowance。
+- Git：0933313，僅包含 worker gate 與 regression tests。
+
+## 2026-07-24：Release packaging readiness
+
+- 決策：封裝採單一 onedir bundle；assets、dictionary.json 與必要 runtime 檔案由 build_exe.bat 明確納入，模型仍由既有 AppData managed asset 流程下載，不把大型 GGUF 直接塞進安裝包。
+- 修正：UI 背景資源統一經 _resource_path() 解析，stylesheet URL 加引號，讓 PyInstaller 路徑與含空白路徑可用。
+- 保護：runtime staging 只複製必要 llama/cuda DLL 與 ggml-cpu-*.dll；所有 staging、PyInstaller、壓縮失敗都走共同 cleanup，避免殘留半成品。
+- 審查狀態：CodeRabbit v8 初審 2 個 minor 已修正；修正版重審受 rate limit 阻擋，未宣稱 clean，Git checkpoint 等待重審。
+
+## 2026-07-24：Source bootstrap boundary
+
+- 決策：install.ps1 / run.bat 明確定位為原始碼開發腳本，不作為 Store 安裝器；使用專案 .venv，禁止把 Miniconda、舊模型下載或外部模型服務列為使用者前置條件。
+- 模型邊界：source-dev 與 release 都由 CloudHime 的 managed asset flow 處理 Gemma model/projector；正式包裝仍使用 MSIX/PyInstaller 方向。
+
+## 2026-07-24：CodeRabbit v8 packaging checkpoint
+
+- CodeRabbit 初審 2 個 minor：run.bat 錯誤訊息應指向 install.ps1；install.ps1 應驗證 Python 3.10+。兩項均已修正。
+- CodeRabbit 修正版重審：findings=0，檢查 build_exe.bat、cloudhime_ui.py、install.ps1、run.bat、tests/test_release_packaging.py 與既有 UI smoke 檔。
+- 本 checkpoint 不包含模型檔、runtime binary、私有漫畫 probe 或 MissionCenter 以外的暫存資料。
+
+## 2026-07-24：Packaging and source bootstrap checkpoint
+
+- Git checkpoint：46d351e fix: align release and dev bootstrap。
+- 保留未完成項：實際 PyInstaller build 沒有在本工作區執行，因 runtime staging 約 GB 級且需要發行／GPU 環境；MSIX 與 Store submission 也不以本地靜態測試宣稱完成。
+
+## 2026-07-24：MSIX-first release skeleton
+
+- 決策：採 MSIX-first，而非先做自製安裝器；build_msix.ps1 以 Windows SDK makeappx.exe 產出 unsigned MSIX，Publisher、Identity、Version、Architecture 由參數注入。
+- 資產：新增 CloudHime logo；PyInstaller bundle 保留 assets、LICENSE、THIRD_PARTY_NOTICES.md，模型與 projector 仍留在 AppData managed asset flow。
+- 邊界：本機未安裝 Windows SDK，不能把 manifest 靜態驗證當成真實 MSIX／乾淨 Windows smoke；下一步需在 Windows SDK runner 執行 makeappx、安裝／啟動／唯讀 package 測試。
+- 官方依據：Microsoft 建議 Store 上傳 msixupload；MSIX Store 發布由 Store 處理重新簽章；Partner Center identity／listing／submission 仍需帳號與實際流程。
+
+## 2026-07-24：CI MSIX contract
+
+- 決策：runtime/ 是本機 release artifact，乾淨 CI 不下載或提交 GB 級 CUDA DLL；test_release_packaging 在 runtime 缺失時 skip，MSIX contract job 以 dummy onedir 驗證 makeappx 流程。
+- 限制：dummy package 只證明 manifest／makeappx staging 可工作，不代表真正 CloudHime.exe、GPU runtime 或 WACK 通過。
+- 審查狀態：msix-v1 已 findings=0；msix-v2 含 CI 變更的重審受 rate limit 阻擋。
+
+## 2026-07-24：MSIX builder hardening after CodeRabbit
+
+- Version 只接受四段 0-65535 數字，先於輸出路徑建立前驗證，避免 malformed path。
+- 建立 packagingSucceeded 狀態；makeappx、upload archive 任何失敗都清除 package/upload/暫存 zip，成功 artifact 才保留。
+- CI dummy dist 模擬現代 PyInstaller _internal layout，解壓 MSIX 後逐項檢查 13 個必要 runtime 檔案；這仍是 contract，不等於真實 GPU binary smoke。
+
+## 2026-07-24：MSIX hardening checkpoint
+
+- CodeRabbit 初審 3 major 已修：四段 Version 安全驗證、failure artifact cleanup、CI 解壓後逐檔檢查 13 個 runtime 檔案。
+- CodeRabbit 修正版：reviewedFiles=5、findings=0。
+- MSIX upload：CreateUpload 以 MSIX 壓成手動 msixupload；依官方文件，public symbols 可省略但會失去 Partner Center crash analytics，尚未納入。
+
+## 2026-07-24：MSIX CI hardening checkpoint
+
+- Commits：06b755d、d36a2a3。
+- d36a2a3 補上 manifest logo layout 與 packagingSucceeded regression assertions；內容已在 CodeRabbit msix-v2 五檔 review 中檢查。
+- 不把本機完整 pytest timeout 解讀成通過；CI runner 的 bounded smoke 與真正 Windows/GPU gate 分開追蹤。
+
+## 2026-07-29：CH-T35 仲裁 shadow 不升格為產品 fallback
+
+- 三輪固定 25-case GPU A/B 都證明現有二次 Gemma 仲裁可穩定採納同一個改善案例，且零退化。
+- 「仲裁拒絕時直接採 Meiki candidate」在三輪真實資料中從未被觸發，無法證明跨樣本穩健性；因此僅保留為 benchmark 診斷，不接入產品決策。
+- 正式路由維持 fail-open 與既有 provider 呼叫數；新增日誌只記 outcome 與兩個 similarity，不記 OCR／翻譯原文。
+
+## 2026-08-01：CH-T44 Knowledge Pack 本地底座
+
+- Pack 與 catalog 一律放在 AppData 的 `CloudHime/knowledge_packs`，不寫安裝目錄；這讓未來 MSIX 唯讀 package 與使用者資料生命週期分離。
+- 每個 pack 使用版本化 envelope 與 `pack_id`／`revision`；更新先寫新 revision，不能自動切換 active，讓未來設定頁的 Save／Cancel 語意保持清楚。
+- catalog 的 read-modify-write 由跨程序 lock 保護，pack／catalog JSON 都以同目錄暫存檔加 fsync／replace 原子 promote；讀取遇到缺檔、壞檔或不相容 schema 時 fail-open。
+- revision 檔名同時保留原始 ID 的 lower-case 與 SHA-256 指紋，避免 Windows 大小寫不敏感檔案系統把 `Alpha` 與 `alpha` 撞成同一檔案。
+- 本階段不引入 DDGS、Jina、Gemma、網路請求或 UI；先讓 `example/転生重騎士` 成為未來 Builder／retrieval 的可重現 fixture。
+
+## 2026-08-01：MSIX 前置資產閘門
+
+- 決策：`build_msix.ps1` 先呼叫共用 `verify_release_dist.ps1`；`-PreflightOnly` 不解析或執行 `makeappx.exe`，讓缺 SDK 的開發機仍能驗證真實 bundle。
+- 發行規則：CloudHime.exe、logo、dictionary、LICENSE、THIRD_PARTY_NOTICES.md 與 13 項 embedded llama/ggml runtime 必須存在；GGUF、mmproj、`.pfx`、`.p12`、`.key`、`.cer`、`.env` 與已生成的 Appx 檔案不得進 dist。
+- 邊界：此 gate 只證明 PyInstaller dist 可進入下一階段，不替代 Windows SDK 建包、簽章、WACK、MSIX install/uninstall 或首次 AppData 模型／GPU 暖身。模型與 projector 維持由 CloudHime 管理到 AppData。
+
+## 2026-08-01：真實 MSIX 與 AppX 宿主邊界
+
+- Windows SDK 10.0.26100.8876 的 x64 MakeAppx／SignTool 可用；真實 CloudHime dist 已完成 build 與 unpack contract，這部分不再是 dummy-only 證據。
+- `test_msix_install.ps1` 保留 Appx cmdlet 的 Windows PowerShell 5.1 bridge，避免本機 PowerShell 7 module load failure；此 bridge 不改產品執行檔，只改善 release smoke tooling。
+- 本機開發 cert 的信任鏈不可當 Store signing：CurrentUser TrustedPeople 會被 deployment 以 `0x800B0109` 拒絕；本機測試不可擅自保留 Root trust。CI 仍使用明確的 ephemeral cert cleanup，正式 Store 仍待 Store identity／publisher。
+- 真實 install/launch/uninstall 目前維持 Partial；需要可完成 AppX deployment 的乾淨 Windows／管理員環境重跑，且 WACK、AppData 模型下載與 GPU ready 仍是獨立 gate。
+
+## 2026-08-01：Release preflight signing-material 邊界
+
+- .pem 等副檔名不能一律視為私密簽章材料，因 PyInstaller dist 會包含 certifi\cacert.pem 公開 CA bundle；validator 只對該精確公開路徑放行，其餘 .pfx、.p12、.key、.pem、.priv、.pvk、.ppk、.cer、.crt 與 .env* 仍拒絕。
+- 空的 llama／ggml runtime 檔案視為缺失；這避免「檔名存在但無法執行」的假綠燈。
+- 本次 release preflight 只驗證 dist 檔案邊界，不能取代真實 AppX deployment、WACK、Store identity／正式簽章與首次 AppData GPU onboarding。
+## 2026-08-01：Gemma 3 GPU 啟動參數修正
+
+- 保留 Windows mmap：同一台 RTX 3060／D 槽 A/B 中，--no-mmap 超過 240 秒仍未 ready；移除後約 44.5 秒 ready，暖機後 startup 約 4.1 秒。
+- --no-op-offload 繼續保留，因為它仍是先前已驗證的 WDDM／operator offload 穩定化參數；本次只移除被新證據否定的 --no-mmap。
+- 5-case strict OCR GPU smoke 只代表固定 manifest 的現況，不外推成 113 張 example 全部正確；下一個準確度工作仍需分層漫畫／日文 holdout。
+## 2026-08-01：MSIX WACK 圖示尺寸與驗證邊界
+
+- MSIX 不再把單張大圖重用於 Store Logo、44x44、150x150；manifest 使用 50x50、44x44、150x150 三張獨立 PNG，builder 與 CI fixture 必須同步提供。
+- release preflight 不接受只看檔名或 PNG header 的假資產：先拒絕 204800 bytes 以上檔案，再驗證 signature、chunk 長度、CRC、IHDR、IDAT 與 IEND。
+- WACK 初次報告的 DPI warning 與 blocked-executable heuristic 不在本次 logo checkpoint 內；前者應在 PyInstaller EXE manifest／啟動 API 處理，後者需先盤點真正必要的第三方 runtime，不能為掃描綠燈移除 llama／CUDA。
+## 2026-08-01：DPI manifest 與 MSIX 簽章根因
+
+- DPI 採 PyInstaller --manifest 嵌入 EXE，manifest 同時提供 dpiAware=true/pm 舊版 fallback 與 dpiAwareness=PerMonitorV2；保留現有 Qt scaling environment variables，待實機多螢幕 smoke 再決定是否調整。
+- 不採 Python 啟動時 SetProcessDpiAwarenessContext 作為第一方案；官方建議 manifest，且 API 必須早於依賴 DPI 的 UI 建立，與 manifest 同時存在時容易變成失敗／重複設定。
+- 0x8007000B 已由 matching-subject 實測釐清為 Publisher／certificate Subject 不一致；正式 Store signing 必須使用 Store identity，測試自簽只作本機 package gate。
+- 不為 WACK blocked-executable heuristic 直接刪 llama/CUDA；先完成 DPI／signing gate，再另開 runtime dependency graph 與重複 DLL 瘦身任務。## 2026-08-01：WACK DPI follow-up 結論
+
+- 完整 PyInstaller rebuild 後，WACK 對新版 signed MSIX 回報 `OVERALL_RESULT=PASS`；`Application resources` 與 `DPIAwarenessValidation` 均 PASS，圖示尺寸與 EXE `PerMonitorV2` 修正已取得實際驗證。
+- `封鎖的可執行檔` 是 optional static heuristic FAIL，列出 Qt/Python/llama/CUDA 的必要 DLL 與處理序 API 參考；不為此刪除本地 Gemma／CUDA／OCR runtime。後續以 dependency graph、最小 runtime 分層與 Store 審查說明處理。
+- WACK 使用的簽章只允許一次性測試憑證，已精確清除 PFX、憑證與報告暫存；正式 Microsoft Store 發布仍需 Store identity／正式 signing。## 2026-08-01：AppX sideload 信任鏈邊界
+
+- 本機 `0x800B0109` 不是 Publisher mismatch 新問題，而是自簽 leaf certificate 未被目標機器信任。官方可靠做法是把實際簽章所用的公開 `.cer` 匯入 `Cert:\LocalMachine\TrustedPeople`，不把 leaf cert 當成 Trusted Root。
+- 目前 Codex 執行環境只有 Medium Mandatory Level；寫入 LocalMachine certificate store 回 `E_ACCESSDENIED`。因此不再用 CurrentUser store 假裝完成乾淨機安裝 gate，也不在沒有真正管理員 token 時重跑 1.27GB staging。
+- 短命測試憑證、PFX 與暫存目錄已精確清除。下一次實機 gate 必須由真正系統管理員／乾淨 Windows 執行，並以 thumbprint 清理信任材料。## 2026-08-01：Local Gemma tuning 前的 cache 邊界
+
+- Generation parameters 是翻譯結果語意的一部分；`temperature` 與 `repeat_penalty` 必須同時進入 Local Gemma cache key，參數實際改變時清除既有 translation cache 與 context buffer。
+- 不把目前少量 vision／漫畫案例直接拿來調 temperature、repeat penalty 或 context；先完成 source-disjoint 日文字幕 holdout 與固定 5-repeat paired A/B，避免把 cache 或隨機輸出誤認成品質提升。
+- CH-E6 優先順序暫定 CH-T35 → CH-T43 → CH-T32：先驗證已有 rescue 訊號，再處理漫畫 region context，最後才做 Gemma generation parameter search。
+## 2026-08-01：CH-T45 SearchProvider boundary
+
+- Research 是明確立即操作；正常 OCR／翻譯路徑不建立 provider、不觸網。
+- DDGS 只回傳候選 URL／摘要；Jina Reader 只讀通過 public URL 與 DNS 檢查的正文，所有結果仍是不可信輸入。
+- provider 以 lazy import、timeout、max results、max bytes、transport error 與 fail-open error boundary 隔離；真正 Gemma extraction、source confidence、worker、UI 與 PyInstaller hidden imports 留在後續 CH-T46～CH-T50。
+- 研究依據：[DDGS PyPI](https://pypi.org/project/ddgs/)、[DDGS source](https://github.com/deedy5/duckduckgo_search)、[Jina Reader](https://jina.ai/en-US/reader/)。
+## 2026-08-03：GPT 多模態日文字幕標註邊界
+
+- `example` 目前 113 張圖片仍只是素材池；模型自身 OCR／視覺輸出不得直接當 ground truth。
+- GPT 多模態視覺初判先建立 3 張 `轉生重騎士` 候選：001、002、003；檔案 `.private_japanese_subtitle_candidate_annotations.json` 明確標為 `draft_requires_owner_confirmation` 與 `ground_truth_eligible=false`，不進版控。
+- 只有主人逐張確認文字、閱讀順序與是否納入後，才能另行提升為正式 source-disjoint 日文字幕 holdout；長段落低於高信心門檻者只作候選，不計入準確率。## 2026-08-03：Knowledge Research Draft 不可自動啟用
+
+- 研究草稿採獨立 schema，狀態固定為 draft，entries 必須為空，owner_confirmed 固定為 false；DDGS／Jina／模型輸出只能留下候選證據，不能直接寫入或 activate Knowledge Pack。
+- 每個來源保留 canonical URL、source id、查詢結果 metadata、擷取時間、內容 SHA-256 與 bounded content；單一來源讀取失敗或內容過大只標記該來源，不中止整份研究草稿。
+- catalog 損壞時只從通過 schema 驗證且檔名 canonical 的本機 pack JSON 重建非 active 索引；不恢復 active revision，避免竄改檔案被默認採用。
+## 2026-08-03：視覺標註不能自證 ground truth
+
+- GPT 多模態可以協助讀圖與整理候選 anchors，但它與本地 OCR 一樣不能替自己產生的文字背書。
+- 正式日文字幕 benchmark 必須採「GPT 候選 → 主人逐項確認 → source-disjoint manifest → evaluator eligibility gate」四段流程；未確認資料只可作 smoke／候選，不可調參或宣稱準確率。
+## 2026-08-03：PR-1 hardening 採最小安全變更
+
+- 模型政策繼續由 `model_catalog.py` 統一；為保留既有 UI／worker 行為，registry default 對齊既有 `gemma-3-27b-it`，不趁 hardening 偷換成更慢模型。
+- API key 新寫入只走 Windows DPAPI；legacy `.env`／settings 僅在沒有 migration tombstone 時讀取。使用者清空 key 會先寫 tombstone 再刪 DPAPI，避免重啟復活；明確 process environment 仍可作外部注入。
+- Gemini 提出的 DirectML、ZipSlip、GPU 三階 fallback 屬後續研究候選；除非有現行程式路徑與測試證據，不直接加入本波次。
+- CodeRabbit 最終隔離複審為 7 個小檔案、0 issues；大型 UI、模型、example 與 dist 不送審。
+## 2026-08-03：Packaged OCR 安裝邊界
+
+- `build_exe.bat` 將 optional OCR Python stacks 排除在 release bundle 外，因此 frozen／MSIX runtime 不應嘗試 `sys.executable -m pip install`；Tesseract 的 `winget` 也不應由 Store app 代辦。
+- `ocr_backend_installer.install_backend_packages()` 與 `install_tesseract_runtime()` 在 `sys.frozen` 下 fail-closed，回傳可觀測訊息；source mode 的既有安裝流程不改。
+- 這只保證不會從 packaged app 觸發動態安裝，不代表 optional OCR 已包含在 Store 包，也不取代乾淨 Windows、WACK、Store identity 或實機 UI gate。
+- CodeRabbit 本輪因免費 CLI rate limit 未完成；不能把本地測試結果當成外部審查結果。
+
+## 2026-08-03：DDGS 只收核心，不使用 collect-all
+
+- DDGS 9.14.4 透過 `ddgs.engines` 的 `pkgutil.iter_modules` 動態建立 engine registry，因此只收 `ddgs.engines` submodules；lazy `ddgs.ddgs`、lxml、primp、fake-useragent data 與 certifi data 明確列入。
+- 不使用 `collect_all("ddgs")`：隔離 probe 實際觸發 optional DHT/API 與環境 Qt hook，造成 Qt binding conflict／不必要分析鏈；DHT 在 Windows 本來就不是 CloudHime 需求。
+- `CloudHime.spec` 現在是 packaging source of truth，並以 force-add 納入 Git；`build_exe.bat` 只保留 runtime staging、dependency preflight、spec build 與 zip。
+- Root notice 已列出 DDGS base dependency license inventory；正式 Store 送審前仍須依實際 resolved wheels 保留完整 license files／BOM，不能只以文字契約代替。
+
+## 2026-08-03：完整 CloudHime dist checkpoint
+
+- `CloudHime.spec` 成功以 explicit DDGS engine/runtime 收集策略建立完整 dist；這證明 CH-T50 不只停留在 isolated probe，但不等於 MSIX 或 Store ready。
+- release preflight 確認產物沒有模型檔，且 EXE 啟動 8 秒未立即退出；實機 GPU／離線翻譯品質仍需獨立 gate，不能由「能啟動」推論完成。
+- PyInstaller 出現 `charset_normalizer.md__mypyc` 與 mkl optional DLL warnings；暫不擴大 scope，先在 clean Windows／實際功能 smoke 驗證是否影響產品路徑。
+- 下一個 release gate 是 MSIX bundle/import、離線 normal translation、optional OCR fail-open 與 resolved-wheel license files／SBOM；在這些證據齊全前不宣稱 Microsoft Store ready。
+## 2026-08-03：MSIX 大型封裝工具選擇
+
+- `Resolve-MakeAppx` 必須優先選 SDK `x64\makeappx.exe`；目前 CloudHime 會帶入約 2.2 GB 的 CUDA/runtime payload，x86 工具實測在封裝時回 `0x8007000e`。
+- 保留沒有 x64 SDK 時的 fallback，讓開發機能得到可觀測的後續錯誤；不在 resolver 內偷偷下載 SDK。
+- full MSIX build + unpack 證明封裝內容與 manifest 正確，但 unsigned package 仍不能當成安裝成功；signed clean-Windows install／launch／uninstall 是下一個 gate。
+## 2026-08-03：signed MSIX gate 的環境邊界
+
+- Microsoft 官方規則要求 MSIX 具備有效簽章，且安裝裝置必須信任簽章鏈；CurrentUser TrustedPeople 不足以通過本機 AppX trust check，LocalMachine TrustedPeople 需要管理權限。
+- CloudHime 的 Store 路徑不應要求使用者安裝自簽憑證；Store submission 由 Microsoft 重新簽章，本地自簽只保留給 CI／開發 smoke。
+- CI 與 local builder 都優先使用 x64 工具，避免 2.2 GB CUDA runtime payload 被 32-bit 工具處理時 OOM；找不到 x64 時才 fallback 並保留可觀測錯誤。
+- Gemini bridge 本輪 discovery 後仍回 `unable to open database file`，沒有取得審查回覆；未把它記成 Gemini Pass，改以本地測試與官方 Microsoft 文件作決策證據。
