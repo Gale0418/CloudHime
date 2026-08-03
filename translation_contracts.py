@@ -11,6 +11,8 @@ class TranslationResult:
     model: str | None = None
     raw_text: str | None = None
     from_cache: bool = False
+    requested_provider: str | None = None
+    fallback_reason: str | None = None
 
 
 class TranslationProvider(Protocol):
