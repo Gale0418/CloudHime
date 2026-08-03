@@ -50,3 +50,9 @@ def test_ci_inventory_points_only_to_existing_test_files():
     }
     assert all((ROOT / path).is_file() for path in assigned)
     assert all(path.startswith("tests/test_") and path.endswith(".py") for path in assigned)
+
+def test_ci_matrix_runner_splits_paths_on_whitespace():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "-split '\\s+'" in workflow
+    assert "-split '\\\\s+'" not in workflow
