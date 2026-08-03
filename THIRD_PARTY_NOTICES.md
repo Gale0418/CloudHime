@@ -48,6 +48,28 @@ These components are used locally through ONNX Runtime on the CPU.
 
 DDGS is a pinned local package dependency for the Knowledge Research provider, but it is lazy-loaded and used only after the user explicitly starts Knowledge Research. Normal OCR and translation do not call it. Search results are treated as untrusted candidates and are not facts until validated by later extraction and source checks.
 
+### DDGS base runtime dependency inventory
+
+The pinned `ddgs==9.14.4` wheel declares these base runtime dependencies; optional API, MCP and DHT extras are not part of CloudHime:
+
+- `click` — BSD-3-Clause
+- `primp` — MIT
+- `lxml` — BSD-3-Clause; bundled libxml2 and libxslt components carry MIT notices
+- `httpx` / `httpcore` — BSD-3-Clause
+- `fake-useragent` — Apache-2.0
+- `certifi` — MPL-2.0
+- `anyio`, `brotli`, `h11`, `h2`, `hpack`, `hyperframe` — MIT
+- `idna` — BSD-3-Clause; `socksio` — see its upstream license file
+
+The release build resolves these packages from the pinned DDGS dependency graph and must preserve the corresponding wheel license files in the release audit. CloudHime does not install them after Store installation.
+
+### lxml (DDGS runtime dependency)
+
+- Project: https://lxml.de/
+- License: BSD license; bundled libxml2 and libxslt components carry their own MIT notices
+
+lxml is included in the release bundle because the pinned DDGS base package requires it. The release audit must retain the upstream license files listed by the resolved lxml wheel, including `LICENSES.txt`; see https://github.com/lxml/lxml/blob/master/LICENSES.txt.
+
 ### Jina Reader
 
 - Service: https://jina.ai/reader/
