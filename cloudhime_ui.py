@@ -74,7 +74,7 @@ from ocr_refinement import (
 )
 import translation_helpers as translation_tools
 import localization
-from model_catalog import WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
+from model_catalog import get_model_spec, WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider
 from settings_store import (
@@ -3071,7 +3071,9 @@ class Controller(QWidget):
         try:
             if pending:
                 self.secret_store.set(pending)
+                self.secret_store.mark_legacy_sources_disabled()
             else:
+                self.secret_store.mark_legacy_sources_disabled()
                 self.secret_store.delete()
         except SecretStoreError as exc:
             logger.error("Failed to persist encrypted API key: %s", exc)
@@ -3375,22 +3377,29 @@ class Controller(QWidget):
             self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
             secret_api_key = ""
+            legacy_sources_disabled = False
             try:
                 secret_api_key = self.secret_store.get()
             except SecretStoreError as exc:
                 logger.warning("Failed to read encrypted API key store: %s", exc)
+            try:
+                legacy_sources_disabled = self.secret_store.legacy_sources_disabled()
+            except SecretStoreError as exc:
+                logger.warning("Failed to read API key migration state: %s", exc)
 
-            env_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
-            if not env_api_key:
-                env_api_key = _read_api_key_from_env_files(
+            process_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
+            legacy_api_key = ""
+            if not legacy_sources_disabled and not process_api_key:
+                legacy_api_key = _read_api_key_from_env_files(
                     (APPDATA_ENV_PATH, LEGACY_ENV_PATH)
                 )
-
-            legacy_api_key = str(settings.get("google_api_key", "") or "").strip()
-            api_key = secret_api_key or env_api_key or legacy_api_key
+            if not legacy_sources_disabled:
+                legacy_api_key = legacy_api_key or str(settings.get("google_api_key", "") or "").strip()
+            api_key = secret_api_key or process_api_key or legacy_api_key
             if not secret_api_key and api_key:
                 try:
                     self.secret_store.set(api_key)
+                    self.secret_store.mark_legacy_sources_disabled()
                 except SecretStoreError as exc:
                     logger.warning("Failed to migrate legacy API key to encrypted store: %s", exc)
             self.worker.set_google_api_key(api_key)
@@ -3702,7 +3711,9 @@ class Controller(QWidget):
             self.input_api_key.setText(text)
             self.input_api_key.blockSignals(False)
         if getattr(self.worker, "use_gemma_translation", False) and not text.strip():
-            self.toggle_ai_translation(False)
+            model_spec = get_model_spec(getattr(self.worker, "gemma_model", ""))
+            if model_spec is None or model_spec.locality != "local":
+                self.toggle_ai_translation(False)
         if self.settings_window is not None and self.settings_window.input_api_key.text() != text:
             self.settings_window.input_api_key.blockSignals(True)
             self.settings_window.input_api_key.setText(text)

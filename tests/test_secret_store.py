@@ -27,3 +27,22 @@ def test_secret_store_rejects_corrupt_ciphertext(tmp_path):
 
     with pytest.raises(SecretStoreError):
         SecretStore(path).get()
+
+def test_secret_store_wraps_filesystem_read_errors(monkeypatch, tmp_path):
+    store = SecretStore(tmp_path / "google_api_key.dpapi")
+
+    def fail_read(_path):
+        raise PermissionError("blocked")
+
+    monkeypatch.setattr(type(store.path), "read_bytes", fail_read)
+
+    with pytest.raises(SecretStoreError, match="could not read secret store"):
+        store.get()
+
+def test_secret_store_tombstone_survives_secret_deletion(tmp_path):
+    store = SecretStore(tmp_path / "google_api_key.dpapi")
+
+    store.mark_legacy_sources_disabled()
+    store.delete()
+
+    assert store.legacy_sources_disabled() is True
