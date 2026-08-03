@@ -213,6 +213,10 @@ foreach ($runtimeFile in @({runtime_literal})) {{
         errors="replace",
     )
     source_root = Path(__file__).resolve().parents[1]
+    shutil.copyfile(
+        source_root / "THIRD_PARTY_NOTICES.md",
+        root / "_internal" / "THIRD_PARTY_NOTICES.md",
+    )
     for logo_size in ("44", "50", "150"):
         shutil.copyfile(
             source_root / "assets" / f"cloudhime_logo_{logo_size}.png",
@@ -309,3 +313,29 @@ def test_real_release_dist_preflight_when_available():
         errors="replace",
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+def test_release_dist_preflight_rejects_incomplete_third_party_notices():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    temp_root = root / f".tmp-msix-notices-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    try:
+        _write_release_fixture(powershell, fixture)
+        notice_path = fixture / "_internal" / "THIRD_PARTY_NOTICES.md"
+        notice_path.write_text("## Knowledge research providers\n- ddgs\n", encoding="utf-8")
+        result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert result.returncode != 0
+        assert "third-party notices" in (result.stdout + result.stderr).lower()
+    finally:
+        if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-notices-"):
+            _remove_release_fixture(powershell, temp_root)

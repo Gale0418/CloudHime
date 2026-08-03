@@ -207,6 +207,28 @@ foreach ($requiredFile in @("dictionary.json", "LICENSE", "THIRD_PARTY_NOTICES.m
     }
 }
 
+$noticeRelativePath = Find-NonEmptyFile @("THIRD_PARTY_NOTICES.md", "_internal\THIRD_PARTY_NOTICES.md")
+if (-not $noticeRelativePath) {
+    throw "Release dist is missing a non-empty THIRD_PARTY_NOTICES.md"
+}
+$noticeText = [IO.File]::ReadAllText((Join-Path $dist $noticeRelativePath))
+$requiredNoticeMarkers = @(
+    "## Knowledge research providers",
+    "DDGS",
+    "click",
+    "primp",
+    "lxml",
+    "httpx",
+    "fake-useragent",
+    "certifi",
+    "Jina Reader"
+)
+foreach ($marker in $requiredNoticeMarkers) {
+    if ($noticeText.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "Release dist THIRD_PARTY_NOTICES.md is missing required third-party notices marker: $marker"
+    }
+}
+
 $runtimeCandidates = @("runtime", "_internal\runtime")
 $runtimeRoot = $null
 $missingByCandidate = @()
