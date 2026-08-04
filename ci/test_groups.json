@@ -44,7 +44,8 @@
         "tests/test_ocr_backend_thread_safety.py",
         "tests/test_ocr_refinement.py",
         "tests/test_ocr_text_processing.py",
-        "tests/test_ocr_worker_mode_matrix.py"
+        "tests/test_ocr_worker_mode_matrix.py",
+        "tests/test_scan_pipeline_contract.py"
       ]
     },
     {

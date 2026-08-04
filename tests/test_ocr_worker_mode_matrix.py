@@ -7,6 +7,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QFont
 
 import cloudhime_workers as workers_module
+from scan_pipeline import ScanErrorCode, ScanOutcome, ScanStage
 from cloudhime_ui import OverlayWindow
 from cloudhime_workers import (
     OCRWorker,
@@ -1107,5 +1108,255 @@ def test_deadline_executor_barrier_is_evaluator_opt_in(monkeypatch, qtbot):
             deadline=1e100,
         )
         assert shutdown_calls[-1] == {"wait": True, "cancel_futures": True}
+    finally:
+        worker.cleanup()
+
+
+def test_scan_trace_records_successful_stage_order_without_source_text(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        trace = worker.last_scan_trace
+        assert [(event.stage, event.outcome) for event in trace.events] == [
+            (ScanStage.CAPTURE, ScanOutcome.SUCCESS),
+            (ScanStage.FRAME_CACHE, ScanOutcome.MISS),
+            (ScanStage.OCR, ScanOutcome.SUCCESS),
+            (ScanStage.TRANSLATION, ScanOutcome.SUCCESS),
+            (ScanStage.RENDER_DISPATCH, ScanOutcome.SUCCESS),
+        ]
+        assert trace.events[2].item_count == 1
+        assert trace.events[3].provider == "google"
+        assert all(event.elapsed_ms >= 0 for event in trace.events)
+        assert "Hello" not in repr(trace)
+        assert "你好" not in repr(trace)
+    finally:
+        worker.cleanup()
+
+
+def test_scan_trace_cache_hit_bypasses_downstream_stages(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+        worker.run_scan_once()
+
+        assert [(event.stage, event.outcome) for event in worker.last_scan_trace.events] == [
+            (ScanStage.CAPTURE, ScanOutcome.SUCCESS),
+            (ScanStage.FRAME_CACHE, ScanOutcome.HIT),
+            (ScanStage.RENDER_DISPATCH, ScanOutcome.SUCCESS),
+        ]
+    finally:
+        worker.cleanup()
+
+
+def test_scan_trace_records_capture_failure_without_exception_message(monkeypatch, qtbot):
+    worker = OCRWorker()
+    worker.ocr_backends = [object()]
+    worker.scan_mode = SCAN_MODE_REGION
+    worker.region_render_mode = REGION_RENDER_BUBBLE
+    worker.capture_scan_area = Mock(
+        side_effect=RuntimeError("OCR_SECRET api-key=do-not-record")
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert [
+            (event.stage, event.outcome)
+            for event in worker.last_scan_trace.events
+        ] == [
+            (ScanStage.CAPTURE, ScanOutcome.FAILURE),
+            (ScanStage.RENDER_DISPATCH, ScanOutcome.SUCCESS),
+        ]
+        event = worker.last_scan_trace.events[0]
+        assert event.error_code is ScanErrorCode.CAPTURE_FAILED
+        assert event.exception_token == "RuntimeError"
+        assert "OCR_SECRET" not in repr(worker.last_scan_trace)
+        assert "do-not-record" not in repr(worker.last_scan_trace)
+    finally:
+        worker.cleanup()
+
+
+def test_scan_trace_distinguishes_no_text_from_ocr_failure(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, []))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        ocr_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.OCR
+        ]
+        assert ocr_events[-1].outcome is ScanOutcome.NO_TEXT
+        assert ocr_events[-1].error_code is ScanErrorCode.NONE
+    finally:
+        worker.cleanup()
+
+
+def test_scan_trace_uses_actual_fallback_provider(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "gemma"
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["你好"], ["google"])
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        event = next(
+            item for item in worker.last_scan_trace.events
+            if item.stage is ScanStage.TRANSLATION
+        )
+        assert event.outcome is ScanOutcome.FALLBACK
+        assert event.provider == "google"
+        assert event.fallback_reason == "translation_provider_fallback"
+    finally:
+        worker.cleanup()
+
+
+def test_screenshot_scan_trace_skips_ocr_and_records_translation(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.ocr_backends = []
+    worker.google_ocr_enabled = False
+    worker.auto_threshold_enabled = False
+    worker.scan_mode = SCAN_MODE_REGION
+    worker.region_render_mode = REGION_RENDER_SCREENSHOT
+    worker.capture_scan_area = lambda: (image, 7, 11)
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.build_screenshot_text_hint = lambda _image: "hint"
+    worker.build_ai_image_parts = lambda _image: [{"inline_data": {"data": "ignored"}}]
+    worker.translate_screenshot_gemma = lambda _parts, _hint: "translated"
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert [(event.stage, event.outcome) for event in worker.last_scan_trace.events] == [
+            (ScanStage.CAPTURE, ScanOutcome.SUCCESS),
+            (ScanStage.FRAME_CACHE, ScanOutcome.MISS),
+            (ScanStage.TRANSLATION, ScanOutcome.SUCCESS),
+            (ScanStage.RENDER_DISPATCH, ScanOutcome.SUCCESS),
+        ]
+        assert worker.last_scan_trace.events[2].provider == "local_multimodal"
+    finally:
+        worker.cleanup()
+
+
+def test_screenshot_scan_trace_records_text_fallback_actual_provider(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.ocr_backends = []
+    worker.google_ocr_enabled = False
+    worker.auto_threshold_enabled = False
+    worker.scan_mode = SCAN_MODE_REGION
+    worker.region_render_mode = REGION_RENDER_SCREENSHOT
+    worker.capture_scan_area = lambda: (image, 7, 11)
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.build_screenshot_text_hint = lambda _image: "hint"
+    worker.build_ai_image_parts = lambda _image: [{"inline_data": {"data": "ignored"}}]
+    worker.translate_screenshot_gemma = Mock(side_effect=RuntimeError("private failure"))
+    worker.translate_text_preferred_with_provider = Mock(
+        return_value=("translated", "google")
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        event = next(
+            item for item in worker.last_scan_trace.events
+            if item.stage is ScanStage.TRANSLATION
+        )
+        assert event.outcome is ScanOutcome.FALLBACK
+        assert event.provider == "google"
+        assert event.fallback_reason == "translation_provider_fallback"
+        assert "private failure" not in repr(worker.last_scan_trace)
+    finally:
+        worker.cleanup()
+
+def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.run_ocr_with_best_threshold = Mock(return_value=(
+        100,
+        [
+            {"text": "One", "x": 10, "y": 12, "w": 40, "h": 16},
+            {"text": "Two", "x": 10, "y": 32, "w": 40, "h": 16},
+        ],
+    ))
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["一", None], ["google", None])
+    )
+    worker.translate_items_in_batches_with_providers = Mock(
+        return_value=([None], [None])
+    )
+    worker.translate_text_preferred_with_provider = Mock(
+        side_effect=RuntimeError("private fallback failure")
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        event = next(
+            item for item in worker.last_scan_trace.events
+            if item.stage is ScanStage.TRANSLATION
+        )
+        assert event.outcome is ScanOutcome.FALLBACK
+        assert event.provider == "google"
+        assert event.fallback_reason == "translation_source_fallback"
+    finally:
+        worker.cleanup()
+
+
+def test_text_only_screenshot_trace_does_not_mislabel_gemma_as_fallback(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.ocr_backends = []
+    worker.google_ocr_enabled = False
+    worker.auto_threshold_enabled = False
+    worker.scan_mode = SCAN_MODE_REGION
+    worker.region_render_mode = REGION_RENDER_SCREENSHOT
+    worker.capture_scan_area = lambda: (image, 7, 11)
+    worker.has_any_multimodal_ai = lambda: False
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "gemma"
+    worker.build_screenshot_text_hint = lambda _image: "hint"
+    worker.translate_text_preferred_with_provider = Mock(
+        return_value=("translated", "gemma")
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        event = next(
+            item for item in worker.last_scan_trace.events
+            if item.stage is ScanStage.TRANSLATION
+        )
+        assert event.outcome is ScanOutcome.SUCCESS
+        assert event.provider == "gemma"
+        assert event.fallback_reason == ""
     finally:
         worker.cleanup()
