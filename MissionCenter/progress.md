@@ -39,3 +39,16 @@
 - 完整驗證：依 `ci/test_groups.json` 執行 `548 passed, 2 skipped, 1 failed`。
 - 已知既有環境失敗：`tests/test_msix_packaging.py::test_real_release_dist_preflight_when_available` 因本機 `dist/CloudHime/THIRD_PARTY_NOTICES.md` 缺少 `## Knowledge research providers` marker；本輪未修改 dist artifact，也未將它宣稱為通過。
 - 尚未驗證：真實 GPU llama-server.exe text/vision paired benchmark、乾淨 Windows 安裝、MSIX／Microsoft Store、runtime manifest；production `llama-cpp-python` 仍保留，後續另立 PR。
+## repository hygiene 與下一階段順序（2026-08-04）
+
+- 主人採納新順序：先整理資料夾與鎖 benchmark，再收斂單一 llama runtime、Scan Pipeline、FrameGate／Temporal Stabilizer、Translation Orchestrator、Profiles／Knowledge Pack，最後才做 release clean-machine gate 與漫畫／插件／自動 Research。
+- 已完成第一輪安全清理：33 個私有人工標註／研究 probe 移至 `records/private/`；刪除 8 個根目錄舊 log／壓測輸出／測試截圖；刪除本輪已完成的兩個 CodeRabbit 隔離副本與 `__pycache__`；未刪除 `build/`、`dist/`、`models/`、`runtime/`、`benchmarks/`、`example/`。
+- 已新增 `.gitignore` disposable-artifact 規則與 `records/README.md`；尚待主人確認的清理候選包含舊歷史 CodeRabbit／pytest 暫存副本與 `build/` 中繼產物，不能用模糊 pattern 直接大批刪除。
+- 下一個實作 gate：先建立 benchmark lock contract，將 accuracy、latency、coverage、fallback、GPU/CPU mode 與 source-disjoint split 固定，之後才繼續雙 llama runtime 消滅。
+## 精準清理與 benchmark lock（2026-08-04）
+
+- 已由三個只讀專家分區檢查 root source、tests、benchmarks、example、docs、MissionCenter、assets、models、runtime、build、dist、packaging 與暫存目錄；`tests/` 的 51 個測試檔皆受 `ci/test_groups.json` 引用。
+- 已精準移除 69 個明確未被 Git/CI 引用的舊 pytest／測試輸出目錄（共 834 檔、約 0.001 GB）；未用模糊 pattern 刪除大範圍資料。`build/`、`dist/`、`models/`、`runtime/`、近期 PR／review／Knowledge Pack 證據保留。
+- 已建立 `benchmark_lock.py` 與 `benchmarks/benchmark_lock.json`：SHA-256 鎖定三份 manifest，固定 source-disjoint、accuracy、latency stages、coverage、fallback、GPU/CPU mode 與 paired repeat policy；`tests/test_benchmark_lock.py` 已加入 core CI group。
+- 實際驗證：`python benchmark_lock.py` 回傳 `ok=true`；benchmark lock + CI inventory `8 passed`；core group `218 passed, 1 failed`，唯一失敗為既有本機 `dist/CloudHime/THIRD_PARTY_NOTICES.md` 缺 `## Knowledge research providers` marker；compileall 通過，未把舊 dist 失敗宣稱為通過。
+- 待逐項確認：`download_task5.py`、`fix_providers.py`、3 張沒有引用的 example 圖片、舊 CodeRabbit 副本、`build/`；因目前仍有 Python 程序且部分目錄 ACL 拒絕，先不刪除或搬移。

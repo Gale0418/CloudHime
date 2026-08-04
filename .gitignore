@@ -53,3 +53,20 @@ scratch/codex-*/
 .private_benchmark_runs/
 .venv/
 .private_japanese_*.json
+
+# Disposable local test/review artifacts; benchmark manifests and source records stay tracked separately.
+.pytest-*/
+_pytest-*/
+pytest-cache-files-*/
+_tmp-*/
+.tmp-*/
+.codex-bench-*/
+.manual-eval-*/
+._verify-*/
+.review_exact_image_*/
+ch-pack-smoke-*/
+runtime-smoke-*/
+temp_pytest_runtime/
+# Local private research archive and generated MissionCenter HUD output.
+records/private/
+output/
