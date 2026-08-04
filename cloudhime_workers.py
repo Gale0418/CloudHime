@@ -84,6 +84,7 @@ from translation_registry import TranslationProviderRegistry, TranslationProvide
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
 from translation_contracts import TranslationResult
 from local_vision_runtime import LocalVisionRuntime
+from local_runtime_profiles import resolve_runtime_profile
 from local_vision_assets import (
     ensure_vision_model_assets,
     resolve_preferred_vision_assets,
@@ -422,6 +423,16 @@ class OCRWorker(QObject):
             has_embedded_runtime = embedded_runtime is not None
             local_text_runtime_required = bool(config.gemma_enabled and selected_local_model)
             self._local_text_runtime_required = local_text_runtime_required
+            desired_profile = (
+                "vision"
+                if config.gemma_enabled and config.local_multimodal_enabled
+                else "text"
+                if local_text_runtime_required
+                else None
+            )
+            self._local_runtime_profile = (
+                desired_profile if has_embedded_runtime else None
+            )
 
             # Production local text and vision share the HTTP llama-server.
             # Keep the in-process provider disabled during this transition; its
@@ -439,10 +450,19 @@ class OCRWorker(QObject):
             )
             self.local_multimodal_provider.timeout_seconds = config.local_multimodal_timeout_seconds
             if has_embedded_runtime:
-                if runtime_state is None or runtime_state.name != "ready":
-                    self.local_multimodal_provider.update_runtime("", "", ready=False)
+                runtime_profile = getattr(embedded_runtime, "profile_name", "vision")
+                if (
+                    runtime_state is not None
+                    and runtime_state.name == "ready"
+                    and desired_profile == runtime_profile
+                ):
+                    self.local_multimodal_provider.update_runtime(
+                        runtime_state.base_url,
+                        config.local_multimodal_model,
+                        ready=True,
+                    )
                 else:
-                    self.local_multimodal_provider.model_name = config.local_multimodal_model
+                    self.local_multimodal_provider.update_runtime("", "", ready=False)
             else:
                 self.local_multimodal_provider.update_runtime(
                     config.local_multimodal_base_url,
@@ -463,7 +483,11 @@ class OCRWorker(QObject):
             if selected_local_model:
                 self.translation_registry.register("gemma", self.local_multimodal_provider)
             self.translation_registry_error_code = ""
-            self.request_local_vision_start()
+            if has_embedded_runtime and desired_profile is None:
+                embedded_runtime.stop()
+                self.local_multimodal_provider.update_runtime("", "", ready=False)
+            elif desired_profile is not None:
+                self.request_local_vision_start()
         except Exception as exc:
             self.translation_registry_error_code = "translation_registry_refresh_failed"
             logger.error(f"[TranslationRegistry] {self.translation_registry_error_code} type={type(exc).__name__}")
@@ -597,27 +621,72 @@ class OCRWorker(QObject):
             OCRWorker._emit_japanese_rescue_status(self, "failed", runtime.last_error)
 
     def _prepare_and_start_local_vision(self):
+        runtime = self.local_vision_runtime
+        profile_name = getattr(self, "_local_runtime_profile", None)
+        if profile_name is None:
+            if getattr(self, "local_multimodal_enabled", False):
+                profile_name = "vision"
+            elif getattr(self, "_local_text_runtime_required", False):
+                profile_name = "text"
+        profile = resolve_runtime_profile(profile_name) if profile_name else None
+
+        if profile is not None:
+            set_profile = getattr(runtime, "set_profile", None)
+            current_profile = getattr(runtime, "profile_name", profile.name)
+            if callable(set_profile) and current_profile != profile.name:
+                try:
+                    set_profile(profile.name)
+                except RuntimeError as exc:
+                    if str(exc) != "runtime_profile_requires_stop":
+                        raise
+                    runtime.stop()
+                    set_profile(profile.name)
+
         assets = getattr(self, "_local_vision_assets", None)
         if assets is not None:
-            ensure_vision_model_assets(
-                assets,
-                progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
-                    self, "progress", f"{progress}|{phase}"
-                ),
-                cancel_event=getattr(self, "_local_vision_cancel_event", None),
+            progress_callback = lambda phase, progress: OCRWorker._emit_local_vision_status(
+                self, "progress", f"{progress}|{phase}"
             )
-        return self.local_vision_runtime.start()
+            cancel_event = getattr(self, "_local_vision_cancel_event", None)
+            if profile is not None and profile.name == "text":
+                ensure_vision_model_assets(
+                    assets,
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                    required_fields=profile.required_asset_fields,
+                )
+            else:
+                ensure_vision_model_assets(
+                    assets,
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                )
+        return runtime.start()
+
     def request_local_vision_start(self):
-        if not self.use_gemma_translation or not (
-            self.local_multimodal_enabled or getattr(self, "_local_text_runtime_required", False)
-        ):
+        runtime = getattr(self, "local_vision_runtime", None)
+        profile_name = getattr(self, "_local_runtime_profile", None)
+        if profile_name is None:
+            if getattr(self, "local_multimodal_enabled", False):
+                profile_name = "vision"
+            elif getattr(self, "_local_text_runtime_required", False):
+                profile_name = "text"
+
+        if not self.use_gemma_translation or profile_name is None:
+            if runtime is not None and profile_name is None:
+                runtime.stop()
+                self.local_multimodal_provider.update_runtime("", "", False)
             return
-        if getattr(self, "local_vision_runtime", None) is None:
+        if runtime is None:
             OCRWorker._emit_local_vision_status(self, "failed", "runtime_missing")
             return
-        
-        state = getattr(self.local_vision_runtime, "_state", None)
+
+        state = getattr(runtime, "_state", None)
+        current_profile = getattr(runtime, "profile_name", profile_name)
         if state is not None and state.name == "ready":
+            if current_profile != profile_name:
+                OCRWorker._schedule_local_vision_reconfigure(self)
+                return
             self.local_multimodal_provider.update_runtime(
                 state.base_url,
                 getattr(self, "local_multimodal_model", "gemma-3-4b-it"),
@@ -625,7 +694,7 @@ class OCRWorker(QObject):
             )
             OCRWorker._emit_local_vision_status(self, state.name, state.detail)
             return
-            
+
         pending_future = getattr(self, "_local_vision_load_future", None)
         if pending_future is not None and not pending_future.done():
             return
@@ -911,6 +980,11 @@ class OCRWorker(QObject):
             return
         runtime.stop()
         runtime.set_gpu_layers(0 if bool(getattr(self, "local_multimodal_cpu_only", False)) else 999)
+        profile_name = getattr(self, "_local_runtime_profile", None)
+        if profile_name is not None:
+            setter = getattr(runtime, "set_profile", None)
+            if callable(setter):
+                setter(profile_name)
 
     def _submit_local_vision_reconfigure(self, generation):
         executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
@@ -978,7 +1052,11 @@ class OCRWorker(QObject):
         if generation != getattr(self, "_local_vision_reconfigure_generation", generation):
             OCRWorker._schedule_local_vision_reconfigure(self)
             return
-        if self.use_gemma_translation and self.local_multimodal_enabled:
+        if self.use_gemma_translation and (
+            getattr(self, "_local_runtime_profile", None) is not None
+            or getattr(self, "local_multimodal_enabled", False)
+            or getattr(self, "_local_text_runtime_required", False)
+        ):
             self.request_local_vision_start()
 
     def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds, cpu_only=None):

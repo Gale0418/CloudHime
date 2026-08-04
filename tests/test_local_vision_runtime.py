@@ -1166,3 +1166,45 @@ def test_start_command_accepts_context_size_override(fake_assets):
     args = popen.calls[0]
     idx = args.index("-c")
     assert args[idx + 1] == "2048"
+
+def test_text_profile_omits_mmproj_and_allows_missing_projector(tmp_path):
+    assets = _make_assets(tmp_path, create_files=True)
+    assets.projector_path.unlink()
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=assets,
+        profile="text",
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start()
+
+    assert state.name == "ready"
+    assert "--mmproj" not in popen.calls[0]
+
+def test_profile_switch_stops_old_process_before_starting_new_mode(tmp_path):
+    assets = _make_assets(tmp_path, create_files=True)
+    first = RunningProcess()
+    second = RunningProcess()
+    popen = FakePopen([first, second])
+    runtime = LocalVisionRuntime(
+        assets=assets,
+        profile="text",
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True, True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    assert runtime.start().name == "ready"
+    assert runtime.start(profile="vision").name == "ready"
+
+    assert first.terminate_calls == 1
+    assert popen.call_count == 2
+    assert "--mmproj" not in popen.calls[0]
+    assert "--mmproj" in popen.calls[1]

@@ -1612,7 +1612,9 @@ def test_local_model_registry_uses_server_provider_before_runtime_ready():
         enabled=False,
     )
     worker.local_vision_runtime = SimpleNamespace(
-        _state=SimpleNamespace(name="starting", detail="")
+        _state=SimpleNamespace(name="starting", detail=""),
+        profile_name="vision",
+        stop=lambda: calls.append("stop"),
     )
     calls = []
     worker.request_local_model_load = lambda: calls.append("embedded")
@@ -1623,6 +1625,10 @@ def test_local_model_registry_uses_server_provider_before_runtime_ready():
     assert worker.translation_registry.get("gemma") is worker.local_multimodal_provider
     assert worker.local_gemma_provider.enabled is False
     assert calls == ["server"]
+
+    OCRWorker.set_gemma_enabled(worker, False)
+
+    assert calls == ["server", "stop"]
 
 
 def test_failed_vision_runtime_never_restores_embedded_local_model():
@@ -1647,3 +1653,34 @@ def test_failed_vision_runtime_never_restores_embedded_local_model():
 
     assert registrations == []
     assert loads == []
+
+def test_prepare_local_text_runtime_requests_text_profile(monkeypatch):
+    calls = []
+    profiles = []
+
+    class Runtime:
+        profile_name = "vision"
+
+        def set_profile(self, profile):
+            profiles.append(profile)
+
+        def start(self):
+            return "ready"
+
+    worker = SimpleNamespace(
+        _local_vision_assets=SimpleNamespace(),
+        _local_vision_cancel_event=None,
+        local_vision_runtime=Runtime(),
+        _local_text_runtime_required=True,
+        local_multimodal_enabled=False,
+        local_vision_status=SimpleNamespace(emit=lambda *args: None),
+    )
+    monkeypatch.setattr(
+        workers_module,
+        "ensure_vision_model_assets",
+        lambda _assets, **kwargs: calls.append(kwargs),
+    )
+
+    assert OCRWorker._prepare_and_start_local_vision(worker) == "ready"
+    assert profiles == ["text"]
+    assert calls[0]["required_fields"] == ("server_path", "model_path")

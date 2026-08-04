@@ -40,6 +40,11 @@ from local_vision_assets import (
     VisionAssets,
     verify_asset,
 )
+from local_runtime_profiles import (
+    LocalRuntimeProfile,
+    VISION_RUNTIME_PROFILE,
+    resolve_runtime_profile,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -136,6 +141,7 @@ class LocalVisionRuntime:
         self,
         assets: VisionAssets,
         *,
+        profile: LocalRuntimeProfile | str = VISION_RUNTIME_PROFILE,
         popen_factory: Callable = subprocess.Popen,
         urlopen: Optional[Callable] = None,
         port_allocator: Optional[Callable[[], int]] = None,
@@ -148,6 +154,7 @@ class LocalVisionRuntime:
         progress_callback: Optional[Callable[[str, int], None]] = None,
     ) -> None:
         self._assets = assets
+        self._profile = resolve_runtime_profile(profile)
         self._popen_factory = popen_factory
         self._urlopen = urlopen or _default_urlopen()
         self._port_allocator = port_allocator or _default_port_allocator()
@@ -176,14 +183,33 @@ class LocalVisionRuntime:
         """回傳本 instance 建立的 process handle（供測試驗證）。"""
         return self._process
 
-    def start(self) -> VisionRuntimeState:
+    @property
+    def profile_name(self) -> str:
+        return self._profile.name
+
+    def set_profile(self, profile: LocalRuntimeProfile | str) -> None:
+        """設定下一次啟動的 text/vision profile；執行中必須先 stop。"""
+        resolved = resolve_runtime_profile(profile)
+        with self._start_lock:
+            if self._state.name in ("ready", "starting"):
+                raise RuntimeError("runtime_profile_requires_stop")
+            self._profile = resolved
+    def start(self, profile: LocalRuntimeProfile | str | None = None) -> VisionRuntimeState:
         """啟動 vision runtime（idempotent：已 ready/starting 時直接回傳現有狀態）。
 
         狀態機：stopped → missing | starting → ready | failed
         """
         with self._start_lock:
+            requested_profile = (
+                resolve_runtime_profile(profile)
+                if profile is not None
+                else self._profile
+            )
             if self._state.name in ("ready", "starting"):
-                return self._state
+                if requested_profile.name == self._profile.name:
+                    return self._state
+                self._stop_owned_process()
+            self._profile = requested_profile
             self._cancel_event.clear()
             self._state = VisionRuntimeState(name="starting", detail="", base_url="", mode="")
 
@@ -236,14 +262,16 @@ class LocalVisionRuntime:
 
     def stop(self) -> VisionRuntimeState:
         """終止本 instance 持有的 process；不影響任何其他程序。"""
+        self._stop_owned_process()
+        return self._state
+
+    def _stop_owned_process(self) -> None:
         self._cancel_event.set()
         proc = self._process
         if proc is not None:
             self._cleanup_process(proc)
             self._process = None
-
         self._state = _STOPPED
-        return self._state
 
     # ── 內部：spawn 單次嘗試 ─────────────────────────────────────────────────
 
@@ -259,7 +287,10 @@ class LocalVisionRuntime:
             "--host", "127.0.0.1",
             "--port", str(port),
             "-m", str(assets.model_path),
-            "--mmproj", str(assets.projector_path),
+        ]
+        if self._profile.requires_projector:
+            args.extend(["--mmproj", str(assets.projector_path)])
+        args.extend([
             # Keep OS memory mapping enabled; disabling it can stall large Gemma 3 projector loads on Windows.
             # Keep model layers on GPU but avoid WDDM operator offload stalls under VRAM pressure.
             "--no-op-offload",
@@ -267,7 +298,7 @@ class LocalVisionRuntime:
             "--parallel", "1",
             "-c", str(self._context_size),
             "-ngl", str(gpu_layers),
-        ]
+        ])
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
         try:
@@ -412,8 +443,9 @@ class LocalVisionRuntime:
         field_map = [
             ("server_path", a.server_path, "runtime_missing"),
             ("model_path", a.model_path, "model_missing"),
-            ("projector_path", a.projector_path, "projector_missing"),
         ]
+        if self._profile.requires_projector:
+            field_map.append(("projector_path", a.projector_path, "projector_missing"))
         for field, path, missing_code in field_map:
             min_bytes = self._asset_minimum_bytes.get(field, 0)
             try:
