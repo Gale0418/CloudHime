@@ -81,7 +81,7 @@ from knowledge_retrieval import pack_revision_token
 import localization
 from model_catalog import WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
-from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
+from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalMultimodalProvider
 from translation_contracts import TranslationResult
 from local_vision_runtime import LocalVisionRuntime
 from local_runtime_profiles import resolve_runtime_profile
@@ -230,12 +230,6 @@ class OCRWorker(QObject):
         )
         app_root = Path(__file__).resolve().parent
         self._local_vision_assets = resolve_preferred_vision_assets(app_root)
-        self.local_gemma_provider = LocalGemmaProvider(
-            model_path=str(self._local_vision_assets.model_path),
-            gemma_prompt="",
-            target_lang=self.translation_target_lang,
-            enabled=False
-        )
         self.local_multimodal_provider = LocalMultimodalProvider(
             base_url="http://127.0.0.1:8080/v1",
             model_name="gemma-3-4b-it",
@@ -274,9 +268,6 @@ class OCRWorker(QObject):
         self.last_scanned_offset = (0, 0)
         self._bg_threshold_running = False  # 防止重複提交背景任務
         self._bg_threshold_executor = ThreadPoolExecutor(max_workers=1)
-        self._local_model_executor = ThreadPoolExecutor(max_workers=1)
-        self._local_model_load_future = None
-        self._local_model_cancel_event = threading.Event()
         self._local_vision_executor = ThreadPoolExecutor(max_workers=1)
         self._local_vision_load_future = None
         self._local_vision_reconfigure_future = None
@@ -434,16 +425,6 @@ class OCRWorker(QObject):
                 desired_profile if has_embedded_runtime else None
             )
 
-            # Production local text and vision share the HTTP llama-server.
-            # Keep the in-process provider disabled during this transition; its
-            # class remains available for compatibility and later removal.
-            self.local_gemma_provider.update_config(
-                gemma_prompt=config.gemma_prompt,
-                target_lang=config.target_lang,
-                enabled=False,
-                temperature=config.local_gemma_temperature,
-                repeat_penalty=config.local_gemma_repeat_penalty,
-            )
             self.local_multimodal_provider.target_lang = config.target_lang
             self.local_multimodal_provider.enabled = bool(
                 config.local_multimodal_enabled or local_text_runtime_required
@@ -492,68 +473,6 @@ class OCRWorker(QObject):
             self.translation_registry_error_code = "translation_registry_refresh_failed"
             logger.error(f"[TranslationRegistry] {self.translation_registry_error_code} type={type(exc).__name__}")
 
-    def _prepare_and_load_local_model(self):
-        assets = getattr(self, "_local_vision_assets", None)
-        if assets is not None:
-            ensure_vision_model_assets(
-                assets,
-                progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
-                    self, "progress", f"{progress}|{phase}"
-                ),
-                cancel_event=getattr(self, "_local_model_cancel_event", None),
-            )
-        return self.local_gemma_provider.load_model()
-    def request_local_model_load(self):
-        if not self.use_gemma_translation or not self._is_local_model_active():
-            return
-        vision_runtime = getattr(self, "local_vision_runtime", None)
-        vision_state = getattr(vision_runtime, "_state", None)
-        if (
-            getattr(self, "local_multimodal_enabled", False)
-            and vision_runtime is not None
-            and (vision_state is None or vision_state.name != "failed")
-        ):
-            return
-        if self.local_gemma_provider.available():
-            OCRWorker._emit_local_model_status(self, "ready", "")
-            return
-        if self._local_model_load_future is not None and not self._local_model_load_future.done():
-            return
-
-        OCRWorker._emit_local_model_status(self, "loading", "")
-        try:
-            cancel_event = getattr(self, "_local_model_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.clear()
-            future = self._local_model_executor.submit(
-                lambda: OCRWorker._prepare_and_load_local_model(self)
-            )
-        except Exception as exc:
-            self._local_model_load_future = None
-            OCRWorker._emit_local_model_status(self, "failed", f"{type(exc).__name__}: {exc}")
-            return
-        self._local_model_load_future = future
-        future.add_done_callback(
-            lambda completed: OCRWorker._on_local_model_load_done(self, completed)
-        )
-
-    def _on_local_model_load_done(self, future):
-        if self._local_model_load_future is not future:
-            return
-        self._local_model_load_future = None
-        try:
-            ready = bool(future.result())
-        except Exception as exc:
-            OCRWorker._emit_local_model_status(self, "failed", f"{type(exc).__name__}: {exc}")
-            return
-        if ready:
-            OCRWorker._emit_local_model_status(self, "ready", "")
-            return
-        OCRWorker._emit_local_model_status(self, 
-            "failed",
-            getattr(self.local_gemma_provider, "last_load_error", "") or "local_model_unavailable",
-        )
-
     def _emit_local_model_status(self, *args):
         try:
             signal = getattr(self, "local_model_status", None)
@@ -569,7 +488,11 @@ class OCRWorker(QObject):
             return
         if signal is not None:
             signal.emit(*args)
-
+        if getattr(self, "_local_runtime_profile", None) == "text":
+            status, *details = args
+            if status in {"starting", "progress"}:
+                status = "loading"
+            OCRWorker._emit_local_model_status(self, status, *details)
     def _emit_japanese_rescue_status(self, *args):
         try:
             signal = getattr(self, "japanese_rescue_status", None)
@@ -726,11 +649,7 @@ class OCRWorker(QObject):
         registry = getattr(self, "translation_registry", None)
         if registry is None:
             return
-        provider_name = (
-            "local_gemma_provider"
-            if self._is_local_model_active()
-            else "gemma_translation_provider"
-        )
+        provider_name = "local_multimodal_provider" if self._is_local_model_active() else "gemma_translation_provider"
         provider = getattr(self, provider_name, None)
         if provider is not None:
             registry.register("gemma", provider)
@@ -769,22 +688,6 @@ class OCRWorker(QObject):
             except TypeError:
                 executor.shutdown(wait=False)
 
-    def shutdown_local_model_loader(self):
-        cancel_event = getattr(self, "_local_model_cancel_event", None)
-        if cancel_event is not None:
-            cancel_event.set()
-        provider = getattr(self, "local_gemma_provider", None)
-        if provider is not None:
-            close = getattr(provider, "close", None)
-            if callable(close):
-                close()
-        executor = getattr(self, "_local_model_executor", None)
-        if executor is not None:
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                executor.shutdown(wait=False)
-
     def _clear_translation_memories(self):
         """清除可能把舊語言、prompt 或影像結果帶回翻譯流程的 worker 記憶。"""
         for memory_name in (
@@ -812,7 +715,6 @@ class OCRWorker(QObject):
             return
         for provider in (
             getattr(self, "gemma_translation_provider", None),
-            getattr(self, "local_gemma_provider", None),
             getattr(self, "local_multimodal_provider", None),
         ):
             setter = getattr(provider, "set_knowledge_pack", None)
@@ -950,7 +852,7 @@ class OCRWorker(QObject):
     def set_gemma_enabled(self, enabled):
         self.use_gemma_translation = bool(enabled)
         if not self.use_gemma_translation:
-            for name in ("_local_model_cancel_event", "_local_vision_cancel_event"):
+            for name in ("_local_vision_cancel_event",):
                 cancel_event = getattr(self, name, None)
                 if cancel_event is not None:
                     cancel_event.set()
@@ -1248,7 +1150,6 @@ class OCRWorker(QObject):
         if hasattr(self, '_japanese_rescue_executor'):
             self._japanese_rescue_executor.shutdown(wait=True)
         self.shutdown_local_vision_runtime()
-        self.shutdown_local_model_loader()
 
     def get_translation_provider_priority(self, provider):
         return translation_tools.get_translation_provider_priority(provider)

@@ -52,3 +52,9 @@
 - 已建立 `benchmark_lock.py` 與 `benchmarks/benchmark_lock.json`：SHA-256 鎖定三份 manifest，固定 source-disjoint、accuracy、latency stages、coverage、fallback、GPU/CPU mode 與 paired repeat policy；`tests/test_benchmark_lock.py` 已加入 core CI group。
 - 實際驗證：`python benchmark_lock.py` 回傳 `ok=true`；benchmark lock + CI inventory `8 passed`；core group `218 passed, 1 failed`，唯一失敗為既有本機 `dist/CloudHime/THIRD_PARTY_NOTICES.md` 缺 `## Knowledge research providers` marker；compileall 通過，未把舊 dist 失敗宣稱為通過。
 - 待逐項確認：`download_task5.py`、`fix_providers.py`、3 張沒有引用的 example 圖片、舊 CodeRabbit 副本、`build/`；因目前仍有 Python 程序且部分目錄 ACL 拒絕，先不刪除或搬移。
+## CH-T59 worker ownership 收斂（2026-08-04）
+
+- production `OCRWorker` 不再建立或清理 `LocalGemmaProvider`，並移除第二組 local-model executor／future／cancel event 與無 caller 的 embedded loader API；local text／vision 統一由 `LocalMultimodalProvider` + `LocalVisionRuntime` profile 管理。
+- text profile 的 server `starting`／`progress` 會正規化為既有 `local_model_status=loading`，避免 UI 在正常下載／暖身時誤顯示失敗；Knowledge Pack 只同步實際 production providers。
+- 實際驗證：`tests/test_cloudhime_workers.py`、`tests/test_local_vision_runtime.py`、`tests/test_local_multimodal_provider.py`、`tests/test_translation_providers.py`、`tests/test_knowledge_prompt_integration.py` 合計 `145 passed`。
+- 尚未完成：`requirements.txt` 仍含 `llama-cpp-python`，`CloudHime.spec` 與 release preflight 尚未拒絕 in-process binding；真實 GPU paired benchmark 未執行，不宣稱完成 CH-T59。

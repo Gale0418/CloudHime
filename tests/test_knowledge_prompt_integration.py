@@ -117,7 +117,6 @@ def test_worker_pack_revision_is_in_exact_image_context_and_clears_memories():
     worker.last_results = [("old",)]
     worker.last_provider = "old"
     worker.gemma_translation_provider = ProviderProbe()
-    worker.local_gemma_provider = ProviderProbe()
     worker.local_multimodal_provider = ProviderProbe()
     worker.scan_mode = "fullscreen"
     worker.region_render_mode = "bubble"
@@ -156,6 +155,5 @@ def test_worker_pack_revision_is_in_exact_image_context_and_clears_memories():
     assert second_context[1] == "knowledge-pack:work:r2"
     assert all(probe.packs[-1]["revision"] == 2 for probe in (
         worker.gemma_translation_provider,
-        worker.local_gemma_provider,
         worker.local_multimodal_provider,
     ))
