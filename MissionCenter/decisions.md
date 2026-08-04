@@ -421,3 +421,16 @@
 - CloudHime 的 Store 路徑不應要求使用者安裝自簽憑證；Store submission 由 Microsoft 重新簽章，本地自簽只保留給 CI／開發 smoke。
 - CI 與 local builder 都優先使用 x64 工具，避免 2.2 GB CUDA runtime payload 被 32-bit 工具處理時 OOM；找不到 x64 時才 fallback 並保留可觀測錯誤。
 - Gemini bridge 本輪 discovery 後仍回 `unable to open database file`，沒有取得審查回覆；未把它記成 Gemini Pass，改以本地測試與官方 Microsoft 文件作決策證據。
+## 2026-08-04：CloudHime 開發順序重整
+
+- 決策：先做 repository hygiene 與 benchmark lock，再做 runtime／pipeline 收斂；漫畫模式、插件與自動 Research 延後。
+- 固定順序：
+  1. 清理過時暫存，保留 source、tests、benchmarks、人工標註記錄、models、runtime、dist、packaging 與 MissionCenter。
+  2. 鎖定 source-disjoint accuracy、latency、coverage、fallback 與 GPU/CPU 條件，任何優化都必須留下可重跑證據。
+  3. 消滅雙 llama runtime，production 最終只保留單一 llama-server engine；先完成 lifecycle 與 paired regression，再移除 production `llama-cpp-python`。
+  4. 抽出 Scan Pipeline，加入 FrameGate 與 Temporal Stabilizer，避免每幀重複 OCR／翻譯。
+  5. 收斂 Translation Orchestrator，統一 provider routing、fallback attribution、cache 與錯誤證據。
+  6. 完成 Profiles／Knowledge Pack，再做發行供應鏈與 clean-machine gate。
+  7. 最後才評估漫畫模式、插件與自動 Research。
+- 理由：目前主要風險不是功能不足，而是模型生命週期、工作排隊與錯誤證據不一致；先建立秩序才能保證準確度優先、速度第二。
+- 邊界：不因清理而刪除模型、llama runtime、發行 dist、benchmark manifests 或主人確認的人工標註；任何大型刪除先盤點、列出路徑並取得明確確認。

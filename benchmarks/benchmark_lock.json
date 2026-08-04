@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "status": "locked",
+  "lock_id": "cloudhime-accuracy-speed-v1",
+  "datasets": [
+    {
+      "id": "ocr_accuracy_seed",
+      "path": "benchmarks/ocr_accuracy_cases.json",
+      "sha256": "5fc1f7073c3099a9b6fb60b23a5cceb88835962beab79becdff63384ca4898f2",
+      "role": "seed OCR accuracy cases"
+    },
+    {
+      "id": "manga_cover_holdout",
+      "path": "benchmarks/manga_cover_cases.json",
+      "sha256": "3ac65133b93300d3dbcf5ce3b4b27058d7337105b3a33a590b7704ba2b1ea950",
+      "role": "source-disjoint visual holdout"
+    },
+    {
+      "id": "translation_e2e_contract",
+      "path": "benchmarks/translation_e2e_cases.json",
+      "sha256": "ae3d0aa535fd2e3518410ccb8f39da4e32ed26f5866f9163f80e22c0f0ca538a",
+      "role": "source-disjoint translation contract"
+    }
+  ],
+  "conditions": {
+    "accuracy": {
+      "split": "source-disjoint",
+      "primary_metrics": ["anchor_recall", "translation_char_score", "ocr_char_score"],
+      "empty_output_is_failure": true,
+      "owner_confirmed_ground_truth_required_for_new_cases": true
+    },
+    "latency": {
+      "stages": ["capture", "ocr", "encode", "runtime", "model", "fallback", "total"],
+      "statistics": ["avg", "p95", "coverage"],
+      "quality_is_not_traded_for_latency": true
+    },
+    "runtime": {
+      "local_engine": "llama-server",
+      "gpu_claim_requires_gpu_mode": true,
+      "cpu_fallback_is_not_gpu_success": true,
+      "remote_provider_behavior_is_out_of_scope": true
+    },
+    "repeatability": {
+      "paired_conditions_required": true,
+      "repeats": 5,
+      "same_model_prompt_target_sampling_context_required": true,
+      "record_manifest_and_condition_hashes": true
+    }
+  },
+  "change_policy": "Changing a dataset or locked condition requires a deliberate benchmark review and a new lock_id."
+}
