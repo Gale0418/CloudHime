@@ -292,3 +292,56 @@ def test_blocked_callback_does_not_block_control_plane():
     worker.wait_for_all(2)
 
     assert cancelled == [True, job_id]
+
+def test_cancel_during_blocked_ready_progress_reports_cancelled():
+    entered = threading.Event()
+    release = threading.Event()
+    cancelled = []
+    finished = []
+
+    def blocking_progress(progress):
+        if progress.stage == "ready":
+            entered.set()
+            release.wait(2)
+
+    worker = KnowledgeBuildWorker(
+        research_builder=lambda cancel: draft(),
+        extractor=lambda research, cancel: extraction_payload(),
+        on_progress=blocking_progress,
+        on_finished=finished.append,
+        on_cancelled=cancelled.append,
+    )
+    job_id = worker.start()
+    assert entered.wait(1)
+
+    assert worker.cancel() is True
+    release.set()
+    worker.wait_for_all(2)
+
+    assert cancelled == [job_id]
+    assert finished == []
+
+
+def test_cancel_returns_false_after_completion_is_committed():
+    entered = threading.Event()
+    release = threading.Event()
+    finished = []
+
+    def blocking_finished(result):
+        entered.set()
+        release.wait(2)
+        finished.append(result)
+
+    worker = KnowledgeBuildWorker(
+        research_builder=lambda cancel: draft(),
+        extractor=lambda research, cancel: extraction_payload(),
+        on_finished=blocking_finished,
+    )
+    worker.start()
+    assert entered.wait(1)
+
+    assert worker.cancel() is False
+
+    release.set()
+    worker.wait_for_all(2)
+    assert len(finished) == 1

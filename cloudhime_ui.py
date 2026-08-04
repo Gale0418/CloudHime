@@ -2373,13 +2373,36 @@ class SettingsWindowRevamp(QWidget):
             self.refresh_localized_texts()
 
     def on_save_clicked(self):
-        if hasattr(self.controller, "commit_active_work_title"):
-            self.controller.commit_active_work_title(self.input_knowledge_title.text())
-        if hasattr(self.controller, "save_settings"):
-            self.controller.save_settings()
+        previous_title = str(
+            getattr(self.controller, "active_work_title", "") or ""
+        )
+        commit = getattr(self.controller, "commit_active_work_title", None)
+        save = getattr(self.controller, "save_settings", None)
+        committed = False
+        try:
+            if callable(commit):
+                commit(self.input_knowledge_title.text())
+                committed = True
+            saved = bool(save()) if callable(save) else True
+        except Exception:
+            saved = False
+        if not saved:
+            if committed and callable(commit):
+                try:
+                    commit(previous_title)
+                except Exception:
+                    pass
+            status = getattr(self, "lbl_knowledge_status", None)
+            if status is not None:
+                status.setText(
+                    translation_tools.ui_text(
+                        self._current_ui_language(),
+                        "settings_save_failed",
+                    )
+                )
+            return
         self._knowledge_title_dirty = False
         self.hide()
-
     def on_cancel_clicked(self):
         if self._knowledge_is_building():
             cancel = getattr(self.controller, "cancel_knowledge_research", None)
@@ -3181,22 +3204,62 @@ class Controller(QWidget):
         try:
             return self.knowledge_pack_store.find_pack_for_title(title)
         except Exception as exc:
-            logger.warning(f"[Knowledge] local pack lookup failed: {exc}")
+            logger.warning(f"[Knowledge] local pack lookup failed: {type(exc).__name__}")
             return None
 
-    def _load_knowledge_pack_for_title(self, title):
+    def _load_knowledge_pack_for_title(self, title, *, invalidate_scan=True):
         normalized = " ".join(str(title or "").split())
         pack = self.find_knowledge_pack(normalized) if normalized else None
+        previous = getattr(self, "active_knowledge_pack", None)
+        previous_identity = (
+            previous.get("pack_id"),
+            previous.get("revision"),
+        ) if isinstance(previous, dict) else None
+        next_identity = (
+            pack.get("pack_id"),
+            pack.get("revision"),
+        ) if isinstance(pack, dict) else None
+        if (
+            invalidate_scan
+            and previous_identity != next_identity
+            and hasattr(self, "scan_generation")
+        ):
+            advance = getattr(self, "_advance_scan_generation", None)
+            if callable(advance):
+                advance(cancel_active=True, rearm_auto=True)
+
         self.active_knowledge_pack = pack
         setter = getattr(self.worker, "set_knowledge_pack", None)
         if callable(setter):
             try:
                 setter(pack)
             except Exception as exc:
-                logger.warning(f"[Knowledge] runtime pack load failed: {exc}")
+                logger.warning(
+                    f"[Knowledge] runtime pack load failed: {type(exc).__name__}"
+                )
                 self.active_knowledge_pack = None
-        return pack
+                pack = None
+                try:
+                    setter(None)
+                except Exception as clear_exc:
+                    logger.warning(
+                        "[Knowledge] runtime pack clear failed: "
+                        f"{type(clear_exc).__name__}"
+                    )
 
+        try:
+            if isinstance(pack, dict):
+                self.knowledge_pack_store.activate(
+                    pack.get("pack_id"),
+                    pack.get("revision"),
+                )
+            else:
+                self.knowledge_pack_store.clear_active()
+        except Exception as exc:
+            logger.warning(
+                f"[Knowledge] active catalog sync failed: {type(exc).__name__}"
+            )
+        return pack
     def commit_active_work_title(self, title):
         normalized = normalize_settings_payload(
             {"active_work_title": title},
@@ -3218,6 +3281,12 @@ class Controller(QWidget):
         api_key = str(getattr(self.worker, "google_api_key", "") or "").strip()
         if not api_key:
             return False
+        existing_pack = self.find_knowledge_pack(normalized_title)
+        existing_pack_id = (
+            str(existing_pack.get("pack_id", "") or "").strip()
+            if isinstance(existing_pack, dict)
+            else ""
+        )
         try:
             service = KnowledgeResearchService(
                 google_api_key=api_key,
@@ -3239,11 +3308,12 @@ class Controller(QWidget):
                 on_cancelled=self.knowledge_build_cancelled.emit,
             )
         except Exception as exc:
-            logger.warning(f"[Knowledge] research setup failed: {exc}")
+            logger.warning(f"[Knowledge] research setup failed: {type(exc).__name__}")
             return False
         self.knowledge_build_service = service
         self.knowledge_build_worker = builder
         self.knowledge_build_title = normalized_title
+        self.knowledge_build_pack_id = existing_pack_id or None
         builder.start()
         return True
 
@@ -3258,7 +3328,11 @@ class Controller(QWidget):
         try:
             # The explicit Research button is the owner-confirmation action. The
             # resulting pack remains non-active until the Settings Save action.
-            saved = worker.promote(result, owner_confirmed=True)
+            saved = worker.promote(
+                result,
+                owner_confirmed=True,
+                pack_id=getattr(self, "knowledge_build_pack_id", None),
+            )
             pack = self.knowledge_pack_store.get_pack(
                 saved.get("pack_id"),
                 saved.get("revision"),
@@ -3345,7 +3419,10 @@ class Controller(QWidget):
         )
         self.settings_data = settings
         self.active_work_title = str(settings.get("active_work_title", "") or "").strip()
-        self._load_knowledge_pack_for_title(self.active_work_title)
+        self._load_knowledge_pack_for_title(
+            self.active_work_title,
+            invalidate_scan=False,
+        )
         self.worker.begin_translation_registry_batch()
         self.set_ui_language(resolve_ui_language(settings, self.ui_language), persist=False, refresh=True)
 

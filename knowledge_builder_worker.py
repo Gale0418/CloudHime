@@ -120,6 +120,7 @@ class KnowledgeBuildWorker:
         self._threads: set[threading.Thread] = set()
         self._last_result: KnowledgeBuildResult | None = None
         self._promoted_job_ids: set[str] = set()
+        self._completion_committed_generation: int | None = None
 
     @property
     def current_job_id(self) -> str | None:
@@ -154,18 +155,21 @@ class KnowledgeBuildWorker:
             self._current_thread = thread
             self._last_result = None
             self._promoted_job_ids.clear()
+            self._completion_committed_generation = None
             self._threads.add(thread)
             thread.start()
             return job_id
 
     def cancel(self) -> bool:
         with self._lock:
+            if self._completion_committed_generation == self._generation:
+                return False
             event = self._current_cancel_event
             running = self._current_thread is not None and self._current_thread.is_alive()
-        if event is None or not running:
-            return False
-        event.set()
-        return True
+            if event is None or not running:
+                return False
+            event.set()
+            return True
 
     def wait(self, timeout: float | None = None) -> None:
         with self._lock:
@@ -266,9 +270,12 @@ class KnowledgeBuildWorker:
     ) -> None:
         with self._callback_lock:
             with self._lock:
-                if generation != self._generation or cancel_event.is_set():
+                if generation != self._generation:
                     return
+                if cancel_event.is_set():
+                    raise KnowledgeBuildCancelled("Knowledge Pack build cancelled")
                 self._last_result = _clone_result(result)
+                self._completion_committed_generation = generation
                 snapshot = _clone_result(self._last_result)
             self._safe_callback(self._on_finished, snapshot)
 

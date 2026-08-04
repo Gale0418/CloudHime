@@ -351,7 +351,7 @@ class KnowledgePackStore:
         normalized = " ".join(title.split()).casefold()
         if not normalized:
             return None
-        for summary in self.list_packs():
+        for summary in reversed(self.list_packs()):
             candidates = (summary.title, *summary.aliases)
             if any(" ".join(value.split()).casefold() == normalized for value in candidates):
                 return self.get_pack(summary.pack_id, summary.revision)

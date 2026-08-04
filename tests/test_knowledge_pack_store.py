@@ -207,3 +207,14 @@ def test_find_pack_for_title_matches_title_and_alias_casefold(tmp_path):
     assert store.find_pack_for_title(" princess synergy ")["pack_id"] == saved["pack_id"]
     assert store.find_pack_for_title("プリンセス・シナジー")["title"] == "Princess Synergy"
     assert store.find_pack_for_title("unknown") is None
+
+def test_find_pack_for_title_prefers_newest_matching_pack(tmp_path):
+    store = KnowledgePackStore(tmp_path / "packs")
+    old = store.save_pack("Princess Synergy", pack_id="old-pack", entries=[{"name": "old"}])
+    newest = store.save_pack("Princess Synergy", pack_id="new-pack", entries=[{"name": "new"}])
+
+    found = KnowledgePackStore(tmp_path / "packs").find_pack_for_title("Princess Synergy")
+
+    assert old["pack_id"] != newest["pack_id"]
+    assert found["pack_id"] == newest["pack_id"]
+    assert found["entries"] == [{"name": "new"}]

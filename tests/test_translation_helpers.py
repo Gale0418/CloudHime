@@ -4,6 +4,7 @@ from translation_helpers import (
     clean_screenshot_translation_output,
     is_valid_screenshot_translation,
     parse_segmented_translation_json,
+    ui_text,
 )
 
 
@@ -57,3 +58,10 @@ def test_segment_index_rejects_bool():
     payload = '{"segments":[{"index":true,"translation":"測試"}]}'
 
     assert parse_segmented_translation_json(payload, expected_count=1) == []
+
+def test_ui_text_falls_back_to_shared_localization_catalog():
+    assert ui_text("en", "settings_knowledge_ready") == "✓ Knowledge pack ready"
+    assert ui_text("zh-TW", "settings_knowledge_ready") == "✓ 小本本已建立"
+    assert ui_text("en", "settings_save_failed") == "Settings could not be saved"
+    assert ui_text("en", "settings_knowledge_progress", percent=42) == "Researching… 42%"
+    assert ui_text("zh-TW", "settings_knowledge_progress", percent=42) == "正在查資料… 42%"
