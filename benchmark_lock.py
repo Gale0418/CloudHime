@@ -15,12 +15,14 @@ _REQUIRED_DATASET_IDS = {
     "ocr_accuracy_seed",
     "manga_cover_holdout",
     "translation_e2e_contract",
+    "temporal_holdout",
 }
 _REQUIRED_CONDITION_KEYS = {
     "accuracy",
     "latency",
     "runtime",
     "repeatability",
+    "temporal_holdout",
 }
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 

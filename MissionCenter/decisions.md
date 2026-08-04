@@ -434,3 +434,12 @@
   7. 最後才評估漫畫模式、插件與自動 Research。
 - 理由：目前主要風險不是功能不足，而是模型生命週期、工作排隊與錯誤證據不一致；先建立秩序才能保證準確度優先、速度第二。
 - 邊界：不因清理而刪除模型、llama runtime、發行 dist、benchmark manifests 或主人確認的人工標註；任何大型刪除先盤點、列出路徑並取得明確確認。
+
+## 2026-08-04：CH-T61 只允許 exact-only hard skip
+
+- 決策：production 只有 `ExactImageCache` 的完整影像＋完整 context 相等可跳過 OCR／翻譯；`FrameGate` 的 `identical`／`near` 分類只作 shadow telemetry，不成為 active skip 條件。
+- 證據：鎖定 temporal v2 holdout 使用 10 張主人確認漫畫頁、1 張主人提供的小字圖片與 1 個不含文字 ground truth 的極小局部內容反例，共 12 cases／84 frames。safe policy event recall 1.0、single-frame recall 1.0、false event skips 0；hypothetical near-skip event recall 0.9583、single-frame recall 0.9167、false event skips 2。
+- 理由：64x64 bounded sample 無法保證捕捉 1080p／4K 的所有細筆畫或單幀小字；經驗閾值可以改善平均速度，不能證明零漏失。準確度優先時，重複反例足以否決 active near skip。
+- telemetry 連續性：每次成功 capture 都更新 FrameGate baseline，包括 exact cache hit；常見 uint8 使用向量化 float64 delta，寬整數／超寬 dtype 保留精度安全分支。
+- 邊界：此 holdout 是 frame-policy benchmark，不是 OCR、翻譯或模型品質 benchmark；不把 source identity、合成狀態或模型輸出冒充文字 ground truth。
+- 外部複核：Gemini 3.6 Flash High RPC request `b76df69a-c99a-49a2-8c96-8c5fb04bc521`／cascade `9242a30e-a257-4432-a88e-ea0f48497b8c` 同意 exact-only；CodeRabbit staged review 2 major，均已修正 manifest-lock binding 與 schema allowlist。

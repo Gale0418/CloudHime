@@ -3740,6 +3740,9 @@ class OCRWorker(QObject):
         if self._abort_stale_scan(ScanStage.CAPTURE):
             return
         exact_context = self._exact_image_cache_context(offset_x, offset_y)
+        shadow_detail, sampled_pixels, shadow_started = self._observe_frame_gate(
+            img, exact_context
+        )
         cached_image_result = self.exact_image_cache.get(img, exact_context)
         if cached_image_result is not None:
             selected_provider = self._current_cache_provider()
@@ -3766,9 +3769,6 @@ class OCRWorker(QObject):
                     self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
                 self._emit_scan_finished(cached_results)
                 return
-            shadow_detail, sampled_pixels, shadow_started = self._observe_frame_gate(
-                img, exact_context
-            )
             self._record_scan_event(
                 ScanStage.FRAME_CACHE,
                 ScanOutcome.MISS,
@@ -3779,9 +3779,6 @@ class OCRWorker(QObject):
                 item_count=sampled_pixels,
             )
         else:
-            shadow_detail, sampled_pixels, shadow_started = self._observe_frame_gate(
-                img, exact_context
-            )
             self._record_scan_event(
                 ScanStage.FRAME_CACHE,
                 ScanOutcome.MISS,

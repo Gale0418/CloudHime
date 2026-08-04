@@ -82,3 +82,10 @@
 - 實際驗證：targeted 114 passed；OCR CI group 194 passed；benchmark group 52 passed；UI 四檔拆分 27+2+1+8=38 passed；compileall 與 diff-check exit 0。合併 UI group 在 assertion 全部跑完後卡於既有 teardown，已精確終止專屬 pytest，不把行程退出宣稱通過。
 - CodeRabbit：1 次 staged review，5 issues（3 major／2 minor）；四項直接修正，stale-completion 建議改以 configuration-time cancellation 實作，避免舊 completion 取消新 scan。
 - CH-T61 進入 Review 而非 Done：active near-frame／jitter suppression 仍需 owner-labeled temporal holdout 校準；在資料到位前維持 shadow-only。
+## CH-T61 locked temporal holdout closeout（2026-08-04）
+
+- benchmark lock 升級為 `cloudhime-accuracy-speed-temporal-v2`，新增 SHA-256 綁定 `benchmarks/temporal_holdout_cases.json`；runner 只接受 canonical locked manifest，未知 schema 欄位、OCR anchors、ground truth 與非 locked path 均 fail-closed。
+- 12 cases／84 frames safe exact-only/shadow policy：event recall 1.0、single-frame recall 1.0、false event skips 0、coverage 1.0、exact hits 48、gate p95 約 0.51ms；hypothetical near-skip：event recall 0.9583、single-frame recall 0.9167、false event skips 2。
+- FrameGate exact-hit baseline continuity 已補齊；常見 uint8 fast path 將 synthetic candidate 約由 avg 0.88ms／p95 1.23ms 降至 avg 0.40ms／p95 0.59ms，寬整數與複數精度 regression 保持通過。數字只代表本機 frame-policy microbenchmark。
+- 驗證：targeted 87 passed；OCR 195 passed；最終 benchmark＋CI inventory 62 passed；core 223 passed；benchmark lock ok；compileall／diff-check 通過。
+- Gemini RPC 完成且 hub-visible；CodeRabbit 2 major 已修。CH-T61 Done，CH-T62 進 Ready。

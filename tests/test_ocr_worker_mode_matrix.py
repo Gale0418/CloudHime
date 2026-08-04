@@ -1605,3 +1605,32 @@ def test_stale_fullscreen_retry_stops_before_later_ocr_phases_and_translation(
         assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
     finally:
         worker.cleanup()
+
+
+def test_exact_cache_hit_refreshes_frame_gate_consecutive_baseline(monkeypatch, qtbot):
+    first = np.zeros((40, 80, 3), dtype=np.uint8)
+    different = np.full((40, 80, 3), 255, dtype=np.uint8)
+    first_again = first.copy()
+    near_first = first.copy()
+    near_first[0, 0, 0] = 1
+    images = iter([first, different, first_again, near_first])
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, first)
+    worker.capture_scan_area = lambda: (next(images), 7, 11)
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["Nihao"], ["google"])
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        for _ in range(4):
+            worker.run_scan_once()
+
+        assert worker.run_ocr_with_best_threshold.call_count == 3
+        shadow_event = next(
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.FRAME_CACHE
+        )
+        assert shadow_event.detail == "frame_cache_shadow_near"
+    finally:
+        worker.cleanup()
