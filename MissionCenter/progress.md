@@ -98,3 +98,11 @@
 - 驗證：targeted 156 passed；core 229 passed；OCR 196 passed；runtime 94 passed、2 skipped；UI 四檔隔離 27+2+1+8=38 passed；benchmarks 58 passed；compileall 通過。core 首跑 196 passed／33 setup errors 全為既有 C:\tmp ACL，改用 Windows 使用者 Temp 後通過。
 - UI 合併 runner 在 33 個案例後停止輸出，已只終止命令列含 cloudhime-ch-t62-ui 的 pytest PID；四個檔案隔離重跑全部通過，未將合併 runner 宣稱為成功。
 - Gemini 3.6 Flash High RPC request 0e58dbeb-a4f8-4197-9425-032a37301cb2／cascade b15697eb-c787-4ef5-9693-eadce11754c0，hub-visible、0 blocking；CodeRabbit uncommitted review 0 findings。CH-T62 Done，CH-T63 可開始。
+
+## CH-T63 Profiles／Knowledge Pack closeout（2026-08-04）
+
+- active work title 維持明確按鈕才 Research；編輯欄位只查本機 pack 狀態。Settings Save 失敗會回滾 runtime work context、保持視窗與 dirty 狀態，已建立的本地 pack 不會因 Cancel／Save 失敗刪除。
+- 同作品更新會沿用既有 pack ID 產生新 revision；legacy 同名重複 pack 固定選 catalog 最新項。pack／revision 變更會先取消舊 scan generation，再切換 worker context 與 active catalog。
+- Knowledge Builder completion／cancel 具鎖定 commit point；ready progress 阻塞時取消會送 cancelled，completion committed 後 cancel 回傳 false。worker 載入新 pack 失敗時會再清除 context，避免殘留舊 pack。
+- 驗證：CodeRabbit 修正 focused 47 passed；最終 core 234 passed；UI 四檔分拆 36+2+1+8=47 passed；本階段先前 OCR 196 passed、runtime 94 passed／2 skipped、benchmark 58 passed；compileall／diff-check 通過。UI 合跑完成部分輸出後未退出，已精確終止專屬命令並以分拆結果為準。
+- Gemini 3.6 Flash High RPC request 77e541c1-4999-4e23-bdd6-6a4f0b580c79／cascade 9b127e89-0638-4b6b-a7a6-b813248a9fea，hub-visible、0 blocking。CodeRabbit uncommitted review 2 major，均以紅燈回歸測試重現並修正；未執行第二次遠端 review。

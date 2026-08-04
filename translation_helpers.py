@@ -435,12 +435,29 @@ def get_ui_language(source: Any = None, fallback: str = "en") -> str:
     return normalized
 
 
-def ui_text(source: Any, key: str, default: str = "") -> str:
+def ui_text(
+    source: Any,
+    key: str,
+    default: str = "",
+    **params: Any,
+) -> str:
     lang = get_ui_language(source)
     entry = UI_TEXTS.get(key)
     if not entry:
-        return default or key
-    return entry.get(lang) or entry.get("zh-TW") or entry.get("en") or default or key
+        import localization
+        return localization.tr(
+            key,
+            lang,
+            fallback=default or None,
+            **params,
+        )
+    text = entry.get(lang) or entry.get("zh-TW") or entry.get("en") or default or key
+    if params:
+        try:
+            text = text.format(**params)
+        except (KeyError, ValueError):
+            pass
+    return text
 
 
 def theme_label(theme_key: Any, source: Any = None) -> str:

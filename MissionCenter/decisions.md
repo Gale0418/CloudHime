@@ -451,3 +451,10 @@
 - 取消只能在同步 provider 呼叫前後生效；不宣稱可中斷已進入的 urllib／GoogleTranslator／llama-server HTTP request。更細粒度的 socket cancellation 留待 provider transport 明確支援後再做。
 - 錯誤證據只允許 bounded code 與 exception class；status、trace、debug log 不保存 raw exception message、OCR 原文、prompt、API key 或模型原始輸出。
 - batch／multimodal／stream 的完整 result 型別收斂留給後續漸進工作；本階段保留既有行為，避免一次大改造成準確度 regression。
+
+## 2026-08-04：CH-T63 將 active work 視為可回滾設定 context
+
+- 作品名稱輸入不觸發網路；只有明確 Research 操作可建立或更新 pack。pack 本地資料的持久化獨立於 Settings Save／Cancel，active work title 則遵守 Save／Cancel。
+- pack identity 使用 `(pack_id, revision)`；identity 改變時先使舊 scan generation 失效，再安裝 worker context，避免舊 frame 在新作品知識下完成。
+- 同作品 Research 更新沿用 pack ID；legacy 同名 pack 以 catalog 最新項為準。一般翻譯不得依賴 Research 成功或網路可用。
+- builder completion commit 是 cancel 邊界：commit 前取消必須發布 cancelled，commit 後取消回傳 false；runtime setter 失敗必須清空 worker context 與 active catalog，不可保留上一部作品。

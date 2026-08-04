@@ -557,3 +557,256 @@ def test_generation_invalidation_cancels_active_scan_and_rearms_auto_scan():
     assert controller.scan_in_progress is False
     controller.worker.set_scan_generation.assert_called_once_with(3)
     controller.schedule_next_scan.assert_called_once_with()
+
+def test_controller_promotes_knowledge_update_into_existing_pack_id():
+    promoted = []
+    emitted = []
+    saved = {"pack_id": "existing-pack", "revision": 2}
+
+    class Builder:
+        def promote(self, result, **kwargs):
+            promoted.append(kwargs)
+            return saved
+
+    controller = Controller.__new__(Controller)
+    controller.knowledge_build_worker = Builder()
+    controller.knowledge_build_pack_id = "existing-pack"
+    controller.knowledge_build_title = "Princess Synergy"
+    controller.knowledge_pack_store = SimpleNamespace(
+        get_pack=lambda pack_id, revision: {
+            "pack_id": pack_id,
+            "revision": revision,
+            "title": "Princess Synergy",
+        }
+    )
+    controller.knowledge_build_finished = SimpleNamespace(
+        emit=lambda title, pack: emitted.append((title, pack))
+    )
+    controller._on_knowledge_build_error = Mock()
+    result = SimpleNamespace(
+        job_id="job",
+        research_draft={"title": "Princess Synergy"},
+    )
+
+    Controller._on_knowledge_build_finished(controller, result)
+
+    assert promoted == [{"owner_confirmed": True, "pack_id": "existing-pack"}]
+    assert emitted[0][1]["revision"] == 2
+    controller._on_knowledge_build_error.assert_not_called()
+
+
+def test_controller_new_knowledge_build_does_not_reuse_unrelated_pack_id():
+    promoted = []
+
+    class Builder:
+        def promote(self, result, **kwargs):
+            promoted.append(kwargs)
+            return {"pack_id": "generated", "revision": 1}
+
+    controller = Controller.__new__(Controller)
+    controller.knowledge_build_worker = Builder()
+    controller.knowledge_build_pack_id = None
+    controller.knowledge_build_title = "New Work"
+    controller.knowledge_pack_store = SimpleNamespace(get_pack=lambda *_args: None)
+    controller.knowledge_build_finished = SimpleNamespace(emit=lambda *_args: None)
+    controller._on_knowledge_build_error = Mock()
+    result = SimpleNamespace(job_id="job", research_draft={"title": "New Work"})
+
+    Controller._on_knowledge_build_finished(controller, result)
+
+    assert promoted == [{"owner_confirmed": True, "pack_id": None}]
+    controller._on_knowledge_build_error.assert_not_called()
+
+def test_loading_new_pack_invalidates_scan_before_runtime_context_change():
+    events = []
+    old_pack = {"pack_id": "work", "revision": 1, "title": "Work"}
+    new_pack = {"pack_id": "work", "revision": 2, "title": "Work"}
+    controller = Controller.__new__(Controller)
+    controller.active_knowledge_pack = old_pack
+    controller.knowledge_pack_store = SimpleNamespace(
+        find_pack_for_title=lambda _title: new_pack,
+        activate=lambda pack_id, revision: events.append(("activate", pack_id, revision)) or True,
+        clear_active=lambda: events.append(("clear",)),
+    )
+    controller.worker = SimpleNamespace(
+        set_knowledge_pack=lambda pack: events.append(("set", pack["revision"]))
+    )
+    controller.scan_generation = 3
+    controller._advance_scan_generation = lambda **kwargs: events.append(("cancel", kwargs))
+
+    loaded = Controller._load_knowledge_pack_for_title(controller, "Work")
+
+    assert loaded == new_pack
+    assert events[0] == (
+        "cancel",
+        {"cancel_active": True, "rearm_auto": True},
+    )
+    assert events[1] == ("set", 2)
+    assert events[2] == ("activate", "work", 2)
+
+
+def test_failed_runtime_pack_load_clears_worker_context_and_active_catalog():
+    events = []
+    pack = {"pack_id": "work", "revision": 2, "title": "Work"}
+    controller = Controller.__new__(Controller)
+    controller.active_knowledge_pack = {"pack_id": "old", "revision": 1}
+    controller.knowledge_pack_store = SimpleNamespace(
+        find_pack_for_title=lambda _title: pack,
+        activate=lambda *_args: events.append(("activate",)),
+        clear_active=lambda: events.append(("clear",)),
+    )
+
+    def set_knowledge_pack(value):
+        events.append(("set", value))
+        if value is pack:
+            raise RuntimeError("invalid pack")
+
+    controller.worker = SimpleNamespace(set_knowledge_pack=set_knowledge_pack)
+    controller.scan_generation = 3
+    controller._advance_scan_generation = lambda **_kwargs: None
+
+    loaded = Controller._load_knowledge_pack_for_title(controller, "Work")
+
+    assert loaded is None
+    assert controller.active_knowledge_pack is None
+    assert events == [("set", pack), ("set", None), ("clear",)]
+
+
+def test_clearing_work_pack_invalidates_scan_and_clears_active_catalog():
+    events = []
+    controller = Controller.__new__(Controller)
+    controller.active_knowledge_pack = {"pack_id": "work", "revision": 1, "title": "Work"}
+    controller.knowledge_pack_store = SimpleNamespace(
+        find_pack_for_title=lambda _title: None,
+        activate=lambda *_args: False,
+        clear_active=lambda: events.append(("clear",)),
+    )
+    controller.worker = SimpleNamespace(
+        set_knowledge_pack=lambda pack: events.append(("set", pack))
+    )
+    controller.scan_generation = 3
+    controller._advance_scan_generation = lambda **kwargs: events.append(("cancel", kwargs))
+
+    Controller._load_knowledge_pack_for_title(controller, "")
+
+    assert events[0][0] == "cancel"
+    assert events[1] == ("set", None)
+    assert events[2] == ("clear",)
+
+
+def test_settings_save_failure_rolls_back_work_context_and_stays_open():
+    from cloudhime_ui import SettingsWindowRevamp
+
+    calls = []
+    controller = SimpleNamespace(active_work_title="Old Work")
+
+    def commit(title):
+        calls.append(title)
+        controller.active_work_title = title.strip()
+
+    controller.commit_active_work_title = commit
+    controller.save_settings = lambda: False
+    view = SimpleNamespace(
+        controller=controller,
+        input_knowledge_title=SimpleNamespace(text=lambda: "New Work"),
+        _knowledge_title_dirty=True,
+        lbl_knowledge_status=SimpleNamespace(setText=lambda text: calls.append(("status", text))),
+        _current_ui_language=lambda: "en",
+        hide=Mock(),
+    )
+
+    SettingsWindowRevamp.on_save_clicked(view)
+
+    assert calls[:2] == ["New Work", "Old Work"]
+    assert calls[2] == ("status", "Settings could not be saved")
+    assert view._knowledge_title_dirty is True
+    view.hide.assert_not_called()
+
+
+def test_settings_save_success_commits_work_context_and_closes():
+    from cloudhime_ui import SettingsWindowRevamp
+
+    calls = []
+    controller = SimpleNamespace(
+        active_work_title="Old Work",
+        commit_active_work_title=lambda title: calls.append(title),
+        save_settings=lambda: True,
+    )
+    view = SimpleNamespace(
+        controller=controller,
+        input_knowledge_title=SimpleNamespace(text=lambda: "New Work"),
+        _knowledge_title_dirty=True,
+        hide=Mock(),
+    )
+
+    SettingsWindowRevamp.on_save_clicked(view)
+
+    assert calls == ["New Work"]
+    assert view._knowledge_title_dirty is False
+    view.hide.assert_called_once_with()
+
+def test_editing_work_title_only_refreshes_local_status_without_research():
+    from cloudhime_ui import SettingsWindowRevamp
+
+    research = Mock()
+    view = SimpleNamespace(
+        controller=SimpleNamespace(start_knowledge_research=research),
+        _knowledge_is_building=lambda: False,
+        _knowledge_title_dirty=False,
+        _refresh_knowledge_status=Mock(),
+    )
+
+    SettingsWindowRevamp.on_knowledge_title_changed(view, "Princess Synergy")
+
+    assert view._knowledge_title_dirty is True
+    view._refresh_knowledge_status.assert_called_once_with()
+    research.assert_not_called()
+
+
+def test_explicit_research_remembers_existing_local_pack_id(monkeypatch):
+    import cloudhime_ui
+
+    created = []
+
+    class Service:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def build_research_draft(self, *_args):
+            raise AssertionError("background work is owned by the builder")
+
+        def extract_candidate(self, *_args):
+            raise AssertionError("background work is owned by the builder")
+
+    class Builder:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            created.append(self)
+
+        def is_running(self):
+            return False
+
+        def start(self):
+            return "job"
+
+    monkeypatch.setattr(cloudhime_ui, "KnowledgeResearchService", Service)
+    monkeypatch.setattr(cloudhime_ui, "KnowledgeBuildWorker", Builder)
+    controller = Controller.__new__(Controller)
+    controller.worker = SimpleNamespace(google_api_key="key")
+    controller.knowledge_build_worker = None
+    controller.knowledge_pack_store = object()
+    controller.find_knowledge_pack = lambda title: {
+        "pack_id": "existing-pack",
+        "revision": 3,
+        "title": title,
+    }
+    controller.knowledge_build_progress = SimpleNamespace(emit=lambda *_args: None)
+    controller.knowledge_build_finished = SimpleNamespace(emit=lambda *_args: None)
+    controller.knowledge_build_error = SimpleNamespace(emit=lambda *_args: None)
+    controller.knowledge_build_cancelled = SimpleNamespace(emit=lambda *_args: None)
+
+    assert Controller.start_knowledge_research(controller, " Princess   Synergy ") is True
+
+    assert controller.knowledge_build_title == "Princess Synergy"
+    assert controller.knowledge_build_pack_id == "existing-pack"
+    assert len(created) == 1

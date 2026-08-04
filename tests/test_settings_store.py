@@ -174,3 +174,19 @@ def test_normalize_settings_payload_coerces_boolean_values(value, expected):
     assert normalized["local_multimodal_enabled"] is expected
     assert normalized["local_multimodal_cpu_only"] is expected
     assert normalized["japanese_ocr_rescue_enabled"] is expected
+
+def test_active_work_title_round_trips_through_appdata_settings(tmp_path):
+    install_dir = tmp_path / "install"
+    appdata_dir = tmp_path / "appdata"
+    install_dir.mkdir()
+    paths = create_settings_paths(str(install_dir), str(appdata_dir))
+
+    payload = normalize_settings_payload(
+        {"active_work_title": "  Princess   Synergy  "},
+        region_opacity=40,
+    )
+    save_settings_data(paths, payload)
+    loaded, loaded_from = load_settings_data(paths)
+
+    assert loaded_from == paths.appdata_file
+    assert loaded["active_work_title"] == "Princess Synergy"
