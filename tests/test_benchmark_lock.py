@@ -12,6 +12,7 @@ LOCK_PATH = PROJECT_ROOT / "benchmarks" / "benchmark_lock.json"
 DATASET_NAMES = (
     "ocr_accuracy_cases.json",
     "manga_cover_cases.json",
+    "temporal_holdout_cases.json",
     "translation_e2e_cases.json",
 )
 
@@ -35,6 +36,7 @@ def test_benchmark_lock_matches_current_manifests():
         "ocr_accuracy_seed",
         "manga_cover_holdout",
         "translation_e2e_contract",
+        "temporal_holdout",
     ]
 
 
@@ -73,3 +75,15 @@ def test_benchmark_lock_requires_repeatability_and_runtime_conditions(tmp_path):
     assert result["ok"] is False
     assert "required condition missing: repeatability" in result["errors"]
     assert "required condition missing: runtime" in result["errors"]
+
+
+def test_benchmark_lock_requires_temporal_holdout_condition(tmp_path):
+    lock_path = _copy_lock_fixture(tmp_path)
+    payload = json.loads(lock_path.read_text(encoding="utf-8"))
+    del payload["conditions"]["temporal_holdout"]
+    lock_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_benchmark_lock(tmp_path, lock_path)
+
+    assert result["ok"] is False
+    assert "required condition missing: temporal_holdout" in result["errors"]

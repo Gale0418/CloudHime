@@ -97,7 +97,16 @@ class FrameGate:
             if current.ndim == 2
             else np.any(changed_values, axis=tuple(range(2, current.ndim)))
         )
-        delta = np.abs(current.astype(object) - baseline.astype(object))
+        if np.issubdtype(current.dtype, np.integer) and current.dtype.itemsize > 4:
+            delta = np.abs(current.astype(object) - baseline.astype(object))
+        elif current.dtype.itemsize > 8:
+            delta = np.abs(current.astype(object) - baseline.astype(object))
+        elif np.issubdtype(current.dtype, np.complexfloating):
+            delta = np.abs(
+                current.astype(np.complex128) - baseline.astype(np.complex128)
+            )
+        else:
+            delta = np.abs(current.astype(np.float64) - baseline.astype(np.float64))
         ratio, mean = float(np.mean(changed)), float(np.mean(delta))
         classification = "identical" if ratio == 0.0 else (
             "near" if ratio <= self._near_changed_pixel_ratio and mean <= self._near_mean_absolute_delta else "changed")

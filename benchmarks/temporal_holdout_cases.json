@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "dataset": "cloudhime-temporal-holdout",
+  "description": "CH-T61 locked temporal frame-policy holdout. This is not an OCR or model benchmark.",
+  "evaluation_scope": "frame_policy_only",
+  "case_schema": {
+    "fields": ["id", "source", "category", "sequence_transforms", "note"],
+    "prohibited_fields": ["expected", "actual", "visible_text_anchors", "ocr", "ground_truth"]
+  },
+  "cases": [
+    {"id": "heavy-knight-001", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/001.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-004", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/004.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-006", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/006.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-007", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/007.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-008", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/008.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-013", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/013.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-019", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/019.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-021", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/021.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-026", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/026.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "heavy-knight-029", "source": "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/029.jpg", "category": "owner_confirmed_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "user-screen-2026-07-14", "source": "example/2026-07-14 08 10 10.png", "category": "user_provided_example", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"]},
+    {"id": "synthetic-adversarial-local-event", "source": "synthetic://local-content-event", "category": "synthetic_adversarial", "sequence_transforms": ["blank_baseline", "source", "exact_repeat", "same_semantic_1px_noise", "blank", "single_frame_source", "blank"], "note": "Synthetic tiny local-content event for a repeatable near-skip safety counterexample; it contains no text ground truth."}
+  ]
+}

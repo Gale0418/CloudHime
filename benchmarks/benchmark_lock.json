@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "locked",
-  "lock_id": "cloudhime-accuracy-speed-v1",
+  "lock_id": "cloudhime-accuracy-speed-temporal-v2",
   "datasets": [
     {
       "id": "ocr_accuracy_seed",
@@ -20,18 +20,40 @@
       "path": "benchmarks/translation_e2e_cases.json",
       "sha256": "ae3d0aa535fd2e3518410ccb8f39da4e32ed26f5866f9163f80e22c0f0ca538a",
       "role": "source-disjoint translation contract"
+    },
+    {
+      "id": "temporal_holdout",
+      "path": "benchmarks/temporal_holdout_cases.json",
+      "sha256": "8b39a31697fad1a9c2f1816caa10e4f66cd0f950e65ff92538f84a582195f4d2",
+      "role": "CH-T61 locked temporal frame-policy holdout"
     }
   ],
   "conditions": {
     "accuracy": {
       "split": "source-disjoint",
-      "primary_metrics": ["anchor_recall", "translation_char_score", "ocr_char_score"],
+      "primary_metrics": [
+        "anchor_recall",
+        "translation_char_score",
+        "ocr_char_score"
+      ],
       "empty_output_is_failure": true,
       "owner_confirmed_ground_truth_required_for_new_cases": true
     },
     "latency": {
-      "stages": ["capture", "ocr", "encode", "runtime", "model", "fallback", "total"],
-      "statistics": ["avg", "p95", "coverage"],
+      "stages": [
+        "capture",
+        "ocr",
+        "encode",
+        "runtime",
+        "model",
+        "fallback",
+        "total"
+      ],
+      "statistics": [
+        "avg",
+        "p95",
+        "coverage"
+      ],
       "quality_is_not_traded_for_latency": true
     },
     "runtime": {
@@ -45,7 +67,25 @@
       "repeats": 5,
       "same_model_prompt_target_sampling_context_required": true,
       "record_manifest_and_condition_hashes": true
+    },
+    "temporal_holdout": {
+      "frame_policy_only": true,
+      "safe_policy": "exact_cache_reuse_only_frame_gate_shadow",
+      "near_skip_is_hypothetical_only": true,
+      "required_metrics": [
+        "event_recall",
+        "single_frame_recall",
+        "false_event_skips",
+        "exact_hits",
+        "coverage",
+        "gate_p95_ms"
+      ],
+      "safe_policy_hard_gate": {
+        "false_event_skips": 0,
+        "event_recall": 1.0,
+        "single_frame_recall": 1.0
+      }
     }
   },
-  "change_policy": "Changing a dataset or locked condition requires a deliberate benchmark review and a new lock_id."
+  "change_policy": "Changing a dataset or locked condition requires a deliberate benchmark review and a new lock_id. CH-T61 temporal holdout is frame-policy-only and must not add OCR anchors."
 }

@@ -77,7 +77,8 @@
         "tests/test_ocr_benchmark.py",
         "tests/test_speed_benchmark.py",
         "tests/test_translation_e2e_benchmark.py",
-        "tests/test_vision_smoke_benchmark.py"
+        "tests/test_vision_smoke_benchmark.py",
+        "tests/test_temporal_holdout_benchmark.py"
       ]
     }
   ]
