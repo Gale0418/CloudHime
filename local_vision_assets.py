@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from managed_asset_store import AssetSpec, ensure_managed_assets
+from local_runtime_profiles import ALL_RUNTIME_ASSET_FIELDS
 
 
 _SERVER_REL = Path("runtime") / "llama-server.exe"
@@ -126,22 +127,55 @@ def resolve_preferred_vision_assets(
     return resolve_managed_vision_assets(app_root, local_appdata)
 
 
+def _normalize_required_fields(required_fields=None) -> tuple[str, ...]:
+    fields = ALL_RUNTIME_ASSET_FIELDS if required_fields is None else tuple(required_fields)
+    unknown = [field for field in fields if field not in ALL_RUNTIME_ASSET_FIELDS]
+    if unknown:
+        raise ValueError(f"unknown_runtime_asset_fields: {unknown}")
+    if "server_path" not in fields or "model_path" not in fields:
+        raise ValueError("runtime_assets_require_server_and_model")
+    return tuple(field for field in ALL_RUNTIME_ASSET_FIELDS if field in fields)
+
+
+def _manifest_for_required_fields(required_fields: tuple[str, ...]) -> tuple[AssetSpec, ...]:
+    field_by_name = {
+        GEMMA_ASSET_MANIFEST[0].name: "model_path",
+        GEMMA_ASSET_MANIFEST[1].name: "projector_path",
+    }
+    return tuple(
+        spec for spec in GEMMA_ASSET_MANIFEST
+        if field_by_name.get(spec.name) in required_fields
+    )
+
+
 def ensure_vision_model_assets(
     assets: VisionAssets,
     progress_callback=None,
     cancel_event=None,
     opener=None,
+    required_fields=None,
 ) -> VisionAssets:
-    """背景驗證模型資產；receipt 可避免後續啟動重算 3.34 GB 雜湊。"""
+    """背景驗證指定 runtime profile 的資產；receipt 只涵蓋該 profile。"""
+    fields = _normalize_required_fields(required_fields)
+    is_default = fields == ALL_RUNTIME_ASSET_FIELDS
     if not assets.managed:
         with _ASSET_LOCK:
-            if _legacy_receipt_matches(assets, None):
+            if is_default:
+                receipt_matches = _legacy_receipt_matches(assets, None)
+            else:
+                receipt_matches = _legacy_receipt_matches(
+                    assets, None, required_fields=fields
+                )
+            if receipt_matches:
                 if progress_callback:
                     progress_callback("checking_assets", 80)
                 return assets
             if progress_callback:
                 progress_callback("checking_disk", 0)
-            failures = _verify_resolved_assets(assets)
+            if is_default:
+                failures = _verify_resolved_assets(assets)
+            else:
+                failures = _verify_resolved_assets(assets, required_fields=fields)
             if failures:
                 raise VisionAssetError(
                     "legacy_asset_invalid",
@@ -149,7 +183,10 @@ def ensure_vision_model_assets(
                     detail=failures[0].strip(),
                 )
             try:
-                _write_legacy_receipt(assets, None)
+                if is_default:
+                    _write_legacy_receipt(assets, None)
+                else:
+                    _write_legacy_receipt(assets, None, required_fields=fields)
             except OSError:
                 # A read-only packaged install may not be able to cache the receipt;
                 # the current asset is still verified and can be used this run.
@@ -158,8 +195,13 @@ def ensure_vision_model_assets(
                 progress_callback("checking_assets", 80)
         return assets
     root = assets.model_path.parent
+    manifest = _manifest_for_required_fields(fields)
     with _ASSET_LOCK:
-        if _receipt_matches(root):
+        if is_default:
+            receipt_matches = _receipt_matches(root)
+        else:
+            receipt_matches = _receipt_matches(root, manifest)
+        if receipt_matches:
             if progress_callback:
                 progress_callback("checking_assets", 80)
             return assets
@@ -167,12 +209,15 @@ def ensure_vision_model_assets(
             progress_callback("checking_disk", 0)
         ensure_managed_assets(
             root,
-            GEMMA_ASSET_MANIFEST,
+            manifest,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
             opener=opener,
         )
-        _write_receipt(root)
+        if is_default:
+            _write_receipt(root)
+        else:
+            _write_receipt(root, manifest)
     return assets
 
 
@@ -197,13 +242,16 @@ def verify_asset(path: Path, expected_sha256: Optional[str], minimum_bytes: int)
             )
 
 
-def _verify_resolved_assets(assets: VisionAssets) -> list[str]:
+def _verify_resolved_assets(assets: VisionAssets, *, required_fields=None) -> list[str]:
+    fields = _normalize_required_fields(required_fields)
+    paths = {
+        "server_path": assets.server_path,
+        "model_path": assets.model_path,
+        "projector_path": assets.projector_path,
+    }
     failures = []
-    for field_name, path in (
-        ("server_path", assets.server_path),
-        ("model_path", assets.model_path),
-        ("projector_path", assets.projector_path),
-    ):
+    for field_name in fields:
+        path = paths[field_name]
         try:
             verify_asset(
                 path,
@@ -226,13 +274,20 @@ def _legacy_receipt_path(local_appdata: Path | None) -> Path:
     return _local_appdata_root(local_appdata) / _LEGACY_RECEIPT_DIR / _LEGACY_RECEIPT_NAME
 
 
-def _legacy_receipt_matches(assets: VisionAssets, local_appdata: Path | None) -> bool:
+def _legacy_receipt_matches(
+    assets: VisionAssets,
+    local_appdata: Path | None,
+    *,
+    required_fields=None,
+) -> bool:
     try:
         payload = json.loads(_legacy_receipt_path(local_appdata).read_text(encoding="utf-8"))
         if payload.get("revision") != GEMMA_ASSET_REVISION:
             return False
         entries = payload.get("assets", {})
-        for field_name, expected_sha in ASSET_SHA256.items():
+        fields = _normalize_required_fields(required_fields)
+        for field_name in fields:
+            expected_sha = ASSET_SHA256[field_name]
             path = getattr(assets, field_name)
             stat = path.stat()
             entry = entries.get(field_name, {})
@@ -248,11 +303,18 @@ def _legacy_receipt_matches(assets: VisionAssets, local_appdata: Path | None) ->
         return False
 
 
-def _write_legacy_receipt(assets: VisionAssets, local_appdata: Path | None) -> None:
+def _write_legacy_receipt(
+    assets: VisionAssets,
+    local_appdata: Path | None,
+    *,
+    required_fields=None,
+) -> None:
     receipt = _legacy_receipt_path(local_appdata)
     receipt.parent.mkdir(parents=True, exist_ok=True)
     entries = {}
-    for field_name, expected_sha in ASSET_SHA256.items():
+    fields = _normalize_required_fields(required_fields)
+    for field_name in fields:
+        expected_sha = ASSET_SHA256[field_name]
         path = getattr(assets, field_name)
         stat = path.stat()
         entries[field_name] = {
@@ -284,13 +346,14 @@ def _write_legacy_receipt(assets: VisionAssets, local_appdata: Path | None) -> N
 
 
 
-def _receipt_matches(root: Path) -> bool:
+def _receipt_matches(root: Path, manifest=None) -> bool:
     try:
         payload = json.loads((root / _RECEIPT_NAME).read_text(encoding="utf-8"))
         if payload.get("revision") != GEMMA_ASSET_REVISION:
             return False
         entries = payload.get("assets", {})
-        for spec in GEMMA_ASSET_MANIFEST:
+        specs = tuple(GEMMA_ASSET_MANIFEST if manifest is None else manifest)
+        for spec in specs:
             path = root / spec.name
             stat = path.stat()
             entry = entries.get(spec.name, {})
@@ -306,9 +369,10 @@ def _receipt_matches(root: Path) -> bool:
         return False
 
 
-def _write_receipt(root: Path) -> None:
+def _write_receipt(root: Path, manifest=None) -> None:
     entries = {}
-    for spec in GEMMA_ASSET_MANIFEST:
+    specs = tuple(GEMMA_ASSET_MANIFEST if manifest is None else manifest)
+    for spec in specs:
         stat = (root / spec.name).stat()
         entries[spec.name] = {
             "size": stat.st_size,

@@ -326,3 +326,48 @@ def test_write_receipt_uses_process_unique_temp_and_cleans_on_replace_failure(
         vision_assets_module._write_receipt(root)
 
     assert list(root.glob(".verified.json.*.tmp")) == []
+def test_text_asset_warmup_does_not_require_projector(tmp_path, monkeypatch):
+    assets = resolve_vision_assets(tmp_path / "app")
+    calls = []
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_legacy_receipt_matches",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_verify_resolved_assets",
+        lambda _assets, **kwargs: calls.append(kwargs) or [],
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_write_legacy_receipt",
+        lambda *args, **kwargs: None,
+    )
+
+    ensure_vision_model_assets(
+        assets,
+        required_fields=("server_path", "model_path"),
+    )
+
+    assert calls == [{"required_fields": ("server_path", "model_path")}]
+
+def test_verify_resolved_assets_filters_text_profile(tmp_path, monkeypatch):
+    assets = vision_assets_module.VisionAssets(
+        server_path=tmp_path / "llama-server.exe",
+        model_path=tmp_path / "model.gguf",
+        projector_path=tmp_path / "projector.gguf",
+    )
+    calls = []
+    monkeypatch.setattr(
+        vision_assets_module,
+        "verify_asset",
+        lambda path, expected_sha256, minimum_bytes: calls.append(path),
+    )
+
+    assert vision_assets_module._verify_resolved_assets(
+        assets,
+        required_fields=("server_path", "model_path"),
+    ) == []
+
+    assert calls == [assets.server_path, assets.model_path]
