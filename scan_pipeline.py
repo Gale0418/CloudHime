@@ -20,6 +20,7 @@ MAX_PROVIDER_LENGTH: Final = 128
 MAX_FALLBACK_REASON_LENGTH: Final = 160
 MAX_EXCEPTION_TOKEN_LENGTH: Final = 64
 MAX_ELAPSED_MS: Final = 86_400_000.0
+MAX_ENQUEUED_AT_MS: Final = 31_536_000_000.0
 MAX_ITEM_COUNT: Final = 1_000_000
 _REDACTED: Final = "redacted"
 _SENSITIVE_VALUE = re.compile(
@@ -91,6 +92,37 @@ def _safe_provider(value: object) -> str:
         return _REDACTED
     return text[:MAX_PROVIDER_LENGTH]
 
+
+@dataclass(frozen=True, slots=True)
+class ScanRequestToken:
+    """Immutable queue metadata for one admitted scan request."""
+
+    generation: int = 0
+    request_id: int = 0
+    enqueued_at_ms: float = 0.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "generation", _non_negative_int(self.generation))
+        object.__setattr__(self, "request_id", _non_negative_int(self.request_id))
+        object.__setattr__(self, "enqueued_at_ms", _bounded_enqueue_time(self.enqueued_at_ms))
+
+
+def _non_negative_int(value: object) -> int:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, normalized)
+
+
+def _bounded_enqueue_time(value: object) -> float:
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(normalized):
+        return 0.0
+    return min(MAX_ENQUEUED_AT_MS, max(0.0, normalized))
 
 @dataclass(frozen=True, slots=True)
 class ScanTraceEvent:

@@ -74,3 +74,11 @@
 - 實際驗證：targeted contract + mode matrix 67 passed；最終 ocr CI group 174 passed in 5.45s；CI inventory 4 passed；全庫 compileall exit 0，但舊 pytest ACL 目錄留下 Can't list 警告，未宣稱輸出完全乾淨。
 - CodeRabbit 兩輪：首輪 3 findings，其中 2 個本階段 worker correctness 已修、1 個既有 MissionCenter smoke ledger 問題未混入；第二輪完整 staged scope 2 privacy-test findings 均已修。
 - cancelled outcome 與 scan_cancelled code 已納入契約；實際 scan generation／stale frame 中途取消仍由 CH-T61 FrameGate／Temporal Stabilizer 實作，不在本階段假裝完成。
+## CH-T61 FrameGate／stale generation correctness checkpoint（2026-08-04）
+
+- 已完成：scan request generation／FIFO token、capture／OCR retry／refine／rescue／translation／stream／status／render admission stale 防護；模式、區域與渲染設定變更會在 state mutation 前取消舊 generation，auto scan 只在設定變更時重新排程，stop 不 re-arm。
+- 已完成：FrameGate 以最多 64x64 immutable sample 進行 thread-safe shadow classification；精確畫面快取仍是唯一可跳過 OCR 的路徑，1px／near frame 一律繼續 OCR，避免速度優化犧牲準確度。
+- paired synthetic contract：5 repeats／35 frames；exact hits 10、candidate process calls 25、nonexact false skips 0、single-frame recall 1.0、transition recall 1.0；此數據只證明 correctness／工作量，不宣稱真實 OCR 或 GPU wall-time 加速。
+- 實際驗證：targeted 114 passed；OCR CI group 194 passed；benchmark group 52 passed；UI 四檔拆分 27+2+1+8=38 passed；compileall 與 diff-check exit 0。合併 UI group 在 assertion 全部跑完後卡於既有 teardown，已精確終止專屬 pytest，不把行程退出宣稱通過。
+- CodeRabbit：1 次 staged review，5 issues（3 major／2 minor）；四項直接修正，stale-completion 建議改以 configuration-time cancellation 實作，避免舊 completion 取消新 scan。
+- CH-T61 進入 Review 而非 Done：active near-frame／jitter suppression 仍需 owner-labeled temporal holdout 校準；在資料到位前維持 shadow-only。

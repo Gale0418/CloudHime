@@ -2875,6 +2875,7 @@ class Controller(QWidget):
         self.cooldown_total_ms = 5000
         self.cooldown_end_time = 0.0
         self.scan_in_progress = False
+        self.scan_generation = 0
         
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 180) 
@@ -3035,12 +3036,15 @@ class Controller(QWidget):
         self.ocr_thread = QThread()
         self.worker = OCRWorker()
         self.worker.set_scan_mode(self.scan_mode)
+        self.worker.set_scan_generation(self.scan_generation)
         self.worker.moveToThread(self.ocr_thread)
         self.request_scan.connect(self.worker.run_scan_once)
-        self.worker.finished.connect(self.on_scan_complete)
+        self.worker.scan_finished.connect(self.on_scan_complete_for_generation)
         self.worker.streaming_update.connect(self.on_streaming_update)
-        self.worker.translation_stream_update.connect(self.on_translation_stream_update)
-        self.worker.status_msg.connect(self.update_status)
+        self.worker.scan_translation_stream_update.connect(
+            self.on_translation_stream_update_for_generation
+        )
+        self.worker.scan_status_msg.connect(self.update_scan_status_for_generation)
         self.worker.hide_ui.connect(self.hide_ui_for_scan)
         self.worker.show_ui.connect(self.show_ui_after_scan)
         self.worker.threshold_suggested.connect(self.apply_auto_threshold)
@@ -3607,6 +3611,8 @@ class Controller(QWidget):
         mode = str(mode or REGION_RENDER_BUBBLE)
         if mode not in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT):
             mode = REGION_RENDER_BUBBLE
+        if getattr(self, "region_render_mode", None) != mode:
+            self._advance_scan_generation(cancel_active=True, rearm_auto=True)
         self.region_render_mode = mode
         self.worker.set_region_render_mode(mode)
         self.overlay.set_render_context(
@@ -3924,7 +3930,9 @@ class Controller(QWidget):
             self.lbl_status.setText(f"AI模型: {self.cmb_ai_model.currentText()}")
         self.schedule_save_settings()
 
-    def set_scan_mode(self, scan_mode):
+    def set_scan_mode(self, scan_mode, invalidate=True):
+        if invalidate and getattr(self, "scan_mode", None) != scan_mode:
+            self._advance_scan_generation(cancel_active=True, rearm_auto=True)
         self.scan_mode = scan_mode
         self.worker.set_scan_mode(scan_mode)
         self.overlay.set_render_context(
@@ -3963,15 +3971,19 @@ class Controller(QWidget):
         self.raise_()
         self.activateWindow()
         if not rect:
+            if self.selected_region is not None or self.scan_mode != SCAN_MODE_FULLSCREEN:
+                self._advance_scan_generation(cancel_active=True, rearm_auto=True)
             self.selected_region = None
             self.worker.set_scan_region(None)
             self.btn_mode_full.setChecked(True)
-            self.set_scan_mode(SCAN_MODE_FULLSCREEN)
+            self.set_scan_mode(SCAN_MODE_FULLSCREEN, invalidate=False)
             return
+        if tuple(rect) != tuple(self.selected_region or ()) or self.scan_mode != SCAN_MODE_REGION:
+            self._advance_scan_generation(cancel_active=True, rearm_auto=True)
         self.selected_region = rect
         self.worker.set_scan_region(rect)
         self.btn_mode_region.setChecked(True)
-        self.set_scan_mode(SCAN_MODE_REGION)
+        self.set_scan_mode(SCAN_MODE_REGION, invalidate=False)
         x, y, w, h = rect
         self._set_status_text(
             "controller.status.region_ready",
@@ -3984,6 +3996,8 @@ class Controller(QWidget):
     def on_region_frame_changed(self, rect):
         if not rect:
             return
+        if tuple(rect) != tuple(self.selected_region or ()):
+            self._advance_scan_generation(cancel_active=True, rearm_auto=True)
         self.selected_region = rect
         self.worker.set_scan_region(rect)
         if self.scan_mode == SCAN_MODE_REGION:
@@ -4135,6 +4149,13 @@ class Controller(QWidget):
         if self.countdown_seconds < 0:
             self.display_timer.stop()
 
+    def on_translation_stream_update_for_generation(
+        self, generation, index, partial_text, provider, x, y, w, h
+    ):
+        if int(generation) != self.scan_generation:
+            return
+        self.on_translation_stream_update(index, partial_text, provider, x, y, w, h)
+
     def on_translation_stream_update(self, index, partial_text, provider, x, y, w, h):
         if getattr(self, "overlay", None):
             self.overlay.update_translation_stream(index, partial_text, provider, x, y, w, h)
@@ -4154,6 +4175,11 @@ class Controller(QWidget):
             self.overlay.raise_()
         else:
             self.overlay.update_bubble_text_only(partial_results)
+
+    def on_scan_complete_for_generation(self, generation, results):
+        if int(generation) != self.scan_generation:
+            return
+        self.on_scan_complete(results)
 
     def on_scan_complete(self, results):
         self.scan_in_progress = False
@@ -4182,8 +4208,19 @@ class Controller(QWidget):
         if self.current_auto_interval > 0:
             self.schedule_next_scan()
 
+    def _advance_scan_generation(self, cancel_active=False, rearm_auto=False):
+        self.scan_generation = max(0, int(getattr(self, "scan_generation", 0))) + 1
+        worker = getattr(self, "worker", None)
+        if worker is not None and hasattr(worker, "set_scan_generation"):
+            worker.set_scan_generation(self.scan_generation)
+        if cancel_active:
+            self.scan_in_progress = False
+            if rearm_auto and getattr(self, "current_auto_interval", 0) > 0:
+                self.schedule_next_scan()
+        return self.scan_generation
+
     def stop_scan(self):
-        self.scan_in_progress = False
+        self._advance_scan_generation(cancel_active=True)
         self.current_auto_interval = 0
         self.auto_timer.stop()
         self.display_timer.stop()
@@ -4197,10 +4234,23 @@ class Controller(QWidget):
         self.scan_in_progress = True
         self.display_timer.stop()
         # 截圖隱身術已啟用，不需要在掃描時隱藏 UI，保留舊字幕達成無縫更新
-        QTimer.singleShot(50, self._emit_scan_signal)
+        generation = self.scan_generation
+        QTimer.singleShot(
+            50,
+            lambda generation=generation: self._emit_scan_signal(generation),
+        )
 
-    def _emit_scan_signal(self):
+    def _emit_scan_signal(self, generation=None):
+        generation = self.scan_generation if generation is None else int(generation)
+        if not self.scan_in_progress or generation != self.scan_generation:
+            return
+        self.worker.enqueue_scan_request(generation)
         self.request_scan.emit()
+
+    def update_scan_status_for_generation(self, generation, message):
+        if int(generation) != self.scan_generation:
+            return
+        self.update_status(message)
 
     def update_status(self, msg):
         if self.display_timer.isActive() and not any(token in msg for token in ("完成", "翻譯", "失敗", "錯誤", "需要", "就緒")):
