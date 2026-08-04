@@ -280,6 +280,7 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             (fixture / "_internal" / "llama_cpp" / "__init__.py", b"binding", "in-process llama"),
             (fixture / "_internal" / "llama.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "ggml-extra.dll", b"duplicate", "outside the runtime directory"),
+            (fixture / "_internal" / "cudart64_12.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "runtime" / "llama.dll", b"", "required llama/ggml runtime"),
         )
         for invalid_path, payload, expected_message in invalid_cases:
@@ -294,7 +295,7 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             )
             assert rejected.returncode != 0
             assert expected_message in (rejected.stdout + rejected.stderr)
-            if invalid_path.name == "llama.dll":
+            if invalid_path == fixture / "_internal" / "runtime" / "llama.dll":
                 invalid_path.write_bytes(b"runtime")
             else:
                 invalid_path.unlink()
