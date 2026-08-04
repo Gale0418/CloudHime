@@ -1,6 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path, PurePath
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+
+runtime_source_dir = (Path(SPECPATH) / "build" / "runtime").resolve()
+
+
+def _is_duplicate_runtime_binary(entry):
+    destination, source, *_ = entry
+    source_path = Path(source).resolve()
+    destination_path = PurePath(destination)
+    return (
+        source_path.is_relative_to(runtime_source_dir)
+        and bool(destination_path.parts)
+        and destination_path.parts[0].casefold() != "runtime"
+    )
 
 ddgs_engine_hiddenimports = collect_submodules("ddgs.engines")
 fake_useragent_datas = collect_data_files("fake_useragent")
@@ -20,6 +36,10 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+a.binaries = [
+    entry for entry in a.binaries
+    if not _is_duplicate_runtime_binary(entry)
+]
 pyz = PYZ(a.pure)
 
 exe = EXE(

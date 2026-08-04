@@ -66,6 +66,16 @@ def test_production_release_excludes_in_process_llama_binding():
         assert "LocalGemmaProvider" not in source
 
 
+def test_spec_filters_runtime_dependency_duplicates_from_analysis_binaries():
+    root = Path(__file__).resolve().parents[1]
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+
+    assert "runtime_source_dir" in spec
+    assert "a.binaries = [" in spec
+    assert "_is_duplicate_runtime_binary" in spec
+    assert "source_path.is_relative_to(runtime_source_dir)" in spec
+    assert "destination_path.parts[0].casefold() != \"runtime\"" in spec
+
 def test_source_bootstrap_does_not_require_external_model_service():
     root = Path(__file__).resolve().parents[1]
     install_script = (root / "install.ps1").read_text(encoding="utf-8")
@@ -119,3 +129,14 @@ def test_release_build_uses_the_spec_as_packaging_source_of_truth():
 
     assert "CloudHime.spec" in build_command
     assert "CloudHime.py" not in build_command
+
+
+def test_release_build_runs_preflight_before_creating_zip():
+    root = Path(__file__).resolve().parents[1]
+    build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
+
+    pyinstaller_index = build_script.index("python -m PyInstaller")
+    preflight_index = build_script.index("packaging\\verify_release_dist.ps1")
+    zip_index = build_script.index("Compress-Archive")
+    assert pyinstaller_index < preflight_index < zip_index
+    assert "Release preflight failed." in build_script[preflight_index:zip_index]
