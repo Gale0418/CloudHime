@@ -105,6 +105,13 @@ if errorlevel 1 (
   goto :cleanup
 )
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%"
+if errorlevel 1 (
+  echo Release preflight failed.
+  set "BUILD_EXIT_CODE=1"
+  goto :cleanup
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Compress-Archive -Path 'dist\%APP_NAME%\*' -DestinationPath 'dist\%APP_NAME%.zip' -Force"
 if errorlevel 1 (
