@@ -276,9 +276,14 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             (fixture / "models.gguf", b"must stay in AppData", "AppData"),
             (fixture / ".env.production", b"must stay out of the package", "secrets"),
             (fixture / "dev-signing.pfx", b"must stay in package", "signing material"),
+            (fixture / "_internal" / "_llama_cpp.cp310-win_amd64.pyd", b"binding", "in-process llama"),
+            (fixture / "_internal" / "llama_cpp" / "__init__.py", b"binding", "in-process llama"),
+            (fixture / "_internal" / "llama.dll", b"duplicate", "outside the runtime directory"),
+            (fixture / "_internal" / "ggml-extra.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "runtime" / "llama.dll", b"", "required llama/ggml runtime"),
         )
         for invalid_path, payload, expected_message in invalid_cases:
+            invalid_path.parent.mkdir(parents=True, exist_ok=True)
             invalid_path.write_bytes(payload)
             rejected = subprocess.run(
                 [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],

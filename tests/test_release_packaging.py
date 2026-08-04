@@ -30,6 +30,9 @@ def test_release_build_contract_has_required_resources():
     assert "('LICENSE', '.')" in spec
     assert "('THIRD_PARTY_NOTICES.md', '.')" in spec
     assert "('build\\\\runtime', 'runtime')" in spec
+    for production_module in ("cloudhime_ui.py", "cloudhime_workers.py"):
+        source = (root / production_module).read_text(encoding="utf-8")
+        assert "LocalGemmaProvider" not in source
     assert 'bubble_qss.txt' not in spec
     for optional_module in ('tensorflow', 'keras', 'h5py', 'tensorboard', 'jax', 'jaxlib'):
         assert optional_module in spec
@@ -44,6 +47,25 @@ def test_release_build_contract_has_required_resources():
         pytest.skip("runtime/ is a local release artifact; CI uses the MSIX contract job")
     for filename in RUNTIME_FILES:
         assert (root / "runtime" / filename).is_file()
+
+
+def test_production_release_excludes_in_process_llama_binding():
+    root = Path(__file__).resolve().parents[1]
+    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+    dev_requirements = (root / "requirements-llama-dev.txt").read_text(encoding="utf-8")
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+
+    assert "llama-cpp-python" not in requirements
+    assert "llama-cpp-python==0.3.16" in dev_requirements
+    excludes = spec.split("excludes=[", 1)[1].split("]", 1)[0]
+    assert "llama_cpp" in excludes
+    assert "_llama_cpp" in excludes
+    assert "('build\\\\runtime', 'runtime')" in spec
+    for production_module in ("cloudhime_ui.py", "cloudhime_workers.py"):
+        source = (root / production_module).read_text(encoding="utf-8")
+        assert "LocalGemmaProvider" not in source
+
+
 def test_source_bootstrap_does_not_require_external_model_service():
     root = Path(__file__).resolve().parents[1]
     install_script = (root / "install.ps1").read_text(encoding="utf-8")

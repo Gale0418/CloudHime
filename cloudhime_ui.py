@@ -76,7 +76,7 @@ import translation_helpers as translation_tools
 import localization
 from model_catalog import get_model_spec, WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
-from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider
+from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from settings_store import (
     appdata_companion_path,
     create_settings_paths,
