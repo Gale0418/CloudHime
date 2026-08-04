@@ -6,6 +6,7 @@ from scan_pipeline import (
     ScanErrorCode,
     ScanOutcome,
     ScanStage,
+    ScanRequestToken,
     ScanTrace,
     ScanTraceEvent,
     safe_exception_token,
@@ -160,3 +161,42 @@ def test_uppercase_ocr_like_detail_is_redacted():
     )
 
     assert item.detail == "redacted"
+
+
+def test_request_token_normalizes_queue_metadata():
+    token = ScanRequestToken(3.9, "8", "12.5")
+    invalid = ScanRequestToken(float("nan"), float("inf"), -0.1)
+
+    assert (token.generation, token.request_id, token.enqueued_at_ms) == (3, 8, 12.5)
+    assert (invalid.generation, invalid.request_id, invalid.enqueued_at_ms) == (0, 0, 0.0)
+
+
+def test_request_token_is_frozen_slotted_and_has_no_payload_surface():
+    token = ScanRequestToken(1, 2, 3.0)
+
+    assert hasattr(token, "__slots__")
+    assert not hasattr(token, "__dict__")
+    assert tuple(token.__dataclass_fields__) == ("generation", "request_id", "enqueued_at_ms")
+    with pytest.raises(FrozenInstanceError):
+        token.generation = 4
+
+
+def test_request_token_rejects_invalid_enqueue_timestamps():
+    for value in (float("nan"), float("inf"), float("-inf"), "bad"):
+        assert ScanRequestToken(1, 2, value).enqueued_at_ms == 0.0
+
+
+def test_request_token_repr_contains_only_its_fixed_queue_metadata():
+    payload = "OCR text / prompt / sk-secret / image bytes"
+    rendered = repr(ScanRequestToken(5, 9, 10.0))
+
+    assert payload not in rendered
+    assert rendered == "ScanRequestToken(generation=5, request_id=9, enqueued_at_ms=10.0)"
+
+
+
+def test_request_token_caps_enqueue_timestamp():
+    assert ScanRequestToken(1, 2, 31_536_000_001).enqueued_at_ms == 31_536_000_000.0
+
+def test_request_token_rejects_unrepresentable_enqueue_timestamp():
+    assert ScanRequestToken(1, 2, 10**100_000).enqueued_at_ms == 0.0

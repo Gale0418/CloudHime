@@ -37,6 +37,7 @@
       "name": "ocr",
       "test_files": [
         "tests/test_cloudhime_workers.py",
+        "tests/test_frame_gate.py",
         "tests/test_japanese_ocr_assets.py",
         "tests/test_japanese_ocr_rescue.py",
         "tests/test_japanese_ocr_runtime.py",
@@ -72,6 +73,7 @@
       "name": "benchmarks",
       "test_files": [
         "tests/test_fullscreen_manga_benchmark.py",
+        "tests/test_frame_gate_benchmark.py",
         "tests/test_ocr_benchmark.py",
         "tests/test_speed_benchmark.py",
         "tests/test_translation_e2e_benchmark.py",

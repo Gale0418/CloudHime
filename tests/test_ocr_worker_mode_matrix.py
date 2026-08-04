@@ -47,6 +47,8 @@ def _configure_text_worker(worker, image):
         (SCAN_MODE_REGION, REGION_RENDER_RELIEF, False),
     ],
 )
+
+
 def test_scan_worker_routes_fullscreen_region_bubble_and_relief_modes(
     qtbot, scan_mode, render_mode, expect_region_detection
 ):
@@ -102,6 +104,8 @@ def test_scan_worker_routes_screenshot_mode_without_traditional_ocr(qtbot):
 
 
 @pytest.mark.parametrize("render_mode", [REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT])
+
+
 def test_overlay_builds_each_region_render_mode(qtbot, render_mode):
     overlay = OverlayWindow()
     qtbot.addWidget(overlay)
@@ -209,11 +213,19 @@ def test_region_one_pixel_change_repeats_ocr_even_when_text_is_same(monkeypatch,
         assert translate.call_count == 2
         assert finished[0] == [["Nihao", 10, 12, 40, 16]]
         assert finished[1] == finished[0]
+        shadow_event = next(
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.FRAME_CACHE
+        )
+        assert shadow_event.detail == "frame_cache_shadow_near"
+        assert shadow_event.item_count <= 64 * 64
     finally:
         worker.cleanup()
 
 
 @pytest.mark.parametrize("change", ["offset", "target", "prompt", "region", "auto_switch", "rescue_ready"])
+
+
 def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, change):
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     captures = [(image, 7, 11), (image, 8, 11)] if change == "offset" else [(image, 7, 11)] * 2
@@ -325,6 +337,8 @@ def test_screenshot_cache_uses_threshold_after_hint_processing(monkeypatch, qtbo
         worker.cleanup()
 
 @pytest.mark.parametrize("failure", ["exception", "empty"])
+
+
 def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, failure):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -371,6 +385,7 @@ def test_fullscreen_ocr_scale_caps_large_inputs_without_changing_normal_screens(
     finally:
         worker.cleanup()
 
+
 def test_manga_page_region_uses_full_portrait_image_for_missing_or_tiny_detection(qtbot):
     worker = OCRWorker()
     image = np.zeros((1200, 900, 3), dtype=np.uint8)
@@ -391,6 +406,7 @@ def test_manga_page_region_accepts_tall_manga_screenshot_boundaries(qtbot):
         assert worker.normalize_manga_page_region(narrow_page, None) == (0, 0, 825, 1283)
     finally:
         worker.cleanup()
+
 
 def test_manga_page_region_does_not_treat_landscape_screen_as_page(qtbot):
     worker = OCRWorker()
@@ -439,6 +455,7 @@ def test_manga_visual_rescue_gate_detects_fragments_but_keeps_reasonable_text(qt
         assert worker.is_degenerate_manga_transcription(repeated) is True
     finally:
         worker.cleanup()
+
 
 def test_manga_ocr_reliability_gate_is_conservative():
     assert OCRWorker.is_unreliable_manga_ocr([]) is True
@@ -584,6 +601,7 @@ def test_manga_adaptive_refine_rejects_partial_geometry_candidate(qtbot):
     finally:
         worker.cleanup()
 
+
 def test_manga_adaptive_refine_rejects_unrelated_longer_candidate(qtbot):
     worker = OCRWorker()
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
@@ -656,6 +674,7 @@ def test_scan_worker_invokes_manga_refine_with_capture_offset(monkeypatch, qtbot
     finally:
         worker.cleanup()
 
+
 def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -702,6 +721,8 @@ def test_manga_rescue_crops_detected_page_before_multimodal_ocr(qtbot):
     ("candidate_score", "accepted"),
     [(24, True), (22, False)],
 )
+
+
 def test_manga_grid_recovery_is_opt_in_and_score_gated(
     monkeypatch,
     qtbot,
@@ -752,6 +773,7 @@ def test_manga_grid_recovery_is_opt_in_and_score_gated(
     finally:
         worker.cleanup()
 
+
 def test_local_manga_crop_context_is_opt_in_and_preserves_all_items(monkeypatch, qtbot):
     image = np.zeros((400, 400, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -796,6 +818,7 @@ def test_local_manga_crop_regions_group_nearby_items_and_cover_centers(qtbot):
     finally:
         worker.cleanup()
 
+
 def test_local_manga_crop_batches_fail_open_when_provider_is_unavailable(monkeypatch, qtbot):
     image = np.zeros((200, 200, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -815,6 +838,7 @@ def test_local_manga_crop_batches_fail_open_when_provider_is_unavailable(monkeyp
         worker.build_ai_image_parts.assert_not_called()
     finally:
         worker.cleanup()
+
 
 def test_local_manga_crop_context_fails_open_when_disabled_or_not_all_items_fit(monkeypatch, qtbot):
     image = np.zeros((400, 400, 3), dtype=np.uint8)
@@ -878,6 +902,8 @@ def test_local_manga_crop_batches_map_indexes_and_keep_region_parts(monkeypatch,
 
 
 @pytest.mark.parametrize("failure", ["exception", "length"])
+
+
 def test_local_manga_crop_batch_translation_fails_open_per_region(failure, qtbot):
     worker = OCRWorker()
     items = [
@@ -1000,6 +1026,7 @@ def test_scan_worker_falls_back_to_full_page_when_all_crop_batches_fail(monkeypa
     finally:
         worker.cleanup()
 
+
 def test_portrait_latin_screen_does_not_trigger_manga_rescue(monkeypatch, qtbot):
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -1018,6 +1045,7 @@ def test_portrait_latin_screen_does_not_trigger_manga_rescue(monkeypatch, qtbot)
         worker.rescue_unreliable_manga_items.assert_not_called()
     finally:
         worker.cleanup()
+
 
 def test_fullscreen_unreliable_manga_ocr_uses_multimodal_page_rescue(monkeypatch, qtbot):
     image = np.zeros((1000, 800, 3), dtype=np.uint8)
@@ -1052,6 +1080,7 @@ def test_fullscreen_unreliable_manga_ocr_uses_multimodal_page_rescue(monkeypatch
         assert finished == [[["你說什麼！你不是也替我解除了詛咒嗎！", 7, 11, 800, 1000]]]
     finally:
         worker.cleanup()
+
 
 def test_deadline_executor_barrier_is_evaluator_opt_in(monkeypatch, qtbot):
     shutdown_calls = []
@@ -1294,6 +1323,7 @@ def test_screenshot_scan_trace_records_text_fallback_actual_provider(monkeypatch
     finally:
         worker.cleanup()
 
+
 def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -1358,5 +1388,220 @@ def test_text_only_screenshot_trace_does_not_mislabel_gemma_as_fallback(monkeypa
         assert event.outcome is ScanOutcome.SUCCESS
         assert event.provider == "gemma"
         assert event.fallback_reason == ""
+    finally:
+        worker.cleanup()
+
+
+def test_stale_queued_scan_is_cancelled_before_capture(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.capture_scan_area = Mock(return_value=(image, 7, 11))
+    worker.set_scan_generation(2)
+    worker.enqueue_scan_request(1)
+    finished = []
+    tokenized = []
+    worker.finished.connect(finished.append)
+    worker.scan_finished.connect(lambda generation, results: tokenized.append((generation, results)))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        worker.capture_scan_area.assert_not_called()
+        assert finished == []
+        assert tokenized == []
+        assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
+        assert worker.last_scan_trace.events[-1].error_code is ScanErrorCode.SCAN_CANCELLED
+    finally:
+        worker.cleanup()
+
+
+def test_inflight_generation_change_suppresses_result_and_cache(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+
+    def invalidate_during_translation(texts, _parts, _items):
+        worker.set_scan_generation(2)
+        return (["translated"] * len(texts), ["google"] * len(texts))
+
+    worker.translate_items_with_ai_and_providers = Mock(
+        side_effect=invalidate_during_translation
+    )
+    finished = []
+    tokenized = []
+    worker.finished.connect(finished.append)
+    worker.scan_finished.connect(lambda generation, results: tokenized.append((generation, results)))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == []
+        assert tokenized == []
+        assert len(worker.exact_image_cache) == 0
+        assert worker.translation_cache == {}
+        assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
+    finally:
+        worker.cleanup()
+
+
+def test_current_generation_emits_legacy_and_tokenized_results(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.set_scan_generation(4)
+    request = worker.enqueue_scan_request(4)
+    finished = []
+    tokenized = []
+    worker.finished.connect(finished.append)
+    worker.scan_finished.connect(lambda generation, results: tokenized.append((generation, results)))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert request.generation == 4
+        assert finished == [[["你好", 10, 12, 40, 16]]]
+        assert tokenized == [(4, finished[0])]
+    finally:
+        worker.cleanup()
+
+
+def test_same_generation_requests_remain_fifo_and_do_not_coalesce(monkeypatch, qtbot):
+    first = np.zeros((40, 80, 3), dtype=np.uint8)
+    second = first.copy()
+    second[0, 0, 0] = 1
+    images = iter([first, second])
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, first)
+    worker.capture_scan_area = lambda: (next(images), 7, 11)
+    worker.set_scan_generation(7)
+    first_request = worker.enqueue_scan_request(7)
+    second_request = worker.enqueue_scan_request(7)
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+        worker.run_scan_once()
+
+        assert first_request.request_id < second_request.request_id
+        assert len(finished) == 2
+        assert worker.run_ocr_with_best_threshold.call_count == 2
+    finally:
+        worker.cleanup()
+
+
+def test_streaming_generation_change_suppresses_later_chunks_and_final_result(
+    monkeypatch, qtbot
+):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "gemma"
+    worker.translate_items_with_ai_and_providers = (
+        OCRWorker.translate_items_with_ai_and_providers.__get__(worker, OCRWorker)
+    )
+
+    def stream(_text):
+        yield "first"
+        worker.set_scan_generation(2)
+        yield "stale"
+
+    worker._get_translation_provider = lambda _name: SimpleNamespace(
+        translate_stream=stream
+    )
+    legacy_chunks = []
+    tokenized_chunks = []
+    finished = []
+    worker.translation_stream_update.connect(
+        lambda *args: legacy_chunks.append(args)
+    )
+    worker.scan_translation_stream_update.connect(
+        lambda *args: tokenized_chunks.append(args)
+    )
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert len(legacy_chunks) == 1
+        assert len(tokenized_chunks) == 1
+        assert tokenized_chunks[0][0] == 1
+        assert "stale" not in tokenized_chunks[0]
+        assert finished == []
+        assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
+    finally:
+        worker.cleanup()
+
+
+def test_scan_status_emits_legacy_and_generation_tagged_signals(qtbot):
+    worker = OCRWorker()
+    worker.set_scan_generation(6)
+    worker.enqueue_scan_request(6)
+    worker._active_scan_request = worker._take_scan_request()
+    legacy = []
+    tokenized = []
+    worker.status_msg.connect(legacy.append)
+    worker.scan_status_msg.connect(
+        lambda generation, message: tokenized.append((generation, message))
+    )
+
+    try:
+        worker._emit_scan_status("scan_test_status")
+
+        assert legacy == ["scan_test_status"]
+        assert tokenized == [(6, "scan_test_status")]
+    finally:
+        worker.cleanup()
+
+def test_stale_fullscreen_retry_stops_before_later_ocr_phases_and_translation(
+    monkeypatch, qtbot
+):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.detect_manga_page_region = lambda _image: None
+    worker.get_ocr_regions = Mock(
+        return_value=[(0, 0, 80, 80), (80, 0, 80, 80)]
+    )
+    item = {"text": "Hello", "x": 10, "y": 12, "w": 40, "h": 16}
+    calls = 0
+
+    def ocr_then_invalidate(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            worker.set_scan_generation(2)
+        return 100, [item]
+
+    worker.run_ocr_with_best_threshold = Mock(side_effect=ocr_then_invalidate)
+    worker.try_manga_grid_recovery = Mock()
+    worker.refine_manga_ocr_items = Mock()
+    worker.rescue_unreliable_manga_items = Mock()
+    worker.translate_items_with_ai_and_providers = Mock()
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert worker.run_ocr_with_best_threshold.call_count == 2
+        worker.try_manga_grid_recovery.assert_not_called()
+        worker.refine_manga_ocr_items.assert_not_called()
+        worker.rescue_unreliable_manga_items.assert_not_called()
+        worker.translate_items_with_ai_and_providers.assert_not_called()
+        assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
     finally:
         worker.cleanup()

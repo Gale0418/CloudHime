@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import pytest
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from CloudHime import Controller, OverlayWindow
 from cloudhime_ui import StatusChargeBar, _resource_path
@@ -159,6 +160,7 @@ def test_controller_local_multimodal_toggle_pushes_complete_config():
     }]
     assert controller.save_count == 1
 
+
 def test_status_charge_bar_indeterminate_starts_and_stops(qtbot):
     bar = StatusChargeBar()
     qtbot.addWidget(bar)
@@ -230,6 +232,7 @@ def test_controller_local_vision_states_update_ui(qtbot):
     assert messages[-1] == "內嵌多模態伺服器已停止"
     assert len(health_refreshes) == 5
 
+
 def test_controller_local_vision_download_status_is_bilingual(qtbot):
     for language, expected in (
         ("zh-TW", "下載 Gemma 模型"),
@@ -249,6 +252,7 @@ def test_controller_local_vision_download_status_is_bilingual(qtbot):
         assert expected in controller.charge_bar.label
         assert expected in messages[-1]
 
+
 def test_controller_japanese_rescue_status_is_bilingual(qtbot):
     for language, expected in (
         ("zh-TW", "下載日文 OCR 模型"),
@@ -267,6 +271,8 @@ def test_controller_japanese_rescue_status_is_bilingual(qtbot):
         assert controller.charge_bar.progress == 40
         assert expected in controller.charge_bar.label
         assert expected in messages[-1]
+
+
 def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypatch, tmp_path):
     import cloudhime_ui
 
@@ -320,6 +326,7 @@ def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypat
     assert store.legacy_sources_disabled is True
     assert controller.worker.google_api_key == "secret-key"
 
+
 def test_clearing_api_key_does_not_disable_local_gemma(monkeypatch):
     import cloudhime_ui
 
@@ -365,6 +372,7 @@ def test_clearing_api_key_does_not_disable_local_gemma(monkeypatch):
     assert controller.worker.google_api_key == ""
     assert toggles == []
 
+
 def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):
     import cloudhime_ui
 
@@ -379,6 +387,7 @@ def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):
     assert cloudhime_ui._read_api_key_from_env_files(
         (str(appdata_path), str(legacy_path))
     ) == "legacy-key"
+
 
 def test_history_export_payload_is_json_safe_and_preserves_unicode():
     from cloudhime_ui import build_translation_history_export_payload
@@ -414,6 +423,7 @@ def test_history_export_payload_rejects_non_finite_value():
     with pytest.raises(TypeError, match="translation_history_not_serializable"):
         build_translation_history_export_payload({("key",): float("nan")})
 
+
 def test_history_export_write_failure_is_explicit(monkeypatch, tmp_path):
     from cloudhime_ui import write_translation_history_export
 
@@ -424,3 +434,126 @@ def test_history_export_write_failure_is_explicit(monkeypatch, tmp_path):
 
     with pytest.raises(OSError, match="disk full"):
         write_translation_history_export(tmp_path / "history.json", {("key",): "value"})
+
+
+def test_emit_scan_signal_enqueues_current_generation_before_signal():
+    controller = Controller.__new__(Controller)
+    controller.scan_in_progress = True
+    controller.scan_generation = 3
+    calls = []
+    controller.worker = SimpleNamespace(
+        enqueue_scan_request=lambda generation: calls.append(("enqueue", generation))
+    )
+    controller.request_scan = SimpleNamespace(
+        emit=lambda: calls.append(("emit", None))
+    )
+
+    Controller._emit_scan_signal(controller)
+
+    assert calls == [("enqueue", 3), ("emit", None)]
+
+
+def test_emit_scan_signal_ignores_pending_single_shot_after_stop():
+    controller = Controller.__new__(Controller)
+    controller.scan_in_progress = False
+    controller.scan_generation = 3
+    controller.worker = SimpleNamespace(enqueue_scan_request=Mock())
+    controller.request_scan = SimpleNamespace(emit=Mock())
+
+    Controller._emit_scan_signal(controller)
+
+    controller.worker.enqueue_scan_request.assert_not_called()
+    controller.request_scan.emit.assert_not_called()
+
+
+def test_controller_rejects_stale_generation_at_render_admission():
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 5
+    controller.on_scan_complete = Mock()
+
+    controller.scan_in_progress = True
+    Controller.on_scan_complete_for_generation(controller, 4, [["stale"]])
+    assert controller.scan_in_progress is True
+    Controller.on_scan_complete_for_generation(controller, 5, [["current"]])
+
+    controller.on_scan_complete.assert_called_once_with([["current"]])
+
+
+def test_stop_scan_invalidates_worker_generation_and_clears_overlay():
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 8
+    controller.scan_in_progress = True
+    controller.current_auto_interval = 1000
+    controller.auto_timer = Mock()
+    controller.display_timer = Mock()
+    controller.auto_group = Mock()
+    controller.btn_30 = Mock()
+    controller.worker = SimpleNamespace(set_scan_generation=Mock())
+    controller.overlay = SimpleNamespace(clear_all=Mock())
+    controller._set_status_text = Mock()
+
+    Controller.stop_scan(controller)
+
+    assert controller.scan_generation == 9
+    controller.worker.set_scan_generation.assert_called_once_with(9)
+    assert controller.scan_in_progress is False
+    assert controller.current_auto_interval == 0
+    controller.overlay.clear_all.assert_called_once()
+
+
+def test_controller_rejects_stale_stream_chunk_at_render_admission():
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 5
+    controller.on_translation_stream_update = Mock()
+
+    Controller.on_translation_stream_update_for_generation(
+        controller, 4, 0, "stale", "google", 1, 2, 3, 4
+    )
+    Controller.on_translation_stream_update_for_generation(
+        controller, 5, 0, "current", "google", 1, 2, 3, 4
+    )
+
+    controller.on_translation_stream_update.assert_called_once_with(
+        0, "current", "google", 1, 2, 3, 4
+    )
+
+
+def test_controller_rejects_stale_status_at_generation_admission():
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 5
+    controller.update_status = Mock()
+
+    Controller.update_scan_status_for_generation(controller, 4, "stale")
+    Controller.update_scan_status_for_generation(controller, 5, "current")
+
+    controller.update_status.assert_called_once_with("current")
+
+
+def test_emit_scan_signal_rejects_old_timer_after_new_generation_started():
+    controller = Controller.__new__(Controller)
+    controller.scan_in_progress = True
+    controller.scan_generation = 3
+    controller.worker = SimpleNamespace(enqueue_scan_request=Mock())
+    controller.request_scan = SimpleNamespace(emit=Mock())
+
+    Controller._emit_scan_signal(controller, 2)
+
+    controller.worker.enqueue_scan_request.assert_not_called()
+    controller.request_scan.emit.assert_not_called()
+
+def test_generation_invalidation_cancels_active_scan_and_rearms_auto_scan():
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 2
+    controller.scan_in_progress = True
+    controller.current_auto_interval = 1000
+    controller.worker = SimpleNamespace(set_scan_generation=Mock())
+    controller.schedule_next_scan = Mock()
+
+    generation = Controller._advance_scan_generation(
+        controller, cancel_active=True, rearm_auto=True
+    )
+
+    assert generation == controller.scan_generation == 3
+    assert controller.scan_in_progress is False
+    controller.worker.set_scan_generation.assert_called_once_with(3)
+    controller.schedule_next_scan.assert_called_once_with()
