@@ -1304,6 +1304,8 @@ def test_screenshot_scan_trace_records_text_fallback_actual_provider(monkeypatch
     worker.build_screenshot_text_hint = lambda _image: "hint"
     worker.build_ai_image_parts = lambda _image: [{"inline_data": {"data": "ignored"}}]
     worker.translate_screenshot_gemma = Mock(side_effect=RuntimeError("private failure"))
+    debug_messages = []
+    worker.log_ai_debug = debug_messages.append
     worker.translate_text_preferred_with_provider = Mock(
         return_value=("translated", "google")
     )
@@ -1320,6 +1322,8 @@ def test_screenshot_scan_trace_records_text_fallback_actual_provider(monkeypatch
         assert event.provider == "google"
         assert event.fallback_reason == "translation_provider_fallback"
         assert "private failure" not in repr(worker.last_scan_trace)
+        assert "private failure" not in "\n".join(debug_messages)
+        assert debug_messages == ["MULTIMODAL FAILED: RuntimeError"]
     finally:
         worker.cleanup()
 

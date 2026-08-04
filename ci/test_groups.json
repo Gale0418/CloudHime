@@ -30,6 +30,7 @@
         "tests/test_secret_store.py",
         "tests/test_settings_store.py",
         "tests/test_translation_helpers.py",
+        "tests/test_translation_orchestrator.py",
         "tests/test_translation_providers.py"
       ]
     },

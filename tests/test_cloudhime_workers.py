@@ -1331,6 +1331,30 @@ def test_refresh_translation_registry_exposes_bounded_error_code(monkeypatch):
     assert "API key" not in messages[0]
 
 
+def test_preferred_result_attributes_expected_ai_failure_to_google_cache_hit():
+    from urllib import error
+    from translation_contracts import TranslationResult
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker._translate_text_gemma_result = lambda _text: (_ for _ in ()).throw(
+        error.URLError("private OCR text")
+    )
+    worker._translate_text_google_result = lambda _text: TranslationResult(
+        text="Google 譯文",
+        provider="google",
+        from_cache=True,
+    )
+
+    result = OCRWorker._translate_text_preferred_result(worker, "source")
+
+    assert result.text == "Google 譯文"
+    assert result.provider == "google"
+    assert result.from_cache is True
+    assert result.requested_provider == "local_multimodal"
+    assert result.fallback_reason == "provider_error"
+
 def test_worker_reports_actual_provider_from_gemma_result():
     from translation_contracts import TranslationResult
 
@@ -1385,6 +1409,9 @@ def test_worker_uses_provider_attribution_from_screenshot_result():
 
     assert translated == "翻譯結果"
     assert worker._last_screenshot_translation_provider == "google"
+    assert worker._last_screenshot_translation_result.provider == "google"
+    assert worker._last_screenshot_translation_result.requested_provider == "local_multimodal"
+    assert worker._last_screenshot_translation_result.fallback_reason == "server_fallback"
 
 def test_worker_initialization_has_no_embedded_provider_or_loader(monkeypatch):
     monkeypatch.setattr(workers_module, "resolve_preferred_vision_assets", lambda _root: SimpleNamespace())
