@@ -276,3 +276,28 @@ def test_local_gemma_update_config_disable_releases_model():
     assert llm.calls == 1
     assert not provider._translation_cache
     assert not provider._context_buffer
+
+def test_screenshot_debug_log_reports_lengths_without_model_or_ocr_text():
+    secret = "OCR_SECRET prompt=PRIVATE api-key=SECRET"
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-4-31b-it",
+    )
+    provider._resolve_model = lambda: "gemma-4-31b-it"
+    provider._can_call = lambda _model: True
+    provider._request = lambda *_args, **_kwargs: {
+        "candidates": [{"content": {"parts": [{"text": secret}]}}]
+    }
+    logs = []
+
+    with pytest.raises(ValueError, match="empty_gemma_screenshot_response"):
+        provider.translate_screenshot(
+            [{"inline_data": {"data": "ignored"}}],
+            debug_log=logs.append,
+        )
+
+    rendered = "\n".join(logs)
+    assert "raw_len=" in rendered
+    assert "last_raw_len=" in rendered
+    assert secret not in rendered
+    assert "OCR_SECRET" not in rendered

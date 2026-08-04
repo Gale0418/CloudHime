@@ -699,7 +699,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             translated = clean_screenshot_translation_output(last_raw_text, target_lang=resolved_target)
             is_valid = is_valid_screenshot_translation(translated, target_lang=resolved_target)
             if debug_log is not None:
-                debug_log("\n".join([f"[screenshot attempt {attempt_index + 1}] model={model_name}", f"valid={is_valid}", f"raw={last_raw_text if last_raw_text else '<empty>'}", f"cleaned={translated if translated else '<empty>'}"]))
+                debug_log(f"[screenshot attempt {attempt_index + 1}] model={model_name} valid={is_valid} raw_len={len(last_raw_text)} cleaned_len={len(translated)}")
             if is_valid:
                 break
             translated = ""
@@ -729,7 +729,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                     except Exception:
                         translated = ""
             if debug_log is not None:
-                debug_log("\n".join([f"[screenshot failed] model={model_name}", f"last_raw={last_raw_text if last_raw_text else '<empty>'}"]))
+                debug_log(f"[screenshot failed] model={model_name} last_raw_len={len(last_raw_text)}")
             if translated:
                 self._remember(cache_key, (translated, last_raw_text, actual_provider, requested_provider, fallback_reason))
                 return TranslationResult(text=translated, provider=actual_provider, model=model_name, raw_text=last_raw_text, requested_provider=requested_provider, fallback_reason=fallback_reason)

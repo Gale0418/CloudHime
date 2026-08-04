@@ -92,6 +92,7 @@ from model_catalog import WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MOD
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalMultimodalProvider
 from translation_contracts import TranslationResult
+from translation_orchestrator import TranslationOrchestrator
 from local_vision_runtime import LocalVisionRuntime
 from local_runtime_profiles import resolve_runtime_profile
 from local_vision_assets import (
@@ -1423,31 +1424,28 @@ class OCRWorker(QObject):
             return hud_entry.get("translated_text", ""), hud_entry.get("provider", "")
         return "", ""
 
-    def translate_text_google(self, text):
+    def _translate_text_google_result(self, text):
+        normalized_text = normalize_ocr_text(text)
+        if not normalized_text:
+            return TranslationResult(text="", provider="google")
         provider = self._get_translation_provider("google")
         if provider is not None:
-            normalized_text = normalize_ocr_text(text)
-            if not normalized_text:
-                return ""
-            result = provider.translate(normalized_text)
-            return result.text
-        return translation_tools.translate_text_google(
-            text,
+            return provider.translate(normalized_text)
+        translated = translation_tools.translate_text_google(
+            normalized_text,
             self.translators,
             self.translation_cache,
             target_lang=self.translation_target_lang,
             cache_limit=TRANSLATION_CACHE_LIMIT,
         )
+        return TranslationResult(text=translated, provider="google")
+
+    def translate_text_google(self, text):
+        return self._translate_text_google_result(text).text
 
     def translate_text_google_with_provider(self, text):
-        provider = self._get_translation_provider("google")
-        if provider is not None:
-            normalized_text = normalize_ocr_text(text)
-            if not normalized_text:
-                return "", provider.name
-            result = provider.translate(normalized_text)
-            return result.text, result.provider
-        return self.translate_text_google(text), "google"
+        result = self._translate_text_google_result(text)
+        return result.text, result.provider
 
     def translate_text_google_batch(self, source_texts):
         provider = self._get_translation_provider("google")
@@ -1803,10 +1801,25 @@ class OCRWorker(QObject):
         self.remember_translation(cache_key, translated)
         return translated
 
+    def _remember_screenshot_translation_result(self, result):
+        normalized = TranslationResult(
+            text=self.convert_to_trad(result.text),
+            provider=getattr(result, "provider", None) or self.get_current_ai_provider(),
+            model=getattr(result, "model", None),
+            raw_text=getattr(result, "raw_text", None),
+            from_cache=getattr(result, "from_cache", False),
+            requested_provider=getattr(result, "requested_provider", None),
+            fallback_reason=getattr(result, "fallback_reason", None),
+        )
+        self._last_screenshot_translation_result = normalized
+        self._last_screenshot_translation_provider = normalized.provider
+        return normalized.text
+
     def translate_screenshot_gemma(self, image_parts, source_text_hint=""):
         if not image_parts:
             raise ValueError("missing_image_context")
         self._last_screenshot_translation_provider = ""
+        self._last_screenshot_translation_result = None
         self.log_ai_debug(
             "\n".join([
                 "[screenshot start]",
@@ -1849,10 +1862,32 @@ class OCRWorker(QObject):
                 except Exception:
                     fallback, fallback_provider = "", ""
                 if self._is_usable_text_fallback(source_text_hint, fallback):
-                    self._last_screenshot_translation_provider = fallback_provider or primary_provider
-                    return fallback
-            self._last_screenshot_translation_provider = primary_provider
-            return translated
+                    return self._remember_screenshot_translation_result(
+                        TranslationResult(
+                            text=fallback,
+                            provider=fallback_provider or primary_provider,
+                            model=getattr(result, "model", None),
+                            requested_provider=(
+                                getattr(result, "requested_provider", None)
+                                or primary_provider
+                            ),
+                            fallback_reason=(
+                                getattr(result, "fallback_reason", None)
+                                or fallback_reason
+                            ),
+                        )
+                    )
+            return self._remember_screenshot_translation_result(
+                TranslationResult(
+                    text=translated,
+                    provider=primary_provider,
+                    model=getattr(result, "model", None),
+                    raw_text=getattr(result, "raw_text", None),
+                    from_cache=getattr(result, "from_cache", False),
+                    requested_provider=getattr(result, "requested_provider", None),
+                    fallback_reason=getattr(result, "fallback_reason", None),
+                )
+            )
         if not self.google_api_key:
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
@@ -1939,44 +1974,94 @@ class OCRWorker(QObject):
             except Exception:
                 fallback = ""
             if self._is_usable_text_fallback(source_text_hint, fallback):
-                self._last_screenshot_translation_provider = "google"
-                return fallback
+                return self._remember_screenshot_translation_result(
+                    TranslationResult(
+                        text=fallback,
+                        provider="google",
+                        model=model_name,
+                        requested_provider=self.get_current_ai_provider(),
+                        fallback_reason=fallback_reason,
+                    )
+                )
             try:
                 fallback = self.translate_text_gemma(source_text_hint)
             except Exception:
                 fallback = ""
             if self._is_usable_text_fallback(source_text_hint, fallback):
-                self._last_screenshot_translation_provider = self.get_current_ai_provider()
-                return fallback
-        self._last_screenshot_translation_provider = self.get_current_ai_provider()
-        return translated
+                provider_name = self.get_current_ai_provider()
+                return self._remember_screenshot_translation_result(
+                    TranslationResult(
+                        text=fallback,
+                        provider=provider_name,
+                        model=model_name,
+                        requested_provider=provider_name,
+                        fallback_reason=fallback_reason,
+                    )
+                )
+        return self._remember_screenshot_translation_result(
+            TranslationResult(
+                text=translated,
+                provider=self.get_current_ai_provider(),
+                model=model_name,
+            )
+        )
 
     def translate_text_gemma_with_provider(self, text):
         result = self._translate_text_gemma_result(text)
         return result.text, result.provider
 
-    def translate_text_preferred(self, text):
+    def _translation_route_cancelled(self):
+        active_request = getattr(self, "_active_scan_request", None)
+        if active_request is None:
+            return False
+        return not self._active_scan_is_current()
+
+    def _translate_text_preferred_result(self, text):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
-            return ""
-        if self.has_ai_text_provider():
-            try:
-                return self.translate_text_gemma(normalized_text)
-            except (error.URLError, error.HTTPError, TimeoutError, ValueError):
-                pass
-        return self.translate_text_google(normalized_text)
+            return TranslationResult(text="", provider="")
+        if not self.has_ai_text_provider():
+            return self._translate_text_google_result(normalized_text)
+
+        requested_provider = self.get_current_ai_provider()
+        instance_overrides = getattr(self, "__dict__", {})
+        ai_override = instance_overrides.get("translate_text_gemma")
+        google_override = instance_overrides.get("translate_text_google")
+
+        def primary():
+            if callable(ai_override):
+                return TranslationResult(
+                    text=ai_override(normalized_text),
+                    provider=requested_provider,
+                )
+            return self._translate_text_gemma_result(normalized_text)
+
+        def fallback():
+            if callable(google_override):
+                return TranslationResult(
+                    text=google_override(normalized_text),
+                    provider="google",
+                )
+            return self._translate_text_google_result(normalized_text)
+
+        orchestrator = TranslationOrchestrator(
+            fallback_exceptions=(error.URLError, error.HTTPError, TimeoutError, ValueError)
+        )
+        return orchestrator.execute(
+            requested_provider=requested_provider,
+            primary=primary,
+            fallback_provider="google",
+            fallback=fallback,
+            fallback_reason="provider_error",
+            cancelled=self._translation_route_cancelled,
+        )
+
+    def translate_text_preferred(self, text):
+        return self._translate_text_preferred_result(text).text
 
     def translate_text_preferred_with_provider(self, text):
-        normalized_text = normalize_ocr_text(text)
-        if not normalized_text:
-            return "", ""
-        if self.has_ai_text_provider():
-            try:
-                return self.translate_text_gemma_with_provider(normalized_text)
-            except (error.URLError, error.HTTPError, TimeoutError, ValueError):
-                pass
-        translated = self.translate_text_google(normalized_text)
-        return translated, "google"
+        result = self._translate_text_preferred_result(text)
+        return result.text, result.provider
 
     def translate_text_batch(self, source_texts):
         batch_result, _ = self.translate_text_batch_with_provider(source_texts)
@@ -2176,7 +2261,7 @@ class OCRWorker(QObject):
                         )
                     return [accumulated], [provider_name]
                 except Exception as exc:
-                    logger.error(f"Streaming translation failed: {exc}")
+                    logger.error(f"Streaming translation failed: {type(exc).__name__}")
                     pass
 
         return self.translate_items_in_batches_with_providers(
@@ -3850,7 +3935,7 @@ class OCRWorker(QObject):
                         detail="translation_failed",
                         exception=exc,
                     )
-                    self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}: {exc}")
+                    self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}")
                     self._emit_scan_finished([])
                     self.show_ui.emit()
                     return
@@ -3864,7 +3949,7 @@ class OCRWorker(QObject):
                         or self.get_current_ai_provider()
                     )
                 except Exception as exc:
-                    self.log_ai_debug(f"MULTIMODAL FAILED: {exc}")
+                    self.log_ai_debug(f"MULTIMODAL FAILED: {type(exc).__name__}")
                     if screenshot_text_hint:
                         self._emit_scan_status("🖼 截圖模式失敗，改走文字翻譯...")
                         try:
@@ -3878,7 +3963,7 @@ class OCRWorker(QObject):
                                 detail="translation_fallback_failed",
                                 exception=fallback_exc,
                             )
-                            self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}: {exc}")
+                            self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}")
                             self._emit_scan_finished([])
                             self.show_ui.emit()
                             return
@@ -3891,7 +3976,7 @@ class OCRWorker(QObject):
                             detail="translation_failed",
                             exception=exc,
                         )
-                        self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}: {exc}")
+                        self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}")
                         self._emit_scan_finished([])
                         self.show_ui.emit()
                         return
@@ -3924,10 +4009,21 @@ class OCRWorker(QObject):
                     current_combined_text,
                 )
             self.last_results = final_results
+            screenshot_result = getattr(self, "_last_screenshot_translation_result", None)
+            route_fallback_reason = (
+                getattr(screenshot_result, "fallback_reason", None) or ""
+            )
+            route_requested_provider = self._canonical_cache_provider(
+                getattr(screenshot_result, "requested_provider", None)
+                or requested_screenshot_provider
+            )
             screenshot_outcome = (
                 ScanOutcome.FALLBACK
-                if requested_screenshot_provider
-                and current_provider != requested_screenshot_provider
+                if route_fallback_reason
+                or (
+                    route_requested_provider
+                    and current_provider != route_requested_provider
+                )
                 else ScanOutcome.SUCCESS
             )
             self._record_scan_event(
@@ -4245,7 +4341,7 @@ class OCRWorker(QObject):
                     translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts, merged_items)
                 _log(f"⑨ 翻譯完成 (共 {len(translated_list)} 段)")
             except Exception as exc:
-                self.log_ai_debug(f"MULTIMODAL BATCH FAILED: {exc}")
+                self.log_ai_debug(f"MULTIMODAL BATCH FAILED: {type(exc).__name__}")
                 translated_list = []
                 provider_list = []
 

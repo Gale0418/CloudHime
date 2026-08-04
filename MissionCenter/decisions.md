@@ -443,3 +443,11 @@
 - telemetry 連續性：每次成功 capture 都更新 FrameGate baseline，包括 exact cache hit；常見 uint8 使用向量化 float64 delta，寬整數／超寬 dtype 保留精度安全分支。
 - 邊界：此 holdout 是 frame-policy benchmark，不是 OCR、翻譯或模型品質 benchmark；不把 source identity、合成狀態或模型輸出冒充文字 ground truth。
 - 外部複核：Gemini 3.6 Flash High RPC request `b76df69a-c99a-49a2-8c96-8c5fb04bc521`／cascade `9242a30e-a257-4432-a88e-ea0f48497b8c` 同意 exact-only；CodeRabbit staged review 2 major，均已修正 manifest-lock binding 與 schema allowlist。
+
+## 2026-08-04：CH-T62 採薄 Translation Orchestrator
+
+- 決策：本階段不搬動 provider prompt、HTTP client、模型取樣或 public Qt signals；新增無狀態 orchestrator，只收斂文字 provider chain、fallback attribution、取消邊界與安全錯誤碼。
+- fallback 結果的 provider 必須是實際執行者；requested_provider 與 fallback_reason 保存路由 lineage，model、raw_text 與 from_cache 不得因包裝而遺失。
+- 取消只能在同步 provider 呼叫前後生效；不宣稱可中斷已進入的 urllib／GoogleTranslator／llama-server HTTP request。更細粒度的 socket cancellation 留待 provider transport 明確支援後再做。
+- 錯誤證據只允許 bounded code 與 exception class；status、trace、debug log 不保存 raw exception message、OCR 原文、prompt、API key 或模型原始輸出。
+- batch／multimodal／stream 的完整 result 型別收斂留給後續漸進工作；本階段保留既有行為，避免一次大改造成準確度 regression。

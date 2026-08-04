@@ -89,3 +89,12 @@
 - FrameGate exact-hit baseline continuity 已補齊；常見 uint8 fast path 將 synthetic candidate 約由 avg 0.88ms／p95 1.23ms 降至 avg 0.40ms／p95 0.59ms，寬整數與複數精度 regression 保持通過。數字只代表本機 frame-policy microbenchmark。
 - 驗證：targeted 87 passed；OCR 195 passed；最終 benchmark＋CI inventory 62 passed；core 223 passed；benchmark lock ok；compileall／diff-check 通過。
 - Gemini RPC 完成且 hub-visible；CodeRabbit 2 major 已修。CH-T61 Done，CH-T62 進 Ready。
+
+## CH-T62 Translation Orchestrator closeout（2026-08-04）
+
+- 新增 dependency-free translation_orchestrator.py：只管理文字 primary／fallback chain、實際 provider、requested provider、fallback reason、cache metadata、四個取消邊界與 bounded error token；不持有 provider 或 runtime，不會啟動第二套 llama engine。
+- OCRWorker 保留既有 string／tuple 公開介面與 Qt signals，內部改以 TranslationResult 傳遞 metadata；Google cache hit 可保留 from_cache 與 fallback lineage，screenshot provider 結果可保留 requested／actual provider 與 fallback reason 至 scan trace。
+- 翻譯相關 status／debug／stream error 不再記 raw exception；remote screenshot debug 只記 model、valid 與 raw／cleaned 長度，不記 OCR hint、prompt、API key 或模型原文。
+- 驗證：targeted 156 passed；core 229 passed；OCR 196 passed；runtime 94 passed、2 skipped；UI 四檔隔離 27+2+1+8=38 passed；benchmarks 58 passed；compileall 通過。core 首跑 196 passed／33 setup errors 全為既有 C:\tmp ACL，改用 Windows 使用者 Temp 後通過。
+- UI 合併 runner 在 33 個案例後停止輸出，已只終止命令列含 cloudhime-ch-t62-ui 的 pytest PID；四個檔案隔離重跑全部通過，未將合併 runner 宣稱為成功。
+- Gemini 3.6 Flash High RPC request 0e58dbeb-a4f8-4197-9425-032a37301cb2／cascade b15697eb-c787-4ef5-9693-eadce11754c0，hub-visible、0 blocking；CodeRabbit uncommitted review 0 findings。CH-T62 Done，CH-T63 可開始。
