@@ -269,14 +269,16 @@ if ($inProcessLlamaBindings.Count -gt 0) {
 }
 
 $runtimePrefix = ([System.IO.Path]::GetFullPath($runtimeRoot).TrimEnd("\", "/")) + [System.IO.Path]::DirectorySeparatorChar
-$duplicateLlamaLibraries = @($files | Where-Object {
-    $isLlamaLibrary = $_.Name -ieq "llama.dll" -or $_.Name -like "ggml*.dll"
+$managedRuntimeLibraryNames = @($runtimeFiles | Where-Object { $_ -like "*.dll" })
+$duplicateRuntimeLibraries = @($files | Where-Object {
+    $isManagedRuntimeLibrary = ($managedRuntimeLibraryNames -contains $_.Name) -or
+        $_.Name -ieq "llama.dll" -or $_.Name -like "ggml*.dll"
     $isOutsideRuntime = -not $_.FullName.StartsWith($runtimePrefix, [System.StringComparison]::OrdinalIgnoreCase)
-    $isLlamaLibrary -and $isOutsideRuntime
+    $isManagedRuntimeLibrary -and $isOutsideRuntime
 })
-if ($duplicateLlamaLibraries.Count -gt 0) {
-    $names = $duplicateLlamaLibraries | Select-Object -ExpandProperty FullName
-    throw "Release dist contains llama/ggml libraries outside the runtime directory: $($names -join ', ')"
+if ($duplicateRuntimeLibraries.Count -gt 0) {
+    $names = $duplicateRuntimeLibraries | Select-Object -ExpandProperty FullName
+    throw "Release dist contains managed runtime libraries outside the runtime directory: $($names -join ', ')"
 }
 $reservedPackageFiles = @($files | Where-Object { $_.Name -in @("AppxManifest.xml", "AppxBlockMap.xml", "AppxSignature.p7x") })
 if ($reservedPackageFiles.Count -gt 0) {

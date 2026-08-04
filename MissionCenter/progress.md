@@ -64,3 +64,4 @@
 - `verify_release_dist.ps1` 會拒絕 `llama_cpp` package、`_llama_cpp*.pyd`，以及 runtime 目錄外的 `llama.dll`／`ggml*.dll`；Windows fixture 同時證明 runtime 內必要 DLL 保持合法。
 - TDD 證據：新增測試先得到 `2 failed`，實作後 targeted `2 passed`；不含既有真實 dist 的完整 packaging／CI／provider contract 為 `32 passed, 1 skipped, 1 deselected`；compileall 通過。
 - 舊 `dist/CloudHime` 仍因缺 notices marker 失敗，且唯讀盤點確認 `_internal` 根層仍有 `llama.dll`／`ggml*.dll` 重複檔；必須 clean rebuild 後重跑，不能把舊 artifact 宣稱為通過。真實 GPU text／vision paired benchmark 仍未執行，因此 CH-T59 進入 Review 而非 Done。
+- CodeRabbit 首輪 `1 major` 已修：release gate 會拒絕 runtime 外第二套 CUDA／managed DLL；第二輪 `1 minor` 已修：fixture cleanup 不再殘留 runtime 外 `llama.dll` 造成假通過；第三輪未發現新的 runtime 邏輯問題，但指出 `MissionCenter/smoke-tests.md` 有 3 個歷史格式瑕疵（字面換行、函式名誤植、黏接表列），均已依原始內容修復。
