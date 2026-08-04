@@ -66,3 +66,11 @@
 - 舊 `dist/CloudHime` 仍因缺 notices marker 失敗，且唯讀盤點確認 `_internal` 根層仍有 `llama.dll`／`ggml*.dll` 重複檔；必須 clean rebuild 後重跑，不能把舊 artifact 宣稱為通過。真實 GPU text／vision paired benchmark 仍未執行，因此 CH-T59 進入 Review 而非 Done。
 - CodeRabbit 首輪 `1 major` 已修：release gate 會拒絕 runtime 外第二套 CUDA／managed DLL；第二輪 `1 minor` 已修：fixture cleanup 不再殘留 runtime 外 `llama.dll` 造成假通過；第三輪未發現新的 runtime 邏輯問題，但指出 `MissionCenter/smoke-tests.md` 有 3 個歷史格式瑕疵（字面換行、函式名誤植、黏接表列），均已依原始內容修復。
 - Clean build 首輪由新 gate 正確拒絕：PyInstaller 將 build/runtime 的 llama／CUDA 依賴重複收進 _internal 根層。TDD 後在 CloudHime.spec 精確過濾 runtime-source/root-destination TOC，並讓 build_exe.bat 在壓 ZIP 前強制 preflight。重建結果：480 files、1,626,610,433 bytes、ZIP 849,426,988 bytes、0 model files、0 llama_cpp、0 runtime 外受管 DLL；release／MSIX preflight ready，packaged EXE 8 秒 lifecycle smoke 通過且 0 程序殘留。GPU vision 實測 1/1 成功（startup 12.96s、request 1.214s、match 1.0）；GPU text 6/6 成功（startup 9.23s、avg 289.8ms、p95 413.5ms），但鎖定品質分數僅 0.562，交由後續 Translation Orchestrator／Knowledge Pack 改善。CH-T59 完成。
+## CH-T60 Scan Pipeline observability contract（2026-08-04）
+
+- 新增 dependency-free scan_pipeline.py：不可變 ScanTrace／ScanTraceEvent、五個 stage、固定 outcome／error code、64-event 上限、耗時與 item count 正規化。
+- OCRWorker.run_scan_once() 以 sidecar 方式記錄 capture、exact frame cache、OCR、translation 與 render dispatch；沒有搬動既有掃描／fallback 邏輯，也沒有新增或改動 public Qt signals。
+- trace 僅保留固定診斷 token、實際 provider、exception class；OCR 原文、翻譯結果、prompt、API key、URL、圖片 bytes 與 raw exception message 不進 trace。CodeRabbit 找到大寫 OCR token 可能穿透白名單，已移除 case-insensitive matching 並補 regression。
+- 實際驗證：targeted contract + mode matrix 67 passed；最終 ocr CI group 174 passed in 5.45s；CI inventory 4 passed；全庫 compileall exit 0，但舊 pytest ACL 目錄留下 Can't list 警告，未宣稱輸出完全乾淨。
+- CodeRabbit 兩輪：首輪 3 findings，其中 2 個本階段 worker correctness 已修、1 個既有 MissionCenter smoke ledger 問題未混入；第二輪完整 staged scope 2 privacy-test findings 均已修。
+- cancelled outcome 與 scan_cancelled code 已納入契約；實際 scan generation／stale frame 中途取消仍由 CH-T61 FrameGate／Temporal Stabilizer 實作，不在本階段假裝完成。
