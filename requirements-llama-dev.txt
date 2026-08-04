@@ -1,0 +1,2 @@
+# Optional compatibility tests for the retired in-process provider; not used by production.
+llama-cpp-python==0.3.16

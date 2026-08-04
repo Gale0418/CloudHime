@@ -58,3 +58,9 @@
 - text profile 的 server `starting`／`progress` 會正規化為既有 `local_model_status=loading`，避免 UI 在正常下載／暖身時誤顯示失敗；Knowledge Pack 只同步實際 production providers。
 - 實際驗證：`tests/test_cloudhime_workers.py`、`tests/test_local_vision_runtime.py`、`tests/test_local_multimodal_provider.py`、`tests/test_translation_providers.py`、`tests/test_knowledge_prompt_integration.py` 合計 `145 passed`。
 - 尚未完成：`requirements.txt` 仍含 `llama-cpp-python`，`CloudHime.spec` 與 release preflight 尚未拒絕 in-process binding；真實 GPU paired benchmark 未執行，不宣稱完成 CH-T59。
+## CH-T59 production dependency 與 release gate（2026-08-04）
+
+- production `requirements.txt` 已移除 `llama-cpp-python`；`requirements-llama-dev.txt` 僅保留 retired provider 相容測試的 exact pin。四個 production module 不再 import `LocalGemmaProvider`，`CloudHime.spec` 明確排除 `llama_cpp`／`_llama_cpp`。
+- `verify_release_dist.ps1` 會拒絕 `llama_cpp` package、`_llama_cpp*.pyd`，以及 runtime 目錄外的 `llama.dll`／`ggml*.dll`；Windows fixture 同時證明 runtime 內必要 DLL 保持合法。
+- TDD 證據：新增測試先得到 `2 failed`，實作後 targeted `2 passed`；不含既有真實 dist 的完整 packaging／CI／provider contract 為 `32 passed, 1 skipped, 1 deselected`；compileall 通過。
+- 舊 `dist/CloudHime` 仍因缺 notices marker 失敗，且唯讀盤點確認 `_internal` 根層仍有 `llama.dll`／`ggml*.dll` 重複檔；必須 clean rebuild 後重跑，不能把舊 artifact 宣稱為通過。真實 GPU text／vision paired benchmark 仍未執行，因此 CH-T59 進入 Review 而非 Done。

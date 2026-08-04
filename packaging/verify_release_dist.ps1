@@ -257,6 +257,27 @@ if (-not $runtimeRoot) {
 }
 
 $files = @(Get-ChildItem -LiteralPath $dist -Recurse -File)
+$inProcessLlamaBindings = @($files | Where-Object {
+    $relativePath = $_.FullName.Substring($dist.Length).TrimStart("\", "/")
+    $pathParts = @($relativePath -split "[\\/]")
+    $_.Name -like "_llama_cpp*.pyd" -or
+        ($pathParts | Where-Object { $_ -ieq "llama_cpp" }).Count -gt 0
+})
+if ($inProcessLlamaBindings.Count -gt 0) {
+    $names = $inProcessLlamaBindings | Select-Object -ExpandProperty FullName
+    throw "Release dist must not contain an in-process llama binding: $($names -join ', ')"
+}
+
+$runtimePrefix = ([System.IO.Path]::GetFullPath($runtimeRoot).TrimEnd("\", "/")) + [System.IO.Path]::DirectorySeparatorChar
+$duplicateLlamaLibraries = @($files | Where-Object {
+    $isLlamaLibrary = $_.Name -ieq "llama.dll" -or $_.Name -like "ggml*.dll"
+    $isOutsideRuntime = -not $_.FullName.StartsWith($runtimePrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    $isLlamaLibrary -and $isOutsideRuntime
+})
+if ($duplicateLlamaLibraries.Count -gt 0) {
+    $names = $duplicateLlamaLibraries | Select-Object -ExpandProperty FullName
+    throw "Release dist contains llama/ggml libraries outside the runtime directory: $($names -join ', ')"
+}
 $reservedPackageFiles = @($files | Where-Object { $_.Name -in @("AppxManifest.xml", "AppxBlockMap.xml", "AppxSignature.p7x") })
 if ($reservedPackageFiles.Count -gt 0) {
     $names = $reservedPackageFiles | Select-Object -ExpandProperty FullName
