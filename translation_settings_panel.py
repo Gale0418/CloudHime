@@ -21,6 +21,16 @@ from PySide6.QtWidgets import (
 
 import translation_helpers as translation_tools
 from provider_health import LOCAL_MODEL_IDS, assess_provider_health
+from remote_model_discovery import (
+    DISCOVERY_STATUS_INVALID_KEY,
+    DISCOVERY_STATUS_NO_KEY,
+    DISCOVERY_STATUS_OFFLINE_SNAPSHOT,
+    DISCOVERY_STATUS_RATE_LIMITED,
+    DISCOVERY_STATUS_UNVERIFIED,
+    DISCOVERY_STATUS_VERIFIED,
+    ModelDiscoveryResult,
+    filter_model_choices_for_availability,
+)
 from themes import resolve_theme
 
 
@@ -30,6 +40,11 @@ class TranslationSettingsPanel(QWidget):
         self.controller = controller
         self.supported_ai_models = list(supported_ai_models or [])
         self._ai_requested = False
+        self.model_availability_result = ModelDiscoveryResult(
+            status=DISCOVERY_STATUS_NO_KEY,
+            error_code="no_key",
+        )
+        self._model_availability_checking = False
         self._theme_mode = getattr(controller, "theme_mode", "light")
         self.setObjectName("translationSettingsPanel")
         self.setStyleSheet("QWidget { background: transparent; border: none; }")
@@ -150,6 +165,21 @@ class TranslationSettingsPanel(QWidget):
             self.cmb_ai_model.addItem(label, model_name)
         self.cmb_ai_model.currentIndexChanged.connect(self.on_ai_model_changed)
         advanced_layout.addWidget(self.cmb_ai_model)
+
+        model_availability_row = QHBoxLayout()
+        model_availability_row.setContentsMargins(0, 0, 0, 0)
+        model_availability_row.setSpacing(6)
+        self.btn_refresh_model_availability = QPushButton("")
+        self.btn_refresh_model_availability.setCursor(Qt.PointingHandCursor)
+        self.btn_refresh_model_availability.clicked.connect(
+            self.on_refresh_model_availability_clicked
+        )
+        model_availability_row.addWidget(self.btn_refresh_model_availability)
+        self.lbl_model_availability = QLabel("")
+        self.lbl_model_availability.setWordWrap(True)
+        self.lbl_model_availability.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        model_availability_row.addWidget(self.lbl_model_availability, 1)
+        advanced_layout.addLayout(model_availability_row)
 
         self.lbl_ai_model_notes = QLabel("")
         self.lbl_ai_model_notes.setWordWrap(False)
@@ -278,6 +308,96 @@ class TranslationSettingsPanel(QWidget):
         self.update_ai_model_notes()
         self.update_translate_summary()
 
+    def on_refresh_model_availability_clicked(self):
+        starter = getattr(self.controller, "refresh_remote_model_availability", None)
+        self.set_model_availability_checking(True)
+        started = False
+        try:
+            started = bool(starter()) if callable(starter) else False
+        except Exception:
+            started = False
+        if not started:
+            self.set_model_availability_checking(False)
+            result = getattr(self.controller, "remote_model_availability", None)
+            if isinstance(result, ModelDiscoveryResult):
+                self.set_model_availability_result(result)
+
+    def set_model_availability_checking(self, checking):
+        self._model_availability_checking = bool(checking)
+        self.btn_refresh_model_availability.setEnabled(not self._model_availability_checking)
+        if self._model_availability_checking:
+            self.btn_refresh_model_availability.setText(
+                translation_tools.ui_text(
+                    self._ui_language(),
+                    "translation_model_availability_checking",
+                )
+            )
+            self.lbl_model_availability.setText(
+                translation_tools.ui_text(
+                    self._ui_language(),
+                    "translation_model_availability_checking",
+                )
+            )
+        else:
+            self._refresh_model_availability_text()
+
+    def _refresh_model_availability_text(self):
+        result = self.model_availability_result
+        lang = self._ui_language()
+        status_key = {
+            DISCOVERY_STATUS_VERIFIED: "translation_model_availability_verified",
+            DISCOVERY_STATUS_OFFLINE_SNAPSHOT: "translation_model_availability_offline",
+            DISCOVERY_STATUS_NO_KEY: "translation_model_availability_no_key",
+            DISCOVERY_STATUS_INVALID_KEY: "translation_model_availability_invalid_key",
+            DISCOVERY_STATUS_RATE_LIMITED: "translation_model_availability_rate_limited",
+            DISCOVERY_STATUS_UNVERIFIED: "translation_model_availability_unverified",
+        }.get(result.status, "translation_model_availability_unverified")
+        self.btn_refresh_model_availability.setText(
+            translation_tools.ui_text(lang, "translation_model_availability_refresh")
+        )
+        self.lbl_model_availability.setText(
+            translation_tools.ui_text(
+                lang,
+                status_key,
+                count=len(result.available_model_ids),
+            )
+        )
+
+    def set_model_availability_result(self, result):
+        if not isinstance(result, ModelDiscoveryResult):
+            return
+        current_model = str(self.cmb_ai_model.currentData() or "").strip()
+        self.model_availability_result = result
+        choices = filter_model_choices_for_availability(
+            self.supported_ai_models,
+            result,
+            current_model=current_model,
+        )
+        self.cmb_ai_model.blockSignals(True)
+        self.cmb_ai_model.clear()
+        for label, model_id in choices:
+            self.cmb_ai_model.addItem(label, model_id)
+        selected_index = self.cmb_ai_model.findData(current_model)
+        if selected_index >= 0:
+            self.cmb_ai_model.setCurrentIndex(selected_index)
+            if (
+                result.status in {DISCOVERY_STATUS_VERIFIED, DISCOVERY_STATUS_OFFLINE_SNAPSHOT}
+                and current_model not in LOCAL_MODEL_IDS
+                and current_model not in result.available_model_ids
+            ):
+                self.cmb_ai_model.setItemData(
+                    selected_index,
+                    translation_tools.ui_text(
+                        self._ui_language(),
+                        "translation_model_availability_selected_unavailable",
+                    ),
+                    Qt.ToolTipRole,
+                )
+        self.cmb_ai_model.blockSignals(False)
+        self.set_model_availability_checking(False)
+        self.update_ai_model_notes()
+        self.update_translate_summary()
+
     def on_auto_switch_toggled(self, checked):
         self.controller.set_gemma_auto_switch_mode(checked)
         self.update_translate_summary()
@@ -395,6 +515,7 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_api_key.setText(translation_tools.ui_text(lang, "translation_api_key"))
         self.input_api_key.setPlaceholderText(translation_tools.ui_text(lang, "translation_api_key_placeholder"))
         self.lbl_ai_model.setText(translation_tools.ui_text(lang, "translation_ai_model"))
+        self._refresh_model_availability_text()
         self.lbl_gemma_prompt.setText(translation_tools.ui_text(lang, "translation_gemma_prompt"))
         self.input_gemma_prompt.setPlaceholderText(
             translation_tools.ui_text(lang, "translation_gemma_prompt_placeholder")
@@ -511,6 +632,7 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.setEnabled(enabled)
         self.chk_auto_switch.setEnabled(enabled)
         self.btn_advanced_tuning.setEnabled(enabled)
+        self.btn_refresh_model_availability.setEnabled(not self._model_availability_checking)
         self.spin_local_gemma_temp.setEnabled(enabled)
         self.spin_local_gemma_repeat.setEnabled(enabled)
         self.lbl_local_gemma_temp.setEnabled(enabled)
@@ -591,6 +713,9 @@ class TranslationSettingsPanel(QWidget):
         self.set_translate_advanced_visible(enabled)
         self.update_key_state(enabled)
         self.update_local_multimodal_state()
+        result = getattr(self.controller, "remote_model_availability", None)
+        if isinstance(result, ModelDiscoveryResult):
+            self.set_model_availability_result(result)
         self.update_translate_summary()
 
     def update_theme(self, theme_mode):
