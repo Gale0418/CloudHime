@@ -12,6 +12,7 @@ import localization
 
 SETTINGS_SCHEMA_VERSION = 5
 SETTINGS_FILENAME = "cloudhime_settings.json"
+MODEL_AVAILABILITY_SNAPSHOT_FILENAME = "model_availability_snapshot.json"
 SETTINGS_APP_DIR = "CloudHime"
 RELIEF_OFFSET_MIN = -500
 RELIEF_OFFSET_MAX = 500
@@ -44,6 +45,10 @@ def create_settings_paths(script_dir: str, appdata_root: str | None = None) -> S
 
 def appdata_companion_path(paths: SettingsPaths, filename: str) -> str:
     return os.path.join(os.path.dirname(paths.appdata_file), filename)
+
+
+def model_availability_snapshot_path(paths: SettingsPaths) -> str:
+    return appdata_companion_path(paths, MODEL_AVAILABILITY_SNAPSHOT_FILENAME)
 
 
 def load_settings_data(paths: SettingsPaths) -> tuple[dict[str, Any], str | None]:

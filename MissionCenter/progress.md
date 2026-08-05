@@ -172,3 +172,12 @@
 - 已知環境訊息：HuggingFace Xet log 寫入 `D:\HuggingFaceCache` 被拒，改回 console logging；不影響 build exit `0`。PyInstaller 仍報 `charset_normalizer.md__mypyc` hidden import 與 conda `mkl_rt.dll` optional warning，尚未宣稱 clean-machine runtime。
 - 完整 core runner 首次 `222 passed, 48 errors`，重試使用 workspace／使用者專用 basetemp 仍為 pytest session cleanup 的 `WinError 5`；錯誤集中於暫存目錄 ACL，不能視為 assertion failure，也不能把 core 全組宣稱通過。release／MSIX／manifest／dependency targeted 與 compileall 需以獨立命令結果為準。
 - 你提供的模型目錄 P0 建議與目前 repo 狀態不完全相同：CH-T66 已移除舊遠端 Gemma 的可選／可呼叫路徑、完成設定遷移、1B text-only capability 與 attribution；仍待 CH-T67 的 live `models.list` availability snapshot，不能把動態 endpoint 可用性宣稱完成。
+
+## CH-T67 PR1 remote model discovery contract（2026-08-05）
+
+- 依 Google 官方 `models.list` API 契約（`GET /v1beta/models`、`nextPageToken`、`supportedGenerationMethods`）新增 dependency-free `remote_model_discovery.py`；只接受含 `generateContent` 的模型，模型名稱正規化並以本地 catalog policy 補上 image capability。
+- 新增 schema 1 `ModelAvailabilitySnapshot`：只保存 API key SHA-256 fingerprint、時間、模型 capability 與來源結果，不保存原始 key；同一 key 才能讀回 snapshot，不會跨 key 污染。
+- no key 不發網路；401／403 不更新或沿用 snapshot；429／其他暫時錯誤可使用同一 key 的最後 snapshot；無 snapshot 時保留靜態 catalog 作 routing fail-open，dynamic verified 狀態另行表達。
+- snapshot 寫入失敗經 CodeRabbit finding 修正為非致命：新抓到的 verified 結果仍回傳，並以 `snapshot_write_failed` 保留可觀測錯誤碼。
+- 實際驗證：PR1 targeted `39 passed`；discovery contract 最終 `14 passed`；tracked py_compile 與 diff-check 通過；CI inventory 已納入 `tests/test_remote_model_discovery.py`；CodeRabbit 首輪 1 minor 已以 regression 重現並修正，最終複查 `0 findings`；Gemini 唯讀架構審查 Hub-visible，未修改檔案。
+- 尚未完成：PR2 非同步 worker／UI availability wiring、API key 變更與手動 refresh 事件、provider health 顯示與 live API key 實測；輸入文字不觸發網路的 UI gate 留在下一階段。

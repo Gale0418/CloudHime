@@ -229,3 +229,11 @@ def test_normalize_settings_payload_migrates_only_local_translategemma_alias():
 
     assert migrated["local_multimodal_model"] == "gemma-3-4b-it-local"
     assert unknown["local_multimodal_model"] == "custom-local-model"
+
+
+def test_model_availability_snapshot_path_uses_appdata_companion():
+    paths = create_settings_paths("D:\\CloudHime-install", appdata_root="D:\\CloudHime-appdata")
+
+    assert settings_store.model_availability_snapshot_path(paths) == (
+        "D:\\CloudHime-appdata\\CloudHime\\model_availability_snapshot.json"
+    )
