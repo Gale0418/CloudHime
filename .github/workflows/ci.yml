@@ -122,6 +122,23 @@ jobs:
           python packaging\dependency_contract.py verify --report $report --requirements requirements-ci-lock-win-amd64-py310.txt --direct-requirements requirements-ci.txt --lock requirements-ci-lock-win-amd64-py310.txt --sbom $sbom
           if ($LASTEXITCODE -ne 0) { throw "dependency SBOM verification failed." }
 
+          $prodVenv = Join-Path $env:RUNNER_TEMP "cloudhime-production-dependency-venv"
+          $prodReport = Join-Path $env:RUNNER_TEMP "cloudhime-production-pip-report.json"
+          $prodSbom = Join-Path $env:RUNNER_TEMP "cloudhime-production-sbom.cdx.json"
+          python -m venv $prodVenv
+          if ($LASTEXITCODE -ne 0) { throw "production venv creation failed." }
+          $prodPython = Join-Path $prodVenv "Scripts/python.exe"
+          & $prodPython -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw "production pip bootstrap install failed." }
+          & $prodPython -m pip install --require-hashes --report $prodReport -r requirements-lock-win-amd64-py310.txt
+          if ($LASTEXITCODE -ne 0) { throw "production requirements installation failed." }
+          & $prodPython -m pip check
+          if ($LASTEXITCODE -ne 0) { throw "production pip check failed." }
+          python packaging\dependency_contract.py validate --report $prodReport --requirements requirements-lock-win-amd64-py310.txt --direct-requirements requirements.txt --lock requirements-lock-win-amd64-py310.txt --sbom-output $prodSbom
+          if ($LASTEXITCODE -ne 0) { throw "production dependency contract validation failed." }
+          python packaging\dependency_contract.py verify --report $prodReport --requirements requirements-lock-win-amd64-py310.txt --direct-requirements requirements.txt --lock requirements-lock-win-amd64-py310.txt --sbom $prodSbom
+          if ($LASTEXITCODE -ne 0) { throw "production dependency SBOM verification failed." }
+
       - name: Upload dependency provenance
         if: always()
         uses: actions/upload-artifact@v4
@@ -130,6 +147,8 @@ jobs:
           path: |
             ${{ runner.temp }}/cloudhime-pip-report.json
             ${{ runner.temp }}/cloudhime-sbom.cdx.json
+            ${{ runner.temp }}/cloudhime-production-pip-report.json
+            ${{ runner.temp }}/cloudhime-production-sbom.cdx.json
           if-no-files-found: warn
   msix-contract:
     runs-on: windows-latest

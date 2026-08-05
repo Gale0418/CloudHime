@@ -156,3 +156,10 @@
 - 實際 cross-target smoke：pip `--dry-run --ignore-installed --only-binary=:all: --require-hashes --platform win_amd64 --python-version 3.10 --implementation cp --abi cp310` 接受 CI lock 58 components；contract validate／SBOM verify 均成功。這是解析與 hash 證據，不是 clean-machine install。
 - 本輪驗證：受影響 targeted `39 passed, 1 skipped`；core `265 passed, 1 skipped`；tracked Python `compileall`、CI YAML parse、CRLF-aware `diff --check` 均成功。
 - 仍未完成：CI runner 實際 clean venv install、逐 wheel license evidence／正式 release bundle SBOM、production build 整合 production lock、clean Windows、MSIX install／WACK／Store、GPU onboarding；CodeRabbit 本階段前兩次 findings 已修，第三次受免費 CLI cooldown 阻擋，未宣稱複審通過。
+## CH-T64 production graph／SBOM isolation checkpoint（2026-08-05）
+
+- 已在 CI dependency-contract job 增加獨立 production Python 3.10／Windows x64 fresh venv；production lock、pip report、SBOM 與 CI graph 完全分開，避免 pytest 等測試依賴滲入正式 provenance。
+- production path 以 `requirements-lock-win-amd64-py310.txt` 實際安裝、`pip check`、direct `requirements.txt` 驗證、lock 驗證與 CycloneDX 1.6 SBOM verify；CI path 維持原本 58 component contract。兩組 report／SBOM 以不同檔名上傳。
+- regression：production／CI lock graph 差異精確鎖為五個 CI-only 套件；workflow 測試涵蓋 production command 的 fail-fast、獨立 venv／report／SBOM／direct intent。
+- 實際驗證：targeted dependency／CI／release／MSIX `36 passed, 1 skipped`；production cross-target pip dry-run（清除本機 `PIP_NO_INDEX=1` 並使用官方 PyPI index）接受 53 components；production contract validate／SBOM verify Pass；YAML parse Pass；CodeRabbit 首輪 2 minor 已修，複查 `0 issues`。
+- 仍未完成：GitHub runner 真正 production clean venv install、license evidence／正式 release bundle、PyInstaller 真打包、clean Windows、MSIX／WACK／Store／GPU 實機 gate；本輪不把 dry-run 冒充安裝完成。
