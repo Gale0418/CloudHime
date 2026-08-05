@@ -207,6 +207,56 @@ def test_ci_report_is_emitted_by_the_install_under_test():
     assert "--dry-run" not in install_line
     assert "--ignore-installed" not in install_line
 
+
+def test_production_and_ci_locks_keep_distinct_graphs():
+    production = contract.read_lock(ROOT / "requirements-lock-win-amd64-py310.txt")
+    ci = contract.read_lock(ROOT / "requirements-ci-lock-win-amd64-py310.txt")
+
+    assert set(production) < set(ci)
+    assert set(ci) - set(production) == {
+        "iniconfig",
+        "pluggy",
+        "pygments",
+        "pytest",
+        "pytest-qt",
+    }
+
+
+def test_ci_produces_separate_production_dependency_contract():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    start = workflow.index("  dependency-contract:")
+    end = workflow.index("  msix-contract:", start)
+    contract_job = workflow[start:end]
+
+    assert "python -m venv $prodVenv" in contract_job
+    assert "--require-hashes --report $prodReport -r requirements-lock-win-amd64-py310.txt" in contract_job
+    assert "--direct-requirements requirements.txt" in contract_job
+    assert "--lock requirements-lock-win-amd64-py310.txt" in contract_job
+    assert "--sbom-output $prodSbom" in contract_job
+    assert "--sbom $prodSbom" in contract_job
+    assert "cloudhime-production-pip-report.json" in contract_job
+    assert "cloudhime-production-sbom.cdx.json" in contract_job
+
+    install_start = contract_job.index("& $prodPython -m pip install --require-hashes")
+    install_end = contract_job.index("& $prodPython -m pip check", install_start)
+    assert "if ($LASTEXITCODE -ne 0)" in contract_job[install_start:install_end]
+
+def test_production_dependency_commands_fail_fast():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    start = workflow.index("  dependency-contract:")
+    end = workflow.index("  msix-contract:", start)
+    contract_job = workflow[start:end]
+
+    commands = (
+        "& $prodPython -m pip install --upgrade pip",
+        "& $prodPython -m pip install --require-hashes --report $prodReport -r requirements-lock-win-amd64-py310.txt",
+        "& $prodPython -m pip check",
+    )
+    for command in commands:
+        position = contract_job.index(command) + len(command)
+        following_lines = contract_job[position:].splitlines()
+        assert len(following_lines) > 1
+        assert "if ($LASTEXITCODE -ne 0)" in following_lines[1]
 def test_ci_declares_dependency_contract_gate():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
