@@ -465,3 +465,12 @@
 - 決策：Gemma／Gemini／本地 llama-server 的 provider attribution 必須表示實際執行家族，不能再以字串前綴推測。
 - 決策：Models API 動態探測另立 CH-T67；不得在輸入設定或開啟設定頁時偷偷上網，失敗時沿用最後有效快照並保留 local-first 路由。
 - 邊界：本階段不實作 Vision-first、ResourceGovernor、idle unload 或完整 dev provider 刪除，也不宣稱未跑過的 API／GPU／clean-machine benchmark。
+
+## 2026-08-06：CH-T68 採 Region-first 的 Vision-first 收斂
+
+- 產品終態：Vision 負責從圖片判斷原文與翻譯；OCR 只負責 optional geometry 與可能錯誤的 hint，不得再因 OCR backend 缺失、空結果或例外直接阻止 Region 翻譯。
+- 漸進邊界：先切 Region Bubble／Relief，沿用 Screenshot image-first；Fullscreen 與漫畫頁仍需 source-disjoint holdout 通過後才能切換，不做一次性大重寫。
+- 結果契約：只接受 bounded、strict regions JSON；model source_text、translation 與 confidence 必須通過 schema，輸出 ID 只能對應 caller 提供的 bbox，無 bbox 時只建立一個 whole-region ID。
+- 失敗策略：Vision 成功即為主要結果；Vision 失敗且 OCR 有字才回退既有 OCR-first translation；兩者皆無時安全失敗並保留 bounded trace，不記 prompt、OCR 原文、raw model output 或 API key。
+- 模型政策：Vision-first selectable／callable surface 不保留 text-only Gemma 3 1B；只保留 legacy settings alias 以保護升級。
+- ResourceGovernor 不與本 PR 混做。gpu_layers=999/0、partial offload、VRAM budget、idle TTL 與 buffer lifecycle 另立後續里程碑，避免把路由 correctness 與資源政策綁成大爆炸修改。

@@ -14,9 +14,11 @@ from model_catalog import (
 from translation_providers import GemmaTranslationProvider, SUPPORTED_GEMMA_MODEL_NAMES
 
 
-def test_model_catalog_ids_are_unique_and_legacy_id_is_absent():
+def test_model_catalog_ids_are_unique_and_removed_ids_are_absent():
     ids = [spec.model_id for spec in MODEL_CATALOG]
     assert len(ids) == len(set(ids))
+    assert "gemma-3-1b-it" not in MODEL_BY_ID
+    assert get_model_spec("gemma-3-1b-it") is None
     assert "gemma-4-26b-it" not in MODEL_BY_ID
     assert "gemma-4-26b-it" not in SUPPORTED_GEMMA_MODEL_NAMES
 
@@ -28,6 +30,8 @@ def test_worker_and_provider_surfaces_use_catalog_models():
     assert all(model_id not in LOCAL_MODEL_IDS for model_id in REMOTE_TRANSLATION_MODEL_IDS)
     assert 'gemma-3-1b-it' not in REMOTE_TRANSLATION_MODEL_IDS
     assert 'gemma-3-27b-it' not in REMOTE_TRANSLATION_MODEL_IDS
+    assert 'gemma-3-1b-it' not in WORKER_MODEL_IDS
+    assert all(model_id != 'gemma-3-1b-it' for _, model_id in WORKER_MODEL_CHOICES)
 
 
 def test_catalog_specs_expose_required_policy_fields():
@@ -79,15 +83,12 @@ def test_catalog_ui_selection_and_sampling_policy_are_explicit():
     )
     assert WORKER_DEFAULT_MODEL == "gemma-4-31b-it"
 
-    gemma_3_1b = get_model_spec("gemma-3-1b-it")
     gemma_3_27b = get_model_spec("gemma-3-27b-it")
-    assert gemma_3_1b is not None
     assert gemma_3_27b is not None
-    assert gemma_3_1b.ui_selectable is False
     assert gemma_3_27b.ui_selectable is False
-    assert gemma_3_1b.lifecycle != "stable"
     assert gemma_3_27b.lifecycle != "stable"
-    assert gemma_3_1b.multimodal is False
+    assert gemma_3_27b.structured_json is False
 
     for spec in MODEL_CATALOG:
+        assert spec.model_id != "gemma-3-1b-it"
         assert spec.accepts_sampling_params is (not spec.model_id.startswith("gemini-3."))

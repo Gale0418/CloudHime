@@ -285,6 +285,25 @@ def test_verified_snapshot_filters_remote_catalog_but_keeps_local_model():
 
     assert selected_ids == {"gemma-3-4b-it-local", "gemini-3.6-flash"}
 
+
+def test_api_returned_removed_gemma_1b_cannot_reenter_selectable_catalog():
+    result = type(
+        "Result",
+        (),
+        {
+            "status": "verified",
+            "available_model_ids": ("gemma-3-1b-it", "gemma-4-31b-it"),
+        },
+    )()
+
+    selected = filter_catalog_for_availability(MODEL_CATALOG, result)
+
+    assert {spec.model_id for spec in selected} == {
+        "gemma-3-4b-it-local",
+        "gemma-4-31b-it",
+    }
+
+
 def test_filter_model_choices_preserves_current_unavailable_model():
     from remote_model_discovery import (
         DISCOVERY_STATUS_VERIFIED,

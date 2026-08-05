@@ -26,12 +26,8 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
         True, True, True, True, "local", 120, "local",
     ),
     ModelSpec(
-        "gemma-3-1b-it", "Gemma 3 1B", "gemma", "remote",
-        False, True, False, True, "legacy", 30, "gemma-3-1b-it",
-    ),
-    ModelSpec(
         "gemma-3-27b-it", "Gemma 3 27B", "gemma", "remote",
-        True, True, False, True, "legacy", 30, "gemma-3-27b-it",
+        True, False, False, True, "legacy", 30, "gemma-3-27b-it",
     ),
     ModelSpec(
         "gemma-4-26b-a4b-it", "Gemma 4 26B A4B", "gemma", "remote",
