@@ -88,6 +88,48 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+  dependency-contract:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Resolve dependencies in an isolated environment
+        shell: pwsh
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP "cloudhime-dependency-venv"
+          $report = Join-Path $env:RUNNER_TEMP "cloudhime-pip-report.json"
+          $sbom = Join-Path $env:RUNNER_TEMP "cloudhime-sbom.cdx.json"
+          python -m venv $venv
+          $venvPython = Join-Path $venv "Scripts/python.exe"
+          & $venvPython -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw "pip bootstrap install failed." }
+          & $venvPython -m pip install --report $report -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw "requirements installation failed." }
+          & $venvPython -m pip check
+          if ($LASTEXITCODE -ne 0) { throw "pip check failed." }
+
+
+          python packaging\dependency_contract.py validate --report $report --requirements requirements-ci.txt --sbom-output $sbom
+          if ($LASTEXITCODE -ne 0) { throw "dependency contract validation failed." }
+          python packaging\dependency_contract.py verify --report $report --requirements requirements-ci.txt --sbom $sbom
+          if ($LASTEXITCODE -ne 0) { throw "dependency SBOM verification failed." }
+
+      - name: Upload dependency provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudhime-dependency-provenance
+          path: |
+            ${{ runner.temp }}/cloudhime-pip-report.json
+            ${{ runner.temp }}/cloudhime-sbom.cdx.json
+          if-no-files-found: warn
   msix-contract:
     runs-on: windows-latest
     timeout-minutes: 30
