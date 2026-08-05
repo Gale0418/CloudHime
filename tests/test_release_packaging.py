@@ -49,6 +49,20 @@ def test_release_build_contract_has_required_resources():
         assert (root / "runtime" / filename).is_file()
 
 
+def test_runtime_manifest_is_generated_and_verified():
+    root = Path(__file__).resolve().parents[1]
+    build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
+    verifier = (root / "packaging" / "verify_release_dist.ps1").read_text(encoding="utf-8")
+
+    assert (root / "packaging" / "runtime_manifest.py").is_file()
+    assert "runtime_manifest.py" in build_script
+    assert "--version" in (root / "packaging" / "runtime_manifest.py").read_text(
+        encoding="utf-8"
+    )
+    assert "runtime-manifest.json" in verifier
+    assert "Get-FileHash" in verifier
+    assert "file set mismatch" in verifier
+
 def test_production_release_excludes_in_process_llama_binding():
     root = Path(__file__).resolve().parents[1]
     requirements = (root / "requirements.txt").read_text(encoding="utf-8")

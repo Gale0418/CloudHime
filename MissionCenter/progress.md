@@ -120,3 +120,14 @@
 - 修正：非字串 gemma_model 安全正規化為空值；只有 temperature 或 repeat penalty 實際變更時才清理 translation_cache、preferred_text_memory 與 hud_memory，參數不變則保留。
 - 驗證：targeted settings／worker 102 passed；model/provider/release 42 passed；core 245 passed；OCR 199 passed；tracked compileall／diff-check 通過。
 - CodeRabbit 複審範圍僅 4 個修正檔，結果 0 issues；兩個隔離 review repo 已刪除。CH-T66 可維持 Done。
+
+## CH-T64 runtime manifest checkpoint（2026-08-05）
+
+- Gemini 唯讀盤點確認：既有 release preflight 已拒絕 in-process llama_cpp、runtime 外重複 llama/ggml/CUDA DLL、模型、secrets 與 MSIX 生成檔；主要缺口是 runtime 沒有版本／來源／檔案雜湊 manifest。
+- 已新增 packaging/runtime_manifest.py：從 build/runtime 的確切 stage 內容建立 schema 1 manifest，執行 staged llama-server.exe --version，記錄 source commit、backend、architecture、server version，以及每個 staged runtime file 的 size／SHA-256。
+- build_exe.bat 現在在 PyInstaller 前產生 manifest；packaging/verify_release_dist.ps1 會 fail-closed 檢查 manifest JSON、metadata、完整檔案集合、size 與 SHA-256。packaging/README.md 已同步說明。
+- Regression：新增 tests/test_runtime_manifest.py，並更新 MSIX fixture 覆蓋 manifest 漂移、hash／size 不符、漏檔與多餘檔；加入 ci/test_groups.json core group。
+- 實際驗證：release／MSIX／manifest targeted 21 passed, 1 skipped；core CI group 251 passed, 1 skipped；tracked Python compileall exit 0；CRLF-aware diff-check exit 0。
+- 1 skipped 是舊本機 dist/CloudHime 尚未含 manifest，明確要求 clean rebuild；未執行也未宣稱 Windows SDK MSIX install、WACK、clean Windows、Store submission 或首次 GPU onboarding。
+
+- CodeRabbit 首輪覆核 8 個小型 release／manifest／測試檔，唯一 finding 是 MSIX fixture 硬編碼還原 bytes；已改為逐案例保存／還原原始 payload，並重跑 targeted／core。複審嘗試被免費 CLI rate limit 擋下（工具回報約 28 分鐘後重置），因此未宣稱複審通過。

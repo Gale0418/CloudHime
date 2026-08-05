@@ -18,6 +18,16 @@ CreateUpload also produces a manually assembled .msixupload archive containing t
 
 這個檢查會確認啟動檔、主 logo、44x44 / 50x50 / 150x150 MSIX 圖示、字典、授權 notices、llama/ggml runtime 與敏感檔案規則，也會拒絕把 GGUF、projector、簽章材料或已生成的 MSIX 檔案帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
 
+## Runtime manifest
+
+build_exe.bat stages only the release llama-server files, then runs
+packaging/runtime_manifest.py. The tool executes the staged
+llama-server.exe --version command and writes runtime-manifest.json beside
+the runtime. The manifest records the source commit, backend, architecture,
+server version, and the size/SHA-256 of every staged runtime file.
+verify_release_dist.ps1 fails closed when the manifest is missing or the
+runtime file set, size, or digest differs.
+
 ## Local MSIX install smoke
 
 `packaging/test_msix_install.ps1` 會在 `pwsh` 呼叫時自動轉交 Windows PowerShell 5.1，因為部分 Windows 的 Appx cmdlet 無法由 PowerShell 7 載入。開發測試憑證只能用於本機 sideload；Store identity、publisher 與正式簽章仍必須由 Partner Center／正式憑證處理。

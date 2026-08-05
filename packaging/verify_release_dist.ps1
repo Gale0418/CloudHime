@@ -256,6 +256,86 @@ if (-not $runtimeRoot) {
     throw "Release dist is missing required llama/ggml runtime files.$detail"
 }
 
+
+$manifestPath = Join-Path $runtimeRoot "runtime-manifest.json"
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "Release dist is missing runtime-manifest.json"
+}
+if ((Get-Item -LiteralPath $manifestPath).Length -le 0) {
+    throw "Release dist contains an empty runtime-manifest.json"
+}
+try {
+    $runtimeManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+} catch {
+    throw "Release dist runtime manifest is not valid JSON: $($_.Exception.Message)"
+}
+if ($runtimeManifest.schema_version -ne 1 -or $runtimeManifest.runtime -ne "llama-server") {
+    throw "Release dist runtime manifest has an unsupported schema or runtime"
+}
+foreach ($metadataName in @("source_commit", "backend", "architecture")) {
+    $metadataValue = [string]$runtimeManifest.build.$metadataName
+    if ([string]::IsNullOrWhiteSpace($metadataValue)) {
+        throw "Release dist runtime manifest is missing build metadata: $metadataName"
+    }
+}
+if ([string]::IsNullOrWhiteSpace([string]$runtimeManifest.server.version)) {
+    throw "Release dist runtime manifest is missing llama-server version"
+}
+
+$manifestEntries = @($runtimeManifest.files)
+if ($manifestEntries.Count -eq 0) {
+    throw "Release dist runtime manifest contains no files"
+}
+$manifestFiles = @{}
+foreach ($entry in $manifestEntries) {
+    $relative = [string]$entry.path
+    if ([string]::IsNullOrWhiteSpace($relative) -or
+        [IO.Path]::IsPathRooted($relative) -or
+        $relative.Replace("/", "\").Split("\") -contains "..") {
+        throw "Release dist runtime manifest contains an invalid file path: $relative"
+    }
+    $normalized = $relative.Replace("/", "\")
+    if ($manifestFiles.ContainsKey($normalized)) {
+        throw "Release dist runtime manifest contains duplicate file: $relative"
+    }
+    $manifestFiles[$normalized] = $entry
+    $candidate = Join-Path $runtimeRoot $normalized
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw "Release dist runtime manifest file is missing: $relative"
+    }
+    $expectedSize = [int64]$entry.size
+    if ($expectedSize -lt 0) {
+        throw "Release dist runtime manifest has an invalid size: $relative"
+    }
+    $actualFile = Get-Item -LiteralPath $candidate
+    if ($actualFile.Length -ne $expectedSize) {
+        throw "Release dist runtime manifest hash or size mismatch: $relative"
+    }
+    $expectedHash = [string]$entry.sha256
+    if ($expectedHash -notmatch "^[0-9a-fA-F]{64}$") {
+        throw "Release dist runtime manifest has an invalid SHA-256: $relative"
+    }
+    $actualHash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash
+    if ($actualHash -ine $expectedHash) {
+        throw "Release dist runtime manifest hash or size mismatch: $relative"
+    }
+}
+$actualRuntimeFiles = @(Get-ChildItem -LiteralPath $runtimeRoot -Recurse -File |
+    Where-Object { $_.FullName -ine $manifestPath } |
+    ForEach-Object { $_.FullName.Substring($runtimeRoot.Length).TrimStart("\", "/") })
+foreach ($actualRelative in $actualRuntimeFiles) {
+    if (-not $manifestFiles.ContainsKey($actualRelative)) {
+        throw "Release dist runtime manifest file set mismatch; unexpected file: $actualRelative"
+    }
+}
+if ($actualRuntimeFiles.Count -ne $manifestFiles.Count) {
+    throw "Release dist runtime manifest file set mismatch"
+}
+$serverManifestPath = ([string]$runtimeManifest.server.path).Replace("/", "\")
+if ($serverManifestPath -ne "llama-server.exe" -or -not $manifestFiles.ContainsKey($serverManifestPath)) {
+    throw "Release dist runtime manifest does not identify llama-server.exe"
+}
+
 $files = @(Get-ChildItem -LiteralPath $dist -Recurse -File)
 $inProcessLlamaBindings = @($files | Where-Object {
     $relativePath = $_.FullName.Substring($dist.Length).TrimStart("\", "/")

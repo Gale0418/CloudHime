@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -212,6 +214,7 @@ foreach ($runtimeFile in @({runtime_literal})) {{
         encoding="utf-8",
         errors="replace",
     )
+    _write_runtime_manifest(root / "_internal" / "runtime")
     source_root = Path(__file__).resolve().parents[1]
     shutil.copyfile(
         source_root / "THIRD_PARTY_NOTICES.md",
@@ -223,6 +226,36 @@ foreach ($runtimeFile in @({runtime_literal})) {{
             root / "_internal" / "assets" / f"cloudhime_logo_{logo_size}.png",
         )
 
+
+
+def _write_runtime_manifest(runtime_root):
+    entries = []
+    for path in sorted(runtime_root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(runtime_root).as_posix()
+        entries.append(
+            {
+                "path": relative,
+                "size": path.stat().st_size,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+        )
+    manifest = {
+        "schema_version": 1,
+        "runtime": "llama-server",
+        "server": {"path": "llama-server.exe", "version": "fixture"},
+        "build": {
+            "source_commit": "fixture",
+            "backend": "cuda",
+            "architecture": "x64",
+        },
+        "files": entries,
+    }
+    (runtime_root / "runtime-manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 def _remove_release_fixture(powershell, root):
     root_literal = str(root).replace("'", "''")
@@ -282,8 +315,11 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             (fixture / "_internal" / "ggml-extra.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "cudart64_12.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "runtime" / "llama.dll", b"", "required llama/ggml runtime"),
+            (fixture / "_internal" / "runtime" / "ggml.dll", b"tampered", "hash or size mismatch"),
+            (fixture / "_internal" / "runtime" / "unexpected.dll", b"unexpected", "runtime manifest"),
         )
         for invalid_path, payload, expected_message in invalid_cases:
+            original_payload = invalid_path.read_bytes() if invalid_path.is_file() else None
             invalid_path.parent.mkdir(parents=True, exist_ok=True)
             invalid_path.write_bytes(payload)
             rejected = subprocess.run(
@@ -295,8 +331,8 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             )
             assert rejected.returncode != 0
             assert expected_message in (rejected.stdout + rejected.stderr)
-            if invalid_path == fixture / "_internal" / "runtime" / "llama.dll":
-                invalid_path.write_bytes(b"runtime")
+            if original_payload is not None:
+                invalid_path.write_bytes(original_payload)
             else:
                 invalid_path.unlink()
     finally:
@@ -310,6 +346,13 @@ def test_real_release_dist_preflight_when_available():
         pytest.skip("local PyInstaller dist is not available")
 
     root = Path(__file__).resolve().parents[1]
+    manifest_candidates = (
+        dist / "runtime" / "runtime-manifest.json",
+        dist / "_internal" / "runtime" / "runtime-manifest.json",
+    )
+    if not any(path.is_file() for path in manifest_candidates):
+        pytest.skip("local PyInstaller dist predates the runtime manifest; clean rebuild required")
+
     script = root / "packaging" / "verify_release_dist.ps1"
     result = subprocess.run(
         [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(dist)],
