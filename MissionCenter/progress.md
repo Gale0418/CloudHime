@@ -131,3 +131,12 @@
 - 1 skipped 是舊本機 dist/CloudHime 尚未含 manifest，明確要求 clean rebuild；未執行也未宣稱 Windows SDK MSIX install、WACK、clean Windows、Store submission 或首次 GPU onboarding。
 
 - CodeRabbit 首輪覆核 8 個小型 release／manifest／測試檔，唯一 finding 是 MSIX fixture 硬編碼還原 bytes；已改為逐案例保存／還原原始 payload，並重跑 targeted／core。複審嘗試被免費 CLI rate limit 擋下（工具回報約 28 分鐘後重置），因此未宣稱複審通過。
+
+## CH-T64 dependency and CI contract checkpoint（2026-08-05）
+
+- 已先以 regression test 重現 CI 與 release contract 的兩個可確定缺口：MSIX dummy fixture 沒有隨新 verifier 產生 `runtime-manifest.json`；production／CI requirements 的四個 WinRT 依賴未 exact pin。
+- 修正：CI fixture 現在會依實際 placeholder runtime 檔案產生 schema 1 manifest，並在解包檢查 manifest metadata；`requirements.txt` 與 `requirements-ci.txt` 的 WinRT 套件固定為 `3.2.1`，pytest／pytest-qt 也移入 CI requirements 並固定為 `9.1.1`／`4.5.0`，workflow 不再額外安裝未鎖版本測試工具。
+- TDD 證據：先得到 direct pin regression `1 failed, 8 deselected`，修正後 targeted release/MSIX/manifest/CI inventory `26 passed, 1 skipped`；MSIX CI fixture targeted `1 passed, 7 deselected`。
+- 完整群組：core `252 passed, 1 skipped`；OCR `199 passed`；runtime `94 passed, 2 skipped`；benchmarks `58 passed`；UI 合併執行器逾時 180 秒，拆分後 `test_cloudhime_ui_smoke.py` `36 passed`、其餘設定／翻譯 UI `11 passed`，未把合併 runner 記為通過。
+- tracked Python compileall exit 0；CRLF-aware diff-check exit 0。未宣稱完整 SBOM、transitive wheel hash、license artifact audit、clean-machine、MSIX install／launch／uninstall、WACK、Store 或 GPU onboarding 已完成。
+- Gemini bridge 本輪因 Antigravity session database 回報 `attempt to write a readonly database`，兩次唯讀請求均未取得回覆；未把它記成 Gemini 完成審查。CodeRabbit 複審仍受先前免費 CLI cooldown 影響，未宣稱複審通過。

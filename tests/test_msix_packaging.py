@@ -113,6 +113,10 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Build MSIX package" in ci
     assert "Inspect and sign MSIX package" in ci
     assert "Install and uninstall MSIX package" in ci
+    assert "runtime-manifest.json" in ci
+    assert "ConvertTo-Json" in ci
+    assert "Get-FileHash" in ci
+    assert "source_commit" in ci
     assert ci.count("timeout-minutes: 30") >= 2
     assert ci.count("timeout-minutes: 10") >= 3
 
