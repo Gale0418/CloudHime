@@ -74,7 +74,13 @@ from ocr_refinement import (
 )
 import translation_helpers as translation_tools
 import localization
-from model_catalog import get_model_spec, WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
+from model_catalog import (
+    LOCAL_MODEL_IDS,
+    WORKER_DEFAULT_MODEL,
+    WORKER_MODEL_CHOICES,
+    WORKER_MODEL_IDS,
+    get_model_spec,
+)
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from settings_store import (
@@ -3990,7 +3996,10 @@ class Controller(QWidget):
     def toggle_ai_translation(self, checked):
         desired_enabled = bool(checked)
         has_key = bool(self.worker.google_api_key.strip())
-        is_local_model = (getattr(self.worker, "gemma_model", "") or "").strip() in {"translategemma-4b-it-local", "gemma-3-4b-it-local"}
+        is_local_model = (
+            (getattr(self.worker, "gemma_model", "") or "").strip()
+            in LOCAL_MODEL_IDS
+        )
         if desired_enabled and not (has_key or is_local_model):
             self.lbl_status.setText("請先輸入 Google API KEY，或切換到本地模型")
             desired_enabled = False

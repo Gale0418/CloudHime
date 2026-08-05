@@ -73,8 +73,9 @@ from ocr_refinement import (
 )
 import translation_helpers as translation_tools
 import localization
+from model_catalog import WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
-from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalGemmaProvider
+from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from settings_store import (
     create_settings_paths,
     extract_backend_chain,
@@ -110,18 +111,12 @@ AI_TOP_CONTEXT_RATIO = 0.22
 NOISE_ONLY_PATTERN = re.compile(r'^[-_=.,|/\\:;~^]+$')
 HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
 GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-DEFAULT_GEMMA_MODEL = "gemma-3-27b-it"
+DEFAULT_GEMMA_MODEL = WORKER_DEFAULT_MODEL
 SETTINGS_PATHS = create_settings_paths(os.path.dirname(__file__))
 MIN_BUBBLE_FONT_PT = 8
 MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
-SUPPORTED_AI_MODELS = [
-    ("Gemma 3 4B (Local)", "gemma-3-4b-it-local"),
-    ("Gemma 3 1B", "gemma-3-1b-it"),
-    ("Gemma 3 27B", "gemma-3-27b-it"),
-    ("Gemma 4 31B", "gemma-4-31b-it"),
-    ("Gemini 2.5 Pro", "gemini-2.5-pro"),
-]
+SUPPORTED_AI_MODELS = list(WORKER_MODEL_CHOICES)
 SUPPORTED_GEMMA_MODEL_NAMES = [model_name for _, model_name in SUPPORTED_AI_MODELS]
 SCAN_MODE_FULLSCREEN = "fullscreen"
 SCAN_MODE_REGION = "region"

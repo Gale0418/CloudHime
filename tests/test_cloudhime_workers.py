@@ -387,6 +387,25 @@ def test_multimodal_routing_remote_model():
     assert worker.resolve_multimodal_provider_name() == "gemma"
 
 
+def test_remote_multimodal_routing_respects_catalog_capability_and_provider():
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.google_api_key = "test_key"
+
+    worker.gemma_model = "gemma-3-1b-it"
+    worker.active_gemma_model = worker.gemma_model
+    assert worker.has_remote_multimodal_ai() is False
+
+    worker.gemma_model = "gemini-3.5-flash"
+    worker.active_gemma_model = worker.gemma_model
+    assert worker.has_remote_multimodal_ai() is True
+    assert worker.get_current_ai_provider() == "gemini"
+
+    worker.gemma_model = "gemma-4-31b-it"
+    worker.active_gemma_model = worker.gemma_model
+    assert worker.get_current_ai_provider() == "gemma"
+
+
 def test_multimodal_routing_fallback():
     worker = make_worker_stub()
 
@@ -1306,6 +1325,7 @@ def test_refresh_translation_registry_does_not_require_embedded_provider_for_rem
     worker.local_multimodal_provider.enabled = False
     worker.local_multimodal_provider.timeout_seconds = 20
     worker.local_multimodal_provider.update_runtime = lambda *args, **kwargs: None
+    worker.local_multimodal_provider.update_generation_config = lambda **kwargs: None
 
     OCRWorker._refresh_translation_registry(worker)
 

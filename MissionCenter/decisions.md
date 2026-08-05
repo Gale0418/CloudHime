@@ -458,3 +458,10 @@
 - pack identity 使用 `(pack_id, revision)`；identity 改變時先使舊 scan generation 失效，再安裝 worker context，避免舊 frame 在新作品知識下完成。
 - 同作品 Research 更新沿用 pack ID；legacy 同名 pack 以 catalog 最新項為準。一般翻譯不得依賴 Research 成功或網路可用。
 - builder completion commit 是 cancel 邊界：commit 前取消必須發布 cancelled，commit 後取消回傳 false；runtime setter 失敗必須清空 worker context 與 active catalog，不可保留上一部作品。
+
+## 2026-08-05：模型 catalog 分為離線政策與線上 availability
+
+- 決策：model_catalog.py 是可版本控管的離線 capability／migration 政策；生命週期為 legacy 的遠端型號不可出現在 UI 或 provider callable 清單。
+- 決策：Gemma／Gemini／本地 llama-server 的 provider attribution 必須表示實際執行家族，不能再以字串前綴推測。
+- 決策：Models API 動態探測另立 CH-T67；不得在輸入設定或開啟設定頁時偷偷上網，失敗時沿用最後有效快照並保留 local-first 路由。
+- 邊界：本階段不實作 Vision-first、ResourceGovernor、idle unload 或完整 dev provider 刪除，也不宣稱未跑過的 API／GPU／clean-machine benchmark。

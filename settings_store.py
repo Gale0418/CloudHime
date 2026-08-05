@@ -17,6 +17,16 @@ RELIEF_OFFSET_MIN = -500
 RELIEF_OFFSET_MAX = 500
 ACTIVE_WORK_TITLE_MAX = 240
 
+GEMMA_MODEL_ALIASES = {
+    "translategemma-4b-it-local": "gemma-3-4b-it-local",
+    "gemma-4-26b-it": "gemma-4-26b-a4b-it",
+    "gemma-3-1b-it": "gemma-4-31b-it",
+    "gemma-3-27b-it": "gemma-4-31b-it",
+}
+LOCAL_MULTIMODAL_MODEL_ALIASES = {
+    "translategemma-4b-it-local": "gemma-3-4b-it-local",
+}
+
 
 @dataclass(frozen=True)
 class SettingsPaths:
@@ -185,7 +195,14 @@ def normalize_settings_payload(
     normalized["local_multimodal_cpu_only"] = coerce_bool(normalized.get("local_multimodal_cpu_only", False))
     normalized["japanese_ocr_rescue_enabled"] = coerce_bool(normalized.get("japanese_ocr_rescue_enabled", False))
     normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")
-    normalized["local_multimodal_model"] = str(normalized.get("local_multimodal_model", "") or "")
+    if "gemma_model" in normalized:
+        gemma_model = normalized["gemma_model"]
+        normalized["gemma_model"] = GEMMA_MODEL_ALIASES.get(gemma_model, gemma_model)
+    local_multimodal_model = str(normalized.get("local_multimodal_model", "") or "")
+    normalized["local_multimodal_model"] = LOCAL_MULTIMODAL_MODEL_ALIASES.get(
+        local_multimodal_model,
+        local_multimodal_model,
+    )
     normalized["local_multimodal_timeout_seconds"] = clamp_local_multimodal_timeout(
         normalized.get("local_multimodal_timeout_seconds", 20)
     )

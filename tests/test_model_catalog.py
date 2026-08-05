@@ -26,6 +26,8 @@ def test_worker_and_provider_surfaces_use_catalog_models():
     assert all(model_id in MODEL_BY_ID for _, model_id in WORKER_MODEL_CHOICES)
     assert all(model_id in MODEL_BY_ID for model_id in REMOTE_TRANSLATION_MODEL_IDS)
     assert all(model_id not in LOCAL_MODEL_IDS for model_id in REMOTE_TRANSLATION_MODEL_IDS)
+    assert 'gemma-3-1b-it' not in REMOTE_TRANSLATION_MODEL_IDS
+    assert 'gemma-3-27b-it' not in REMOTE_TRANSLATION_MODEL_IDS
 
 
 def test_catalog_specs_expose_required_policy_fields():
@@ -64,3 +66,28 @@ def test_invalid_model_update_returns_observable_warning_after_supported_models_
     assert provider.gemma_model == "gemma-4-31b-it"
     assert warning == "invalid_model:gemma-4-26b-a4b-it;fallback=gemma-4-31b-it"
     assert provider.last_config_warning == warning
+
+def test_catalog_ui_selection_and_sampling_policy_are_explicit():
+    assert "translategemma-4b-it-local" not in MODEL_BY_ID
+    assert WORKER_MODEL_IDS == tuple(
+        spec.model_id for spec in MODEL_CATALOG if spec.ui_selectable
+    )
+    assert WORKER_MODEL_CHOICES == tuple(
+        (spec.display_name, spec.model_id)
+        for spec in MODEL_CATALOG
+        if spec.ui_selectable
+    )
+    assert WORKER_DEFAULT_MODEL == "gemma-4-31b-it"
+
+    gemma_3_1b = get_model_spec("gemma-3-1b-it")
+    gemma_3_27b = get_model_spec("gemma-3-27b-it")
+    assert gemma_3_1b is not None
+    assert gemma_3_27b is not None
+    assert gemma_3_1b.ui_selectable is False
+    assert gemma_3_27b.ui_selectable is False
+    assert gemma_3_1b.lifecycle != "stable"
+    assert gemma_3_27b.lifecycle != "stable"
+    assert gemma_3_1b.multimodal is False
+
+    for spec in MODEL_CATALOG:
+        assert spec.accepts_sampling_params is (not spec.model_id.startswith("gemini-3."))
