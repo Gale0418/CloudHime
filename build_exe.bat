@@ -78,6 +78,18 @@ for %%F in (runtime\ggml-cpu-*.dll) do (
   )
 )
 
+for /f "delims=" %%C in ('git rev-parse HEAD 2^>nul') do set "RUNTIME_COMMIT=%%C"
+if not defined RUNTIME_COMMIT (
+  echo Unable to determine the runtime source commit.
+  set "BUILD_EXIT_CODE=1"
+  goto :cleanup
+)
+python packaging\runtime_manifest.py --runtime-dir "%RUNTIME_STAGE%" --output "%RUNTIME_STAGE%\runtime-manifest.json" --source-commit "%RUNTIME_COMMIT%" --backend "cuda" --architecture "x64"
+if errorlevel 1 (
+  echo Runtime manifest generation failed. The staged llama-server must pass --version.
+  set "BUILD_EXIT_CODE=1"
+  goto :cleanup
+)
 rem CloudHime ships a lightweight Windows OCR build.
 rem Optional OCR backends are source-mode only; packaged builds do not install Python packages.
 python -m PyInstaller --version >nul 2>&1
