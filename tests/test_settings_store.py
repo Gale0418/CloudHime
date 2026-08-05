@@ -190,3 +190,33 @@ def test_active_work_title_round_trips_through_appdata_settings(tmp_path):
 
     assert loaded_from == paths.appdata_file
     assert loaded["active_work_title"] == "Princess Synergy"
+
+
+@pytest.mark.parametrize(
+    ("gemma_model", "expected"),
+    [
+        ("translategemma-4b-it-local", "gemma-3-4b-it-local"),
+        ("gemma-4-26b-it", "gemma-4-26b-a4b-it"),
+        ("gemma-3-1b-it", "gemma-4-31b-it"),
+        ("gemma-3-27b-it", "gemma-4-31b-it"),
+        ("unknown-model", "unknown-model"),
+    ],
+)
+def test_normalize_settings_payload_migrates_only_explicit_gemma_model_aliases(gemma_model, expected):
+    normalized = normalize_settings_payload({"gemma_model": gemma_model}, region_opacity=40)
+
+    assert normalized["gemma_model"] == expected
+
+
+def test_normalize_settings_payload_migrates_only_local_translategemma_alias():
+    migrated = normalize_settings_payload(
+        {"local_multimodal_model": "translategemma-4b-it-local"},
+        region_opacity=40,
+    )
+    unknown = normalize_settings_payload(
+        {"local_multimodal_model": "custom-local-model"},
+        region_opacity=40,
+    )
+
+    assert migrated["local_multimodal_model"] == "gemma-3-4b-it-local"
+    assert unknown["local_multimodal_model"] == "custom-local-model"

@@ -88,7 +88,14 @@ from scan_pipeline import (
 )
 from knowledge_retrieval import pack_revision_token
 import localization
-from model_catalog import WORKER_DEFAULT_MODEL, WORKER_MODEL_CHOICES, WORKER_MODEL_IDS
+from model_catalog import (
+    LOCAL_MODEL_IDS,
+    WORKER_DEFAULT_MODEL,
+    WORKER_MODEL_CHOICES,
+    REMOTE_TRANSLATION_MODEL_IDS,
+    WORKER_MODEL_IDS,
+    get_model_spec,
+)
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalMultimodalProvider
 from translation_contracts import TranslationResult
@@ -150,6 +157,7 @@ MIN_BUBBLE_WIDTH = 96
 MIN_BUBBLE_HEIGHT = 42
 SUPPORTED_AI_MODELS = list(WORKER_MODEL_CHOICES)
 SUPPORTED_GEMMA_MODEL_NAMES = WORKER_MODEL_IDS
+SUPPORTED_REMOTE_MODEL_NAMES = REMOTE_TRANSLATION_MODEL_IDS
 SCAN_MODE_FULLSCREEN = "fullscreen"
 SCAN_MODE_REGION = "region"
 REGION_RENDER_BUBBLE = "bubble"
@@ -234,7 +242,7 @@ class OCRWorker(QObject):
         self._active_scan_request = None
         self.active_knowledge_pack = None
         self.knowledge_revision_token = "knowledge-pack:none"
-        self.gemma_call_timestamps = {model_name: [] for model_name in SUPPORTED_GEMMA_MODEL_NAMES}
+        self.gemma_call_timestamps = {model_name: [] for model_name in SUPPORTED_REMOTE_MODEL_NAMES}
         self._translation_registry_batch_depth = 0
         self._translation_registry_batch_dirty = False
         self._pending_gemma_prompt = ""
@@ -246,7 +254,7 @@ class OCRWorker(QObject):
             gemma_prompt="",
             target_lang=self.translation_target_lang,
             auto_switch_enabled=False,
-            supported_models=SUPPORTED_GEMMA_MODEL_NAMES,
+            supported_models=SUPPORTED_REMOTE_MODEL_NAMES,
         )
         app_root = Path(__file__).resolve().parent
         self._local_vision_assets = resolve_preferred_vision_assets(app_root)
@@ -562,7 +570,7 @@ class OCRWorker(QObject):
                 auto_switch_enabled=config.gemma_auto_switch_enabled,
                 supported_models=config.supported_models,
             )
-            selected_local_model = config.gemma_model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"}
+            selected_local_model = config.gemma_model in LOCAL_MODEL_IDS
             embedded_runtime = getattr(self, "local_vision_runtime", None)
             runtime_state = getattr(embedded_runtime, "_state", None)
             has_embedded_runtime = embedded_runtime is not None
@@ -584,6 +592,10 @@ class OCRWorker(QObject):
                 config.local_multimodal_enabled or local_text_runtime_required
             )
             self.local_multimodal_provider.timeout_seconds = config.local_multimodal_timeout_seconds
+            self.local_multimodal_provider.update_generation_config(
+                temperature=config.local_gemma_temperature,
+                repeat_penalty=config.local_gemma_repeat_penalty,
+            )
             if has_embedded_runtime:
                 runtime_profile = getattr(embedded_runtime, "profile_name", "vision")
                 if (
@@ -931,7 +943,9 @@ class OCRWorker(QObject):
 
     def _canonical_cache_provider(self, provider):
         normalized = str(provider or "").strip().lower()
-        if normalized in {"gemma", "local_multimodal"}:
+        if normalized == "local_multimodal":
+            return normalized
+        if normalized == "gemma":
             return self.get_current_ai_provider()
         return normalized
 
@@ -1201,7 +1215,19 @@ class OCRWorker(QObject):
         self.auto_threshold_refresh_interval_ms = minutes * 60 * 1000
 
     def has_remote_multimodal_ai(self):
-        return self.use_gemma_translation and bool(self.google_api_key) and not self._is_local_model_active()
+        model = (
+            getattr(self, "active_gemma_model", self.gemma_model)
+            or self.gemma_model
+            or ""
+        ).strip()
+        spec = get_model_spec(model)
+        return bool(
+            self.use_gemma_translation
+            and self.google_api_key
+            and spec is not None
+            and spec.locality == "remote"
+            and spec.multimodal
+        )
 
     def has_local_multimodal_ai(self):
         return (
@@ -1221,7 +1247,7 @@ class OCRWorker(QObject):
 
     def _is_local_model_active(self):
         model = getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model
-        return model in {LOCAL_GEMMA_MODEL_ID, "translategemma-4b-it-local"}
+        return model in LOCAL_MODEL_IDS
 
     def resolve_multimodal_provider_name(self):
         if self.has_local_multimodal_ai():
@@ -1240,7 +1266,7 @@ class OCRWorker(QObject):
     def prune_gemma_call_timestamps(self, model_name=None):
         cutoff = time.monotonic() - GEMMA_RATE_LIMIT_WINDOW_SEC
         if model_name is None:
-            for name in SUPPORTED_GEMMA_MODEL_NAMES:
+            for name in SUPPORTED_REMOTE_MODEL_NAMES:
                 self.gemma_call_timestamps[name] = [ts for ts in self.gemma_call_timestamps.get(name, []) if ts >= cutoff]
             return
         model_name = self.normalize_gemma_model(model_name)
@@ -1260,7 +1286,7 @@ class OCRWorker(QObject):
 
     def get_other_gemma_model(self, model_name=None):
         model_name = self.normalize_gemma_model(model_name or self.gemma_model)
-        for candidate in SUPPORTED_GEMMA_MODEL_NAMES:
+        for candidate in SUPPORTED_REMOTE_MODEL_NAMES:
             if candidate != model_name:
                 return candidate
         return model_name
@@ -1274,7 +1300,7 @@ class OCRWorker(QObject):
             self.active_gemma_model = preferred_model
             return preferred_model
         if self.gemma_auto_switch_enabled:
-            for candidate in SUPPORTED_GEMMA_MODEL_NAMES:
+            for candidate in SUPPORTED_REMOTE_MODEL_NAMES:
                 if candidate == preferred_model:
                     continue
                 if self.can_call_gemma(candidate):
@@ -1309,14 +1335,15 @@ class OCRWorker(QObject):
         return translation_tools.get_translation_provider_priority(provider)
 
     def get_current_ai_provider(self):
-        model = (getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model or "").strip().lower()
+        model = (
+            getattr(self, "active_gemma_model", self.gemma_model)
+            or self.gemma_model
+            or ""
+        ).strip()
         if self._is_local_model_active():
-            return "gemma-3"
-        if "gemma-4" in model:
-            return "gemma-4"
-        if "gemma-3" in model:
-            return "gemma-3"
-        return "google"
+            return "local_multimodal"
+        spec = get_model_spec(model)
+        return spec.provider if spec is not None else "google"
 
     def sync_gemma_call_timestamps_from_provider(self, provider):
         timestamps = getattr(provider, "_call_timestamps", None)
@@ -1324,7 +1351,7 @@ class OCRWorker(QObject):
             return
         self.gemma_call_timestamps = {
             model_name: list(timestamps.get(model_name, []))
-            for model_name in SUPPORTED_GEMMA_MODEL_NAMES
+            for model_name in SUPPORTED_REMOTE_MODEL_NAMES
         }
 
     def should_replace_provider(self, old_provider, new_provider):

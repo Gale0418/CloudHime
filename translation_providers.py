@@ -44,9 +44,11 @@ DEFAULT_GEMMA_MODEL = REGISTRY_DEFAULT_MODEL
 SUPPORTED_GEMMA_MODEL_NAMES = REMOTE_TRANSLATION_MODEL_IDS
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
-    "gemma-3-1b-it": 30,
-    "gemma-3-27b-it": 30,
+    "gemma-4-26b-a4b-it": 15,
     "gemma-4-31b-it": 15,
+    "gemini-3.6-flash": 15,
+    "gemini-3.5-flash": 15,
+    "gemini-3.1-flash-lite": 15,
     "gemini-2.5-pro": 15,
 }
 TRANSLATION_CACHE_LIMIT = 512
@@ -372,6 +374,27 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                     return candidate
         return model
 
+    def _generation_config(
+        self,
+        model_name: str,
+        *,
+        max_output_tokens: int,
+        temperature: float,
+        response_mime_type: str | None = None,
+    ) -> dict[str, Any]:
+        config: dict[str, Any] = {
+            "maxOutputTokens": max_output_tokens,
+        }
+        if response_mime_type:
+            config["responseMimeType"] = response_mime_type
+        spec = get_model_spec(model_name)
+        if spec is None or spec.accepts_sampling_params:
+            config.update({
+                "temperature": temperature,
+                "topP": 0.9,
+                "topK": 32,
+            })
+        return config
     def _request(self, model_name: str, prompt: str, *, image_parts: Sequence[dict[str, Any]] | None = None, max_output_tokens: int = 1024, temperature: float = 0.2, response_mime_type: str = "text/plain") -> dict[str, Any]:
         req_body = {
             "contents": [
@@ -379,13 +402,12 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                     "parts": ([*image_parts] if image_parts else []) + [{"text": prompt}],
                 }
             ],
-            "generationConfig": {
-                "temperature": temperature,
-                "topP": 0.9,
-                "topK": 32,
-                "maxOutputTokens": max_output_tokens,
-                "responseMimeType": response_mime_type,
-            },
+            "generationConfig": self._generation_config(
+                model_name,
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+                response_mime_type=response_mime_type,
+            ),
         }
         req = request.Request(
             GOOGLE_API_ENDPOINT.format(model=model_name),
@@ -445,7 +467,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
         req_body = {
             "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
-            "generationConfig": {"temperature": temperature, "topP": 0.9, "topK": 32, "maxOutputTokens": max_output_tokens},
+            "generationConfig": self._generation_config(
+                model_name,
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+            ),
         }
         req = request.Request(
             GOOGLE_STREAM_ENDPOINT.format(model=model_name),
@@ -1099,12 +1125,24 @@ class LocalGemmaProvider(KnowledgePromptContext):
 class LocalMultimodalProvider(KnowledgePromptContext):
     name = "local_multimodal"
 
-    def __init__(self, *, base_url: str = "", model_name: str = "", target_lang: str = "zh-TW", enabled: bool = False, timeout_seconds: int = 20):
+    def __init__(
+        self,
+        *,
+        base_url: str = "",
+        model_name: str = "",
+        target_lang: str = "zh-TW",
+        enabled: bool = False,
+        timeout_seconds: int = 20,
+        temperature: float = 0.2,
+        repeat_penalty: float = 1.15,
+    ):
         self.base_url = (base_url or "").rstrip("/")
         self.model_name = (model_name or "").strip()
         self.target_lang = target_lang
         self.enabled = bool(enabled)
         self.timeout_seconds = int(timeout_seconds)
+        self.temperature = float(temperature)
+        self.repeat_penalty = float(repeat_penalty)
         self._runtime_ready = bool(self.base_url and self.model_name)
         self._dictionary = load_translation_dictionary()
         self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
@@ -1117,6 +1155,18 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self.base_url = (base_url or "").rstrip("/")
         self.model_name = (model_name or "").strip()
         self._runtime_ready = bool(ready and self.base_url and self.model_name)
+
+    def update_generation_config(self, *, temperature: float, repeat_penalty: float) -> None:
+        normalized_temperature = float(temperature)
+        normalized_repeat_penalty = float(repeat_penalty)
+        if (
+            normalized_temperature == self.temperature
+            and normalized_repeat_penalty == self.repeat_penalty
+        ):
+            return
+        self.temperature = normalized_temperature
+        self.repeat_penalty = normalized_repeat_penalty
+        self._translation_cache.clear()
 
     def _inline_part_to_content(self, image_part: dict[str, Any]) -> dict[str, Any]:
         inline_data = image_part.get("inline_data") or {}
@@ -1140,7 +1190,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         return {
             "model": self.model_name,
             "messages": [{"role": "user", "content": content}],
-            "temperature": 0.1,
+            "temperature": self.temperature,
+            "repeat_penalty": self.repeat_penalty,
             "stream": False,
             "max_tokens": max(64, int(max_tokens)),
             "response_format": {"type": response_format},
@@ -1181,7 +1232,15 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         if not normalized:
             return TranslationResult(text="", provider=self.name, model=self.model_name)
         resolved_target = target_lang or self.target_lang
-        cache_key = (self.base_url, self.model_name, normalized, resolved_target, self.knowledge_revision_token)
+        cache_key = (
+            self.base_url,
+            self.model_name,
+            normalized,
+            resolved_target,
+            self.temperature,
+            self.repeat_penalty,
+            self.knowledge_revision_token,
+        )
         cached = self._translation_cache.get(cache_key)
         if cached is not None:
             self._translation_cache.move_to_end(cache_key)

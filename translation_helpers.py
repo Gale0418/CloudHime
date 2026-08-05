@@ -1008,7 +1008,7 @@ def build_gemma_prompt_with_override(
     text: Any,
     custom_prompt: str = "",
     target_lang: str = GOOGLE_TARGET_LANG,
-    model_name: str = "gemma-3-27b-it",
+    model_name: str = "gemma-4-31b-it",
 ) -> str:
     """Return the model-aware prompt, optionally prefixed by user overrides."""
     custom = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else ""
@@ -1045,7 +1045,7 @@ def build_ai_image_parts(img_np: Any, max_width: int = DEFAULT_AI_IMAGE_MAX_WIDT
 
 def get_translation_provider_priority(provider: Any) -> int:
     provider = (provider or "").strip().lower()
-    if provider == "gemma-4":
+    if provider in {"gemma", "gemini", "gemma-4", "local_multimodal"}:
         return 30
     if provider == "gemma-3":
         return 20

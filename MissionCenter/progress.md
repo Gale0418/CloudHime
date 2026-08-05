@@ -2,9 +2,9 @@
 
 - 專案: MissionCenter
 - 目標: MissionCenter workspace
-- 目前狀態: 39/65 tasks
+- 目前狀態: 46/76 tasks
 - 里程碑: CloudHime 產品完成優先；Partner Center 帳號成果已驗收
-- 進度條: [######----] 60%
+- 進度條: [######----] 61%
 - 進行中任務:
   - CH-E6 精準與效能補強 Milestone 2 (In Progress)
   - CH-T34 圖片多模態 OCR smoke 與參數基準 (Review)
@@ -106,3 +106,11 @@
 - Knowledge Builder completion／cancel 具鎖定 commit point；ready progress 阻塞時取消會送 cancelled，completion committed 後 cancel 回傳 false。worker 載入新 pack 失敗時會再清除 context，避免殘留舊 pack。
 - 驗證：CodeRabbit 修正 focused 47 passed；最終 core 234 passed；UI 四檔分拆 36+2+1+8=47 passed；本階段先前 OCR 196 passed、runtime 94 passed／2 skipped、benchmark 58 passed；compileall／diff-check 通過。UI 合跑完成部分輸出後未退出，已精確終止專屬命令並以分拆結果為準。
 - Gemini 3.6 Flash High RPC request 77e541c1-4999-4e23-bdd6-6a4f0b580c79／cascade 9b127e89-0638-4b6b-a7a6-b813248a9fea，hub-visible、0 blocking。CodeRabbit uncommitted review 2 major，均以紅燈回歸測試重現並修正；未執行第二次遠端 review。
+## CH-T66 遠端模型目錄與 capability hardening（2026-08-05）
+
+- 已完成：model catalog 成為 UI／worker／provider 的共同來源；舊 Gemma 3 遠端選項退出可選與可呼叫清單，既有設定一次遷移到 Gemma 4；Gemma 3 1B 明確標記 text-only。
+- 已完成：依模型 capability 決定是否送出 sampling 欄位；本地 llama-server translation payload 套用 temperature／repeat penalty，cache key 隨參數隔離；worker／UI attribution 區分 gemma、gemini、local_multimodal。
+- 已完成：四個 production 入口不再 import in-process LocalGemmaProvider；開發相容類別與測試暫留，不把本階段誤報為原始碼完全刪除。
+- 實際驗證：focused 140 passed；core 243 passed；OCR 197 passed；runtime 94 passed、2 skipped；UI 分檔 47 passed；benchmarks 58 passed；tracked Python compileall 與 CRLF-aware diff-check 通過。
+- 未驗證：live Models API、真實 remote endpoint、clean Windows／MSIX／Store、這批設定下的 GPU 品質與延遲。動態 availability 與離線快照留 CH-T67。
+- MissionCenter doctor 仍因歷史 smoke ledger 的 16 列欄位數不符與舊 Done 任務缺標準關聯而非零；本次新增任務造成的 progress stale 已修為 46/76、61%，未把歷史帳問題誤報為通過。

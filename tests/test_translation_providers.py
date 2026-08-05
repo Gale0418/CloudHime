@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from translation_providers import GoogleTranslationProvider
@@ -301,3 +303,59 @@ def test_screenshot_debug_log_reports_lengths_without_model_or_ocr_text():
     assert "last_raw_len=" in rendered
     assert secret not in rendered
     assert "OCR_SECRET" not in rendered
+def test_remote_request_sampling_fields_follow_model_capability(monkeypatch):
+    payloads = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"candidates": []}'
+
+    def fake_urlopen(req, timeout):
+        payloads.append(json.loads(req.data.decode("utf-8")))
+        return Response()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemini-3.5-flash",
+    )
+
+    provider._request("gemini-3.5-flash", "hello")
+    provider._request("gemma-4-31b-it", "hello")
+
+    gemini_config = payloads[0]["generationConfig"]
+    assert "temperature" not in gemini_config
+    assert "topP" not in gemini_config
+    assert "topK" not in gemini_config
+    assert payloads[1]["generationConfig"]["temperature"] == 0.2
+
+
+def test_local_multimodal_sampling_settings_reach_payload_and_cache_key():
+    provider = LocalMultimodalProvider(
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="gemma-local",
+        enabled=True,
+        temperature=0.35,
+        repeat_penalty=1.2,
+    )
+    payloads = []
+    provider._request_chat_completion = (
+        lambda payload: payloads.append(payload) or "translated"
+    )
+
+    first = provider.translate("hello")
+    provider.update_generation_config(temperature=0.4, repeat_penalty=1.25)
+    second = provider.translate("hello")
+
+    assert first.from_cache is False
+    assert second.from_cache is False
+    assert payloads[0]["temperature"] == 0.35
+    assert payloads[0]["repeat_penalty"] == 1.2
+    assert payloads[1]["temperature"] == 0.4
+    assert payloads[1]["repeat_penalty"] == 1.25
