@@ -191,3 +191,12 @@
 - 實際驗證：worker 4 passed；translation panel 10 passed；Controller availability tests 3 passed；discovery／CI inventory 19 passed；UI 排除 3 個主機 tmp ACL 測試後 47 passed、3 deselected；explicit compileall 通過；git diff --check 通過但有既有 LF/CRLF 轉換提示。
 - Gemini 透過 Hub-visible local bridge 唯讀審查回覆 0 findings，未修改檔案。CodeRabbit 本小時額度已在前一 checkpoint 用滿，因此本 PR2 checkpoint 不宣稱 CodeRabbit 複審完成。
 - 仍待：CodeRabbit cooldown 後 scoped review、實際 API key／live Models API、clean Windows／Store／GPU gate；本 checkpoint 不修改 provider routing，也不把 static／offline 結果宣稱成 live 驗證。
+
+## CH-T67 PR2 review／live availability checkpoint（2026-08-05）
+
+- Gemini 3.6 Flash High 以 Hub-visible local bridge 進行唯讀審查，涵蓋 Controller、QThread、stale generation、provider routing、API key 隱私與 UI gate，回覆 `0 findings`，未修改檔案。
+- CodeRabbit scope 先排除 MissionCenter、大型／暫存檔，只建立五檔 production source fixture：`cloudhime_ui.py`、`remote_model_availability_worker.py`、`remote_model_discovery.py`、`translation_settings_panel.py`、`translation_helpers.py`。服務已進入 setup，但回覆 `rate_limit`，免費 CLI 顯示約 9 分鐘後重置；沒有可用 findings，因此不得宣稱通過或 0 issues。
+- live Models API smoke 使用既有 DPAPI key 讀取流程，未輸出 key；`GET /v1beta/models` 嘗試結果為 `urllib.error.URLError / WinError 10061`（目標電腦拒絕連線），無 snapshot 寫入。這只能證明目前執行環境無法建立連線，不能判定 key 或 Google API 契約失效。
+- 依 Google 官方 Models API，`models.list` 仍以分頁 `nextPageToken` 與 `supportedGenerationMethods=generateContent` 作為 discovery contract；live endpoint 需在可連線環境重跑（https://ai.google.dev/api/models）。
+- 本輪由 Codex 建立的四個隔離 review fixture 已精確清除；主工作樹維持乾淨，PR2 commit `4bf70ed` 不變。舊 `.pytest`／`.tmp`／MissionCenter 產物未自動刪除，交由後續清理 checkpoint 逐項確認。
+- 下一步：等待 CodeRabbit cooldown 後，以同一五檔 scope 重跑；若有 finding 先補 RED regression 再修；live API 改在可連線 Windows／CI 或主人確認的環境重測。
