@@ -34,12 +34,20 @@ runtime file set, size, or digest differs.
 
 ## Dependency provenance and SBOM
 
-CI 的 dependency-contract job 會在乾淨 venv 內安裝 `requirements-ci.txt`，執行
+CI 的 dependency-contract job 會在乾淨 venv 內以 `requirements-ci-lock-win-amd64-py310.txt` 安裝，執行
 `pip check`，再用 pip 的 installation report 解析實際套件圖。`packaging/dependency_contract.py`
-會 fail-closed 檢查 direct requirements、transitive distributions、下載 URL、SHA-256
-與 license metadata，並輸出 deterministic CycloneDX 1.6 SBOM。
+會 fail-closed 檢查 direct requirements、transitive distributions、下載 URL、SHA-256、license metadata，
+以及 target-specific hash lock 的完整 component set、version 與 selected artifact hash，並輸出 deterministic
+CycloneDX 1.6 SBOM。
 
-這份 pip report 是 provenance 證據，不是 pip 可直接拿來安裝的 lock file；因此目前不能宣稱
-完整 wheel-hash lock 或 clean-machine release 已完成。CI 會上傳 report 與 SBOM，後續再把
-license evidence 與正式 release bundle 綁定。
-`pip-report.json` 由實際執行並接受 `pip check` 的 `pip install -r requirements-ci.txt --report ...` 直接產生；CI 不另外用 `--dry-run --ignore-installed` 解析另一套環境。
+`pip-report.json` 仍是 provenance 證據；hash lock 才是 CI 安裝約束，但它只適用於 Python 3.10／Windows x64。
+CI 會上傳 report 與 SBOM，後續再把 license evidence 與正式 release bundle 綁定。report 由實際執行並接受
+`pip check` 的 lock 安裝直接產生；CI 不另外用 `--dry-run --ignore-installed` 產生另一套被測環境。
+
+## Python 3.10 Windows hash locks
+
+`requirements-lock-win-amd64-py310.txt` 是 production graph，`requirements-ci-lock-win-amd64-py310.txt`
+則另外包含 pytest／pytest-qt。兩份檔案由 Python 3.10、Windows x64 的 pip report 產生，包含
+所有 resolved distribution 的版本與 wheel SHA-256；CI 以 `--require-hashes` 安裝，並用原始
+`requirements.txt`／`requirements-ci.txt` 驗證 direct intent。更新 direct dependency 或 Python／平台
+版本時，必須重新解析並重新驗證 lock；它們不是可套用到任意 Python 版本的通用 lock。

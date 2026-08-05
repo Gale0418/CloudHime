@@ -148,3 +148,11 @@
 - TDD／review：新增 contract tests 初始 RED 兩項已修；CodeRabbit 首輪指出 pip install 未立即檢查 exit code，第二輪隔離 5 檔指出 report 與實際安裝脫鉤，兩項均以 regression test 重現後修正。第三次複審受免費 CLI rate limit（約 10 分鐘）阻擋，未宣稱通過。
 - 實際驗證：dependency／CI／release／MSIX／runtime targeted `34 passed, 1 skipped`；core `260 passed, 1 skipped`；本機 Python 3.13 resolution smoke 產生並驗證 `53 components`，只作 metadata smoke，不代表 Python 3.10 Windows clean-machine；tracked compileall exit 0、CRLF-aware diff-check exit 0。
 - 仍未完成：committed `--require-hashes` transitive lock、逐 wheel license evidence／正式 release bundle SBOM、clean-machine、真實 PyInstaller／MSIX install、WACK、Store 與 GPU onboarding；本 checkpoint 不把 CI placeholder 或本機 3.13 smoke 擴大宣稱。
+
+## CH-T64 Python 3.10 Windows hash-lock checkpoint（2026-08-05）
+
+- 已從 pip installation report 產生並提交 target-specific lock：production resolved 53 components、CI resolved 58 components；每個 distribution 都有 exact version 與 wheel SHA-256，CI Python 3.10／Windows x64 使用 `--require-hashes`。
+- `dependency_contract.py` 現在會驗證 lock 的完整 component set、version、selected artifact hash，並另外驗證原始 `requirements.txt`／`requirements-ci.txt` 的 direct intent；不把 lock 誤當成跨 Python／平台通用檔。
+- 實際 cross-target smoke：pip `--dry-run --ignore-installed --only-binary=:all: --require-hashes --platform win_amd64 --python-version 3.10 --implementation cp --abi cp310` 接受 CI lock 58 components；contract validate／SBOM verify 均成功。這是解析與 hash 證據，不是 clean-machine install。
+- 本輪驗證：受影響 targeted `39 passed, 1 skipped`；core `265 passed, 1 skipped`；tracked Python `compileall`、CI YAML parse、CRLF-aware `diff --check` 均成功。
+- 仍未完成：CI runner 實際 clean venv install、逐 wheel license evidence／正式 release bundle SBOM、production build 整合 production lock、clean Windows、MSIX install／WACK／Store、GPU onboarding；CodeRabbit 本階段前兩次 findings 已修，第三次受免費 CLI cooldown 阻擋，未宣稱複審通過。

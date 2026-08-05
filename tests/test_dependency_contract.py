@@ -122,6 +122,60 @@ def test_sbom_tampering_is_rejected(tmp_path: Path):
         contract.verify_sbom(sbom, canonical)
 
 
+def test_direct_requirements_are_checked_against_transitive_lock_graph():
+    report = _report()
+    contract.validate_direct_requirements(report, {"alpha-pkg": "1.0.0"})
+
+    with pytest.raises(contract.ContractError, match="direct requirements mismatch"):
+        contract.validate_direct_requirements(report, {"alpha-pkg": "9.9.9"})
+
+
+def test_committed_target_locks_are_hash_complete():
+    for filename in (
+        "requirements-lock-win-amd64-py310.txt",
+        "requirements-ci-lock-win-amd64-py310.txt",
+    ):
+        lock = contract.read_lock(ROOT / filename)
+        assert len(lock) > 10
+        assert all(entry["hashes"] for entry in lock.values())
+
+def test_hash_lock_matches_every_resolved_report_component(tmp_path: Path):
+    report = _report()
+    lock_path = tmp_path / "requirements.lock"
+    lock_path.write_text(
+        "alpha-pkg==1.0.0 --hash=sha256:" + "a" * 64 + "\n"
+        "beta_pkg==2.0.0 --hash=sha256:" + "b" * 64 + "\n",
+        encoding="utf-8",
+    )
+
+    lock = contract.read_lock(lock_path)
+    contract.validate_lock(report, lock)
+    rendered = contract.render_lock(report)
+    assert "alpha-pkg==1.0.0 --hash=sha256:" + "a" * 64 in rendered
+    assert "beta_pkg==2.0.0 --hash=sha256:" + "b" * 64 in rendered
+
+
+def test_hash_lock_rejects_wrong_or_missing_artifact(tmp_path: Path):
+    report = _report()
+    lock_path = tmp_path / "requirements.lock"
+    lock_path.write_text(
+        "alpha-pkg==1.0.0 --hash=sha256:" + "c" * 64 + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(contract.ContractError, match="lock mismatch"):
+        contract.validate_lock(report, contract.read_lock(lock_path))
+
+def test_matrix_install_fails_fast_after_hash_lock_failure():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    start = workflow.index("  build-and-test:")
+    end = workflow.index("  dependency-contract:", start)
+    matrix_job = workflow[start:end]
+    command = "pip install --require-hashes -r requirements-ci-lock-win-amd64-py310.txt"
+    position = matrix_job.index(command) + len(command)
+    following = matrix_job[position : position + 180]
+    assert "if ($LASTEXITCODE -ne 0)" in following
+
 def test_ci_fails_fast_after_dependency_install_commands():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     start = workflow.index("  dependency-contract:")
@@ -130,7 +184,7 @@ def test_ci_fails_fast_after_dependency_install_commands():
 
     for command in (
         "& $venvPython -m pip install --upgrade pip",
-        "& $venvPython -m pip install --report $report -r requirements-ci.txt",
+        "& $venvPython -m pip install --require-hashes --report $report -r requirements-ci-lock-win-amd64-py310.txt",
     ):
         position = contract_job.index(command) + len(command)
         next_command = contract_job.find("& $venvPython -m pip", position)
@@ -146,7 +200,7 @@ def test_ci_report_is_emitted_by_the_install_under_test():
     install_line = next(
         line.strip()
         for line in contract_job.splitlines()
-        if "pip install --report $report -r requirements-ci.txt" in line
+        if "pip install --require-hashes --report $report -r requirements-ci-lock-win-amd64-py310.txt" in line
     )
 
     assert "--report $report" in install_line
@@ -160,3 +214,5 @@ def test_ci_declares_dependency_contract_gate():
     assert "-m pip check" in workflow
     assert "dependency_contract.py validate" in workflow
     assert "actions/upload-artifact@v4" in workflow
+    assert "--direct-requirements requirements-ci.txt" in workflow
+    assert "--require-hashes" in workflow
