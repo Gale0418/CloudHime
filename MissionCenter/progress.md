@@ -114,3 +114,9 @@
 - 實際驗證：focused 140 passed；core 243 passed；OCR 197 passed；runtime 94 passed、2 skipped；UI 分檔 47 passed；benchmarks 58 passed；tracked Python compileall 與 CRLF-aware diff-check 通過。
 - 未驗證：live Models API、真實 remote endpoint、clean Windows／MSIX／Store、這批設定下的 GPU 品質與延遲。動態 availability 與離線快照留 CH-T67。
 - MissionCenter doctor 仍因歷史 smoke ledger 的 16 列欄位數不符與舊 Done 任務缺標準關聯而非零；本次新增任務造成的 progress stale 已修為 46/76、61%，未把歷史帳問題誤報為通過。
+## CH-T66 CodeRabbit follow-up（2026-08-05）
+
+- RED：CodeRabbit 首輪指出兩個可重現問題：不可信 list／dict 型 gemma_model 會在 alias lookup 觸發 TypeError；本地 Gemma 生成參數改變時舊 translation／preferred／HUD memory 仍可沿用。
+- 修正：非字串 gemma_model 安全正規化為空值；只有 temperature 或 repeat penalty 實際變更時才清理 translation_cache、preferred_text_memory 與 hud_memory，參數不變則保留。
+- 驗證：targeted settings／worker 102 passed；model/provider/release 42 passed；core 245 passed；OCR 199 passed；tracked compileall／diff-check 通過。
+- CodeRabbit 複審範圍僅 4 個修正檔，結果 0 issues；兩個隔離 review repo 已刪除。CH-T66 可維持 Done。
