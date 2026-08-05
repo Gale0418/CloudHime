@@ -266,3 +266,5 @@
 
 
 | 2026-08-05 | CH-T67 | Async model availability UI wiring PR2 | worker／panel／Controller targeted tests；UI offscreen；explicit compileall；diff-check；Gemini readonly review | 只有明確按鈕觸發；QThread 不凍結 UI；stale generation 不更新；目前模型保留；關閉時停止 background worker | worker 4 passed；panel 10 passed；Controller 3 passed；discovery／inventory 19 passed；UI 47 passed、3 deselected（3 個 host tmp ACL setup errors 已排除並明確記錄）；compileall／diff-check Pass；Gemini 0 findings | Partial：CodeRabbit cooldown、live API key、clean Windows／Store／GPU 尚待；不宣稱 PR2 Done | model/discovery/ui/thread/review |
+
+| 2026-08-05 | CH-T67 | PR2 scoped review／live Models API evidence | Gemini readonly；CodeRabbit 五檔隔離 scope；DPAPI key 不輸出之 live `models.list` smoke；temp fixture cleanup | review 必須區分 0 issues 與 rate limit；live discovery 必須保存 verified／error code 證據，不把拒絕連線當 key invalid | Gemini `0 findings`；CodeRabbit `rate_limit`（約 9 分鐘後重置，未產生 findings）；live `URLError WinError 10061`、snapshot 不存在；四個本輪 fixture 已清除 | Partial：兔子 cooldown、可連線 live API、clean Windows／Store／GPU gate 待後續 | review/model/discovery/evidence |
