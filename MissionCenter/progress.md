@@ -200,3 +200,8 @@
 - 依 Google 官方 Models API，`models.list` 仍以分頁 `nextPageToken` 與 `supportedGenerationMethods=generateContent` 作為 discovery contract；live endpoint 需在可連線環境重跑（https://ai.google.dev/api/models）。
 - 本輪由 Codex 建立的四個隔離 review fixture 已精確清除；主工作樹維持乾淨，PR2 commit `4bf70ed` 不變。舊 `.pytest`／`.tmp`／MissionCenter 產物未自動刪除，交由後續清理 checkpoint 逐項確認。
 - 下一步：等待 CodeRabbit cooldown 後，以同一五檔 scope 重跑；若有 finding 先補 RED regression 再修；live API 改在可連線 Windows／CI 或主人確認的環境重測。
+## CH-T67 disposable cache cleanup（2026-08-05）
+
+- 依唯讀資料夾盤點，只清除位於 CloudHime 根目錄且可再生的 7 個 Python／pytest cache：`__pycache__`、`.pytest_cache`、兩個 `.pytest-runtime-*`、`.pytest-benchmark-lock-*`、`.pytest-tmp-core` 與 `pytest-cache-files-*`。
+- 保留 `runtime`、`models`、`build`、`dist`、`scratch`、`records/private`、Knowledge Pack、MissionCenter 追蹤紀錄與歷史 CodeRabbit／review 證據；拒絕存取或用途不明的 `.test-temp-*`、`tmpkzbyv5oz`、`.env` 不自動處理。
+- 清理後 Git 仍乾淨（忽略產物不進 commit）；下一輪若要整理歷史 review／pytest 副本，需逐項確認用途後再處理。
