@@ -205,3 +205,8 @@
 - 依唯讀資料夾盤點，只清除位於 CloudHime 根目錄且可再生的 7 個 Python／pytest cache：`__pycache__`、`.pytest_cache`、兩個 `.pytest-runtime-*`、`.pytest-benchmark-lock-*`、`.pytest-tmp-core` 與 `pytest-cache-files-*`。
 - 保留 `runtime`、`models`、`build`、`dist`、`scratch`、`records/private`、Knowledge Pack、MissionCenter 追蹤紀錄與歷史 CodeRabbit／review 證據；拒絕存取或用途不明的 `.test-temp-*`、`tmpkzbyv5oz`、`.env` 不自動處理。
 - 清理後 Git 仍乾淨（忽略產物不進 commit）；下一輪若要整理歷史 review／pytest 副本，需逐項確認用途後再處理。
+## CH-T67 CodeRabbit quota stop（2026-08-06）
+
+- 同一五檔 production source scope 在服務 cooldown 後重試三次；CodeRabbit 分別回報 rate limit，服務倒數由約 9 分鐘、1 分鐘降至 8 秒，均未產生 findings。
+- 依每小時最多三次的規則，本輪停止繼續嘗試；沒有 CodeRabbit review 結果，不宣稱 `0 issues`。Gemini 的 `0 findings` 仍是獨立的唯讀第二意見。
+- 下一次若要再審查，沿用五檔 scope 並確認 CodeRabbit repository remote／organization 綁定；在 cooldown 前不重試。PR2 production code 沒有因本輪審查而修改。
