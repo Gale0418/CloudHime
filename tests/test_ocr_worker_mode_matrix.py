@@ -1638,3 +1638,162 @@ def test_exact_cache_hit_refreshes_frame_gate_consecutive_baseline(monkeypatch, 
         assert shadow_event.detail == "frame_cache_shadow_near"
     finally:
         worker.cleanup()
+
+
+def _configure_region_vision_worker(worker, image, render_mode, provider):
+    worker.ocr_backends = [object()]
+    worker.google_ocr_enabled = False
+    worker.auto_threshold_enabled = False
+    worker.scan_mode = SCAN_MODE_REGION
+    worker.region_render_mode = render_mode
+    worker.scan_region = (20, 10, 80, 40)
+    worker.capture_scan_area = lambda: (image, 7, 11)
+    worker.has_any_multimodal_ai = lambda: True
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "vision"}}])
+    worker.trigger_background_threshold_refresh = lambda *args, **kwargs: None
+
+
+@pytest.mark.parametrize("render_mode", [REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF])
+def test_region_vision_uses_image_source_and_relative_ocr_hints(monkeypatch, qtbot, render_mode):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(interpret_regions=Mock(return_value=[
+        SimpleNamespace(id=0, source_text="正確原文", translation="正確翻譯")
+    ]))
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, render_mode, provider)
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "WRONG OCR", "x": 17, "y": 21, "w": 40, "h": 16}
+    ]))
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[["正確翻譯", 17, 21, 40, 16]]]
+        assert worker.last_combined_text == "正確原文"
+        assert worker.last_provider == "local_multimodal"
+        assert worker.build_ai_image_parts.call_count == 1
+        hints = provider.interpret_regions.call_args.args[1]
+        assert hints == [{"id": 0, "x": 10, "y": 10, "w": 40, "h": 16, "text": "WRONG OCR"}]
+        assert worker.last_results == [("正確翻譯", 17, 21, 40, 16)]
+        translation_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+        ]
+        assert translation_events[-1].detail == "translation_region_vision_completed"
+    finally:
+        worker.cleanup()
+
+
+def test_region_vision_without_ocr_backend_uses_whole_region_hint(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(interpret_regions=Mock(return_value=[
+        SimpleNamespace(id=0, source_text="完整原文", translation="完整翻譯")
+    ]))
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    worker.ocr_backends = []
+    worker.run_ocr_with_best_threshold = Mock(side_effect=AssertionError("OCR must be optional"))
+    worker.handle_empty = Mock(side_effect=AssertionError("must not handle_empty"))
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[["完整翻譯", 7, 11, 160, 80]]]
+        worker.run_ocr_with_best_threshold.assert_not_called()
+        assert provider.interpret_regions.call_args.args[1] == [
+            {"id": 0, "x": 0, "y": 0, "w": 160, "h": 80, "text": ""}
+        ]
+        assert worker.build_ai_image_parts.call_count == 1
+    finally:
+        worker.cleanup()
+
+
+def test_region_vision_exception_falls_open_to_ocr_translation(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(interpret_regions=Mock(side_effect=RuntimeError("private output")))
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    item = {"text": "OCR fallback", "x": 17, "y": 21, "w": 40, "h": 16}
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [item]))
+    worker.translate_items_with_ai_and_providers = Mock(return_value=(["OCR 翻譯"], ["google"]))
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[["OCR 翻譯", 17, 21, 40, 16]]]
+        assert worker.build_ai_image_parts.call_count == 1
+        assert worker.last_provider == "google"
+        translation_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+        ]
+        assert translation_events[-1].outcome is ScanOutcome.FALLBACK
+        assert (
+            translation_events[-1].fallback_reason
+            == "translation_region_vision_failed"
+        )
+    finally:
+        worker.cleanup()
+
+
+def test_region_vision_exception_without_ocr_safely_emits_empty(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(interpret_regions=Mock(side_effect=RuntimeError("secret prompt/raw output")))
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_RELIEF, provider)
+    worker.ocr_backends = []
+    worker.run_ocr_with_best_threshold = Mock(side_effect=AssertionError("OCR must be optional"))
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[]]
+        worker.run_ocr_with_best_threshold.assert_not_called()
+        assert worker.last_results == []
+        failure = next(
+            event for event in worker.last_scan_trace.events
+            if event.detail == "translation_region_vision_failed"
+        )
+        assert failure.exception_token == "RuntimeError"
+        assert "secret" not in failure.detail
+    finally:
+        worker.cleanup()
+
+
+def test_region_vision_takes_over_when_ocr_backend_raises(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(interpret_regions=Mock(return_value=[
+        SimpleNamespace(id=0, source_text="Vision 原文", translation="Vision 翻譯")
+    ]))
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    worker.run_ocr_with_best_threshold = Mock(side_effect=RuntimeError("ocr backend failure"))
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[["Vision 翻譯", 7, 11, 160, 80]]]
+        assert provider.interpret_regions.call_args.args[1] == [
+            {"id": 0, "x": 0, "y": 0, "w": 160, "h": 80, "text": ""}
+        ]
+        assert worker.build_ai_image_parts.call_count == 1
+        assert worker.last_combined_text == "Vision 原文"
+    finally:
+        worker.cleanup()

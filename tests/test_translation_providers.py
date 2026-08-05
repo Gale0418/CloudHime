@@ -359,3 +359,91 @@ def test_local_multimodal_sampling_settings_reach_payload_and_cache_key():
     assert payloads[0]["repeat_penalty"] == 1.2
     assert payloads[1]["temperature"] == 0.4
     assert payloads[1]["repeat_penalty"] == 1.25
+
+
+@pytest.mark.parametrize(
+    ("provider_factory", "configure_response"),
+    [
+        (
+            lambda: GemmaTranslationProvider(google_api_key="test-key", gemma_model="gemma-4-31b-it"),
+            lambda provider: setattr(provider, "_request", lambda *_args, **_kwargs: {"candidates": [{"content": {"parts": [{"text": '{"regions":[{"id":7,"source_text":"Actual text","translation":"translated","confidence":0.9}]}'}]}}]}),
+        ),
+        (
+            lambda: LocalMultimodalProvider(base_url="http://127.0.0.1:8080/v1", model_name="gemma-local", enabled=True),
+            lambda provider: setattr(provider, "_request_chat_completion", lambda _payload: '{"regions":[{"id":7,"source_text":"Actual text","translation":"translated","confidence":0.9}]}'),
+        ),
+    ],
+)
+def test_interpret_regions_uses_image_to_correct_ocr_hint(provider_factory, configure_response):
+    provider = provider_factory()
+    configure_response(provider)
+
+    results = provider.interpret_regions(
+        [{"inline_data": {"data": "ignored"}}],
+        [{"id": 7, "x": 1, "y": 2, "w": 30, "h": 12, "text": "Wrong OCR"}],
+        image_width=320,
+        image_height=240,
+    )
+
+    assert results[0].source_text == "Actual text"
+    assert results[0].source_text != "Wrong OCR"
+    assert results[0].translation == "translated"
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        GemmaTranslationProvider(google_api_key="test-key"),
+        LocalMultimodalProvider(base_url="http://127.0.0.1:8080/v1", model_name="gemma-local", enabled=True),
+    ],
+)
+def test_interpret_regions_rejects_missing_image_hints_and_empty_regions(provider):
+    provider._request = lambda *_args, **_kwargs: {"candidates": [{"content": {"parts": [{"text": '{"regions":[]}'}]}}]}
+    provider._request_chat_completion = lambda _payload: '{"regions":[]}'
+    hint = {"id": 7, "x": 1, "y": 2, "w": 30, "h": 12, "text": "OCR"}
+
+    with pytest.raises(ValueError):
+        provider.interpret_regions([], [hint], image_width=320, image_height=240)
+    with pytest.raises(ValueError):
+        provider.interpret_regions([{"inline_data": {"data": "ignored"}}], [], image_width=320, image_height=240)
+    with pytest.raises(ValueError, match="empty_region"):
+        provider.interpret_regions([{"inline_data": {"data": "ignored"}}], [hint], image_width=320, image_height=240)
+
+
+def test_interpret_regions_uses_text_response_for_legacy_non_json_model():
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-3-27b-it",
+        supported_models=("gemma-3-27b-it",),
+    )
+    requests = []
+
+    def fake_request(model_name, prompt, **kwargs):
+        requests.append((model_name, prompt, kwargs))
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    '{"regions":[{"id":0,"source_text":"source",'
+                                    '"translation":"translated","confidence":0.8}]}'
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+    provider._request = fake_request
+    provider.interpret_regions(
+        [{"inline_data": {"data": "ignored"}}],
+        [{"id": 0, "x": 0, "y": 0, "w": 20, "h": 10, "text": "hint"}],
+        image_width=20,
+        image_height=10,
+    )
+
+    assert requests[0][0] == "gemma-3-27b-it"
+    assert requests[0][2]["response_mime_type"] == "text/plain"

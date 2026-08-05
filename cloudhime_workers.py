@@ -3807,13 +3807,19 @@ class OCRWorker(QObject):
             return
         is_screenshot_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT
         is_relief_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_RELIEF
+        is_region_vision_mode = (
+            self.scan_mode == SCAN_MODE_REGION
+            and self.region_render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF)
+            and self.has_any_multimodal_ai()
+        )
         _t0 = time.perf_counter()
         def _log(label):
             if is_relief_mode:
                 elapsed = (time.perf_counter() - _t0) * 1000
                 logger.info(f"[浮雕計時] {label}: +{elapsed:.1f}ms (累計)")
         ai_image_parts = None
-        if not is_screenshot_mode and not self.ocr_backends:
+        region_vision_failed = False
+        if not is_screenshot_mode and not is_region_vision_mode and not self.ocr_backends:
             self._record_scan_event(
                 ScanStage.OCR,
                 ScanOutcome.FAILURE,
@@ -4104,24 +4110,30 @@ class OCRWorker(QObject):
         _log("② 開始 OCR")
 
         ocr_started = time.perf_counter()
-        try:
-            used_threshold, filtered_items = self.run_ocr_with_best_threshold(img, offset_x, offset_y, ocr_regions, None, ocr_orientations)
-            _log(f"③ OCR 完成 (找到 {len(filtered_items)} 段)")
-            if self._abort_stale_scan(ScanStage.OCR):
-                return
-        except Exception as exc:
-            self._record_scan_event(
-                ScanStage.OCR,
-                ScanOutcome.FAILURE,
-                started_at=ocr_started,
-                error_code=ScanErrorCode.OCR_FAILED,
-                detail="ocr_failed",
-                exception=exc,
-            )
-            self._emit_scan_status("❌ 辨識錯誤")
-            self._emit_scan_finished([])
-            self.show_ui.emit()
-            return
+        if not self.ocr_backends and is_region_vision_mode:
+            used_threshold, filtered_items = 0, []
+        else:
+            try:
+                used_threshold, filtered_items = self.run_ocr_with_best_threshold(img, offset_x, offset_y, ocr_regions, None, ocr_orientations)
+                _log(f"③ OCR 完成 (找到 {len(filtered_items)} 段)")
+                if self._abort_stale_scan(ScanStage.OCR):
+                    return
+            except Exception as exc:
+                self._record_scan_event(
+                    ScanStage.OCR,
+                    ScanOutcome.FAILURE,
+                    started_at=ocr_started,
+                    error_code=ScanErrorCode.OCR_FAILED,
+                    detail="ocr_optional_failed" if is_region_vision_mode else "ocr_failed",
+                    exception=exc,
+                )
+                if is_region_vision_mode:
+                    used_threshold, filtered_items = 0, []
+                else:
+                    self._emit_scan_status("❌ 辨識錯誤")
+                    self._emit_scan_finished([])
+                    self.show_ui.emit()
+                    return
 
         if (
             self.scan_mode == SCAN_MODE_FULLSCREEN
@@ -4144,7 +4156,7 @@ class OCRWorker(QObject):
             return
 
         if not filtered_items:
-            if self.scan_mode == SCAN_MODE_REGION:
+            if self.scan_mode == SCAN_MODE_REGION and not is_region_vision_mode:
                 self._emit_scan_status("框選區域沒有掃到字，正在改用旋轉重試...")
                 try:
                     retry_thresholds = sorted({
@@ -4164,11 +4176,136 @@ class OCRWorker(QObject):
                     )
                 except Exception:
                     filtered_items = []
-            if not filtered_items and self.scan_mode == SCAN_MODE_REGION:
+            if (
+                not filtered_items
+                and self.scan_mode == SCAN_MODE_REGION
+                and not is_region_vision_mode
+            ):
                 self._emit_scan_status("框選區域沒有掃到文字，請框大一點或換個角度。")
 
         if self._abort_stale_scan(ScanStage.OCR):
             return
+
+        if is_region_vision_mode:
+            vision_started = time.perf_counter()
+            vision_hints = [
+                {
+                    "id": region_id,
+                    "x": int(item["x"]) - int(offset_x),
+                    "y": int(item["y"]) - int(offset_y),
+                    "w": int(item["w"]),
+                    "h": int(item["h"]),
+                    "text": str(item.get("text") or ""),
+                }
+                for region_id, item in enumerate(filtered_items)
+            ]
+            if not vision_hints:
+                vision_hints = [
+                    {
+                        "id": 0,
+                        "x": 0,
+                        "y": 0,
+                        "w": int(img.shape[1]),
+                        "h": int(img.shape[0]),
+                        "text": "",
+                    }
+                ]
+
+            provider_name = self.resolve_multimodal_provider_name()
+            provider = self._get_translation_provider(provider_name) if provider_name else None
+            try:
+                if provider is None or not hasattr(provider, "interpret_regions"):
+                    raise ValueError("region_vision_unavailable")
+                ai_image_parts = self.build_ai_image_parts(img)
+                vision_results = provider.interpret_regions(
+                    ai_image_parts,
+                    vision_hints,
+                    image_width=int(img.shape[1]),
+                    image_height=int(img.shape[0]),
+                    target_lang=self.translation_target_lang,
+                )
+                self.sync_gemma_call_timestamps_from_provider(provider)
+                if self._abort_stale_scan(ScanStage.TRANSLATION):
+                    return
+                by_id = {result.id: result for result in vision_results}
+                final_results, source_texts = [], []
+                current_provider = self._canonical_cache_provider(provider_name)
+                for hint in vision_hints:
+                    result = by_id.get(hint["id"])
+                    if result is None:
+                        continue
+                    source_text = result.source_text.strip()
+                    translated_text = result.translation.strip()
+                    if not source_text or not translated_text:
+                        continue
+                    output_rect = (
+                        int(hint["x"] + offset_x),
+                        int(hint["y"] + offset_y),
+                        int(hint["w"]),
+                        int(hint["h"]),
+                    )
+                    cache_key = (
+                        self.detect_source_language(source_text),
+                        normalize_ocr_text(source_text),
+                    )
+                    self.remember_translation(cache_key, translated_text)
+                    self.remember_preferred_text(source_text, translated_text, current_provider)
+                    self.remember_hud_observation(source_text, output_rect, translated_text, current_provider)
+                    source_texts.append(source_text)
+                    final_results.append((translated_text, *output_rect))
+                if not final_results:
+                    raise ValueError("empty_region_vision_response")
+            except Exception as exc:
+                region_vision_failed = True
+                self._record_scan_event(
+                    ScanStage.TRANSLATION,
+                    ScanOutcome.FAILURE,
+                    started_at=vision_started,
+                    error_code=ScanErrorCode.TRANSLATION_FAILED,
+                    detail="translation_region_vision_failed",
+                    exception=exc,
+                )
+                if not filtered_items:
+                    self.last_results = []
+                    self._emit_scan_status("⚠️ 區域 Vision 翻譯失敗")
+                    self._emit_scan_finished([])
+                    self.show_ui.emit()
+                    return
+            else:
+                current_combined_text = "\n".join(source_texts)
+                self.last_combined_text = current_combined_text
+                self.last_provider = current_provider
+                self.last_results = final_results
+                self.exact_image_cache.put(
+                    img,
+                    self._exact_image_cache_context(offset_x, offset_y),
+                    final_results,
+                    current_provider,
+                    current_combined_text,
+                )
+                self._record_scan_event(
+                    ScanStage.OCR,
+                    ScanOutcome.SUCCESS if filtered_items else ScanOutcome.NO_TEXT,
+                    started_at=ocr_started,
+                    detail=(
+                        "ocr_optional_geometry"
+                        if filtered_items
+                        else "ocr_optional_unavailable"
+                    ),
+                    item_count=len(filtered_items),
+                )
+                self._record_scan_event(
+                    ScanStage.TRANSLATION,
+                    ScanOutcome.SUCCESS,
+                    started_at=vision_started,
+                    detail="translation_region_vision_completed",
+                    provider=current_provider,
+                    item_count=len(final_results),
+                )
+                self._emit_scan_status("✅ 區域 Vision 翻譯完成")
+                self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
+                self._emit_scan_finished(final_results)
+                return
 
         manga_tile_retry_used = False
         if self.scan_mode == SCAN_MODE_FULLSCREEN and len(filtered_items) <= 1 and page_region:
@@ -4468,6 +4605,9 @@ class OCRWorker(QObject):
             ):
                 trace_outcome = ScanOutcome.FALLBACK
                 trace_reason = "translation_provider_fallback"
+            elif region_vision_failed:
+                trace_outcome = ScanOutcome.FALLBACK
+                trace_reason = "translation_region_vision_failed"
             else:
                 trace_outcome = ScanOutcome.SUCCESS
                 trace_reason = ""

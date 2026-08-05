@@ -210,3 +210,16 @@
 - 同一五檔 production source scope 在服務 cooldown 後重試三次；CodeRabbit 分別回報 rate limit，服務倒數由約 9 分鐘、1 分鐘降至 8 秒，均未產生 findings。
 - 依每小時最多三次的規則，本輪停止繼續嘗試；沒有 CodeRabbit review 結果，不宣稱 `0 issues`。Gemini 的 `0 findings` 仍是獨立的唯讀第二意見。
 - 下一次若要再審查，沿用五檔 scope 並確認 CodeRabbit repository remote／organization 綁定；在 cooldown 前不重試。PR2 production code 沒有因本輪審查而修改。
+
+## CH-T68 Region Vision-first checkpoint（2026-08-06）
+
+- 產品方向已由 Owner 明確確認為 Vision-first。這一階段只切換 Region Bubble／Relief：OCR bbox 與文字是 optional hint，圖片與 model source_text 才是 source of truth；Screenshot 原本已直接送圖，Fullscreen 暫時維持 OCR-first，待 locked holdout 後再切換。
+- 新增純 Python vision_region.py：嚴格 regions JSON 契約，拒絕額外文字、重複／越界 ID、空字串、NaN／Infinity、超大 confidence 與不合法 fenced JSON；新測試納入 core CI inventory。
+- remote Gemma 與本地 llama-server 共用同一 Region Vision prompt／parser；Knowledge／dictionary evidence 保留，Gemma 3 27B legacy capability 改為 non-structured JSON 並使用 text/plain。
+- OCRWorker.run_scan_once() 在 Region Bubble／Relief 可於 0 OCR backend、OCR 空結果或 OCR exception 下以 whole-region hint 接管；Vision 失敗且 OCR 有字時 fail-open 到既有翻譯，trace 保留 provider、fallback 與 bounded exception token。
+- 移除無多模態能力的 gemma-3-1b-it catalog entry；settings_store.py 的 legacy alias 保留，舊設定仍遷移至 gemma-4-31b-it，Models API 回傳 1B 也不會重新進入 UI／callable surface。
+- 本地回歸：core 313 passed、OCR 205 passed；後續 targeted 64 passed、trace／provider／catalog 79 passed、Region matrix 6 passed、vision parser final 17 passed。tracked compileall 與 diff-check 通過。
+- GPU provider smoke：example 2026-07-14 08 10 10.png，runtime ready/gpu，首次 startup 56.112s、request 10.352s；錯誤 OCR hint 下讀出 Marking CH-T23 as Done after research completion，繁中翻譯非空，confidence 0.95，結束 stopped。
+- GPU worker product-path smoke：再次 startup 14.113s、Region Bubble request 2.309s；0 OCR backend 仍輸出整區 bbox，last_provider=local_multimodal，source text 由 Vision 提供，trace 為 OCR optional no-text → translation success，結束後 llama-server processes: 0。
+- CodeRabbit 隔離 5 檔審查：首輪 1 major（legacy non-JSON MIME）、複輪 1 minor（confidence overflow）、final 1 minor（fenced JSON whitespace），三項皆以 regression 先重現後修正；最後 minor 修後因本小時審查額度已用完，未宣稱 0 issues。Gemini RPC 在 dispatch 前 deadline，交付狀態不確定，未列為審查完成。
+- 尚未完成：source-disjoint 漫畫／遊戲 accuracy 與 latency A/B、Fullscreen Vision-first、Game-safe ResourceGovernor／partial offload、clean Windows／Store gate。

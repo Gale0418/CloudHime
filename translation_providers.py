@@ -17,6 +17,11 @@ from deep_translator import GoogleTranslator
 from model_catalog import get_model_spec, REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
 from translation_contracts import TranslationProvider, TranslationResult
 from knowledge_prompt_context import KnowledgePromptContext
+from vision_region import (
+    VisionRegionResult,
+    build_region_vision_prompt,
+    parse_region_vision_response,
+)
 from translation_helpers import (
     append_missing_dictionary_terms,
     apply_dictionary_pre_translation,
@@ -629,6 +634,62 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             raise ValueError("empty_gemma_multimodal_response")
         self._remember(cache_key, (translated, raw_text))
         return [TranslationResult(text=line, provider=self.name, model=model_name, raw_text=raw_text) for line in translated]
+
+    def interpret_regions(
+        self,
+        image_parts: Sequence[dict[str, Any]],
+        hints: Sequence[dict[str, Any]],
+        *,
+        image_width: int,
+        image_height: int,
+        target_lang: str = "zh-TW",
+    ) -> list[VisionRegionResult]:
+        if not image_parts:
+            raise ValueError("missing_image_context")
+        if not hints:
+            raise ValueError("missing_region_hints")
+        if not self.google_api_key:
+            raise ValueError("missing_google_api_key")
+
+        resolved_target = target_lang or self.target_lang
+        hint_texts = tuple(str(hint.get("text") or "") for hint in hints)
+        dictionary_hint = build_dictionary_prompt_hint(hint_texts, self._dictionary)
+        evidence = self._knowledge_evidence_for_texts(hint_texts, max_chars=1_800)
+        knowledge_context = "  ".join(
+            part for part in (dictionary_hint, evidence) if part
+        )
+        prompt = build_region_vision_prompt(
+            hints,
+            image_width=image_width,
+            image_height=image_height,
+            target_lang=resolved_target,
+            knowledge_context=knowledge_context,
+        )
+        allowed_ids = [hint["id"] for hint in hints]
+        model_name = self._resolve_model()
+        if not self._can_call(model_name):
+            raise ValueError("gemma_rate_limited")
+        model_spec = get_model_spec(model_name)
+        response_mime_type = (
+            "application/json"
+            if model_spec is None or model_spec.structured_json
+            else "text/plain"
+        )
+        payload = self._request(
+            model_name,
+            prompt,
+            image_parts=image_parts,
+            max_output_tokens=2048,
+            temperature=0.1,
+            response_mime_type=response_mime_type,
+        )
+        results = parse_region_vision_response(
+            extract_gemma_text(payload),
+            allowed_ids=allowed_ids,
+        )
+        if not results:
+            raise ValueError("empty_region_vision_response")
+        return results
 
     def translate_screenshot(
         self,
@@ -1329,6 +1390,73 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             raw_text = self._request_chat_completion(payload)
         translated = self._parse_segmented_response(raw_text, len(texts))
         return [TranslationResult(text=item, provider=self.name, model=self.model_name, raw_text=raw_text) for item in translated]
+
+    def interpret_regions(
+        self,
+        image_parts: Sequence[dict[str, Any]],
+        hints: Sequence[dict[str, Any]],
+        *,
+        image_width: int,
+        image_height: int,
+        target_lang: str = "zh-TW",
+    ) -> list[VisionRegionResult]:
+        if not image_parts:
+            raise ValueError("missing_image_context")
+        if not hints:
+            raise ValueError("missing_region_hints")
+
+        resolved_target = target_lang or self.target_lang
+        hint_texts = tuple(str(hint.get("text") or "") for hint in hints)
+        dictionary_hint = build_dictionary_prompt_hint(hint_texts, self._dictionary)
+        evidence = self._knowledge_evidence_for_texts(hint_texts, max_chars=1_800)
+        knowledge_context = "  ".join(
+            part for part in (dictionary_hint, evidence) if part
+        )
+        prompt = build_region_vision_prompt(
+            hints,
+            image_width=image_width,
+            image_height=image_height,
+            target_lang=resolved_target,
+            knowledge_context=knowledge_context,
+        )
+        allowed_ids = [hint["id"] for hint in hints]
+        payload = self._build_chat_payload(
+            prompt=prompt,
+            image_parts=image_parts,
+            response_format="json_object",
+            max_tokens=2048,
+        )
+        try:
+            raw_text = self._request_chat_completion(payload)
+        except error.HTTPError as exc:
+            if exc.code != 400:
+                raise
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            body_lower = body.lower()
+            format_error = not body or any(
+                marker in body_lower
+                for marker in (
+                    "response format",
+                    "json_object",
+                    "structured output",
+                    "json mode",
+                )
+            )
+            if not format_error:
+                raise
+            payload["response_format"] = {"type": "text"}
+            raw_text = self._request_chat_completion(payload)
+        results = parse_region_vision_response(
+            raw_text,
+            allowed_ids=allowed_ids,
+        )
+        if not results:
+            raise ValueError("empty_region_vision_response")
+        return results
 
     @staticmethod
     def _has_degenerate_repetition(text: str) -> bool:
