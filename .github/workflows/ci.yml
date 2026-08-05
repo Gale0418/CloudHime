@@ -60,7 +60,8 @@ jobs:
           if (-not (Test-Path requirements-ci.txt)) {
             throw "requirements-ci.txt is missing."
           }
-          pip install -r requirements-ci.txt
+          pip install --require-hashes -r requirements-ci-lock-win-amd64-py310.txt
+          if ($LASTEXITCODE -ne 0) { throw "requirements-ci lock installation failed." }
 
       - name: Syntax Check
         run: |
@@ -110,15 +111,15 @@ jobs:
           $venvPython = Join-Path $venv "Scripts/python.exe"
           & $venvPython -m pip install --upgrade pip
           if ($LASTEXITCODE -ne 0) { throw "pip bootstrap install failed." }
-          & $venvPython -m pip install --report $report -r requirements-ci.txt
+          & $venvPython -m pip install --require-hashes --report $report -r requirements-ci-lock-win-amd64-py310.txt
           if ($LASTEXITCODE -ne 0) { throw "requirements installation failed." }
           & $venvPython -m pip check
           if ($LASTEXITCODE -ne 0) { throw "pip check failed." }
 
 
-          python packaging\dependency_contract.py validate --report $report --requirements requirements-ci.txt --sbom-output $sbom
+          python packaging\dependency_contract.py validate --report $report --requirements requirements-ci-lock-win-amd64-py310.txt --direct-requirements requirements-ci.txt --lock requirements-ci-lock-win-amd64-py310.txt --sbom-output $sbom
           if ($LASTEXITCODE -ne 0) { throw "dependency contract validation failed." }
-          python packaging\dependency_contract.py verify --report $report --requirements requirements-ci.txt --sbom $sbom
+          python packaging\dependency_contract.py verify --report $report --requirements requirements-ci-lock-win-amd64-py310.txt --direct-requirements requirements-ci.txt --lock requirements-ci-lock-win-amd64-py310.txt --sbom $sbom
           if ($LASTEXITCODE -ne 0) { throw "dependency SBOM verification failed." }
 
       - name: Upload dependency provenance

@@ -1,11 +1,9 @@
-"""Validate pip installation reports and emit a deterministic CycloneDX SBOM.
+"""Validate pip installation reports, target locks, and deterministic CycloneDX SBOMs.
 
-This contract intentionally consumes pip's supported installation-report format at
-build/CI time. It does not treat a report as an install lock file; the report is
-kept as provenance evidence and the validator fails closed on missing artifact
-hashes, direct requirement drift, or incomplete license metadata.
+This contract consumes pip's supported installation-report format at build/CI time,
+validates target-specific hash locks, and fails closed on missing artifact hashes,
+direct requirement drift, or incomplete license metadata.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -22,6 +20,7 @@ SUPPORTED_PIP_REPORT_VERSION = "1"
 SUPPORTED_CYCLONEDX_VERSION = "1.6"
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_LOCK_HASH_RE = re.compile(r"--hash=sha256:([0-9a-fA-F]{64})")
 
 
 class ContractError(ValueError):
@@ -55,6 +54,7 @@ def read_requirements(path: Path) -> dict[str, str]:
         if line.startswith("-"):
             raise ContractError(f"unsupported requirements option at {path}:{line_number}")
         line = line.split(" #", 1)[0].strip()
+        line = re.sub(r"\s+--hash=sha256:[0-9a-fA-F]{64}", "", line).strip()
         match = re.match(
             r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*==\s*(?P<version>[^;\s#]+)"
             r"(?:\s*;.*)?$",
@@ -71,6 +71,81 @@ def read_requirements(path: Path) -> dict[str, str]:
         raise ContractError(f"requirements file is empty: {path}")
     return requirements
 
+
+def read_lock(path: Path) -> dict[str, dict[str, object]]:
+    entries: dict[str, dict[str, object]] = {}
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(
+            r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*==\s*(?P<version>[^\s#]+)",
+            line,
+        )
+        if not match:
+            raise ContractError(f"lock entry is not exact-pinned at {path}:{line_number}")
+        hashes = {value.lower() for value in _LOCK_HASH_RE.findall(line)}
+        if not hashes:
+            raise ContractError(f"lock entry has no SHA-256 hash at {path}:{line_number}")
+        name = normalize_name(match.group("name"))
+        if name in entries:
+            raise ContractError(f"duplicate lock distribution: {name}")
+        entries[name] = {"version": match.group("version"), "hashes": hashes}
+    if not entries:
+        raise ContractError(f"lock file is empty: {path}")
+    return entries
+
+
+def validate_lock(report: dict, lock: dict[str, dict[str, object]]) -> None:
+    items = report.get("install")
+    if not isinstance(items, list) or not items:
+        raise ContractError("pip report has no install entries")
+    actual: dict[str, tuple[str, str]] = {}
+    for item in items:
+        component = _component(item)
+        name = normalize_name(component["name"])
+        if name in actual:
+            raise ContractError(f"duplicate pip report distribution: {name}")
+        actual[name] = (component["version"], component["hashes"][0]["content"])
+    if set(actual) != set(lock):
+        missing = sorted(set(lock) - set(actual))
+        extra = sorted(set(actual) - set(lock))
+        raise ContractError(f"lock mismatch: missing={missing}, extra={extra}")
+    for name, (version, digest) in actual.items():
+        expected = lock[name]
+        if version != expected["version"] or digest not in expected["hashes"]:
+            raise ContractError(f"lock mismatch: {name}")
+
+
+def validate_direct_requirements(report: dict, requirements: dict[str, str]) -> None:
+    items = report.get("install")
+    if not isinstance(items, list) or not items:
+        raise ContractError("pip report has no install entries")
+    resolved = {}
+    for item in items:
+        component = _component(item)
+        resolved[normalize_name(component["name"])] = component["version"]
+    missing = sorted(set(requirements) - set(resolved))
+    mismatched = sorted(
+        name for name in set(requirements) & set(resolved)
+        if requirements[name] != resolved[name]
+    )
+    if missing or mismatched:
+        raise ContractError(
+            f"direct requirements mismatch: missing={missing}, version_mismatch={mismatched}"
+        )
+
+def render_lock(report: dict) -> str:
+    items = report.get("install")
+    if not isinstance(items, list) or not items:
+        raise ContractError("pip report has no install entries")
+    components = [_component(item) for item in items]
+    components.sort(key=lambda value: normalize_name(value["name"]))
+    lines = ["# Generated from pip installation report; target artifact hashes are required."]
+    for component in components:
+        digest = component["hashes"][0]["content"]
+        lines.append(f"{component['name']}=={component['version']} --hash=sha256:{digest}")
+    return "\n".join(lines) + "\n"
 
 def _sha256(item: dict, name: str) -> str:
     try:
@@ -248,10 +323,21 @@ def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def command_lock(args: argparse.Namespace) -> int:
+    report = _read_json(Path(args.report))
+
+    Path(args.output).write_text(render_lock(report), encoding="utf-8")
+    print(f"hash lock generated: {Path(args.output)}")
+    return 0
+
 def command_validate(args: argparse.Namespace) -> int:
     report = _read_json(Path(args.report))
     requirements = read_requirements(Path(args.requirements))
     canonical = _canonical_with_items(report, requirements)
+    if args.direct_requirements:
+        validate_direct_requirements(report, read_requirements(Path(args.direct_requirements)))
+    if args.lock:
+        validate_lock(report, read_lock(Path(args.lock)))
     if args.sbom_output:
         write_json(Path(args.sbom_output), build_sbom(canonical))
     print(f"dependency contract ok: {len(canonical['components'])} components")
@@ -262,6 +348,10 @@ def command_verify(args: argparse.Namespace) -> int:
     report = _read_json(Path(args.report))
     requirements = read_requirements(Path(args.requirements))
     canonical = _canonical_with_items(report, requirements)
+    if args.direct_requirements:
+        validate_direct_requirements(report, read_requirements(Path(args.direct_requirements)))
+    if args.lock:
+        validate_lock(report, read_lock(Path(args.lock)))
     verify_sbom(_read_json(Path(args.sbom)), canonical)
     print(f"dependency contract and SBOM ok: {len(canonical['components'])} components")
     return 0
@@ -274,12 +364,20 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--report", required=True, type=Path)
     validate.add_argument("--requirements", required=True, type=Path)
     validate.add_argument("--sbom-output", type=Path)
+    validate.add_argument("--lock", type=Path)
+    validate.add_argument("--direct-requirements", type=Path)
     validate.set_defaults(handler=command_validate)
     verify = subparsers.add_parser("verify")
     verify.add_argument("--report", required=True, type=Path)
     verify.add_argument("--requirements", required=True, type=Path)
     verify.add_argument("--sbom", required=True, type=Path)
+    verify.add_argument("--lock", type=Path)
+    verify.add_argument("--direct-requirements", type=Path)
     verify.set_defaults(handler=command_verify)
+    lock_parser = subparsers.add_parser("lock")
+    lock_parser.add_argument("--report", required=True, type=Path)
+    lock_parser.add_argument("--output", required=True, type=Path)
+    lock_parser.set_defaults(handler=command_lock)
     return parser
 
 
