@@ -163,3 +163,12 @@
 - regression：production／CI lock graph 差異精確鎖為五個 CI-only 套件；workflow 測試涵蓋 production command 的 fail-fast、獨立 venv／report／SBOM／direct intent。
 - 實際驗證：targeted dependency／CI／release／MSIX `36 passed, 1 skipped`；production cross-target pip dry-run（清除本機 `PIP_NO_INDEX=1` 並使用官方 PyPI index）接受 53 components；production contract validate／SBOM verify Pass；YAML parse Pass；CodeRabbit 首輪 2 minor 已修，複查 `0 issues`。
 - 仍未完成：GitHub runner 真正 production clean venv install、license evidence／正式 release bundle、PyInstaller 真打包、clean Windows、MSIX／WACK／Store／GPU 實機 gate；本輪不把 dry-run 冒充安裝完成。
+
+## CH-T64 PyInstaller clean release artifact checkpoint（2026-08-05）
+
+- 實際執行 `cmd.exe /d /c build_exe.bat` 成功；修正 Windows PowerShell 從外部環境帶入 PowerShell 7 `Microsoft.PowerShell.Utility` module path，避免 Windows PowerShell 5.1 找不到 `Get-FileHash`。
+- build 前加入 production spec 明確排除 `pytest`、`pytest-qt`、`pluggy`、`iniconfig`、`pygments`；這些開發依賴不得污染正式包。新增 regression test，targeted `3 passed`。
+- 真實 PyInstaller 6.18.0 產物：`480` files、`1,622,390,804` bytes、`0` model files；bundle audit：`pytest=0`、`llama_cpp=0`、GGUF/mmproj=0、runtime 外 llama/ggml/CUDA binary `0`；`verify_release_dist.ps1` 回傳 `Status: ready`；`dist/CloudHime.zip` 已建立。
+- 已知環境訊息：HuggingFace Xet log 寫入 `D:\HuggingFaceCache` 被拒，改回 console logging；不影響 build exit `0`。PyInstaller 仍報 `charset_normalizer.md__mypyc` hidden import 與 conda `mkl_rt.dll` optional warning，尚未宣稱 clean-machine runtime。
+- 完整 core runner 首次 `222 passed, 48 errors`，重試使用 workspace／使用者專用 basetemp 仍為 pytest session cleanup 的 `WinError 5`；錯誤集中於暫存目錄 ACL，不能視為 assertion failure，也不能把 core 全組宣稱通過。release／MSIX／manifest／dependency targeted 與 compileall 需以獨立命令結果為準。
+- 你提供的模型目錄 P0 建議與目前 repo 狀態不完全相同：CH-T66 已移除舊遠端 Gemma 的可選／可呼叫路徑、完成設定遷移、1B text-only capability 與 attribution；仍待 CH-T67 的 live `models.list` availability snapshot，不能把動態 endpoint 可用性宣稱完成。
