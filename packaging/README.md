@@ -31,3 +31,15 @@ runtime file set, size, or digest differs.
 ## Local MSIX install smoke
 
 `packaging/test_msix_install.ps1` 會在 `pwsh` 呼叫時自動轉交 Windows PowerShell 5.1，因為部分 Windows 的 Appx cmdlet 無法由 PowerShell 7 載入。開發測試憑證只能用於本機 sideload；Store identity、publisher 與正式簽章仍必須由 Partner Center／正式憑證處理。
+
+## Dependency provenance and SBOM
+
+CI 的 dependency-contract job 會在乾淨 venv 內安裝 `requirements-ci.txt`，執行
+`pip check`，再用 pip 的 installation report 解析實際套件圖。`packaging/dependency_contract.py`
+會 fail-closed 檢查 direct requirements、transitive distributions、下載 URL、SHA-256
+與 license metadata，並輸出 deterministic CycloneDX 1.6 SBOM。
+
+這份 pip report 是 provenance 證據，不是 pip 可直接拿來安裝的 lock file；因此目前不能宣稱
+完整 wheel-hash lock 或 clean-machine release 已完成。CI 會上傳 report 與 SBOM，後續再把
+license evidence 與正式 release bundle 綁定。
+`pip-report.json` 由實際執行並接受 `pip check` 的 `pip install -r requirements-ci.txt --report ...` 直接產生；CI 不另外用 `--dry-run --ignore-installed` 解析另一套環境。

@@ -140,3 +140,11 @@
 - 完整群組：core `252 passed, 1 skipped`；OCR `199 passed`；runtime `94 passed, 2 skipped`；benchmarks `58 passed`；UI 合併執行器逾時 180 秒，拆分後 `test_cloudhime_ui_smoke.py` `36 passed`、其餘設定／翻譯 UI `11 passed`，未把合併 runner 記為通過。
 - tracked Python compileall exit 0；CRLF-aware diff-check exit 0。未宣稱完整 SBOM、transitive wheel hash、license artifact audit、clean-machine、MSIX install／launch／uninstall、WACK、Store 或 GPU onboarding 已完成。
 - Gemini bridge 本輪因 Antigravity session database 回報 `attempt to write a readonly database`，兩次唯讀請求均未取得回覆；未把它記成 Gemini 完成審查。CodeRabbit 複審仍受先前免費 CLI cooldown 影響，未宣稱複審通過。
+
+## CH-T64 dependency provenance／SBOM contract checkpoint（2026-08-05）
+
+- 新增 `packaging/dependency_contract.py`：以 pip installation report v1 為輸入，fail-closed 檢查 exact direct requirements、完整 resolved install entries、下載 URL、SHA-256 與 license metadata，並輸出 deterministic CycloneDX 1.6 SBOM；同時可再次驗證 SBOM component／dependency graph 沒有漂移。
+- CI 新增 `dependency-contract` job：Windows fresh venv → 實際 `pip install -r requirements-ci.txt --report ...` → `pip check` → contract validate／verify → 上傳 pip report 與 SBOM。README 已明確說明 report 來自被測的實際安裝，不再用另一套 `--dry-run --ignore-installed` resolution。
+- TDD／review：新增 contract tests 初始 RED 兩項已修；CodeRabbit 首輪指出 pip install 未立即檢查 exit code，第二輪隔離 5 檔指出 report 與實際安裝脫鉤，兩項均以 regression test 重現後修正。第三次複審受免費 CLI rate limit（約 10 分鐘）阻擋，未宣稱通過。
+- 實際驗證：dependency／CI／release／MSIX／runtime targeted `34 passed, 1 skipped`；core `260 passed, 1 skipped`；本機 Python 3.13 resolution smoke 產生並驗證 `53 components`，只作 metadata smoke，不代表 Python 3.10 Windows clean-machine；tracked compileall exit 0、CRLF-aware diff-check exit 0。
+- 仍未完成：committed `--require-hashes` transitive lock、逐 wheel license evidence／正式 release bundle SBOM、clean-machine、真實 PyInstaller／MSIX install、WACK、Store 與 GPU onboarding；本 checkpoint 不把 CI placeholder 或本機 3.13 smoke 擴大宣稱。
