@@ -1175,8 +1175,16 @@ class OCRWorker(QObject):
         if not 1.0 <= repeat_penalty <= 2.0:
             raise ValueError("repeat_penalty must be between 1.0 and 2.0")
 
+        previous_temperature = float(getattr(self, "local_gemma_temperature", 0.2))
+        previous_repeat_penalty = float(getattr(self, "local_gemma_repeat_penalty", 1.15))
+        changed = (
+            temperature != previous_temperature
+            or repeat_penalty != previous_repeat_penalty
+        )
         self.local_gemma_temperature = temperature
         self.local_gemma_repeat_penalty = repeat_penalty
+        if changed:
+            self._clear_translation_memories()
         self._refresh_translation_registry()
 
     def set_scan_mode(self, scan_mode):

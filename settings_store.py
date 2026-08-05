@@ -196,7 +196,8 @@ def normalize_settings_payload(
     normalized["japanese_ocr_rescue_enabled"] = coerce_bool(normalized.get("japanese_ocr_rescue_enabled", False))
     normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")
     if "gemma_model" in normalized:
-        gemma_model = normalized["gemma_model"]
+        raw_gemma_model = normalized["gemma_model"]
+        gemma_model = raw_gemma_model if isinstance(raw_gemma_model, str) else ""
         normalized["gemma_model"] = GEMMA_MODEL_ALIASES.get(gemma_model, gemma_model)
     local_multimodal_model = str(normalized.get("local_multimodal_model", "") or "")
     normalized["local_multimodal_model"] = LOCAL_MULTIMODAL_MODEL_ALIASES.get(

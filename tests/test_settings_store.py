@@ -208,6 +208,15 @@ def test_normalize_settings_payload_migrates_only_explicit_gemma_model_aliases(g
     assert normalized["gemma_model"] == expected
 
 
+@pytest.mark.parametrize("gemma_model", [[], {}])
+def test_normalize_settings_payload_rejects_unhashable_gemma_model_values(gemma_model):
+    normalized = normalize_settings_payload(
+        {"gemma_model": gemma_model},
+        region_opacity=40,
+    )
+
+    assert normalized["gemma_model"] == ""
+
 def test_normalize_settings_payload_migrates_only_local_translategemma_alias():
     migrated = normalize_settings_payload(
         {"local_multimodal_model": "translategemma-4b-it-local"},

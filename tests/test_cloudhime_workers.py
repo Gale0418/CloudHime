@@ -246,6 +246,35 @@ def test_set_local_gemma_params_accepts_valid_values_and_refreshes_registry():
     assert worker.refresh_count == 1
 
 
+def test_set_local_gemma_params_clears_memories_when_values_change():
+    worker = make_worker_stub()
+    worker.local_gemma_temperature = 0.2
+    worker.local_gemma_repeat_penalty = 1.15
+    worker.translation_cache = OrderedDict({"cached": "old"})
+    worker.preferred_text_memory = OrderedDict({"hello": {"translated_text": "old"}})
+    worker.hud_memory = OrderedDict({"hello": {"translated_text": "old"}})
+
+    OCRWorker.set_local_gemma_params(worker, 0.35, 1.25)
+
+    assert not worker.translation_cache
+    assert not worker.preferred_text_memory
+    assert not worker.hud_memory
+
+
+def test_set_local_gemma_params_preserves_memories_when_values_unchanged():
+    worker = make_worker_stub()
+    worker.local_gemma_temperature = 0.2
+    worker.local_gemma_repeat_penalty = 1.15
+    worker.translation_cache = OrderedDict({"cached": "old"})
+    worker.preferred_text_memory = OrderedDict({"hello": {"translated_text": "old"}})
+    worker.hud_memory = OrderedDict({"hello": {"translated_text": "old"}})
+
+    OCRWorker.set_local_gemma_params(worker, 0.2, 1.15)
+
+    assert worker.translation_cache
+    assert worker.preferred_text_memory
+    assert worker.hud_memory
+
 def test_set_local_multimodal_config_accepts_values_and_refreshes_registry():
     worker = make_worker_stub()
 
