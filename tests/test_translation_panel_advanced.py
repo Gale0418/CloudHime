@@ -258,3 +258,58 @@ def test_translation_health_text_does_not_force_compact_panel_wider(qtbot):
     assert panel.width() <= 430
     assert panel.lbl_translate_health_detail.width() <= panel.width()
     assert not panel.lbl_translate_health_detail.geometry().intersects(panel.lbl_translate_mode.geometry())
+
+
+def test_translation_panel_model_refresh_is_explicit_only(qtbot):
+    controller = DummyController()
+    refresh_calls = []
+    controller.refresh_remote_model_availability = lambda: refresh_calls.append(True)
+    panel = TranslationSettingsPanel(
+        controller,
+        [
+            ("Local", "gemma-3-4b-it-local"),
+            ("Remote", "gemma-4-31b-it"),
+        ],
+    )
+    qtbot.addWidget(panel)
+    panel.sync_from_controller()
+
+    panel.input_api_key.setText("new-key")
+    panel.cmb_ai_model.setCurrentIndex(1)
+    panel.sync_from_controller()
+
+    assert refresh_calls == []
+    qtbot.mouseClick(panel.btn_refresh_model_availability, Qt.LeftButton)
+    assert refresh_calls == [True]
+
+
+def test_translation_panel_availability_keeps_selected_unavailable_model(qtbot):
+    from remote_model_discovery import DISCOVERY_STATUS_VERIFIED, ModelDiscoveryResult
+
+    controller = DummyController()
+    panel = TranslationSettingsPanel(
+        controller,
+        [
+            ("Local", "gemma-3-4b-it-local"),
+            ("Available", "gemma-4-31b-it"),
+            ("Unavailable", "gemini-2.5-pro"),
+        ],
+    )
+    qtbot.addWidget(panel)
+    panel.cmb_ai_model.setCurrentIndex(2)
+
+    panel.set_model_availability_result(
+        ModelDiscoveryResult(
+            status=DISCOVERY_STATUS_VERIFIED,
+            available_model_ids=("gemma-4-31b-it",),
+            verified=True,
+        )
+    )
+
+    ids = [panel.cmb_ai_model.itemData(i) for i in range(panel.cmb_ai_model.count())]
+    assert ids == [
+        "gemma-3-4b-it-local",
+        "gemma-4-31b-it",
+        "gemini-2.5-pro",
+    ]
+    assert panel.cmb_ai_model.currentData() == "gemini-2.5-pro"

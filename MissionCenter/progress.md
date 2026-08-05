@@ -181,3 +181,13 @@
 - snapshot 寫入失敗經 CodeRabbit finding 修正為非致命：新抓到的 verified 結果仍回傳，並以 `snapshot_write_failed` 保留可觀測錯誤碼。
 - 實際驗證：PR1 targeted `39 passed`；discovery contract 最終 `14 passed`；tracked py_compile 與 diff-check 通過；CI inventory 已納入 `tests/test_remote_model_discovery.py`；CodeRabbit 首輪 1 minor 已以 regression 重現並修正，最終複查 `0 findings`；Gemini 唯讀架構審查 Hub-visible，未修改檔案。
 - 尚未完成：PR2 非同步 worker／UI availability wiring、API key 變更與手動 refresh 事件、provider health 顯示與 live API key 實測；輸入文字不觸發網路的 UI gate 留在下一階段。
+
+## CH-T67 PR2 非同步模型可用性 UI wiring checkpoint（2026-08-05）
+
+- 新增 remote_model_availability_worker.py：只接收 API key 與 generation，透過獨立 QThread 呼叫既有 dependency-free discovery；worker 例外只回傳 worker_failed，不把 key 或完整例外送入結果。
+- Controller 只有在設定頁明確按下「重新檢查模型」時才 emit 查詢；API key 輸入、模型切換、設定同步與作品名稱輸入都不會觸發網路。
+- verified／offline snapshot 結果只過濾設定頁模型顯示；目前已選但未回傳的遠端模型仍保留且標示 tooltip，不呼叫 set_gemma_model()，stale generation 直接丟棄。
+- 關閉流程會遞增 generation、停止 discovery thread，network timeout bounded 為 5 秒；既有 OCRWorker、Google／Gemma provider routing 未修改。
+- 實際驗證：worker 4 passed；translation panel 10 passed；Controller availability tests 3 passed；discovery／CI inventory 19 passed；UI 排除 3 個主機 tmp ACL 測試後 47 passed、3 deselected；explicit compileall 通過；git diff --check 通過但有既有 LF/CRLF 轉換提示。
+- Gemini 透過 Hub-visible local bridge 唯讀審查回覆 0 findings，未修改檔案。CodeRabbit 本小時額度已在前一 checkpoint 用滿，因此本 PR2 checkpoint 不宣稱 CodeRabbit 複審完成。
+- 仍待：CodeRabbit cooldown 後 scoped review、實際 API key／live Models API、clean Windows／Store／GPU gate；本 checkpoint 不修改 provider routing，也不把 static／offline 結果宣稱成 live 驗證。

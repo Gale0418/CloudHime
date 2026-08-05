@@ -810,3 +810,78 @@ def test_explicit_research_remembers_existing_local_pack_id(monkeypatch):
     assert controller.knowledge_build_title == "Princess Synergy"
     assert controller.knowledge_build_pack_id == "existing-pack"
     assert len(created) == 1
+
+
+def test_controller_ignores_stale_remote_model_availability_result(qtbot):
+    from PySide6.QtWidgets import QComboBox
+    from remote_model_discovery import DISCOVERY_STATUS_VERIFIED, ModelDiscoveryResult
+
+    controller = Controller.__new__(Controller)
+    controller._remote_model_availability_generation = 2
+    controller.remote_model_availability = ModelDiscoveryResult(
+        status="no_key",
+        error_code="no_key",
+    )
+    controller.worker = SimpleNamespace(gemma_model="gemini-2.5-pro")
+    controller.cmb_ai_model = QComboBox()
+    controller.cmb_ai_model.addItem("Gemini", "gemini-2.5-pro")
+    controller.settings_window = None
+
+    stale = ModelDiscoveryResult(
+        status=DISCOVERY_STATUS_VERIFIED,
+        available_model_ids=("gemma-4-31b-it",),
+        verified=True,
+    )
+    Controller.on_remote_model_availability_finished(controller, 1, stale)
+
+    assert controller.remote_model_availability.error_code == "no_key"
+    assert controller.cmb_ai_model.currentData() == "gemini-2.5-pro"
+
+
+def test_controller_applies_availability_without_switching_worker_model(qtbot):
+    from PySide6.QtWidgets import QComboBox
+    from remote_model_discovery import DISCOVERY_STATUS_VERIFIED, ModelDiscoveryResult
+
+    controller = Controller.__new__(Controller)
+    controller._remote_model_availability_generation = 2
+    controller.remote_model_availability = ModelDiscoveryResult(
+        status="no_key",
+        error_code="no_key",
+    )
+    controller.worker = SimpleNamespace(gemma_model="gemini-2.5-pro")
+    controller.cmb_ai_model = QComboBox()
+    controller.cmb_ai_model.addItem("Gemini Pro", "gemini-2.5-pro")
+    controller.settings_window = None
+
+    result = ModelDiscoveryResult(
+        status=DISCOVERY_STATUS_VERIFIED,
+        available_model_ids=("gemma-4-31b-it",),
+        verified=True,
+    )
+    Controller.on_remote_model_availability_finished(controller, 2, result)
+
+    ids = [controller.cmb_ai_model.itemData(i) for i in range(controller.cmb_ai_model.count())]
+    assert "gemma-4-31b-it" in ids
+    assert "gemini-2.5-pro" in ids
+    assert controller.cmb_ai_model.currentData() == "gemini-2.5-pro"
+    assert controller.worker.gemma_model == "gemini-2.5-pro"
+
+
+def test_controller_without_api_key_does_not_emit_remote_refresh(qtbot):
+    from PySide6.QtWidgets import QComboBox
+    from remote_model_discovery import DISCOVERY_STATUS_NO_KEY
+
+    controller = Controller.__new__(Controller)
+    controller._remote_model_availability_generation = 0
+    controller.remote_model_availability = None
+    controller.worker = SimpleNamespace(
+        google_api_key="",
+        gemma_model="gemma-3-4b-it-local",
+    )
+    controller.cmb_ai_model = QComboBox()
+    controller.cmb_ai_model.addItem("Local", "gemma-3-4b-it-local")
+    controller.settings_window = None
+    controller.remote_model_availability_thread = None
+
+    assert Controller.refresh_remote_model_availability(controller) is False
+    assert controller.remote_model_availability.status == DISCOVERY_STATUS_NO_KEY

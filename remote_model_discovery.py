@@ -345,3 +345,37 @@ def filter_catalog_for_availability(
         for spec in catalog
         if spec.locality == "local" or spec.model_id in available
     )
+
+def filter_model_choices_for_availability(
+    choices: Sequence[tuple[str, str]],
+    result: ModelDiscoveryResult,
+    *,
+    model_catalog: Sequence[ModelSpec] | None = None,
+    current_model: str = "",
+) -> tuple[tuple[str, str], ...]:
+    """Filter UI choices while preserving a currently selected unavailable model."""
+    original = tuple(
+        (str(label), normalize_model_id(model_id))
+        for label, model_id in choices
+        if normalize_model_id(model_id)
+    )
+    if result.status not in {DISCOVERY_STATUS_VERIFIED, DISCOVERY_STATUS_OFFLINE_SNAPSHOT}:
+        return original
+
+    available = set(result.available_model_ids)
+    catalog_by_id = _catalog_by_id(model_catalog)
+    visible = []
+    for choice in original:
+        spec = catalog_by_id.get(choice[1])
+        if spec is None or spec.locality == "local" or choice[1] in available:
+            visible.append(choice)
+
+    selected = normalize_model_id(current_model)
+    if selected and selected not in {model_id for _, model_id in visible}:
+        selected_choice = next(
+            (choice for choice in original if choice[1] == selected),
+            None,
+        )
+        if selected_choice is not None:
+            visible.append(selected_choice)
+    return tuple(visible)

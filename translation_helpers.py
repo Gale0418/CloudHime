@@ -321,6 +321,42 @@ UI_TEXTS = {
         "zh-TW": "AI 模型",
         "en": "AI Model",
     },
+    "translation_model_availability_refresh": {
+        "zh-TW": "重新檢查模型",
+        "en": "Check models",
+    },
+    "translation_model_availability_checking": {
+        "zh-TW": "檢查中...",
+        "en": "Checking...",
+    },
+    "translation_model_availability_verified": {
+        "zh-TW": "✓ 已確認 {count} 個遠端模型",
+        "en": "✓ {count} remote models verified",
+    },
+    "translation_model_availability_offline": {
+        "zh-TW": "使用上次可用模型清單",
+        "en": "Using saved model availability",
+    },
+    "translation_model_availability_no_key": {
+        "zh-TW": "輸入 API Key 後可檢查遠端模型",
+        "en": "Enter an API key to check remote models",
+    },
+    "translation_model_availability_invalid_key": {
+        "zh-TW": "API Key 無效，保留目前模型清單",
+        "en": "API key rejected; keeping the current list",
+    },
+    "translation_model_availability_rate_limited": {
+        "zh-TW": "暫時受限，保留目前模型清單",
+        "en": "Temporarily limited; keeping the current list",
+    },
+    "translation_model_availability_unverified": {
+        "zh-TW": "無法確認，保留目前模型清單",
+        "en": "Could not verify; keeping the current list",
+    },
+    "translation_model_availability_selected_unavailable": {
+        "zh-TW": "目前選擇未在本次回應中提供",
+        "en": "The current selection was not returned this time",
+    },
     "translation_gemma_prompt": {
         "zh-TW": "Gemma Prompt",
         "en": "Gemma Prompt",

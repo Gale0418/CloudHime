@@ -85,6 +85,7 @@ from translation_registry import TranslationProviderRegistry, TranslationProvide
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from settings_store import (
     appdata_companion_path,
+    model_availability_snapshot_path,
     create_settings_paths,
     extract_backend_chain,
     load_settings_data,
@@ -97,6 +98,14 @@ from settings_store import (
 )
 from ocr_backend_panel import OcrBackendSettingsPanel
 from translation_settings_panel import TranslationSettingsPanel
+from remote_model_availability_worker import RemoteModelAvailabilityWorker
+from remote_model_discovery import (
+    DISCOVERY_STATUS_NO_KEY,
+    DISCOVERY_STATUS_UNVERIFIED,
+    ModelDiscoveryResult,
+    filter_model_choices_for_availability,
+)
+
 from knowledge_pack_store import KnowledgePackStore, create_knowledge_pack_paths
 from knowledge_builder_worker import KnowledgeBuildWorker
 from knowledge_research_service import KnowledgeResearchService
@@ -2840,6 +2849,7 @@ class Controller(QWidget):
     knowledge_build_finished = Signal(str, object)
     knowledge_build_error = Signal(str, object)
     knowledge_build_cancelled = Signal(str)
+    remote_model_availability_request = Signal(str, int)
 
     def __init__(self, overlay):
         super().__init__()
@@ -2884,6 +2894,14 @@ class Controller(QWidget):
         self.local_multimodal_cpu_only = False
         self.local_model_state = "stopped"
         self.local_model_detail = ""
+        self.remote_model_availability = ModelDiscoveryResult(
+            status=DISCOVERY_STATUS_NO_KEY,
+            error_code="no_key",
+        )
+        self._remote_model_availability_generation = 0
+        self._remote_model_availability_checking = False
+        self.remote_model_availability_thread = None
+        self.remote_model_availability_worker = None
         self.knowledge_build_worker = None
         self.knowledge_build_service = None
         self.knowledge_build_title = ""
@@ -3082,6 +3100,7 @@ class Controller(QWidget):
         self.worker.local_vision_status.connect(self.on_local_vision_status)
         self.worker.japanese_rescue_status.connect(self.on_japanese_rescue_status)
         self.ocr_thread.start()
+        self._setup_remote_model_availability()
         
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
@@ -3105,6 +3124,105 @@ class Controller(QWidget):
             "Controller.setup_worker done",
             f"+{(time.perf_counter() - worker_t0) * 1000.0:.1f} ms",
         )
+
+    def _setup_remote_model_availability(self):
+        thread = QThread(self)
+        worker = RemoteModelAvailabilityWorker(
+            snapshot_path=model_availability_snapshot_path(SETTINGS_PATHS),
+            timeout_seconds=5,
+        )
+        worker.moveToThread(thread)
+        self.remote_model_availability_request.connect(
+            worker.refresh,
+            Qt.QueuedConnection,
+        )
+        worker.finished.connect(
+            self.on_remote_model_availability_finished,
+            Qt.QueuedConnection,
+        )
+        thread.finished.connect(worker.deleteLater)
+        self.remote_model_availability_thread = thread
+        self.remote_model_availability_worker = worker
+        thread.start()
+
+    def _set_model_combo_choices(self, combo, choices, current_model):
+        if combo is None:
+            return
+        combo.blockSignals(True)
+        combo.clear()
+        for label, model_id in choices:
+            combo.addItem(label, model_id)
+        selected_index = combo.findData(current_model)
+        if selected_index >= 0:
+            combo.setCurrentIndex(selected_index)
+        combo.blockSignals(False)
+
+    def _apply_remote_model_availability(self, result):
+        self.remote_model_availability = result
+        current_model = str(getattr(self.worker, "gemma_model", "") or "").strip()
+        choices = filter_model_choices_for_availability(
+            SUPPORTED_AI_MODELS,
+            result,
+            current_model=current_model,
+        )
+        self._set_model_combo_choices(self.cmb_ai_model, choices, current_model)
+        settings_window = getattr(self, "settings_window", None)
+        panel = getattr(settings_window, "translation_panel", None)
+        if panel is not None:
+            panel.set_model_availability_result(result)
+        updater = getattr(settings_window, "update_translate_summary", None)
+        if callable(updater):
+            updater()
+
+    def refresh_remote_model_availability(self):
+        self._remote_model_availability_generation += 1
+        generation = self._remote_model_availability_generation
+        api_key = str(getattr(self.worker, "google_api_key", "") or "").strip()
+        if not api_key:
+            self._remote_model_availability_checking = False
+            self._apply_remote_model_availability(
+                ModelDiscoveryResult(status=DISCOVERY_STATUS_NO_KEY, error_code="no_key")
+            )
+            return False
+        thread = self.remote_model_availability_thread
+        if thread is None or not thread.isRunning():
+            self._remote_model_availability_checking = False
+            self._apply_remote_model_availability(
+                ModelDiscoveryResult(
+                    status=DISCOVERY_STATUS_UNVERIFIED,
+                    error_code="availability_thread_unavailable",
+                )
+            )
+            return False
+        self._remote_model_availability_checking = True
+        settings_window = getattr(self, "settings_window", None)
+        panel = getattr(settings_window, "translation_panel", None)
+        if panel is not None:
+            panel.set_model_availability_checking(True)
+        self.remote_model_availability_request.emit(api_key, generation)
+        return True
+
+    def on_remote_model_availability_finished(self, generation, result):
+        if int(generation) != self._remote_model_availability_generation:
+            return
+        self._remote_model_availability_checking = False
+        if not isinstance(result, ModelDiscoveryResult):
+            result = ModelDiscoveryResult(
+                status=DISCOVERY_STATUS_UNVERIFIED,
+                error_code="invalid_worker_result",
+            )
+        self._apply_remote_model_availability(result)
+
+    def _shutdown_remote_model_availability(self):
+        self._remote_model_availability_generation += 1
+        thread = self.remote_model_availability_thread
+        if thread is None:
+            return
+        if thread.isRunning():
+            thread.quit()
+            thread.wait(6000)
+        self.remote_model_availability_thread = None
+        self.remote_model_availability_worker = None
 
     def enable_hotkey(self):
         self.hotkey_filter.register_hotkey(self.winId())
@@ -4615,6 +4733,7 @@ class Controller(QWidget):
             knowledge_worker.wait_for_all(2.0)
         self._persist_pending_api_key()
         self.save_settings()
+        self._shutdown_remote_model_availability()
         if hasattr(self, 'worker'):
             self.worker.cleanup()
         if hasattr(self, 'hotkey_filter'):

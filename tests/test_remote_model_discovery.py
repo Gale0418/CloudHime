@@ -284,3 +284,34 @@ def test_verified_snapshot_filters_remote_catalog_but_keeps_local_model():
     selected_ids = {spec.model_id for spec in selected}
 
     assert selected_ids == {"gemma-3-4b-it-local", "gemini-3.6-flash"}
+
+def test_filter_model_choices_preserves_current_unavailable_model():
+    from remote_model_discovery import (
+        DISCOVERY_STATUS_VERIFIED,
+        ModelDiscoveryResult,
+        filter_model_choices_for_availability,
+    )
+
+    choices = (
+        ("Local", "gemma-3-4b-it-local"),
+        ("Available remote", "gemma-4-31b-it"),
+        ("Unavailable remote", "gemini-2.5-pro"),
+    )
+    result = ModelDiscoveryResult(
+        status=DISCOVERY_STATUS_VERIFIED,
+        available_model_ids=("gemma-4-31b-it",),
+        verified=True,
+    )
+
+    filtered = filter_model_choices_for_availability(
+        choices,
+        result,
+        model_catalog=MODEL_CATALOG,
+        current_model="gemini-2.5-pro",
+    )
+
+    assert filtered == (
+        ("Local", "gemma-3-4b-it-local"),
+        ("Available remote", "gemma-4-31b-it"),
+        ("Unavailable remote", "gemini-2.5-pro"),
+    )
