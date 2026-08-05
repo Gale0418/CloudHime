@@ -49,6 +49,16 @@ def test_release_build_contract_has_required_resources():
         assert (root / "runtime" / filename).is_file()
 
 
+def test_release_build_isolated_from_incompatible_powershell_module_path():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "build_exe.bat").read_text(encoding="utf-8")
+
+    module_guard = 'set "PSModulePath=%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\Modules;%ProgramFiles%\\WindowsPowerShell\\Modules"'
+    assert 'set "CLOUDHIME_ORIGINAL_PS_MODULE_PATH=%PSModulePath%"' in script
+    assert module_guard in script
+    assert script.index(module_guard) < script.index("powershell -NoProfile")
+    assert 'set "PSModulePath=%CLOUDHIME_ORIGINAL_PS_MODULE_PATH%"' in script
+
 def test_runtime_manifest_is_generated_and_verified():
     root = Path(__file__).resolve().parents[1]
     build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
@@ -86,6 +96,8 @@ def test_production_release_excludes_in_process_llama_binding():
     excludes = spec.split("excludes=[", 1)[1].split("]", 1)[0]
     assert "llama_cpp" in excludes
     assert "_llama_cpp" in excludes
+    for dev_only_module in ("pytest", "pytest-qt", "pluggy", "iniconfig", "pygments"):
+        assert dev_only_module in excludes
     assert "('build\\\\runtime', 'runtime')" in spec
     for production_module in ("CloudHime.py", "cloudhime_core.py", "cloudhime_ui.py", "cloudhime_workers.py"):
         source = (root / production_module).read_text(encoding="utf-8")

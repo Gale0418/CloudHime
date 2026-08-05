@@ -32,7 +32,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['llama_cpp', '_llama_cpp', 'PyQt5', 'PyQt6', 'PySide2', 'easyocr', 'rapidocr', 'rapidocr_onnxruntime', 'pytesseract', 'torch', 'torchvision', 'pandas', 'scipy', 'matplotlib', 'IPython', 'tensorflow', 'keras', 'h5py', 'tensorboard', 'jax', 'jaxlib', 'jupyter', 'jupyter_core', 'jupyter_client', 'ipykernel', 'pydantic', 'pydantic_core'],
+    excludes=['llama_cpp', '_llama_cpp', 'pytest', 'pytest-qt', 'pluggy', 'iniconfig', 'pygments', 'PyQt5', 'PyQt6', 'PySide2', 'easyocr', 'rapidocr', 'rapidocr_onnxruntime', 'pytesseract', 'torch', 'torchvision', 'pandas', 'scipy', 'matplotlib', 'IPython', 'tensorflow', 'keras', 'h5py', 'tensorboard', 'jax', 'jaxlib', 'jupyter', 'jupyter_core', 'jupyter_client', 'ipykernel', 'pydantic', 'pydantic_core'],
     noarchive=False,
     optimize=0,
 )

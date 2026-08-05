@@ -2,6 +2,10 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
+rem Windows PowerShell must not import the PowerShell 7 Utility module from the caller's environment.
+set "CLOUDHIME_ORIGINAL_PS_MODULE_PATH=%PSModulePath%"
+set "PSModulePath=%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules;%ProgramFiles%\WindowsPowerShell\Modules"
+
 set "APP_NAME=CloudHime"
 set "DIST_DIR=dist\%APP_NAME%"
 set "ZIP_FILE=dist\%APP_NAME%.zip"
@@ -133,6 +137,11 @@ if errorlevel 1 (
 
 :cleanup
 if exist "%RUNTIME_STAGE%" rmdir /s /q "%RUNTIME_STAGE%"
+if defined CLOUDHIME_ORIGINAL_PS_MODULE_PATH (
+  set "PSModulePath=%CLOUDHIME_ORIGINAL_PS_MODULE_PATH%"
+) else (
+  set "PSModulePath="
+)
 if exist "%RUNTIME_STAGE%" set "BUILD_EXIT_CODE=1"
 
 if not "%BUILD_EXIT_CODE%"=="0" (
