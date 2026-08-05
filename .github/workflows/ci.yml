@@ -56,7 +56,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-qt
+
           if (-not (Test-Path requirements-ci.txt)) {
             throw "requirements-ci.txt is missing."
           }
@@ -120,6 +120,37 @@ jobs:
           foreach ($runtimeFile in $runtimeFiles) {
             Set-Content -LiteralPath (Join-Path $internalRoot "runtime/$runtimeFile") -Value "CloudHime CI runtime placeholder" -Encoding ascii
           }
+
+          $runtimeRoot = Join-Path $internalRoot "runtime"
+          $runtimeManifestFiles = @(
+            Get-ChildItem -LiteralPath $runtimeRoot -File |
+              Sort-Object FullName |
+              ForEach-Object {
+                $relativePath = $_.FullName.Substring($runtimeRoot.Length).TrimStart("\", "/")
+                [ordered]@{
+                  path = $relativePath
+                  size = [int64]$_.Length
+                  sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                }
+              }
+          )
+          $runtimeManifest = [ordered]@{
+            schema_version = 1
+            runtime = "llama-server"
+            server = [ordered]@{
+              path = "llama-server.exe"
+              version = "CloudHime CI placeholder"
+            }
+            build = [ordered]@{
+              source_commit = "ci-fixture"
+              backend = "cuda"
+              architecture = "x64"
+            }
+            files = $runtimeManifestFiles
+          }
+          $runtimeManifest |
+            ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath (Join-Path $runtimeRoot "runtime-manifest.json") -Encoding utf8
           Write-Host "MSIX fixture prepared at $dummyDist"
 
       - name: Build MSIX package
@@ -194,6 +225,17 @@ jobs:
             if (-not (Test-Path -LiteralPath $runtimePath)) {
               throw "MSIX omitted required runtime file: $runtimeFile"
             }
+          }
+
+          $runtimeManifestPath = Join-Path $unpackDir "_internal/runtime/runtime-manifest.json"
+          if (-not (Test-Path -LiteralPath $runtimeManifestPath)) {
+            throw "MSIX omitted runtime-manifest.json"
+          }
+          $runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
+          if ($runtimeManifest.schema_version -ne 1 -or
+              $runtimeManifest.runtime -ne "llama-server" -or
+              [string]::IsNullOrWhiteSpace([string]$runtimeManifest.server.version)) {
+            throw "MSIX contained an invalid runtime manifest"
           }
           $signtoolCandidates = @(Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin") -Filter "signtool.exe" -Recurse -File |
             Sort-Object FullName -Descending)

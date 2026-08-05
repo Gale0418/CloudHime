@@ -63,6 +63,18 @@ def test_runtime_manifest_is_generated_and_verified():
     assert "Get-FileHash" in verifier
     assert "file set mismatch" in verifier
 
+def test_production_requirements_are_exactly_version_pinned():
+    root = Path(__file__).resolve().parents[1]
+    for filename in ("requirements.txt", "requirements-ci.txt"):
+        requirements = (root / filename).read_text(encoding="utf-8").splitlines()
+        entries = [
+            line.strip()
+            for line in requirements
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        assert entries
+        assert all("==" in entry for entry in entries), filename
+
 def test_production_release_excludes_in_process_llama_binding():
     root = Path(__file__).resolve().parents[1]
     requirements = (root / "requirements.txt").read_text(encoding="utf-8")
