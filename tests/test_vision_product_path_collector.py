@@ -1,8 +1,13 @@
 from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
+from pathlib import Path
 import pytest
-from vision_product_path_collector import collect_condition_raw, evaluate_product_path_pair
+from vision_product_path_collector import (
+    _is_loopback_endpoint,
+    collect_condition_raw,
+    evaluate_product_path_pair,
+)
 
 @dataclass
 class Event:
@@ -33,7 +38,13 @@ class FakeWorker:
         self.cleaned = True
 
 def _condition(name, route):
-    return {"condition_id": name, "route": route, "model_sha256": "1"*64, "runtime_sha256": "2"*64, "prompt_sha256": "3"*64, "target": "zh-Hant", "sampling": {"temperature": 0}, "context": {"window": 4}, "gpu_mode": "gpu"}
+    runtime_profile = "text" if route == "baseline" else "vision"
+    return {"condition_id": name, "route": route, "model_sha256": "1"*64, "runtime_sha256": "2"*64, "prompt_sha256": "3"*64, "target": "zh-Hant", "sampling": {"temperature": 0}, "context": {"window": 4}, "gpu_mode": "gpu", "runtime_profile": runtime_profile}
+
+
+@pytest.mark.parametrize(("route", "runtime_profile"), [("baseline", "text"), ("candidate", "vision")])
+def test_condition_runtime_profile_tracks_route(route, runtime_profile):
+    assert _condition("condition", route)["runtime_profile"] == runtime_profile
 
 def _manifest(image_bytes):
     return {"version": 1, "cases": [{"id": "unicode-case", "source_group": "group", "image": "\u7d20\u6750/\u56fa\u5b9a.png", "image_sha256": hashlib.sha256(image_bytes).hexdigest(), "split": "test", "source_lang": "ja", "target_lang": "zh-Hant", "reference_source": "\u539f\u6587", "reference_translations": ["\u6b63\u78ba\u7ffb\u8b6f"], "required_terms": ["\u6b63\u78ba"], "source_family": "family", "annotation_revision": "r1", "usage_status": "locked_test", "ground_truth_confirmed_by_owner": True}]}
@@ -191,3 +202,242 @@ def test_cleanup_failure_still_runs_both_post_cleanup_probes():
         )
 
     assert calls == ["cleanup", "residual", "runtime"]
+
+class WarmSession(FakeWorker):
+    def __init__(self, *, fail=False, evidence=None):
+        super().__init__(0, fail=fail)
+        self.start_cold_calls = self.close_calls = self.run_repeat_calls = 0
+        self.evidence = evidence or {
+            "ready": True,
+            "mode": "gpu",
+            "gpu_backend_confirmed": True,
+            "gpu_offload_layers": 99,
+            "runtime_profile": "vision",
+            "endpoint": "127.0.0.1:43123",
+            "owned_pid": 4242,
+            "server_executable_identity": "2"*64,
+            "cache_hit": False,
+        }
+
+    def start_cold(self, condition):
+        self.start_cold_calls += 1
+        self.started_condition = condition
+        return self.evidence
+
+    def run_repeat(self, case_id, pixels):
+        self.run_repeat_calls += 1
+        assert case_id == "unicode-case" and pixels is not None
+        self.capture_scan_area = lambda: (pixels.copy(), 0, 0)
+        self.run_scan_once()
+        observation = {"case_id": case_id, "pixels_sha256": hashlib.sha256(bytes(pixels)).hexdigest(), "provider": "local", "source": self.last_combined_text, "translation": "\n".join(item[0] for item in self.last_results),
+                "trace_events": self.last_scan_trace.events, "stages_ms": {"capture": 2.0, "ocr": 3.0},
+                "wall_time_ms": 1.0, "runtime_evidence": self.evidence}
+        self.last_observation = observation
+        return observation
+
+    def close(self):
+        self.close_calls += 1
+        self.cleaned = True
+        return {"owned_pid": self.evidence["owned_pid"], "owned_process_exited": True}
+
+
+def _warm_condition():
+    return _condition("baseline", "baseline-route")
+
+
+def _collect_warm(session_factory):
+    return collect_condition_raw(
+        _manifest(b"fixed-image"), _warm_condition(),
+        worker_factory=lambda: pytest.fail("legacy worker must not be used"),
+        session_factory=session_factory,
+        configure_worker=lambda worker, condition: setattr(worker, "configured", condition["route"]),
+        image_loader=lambda case: (bytearray(b"fixed-image"), b"fixed-image"),
+        residual_probe=lambda worker: 0,
+        runtime_mode_probe=lambda worker: "gpu",
+    )
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("localhost", True),
+        ("127.0.0.1:43123", True),
+        ("http://127.0.0.1:43123/v1", True),
+        ("http://localhost:43123/v1", True),
+        ("http://10.0.0.1:43123/v1", False),
+    ],
+)
+def test_loopback_endpoint_accepts_url_form_and_plain_loopback(endpoint, expected):
+    assert _is_loopback_endpoint(endpoint) is expected
+
+
+def test_warm_session_is_condition_scoped_and_excludes_lifecycle_from_scan_latency():
+    session = WarmSession()
+    run = _collect_warm(lambda: session)
+
+    assert session.start_cold_calls == session.close_calls == 1
+    assert session.run_repeat_calls == session.scan_calls == 5
+    assert all(record["stages_ms"]["total"] >= 0 for record in run["records"])
+    assert run["cold_start"]["runtime_evidence"] == {
+        key: session.evidence[key]
+        for key in (
+            "ready", "mode", "runtime_profile", "endpoint", "owned_pid",
+            "server_executable_identity", "cache_hit",
+        )
+    }
+    assert session.evidence["gpu_backend_confirmed"] is True
+    assert session.evidence["gpu_offload_layers"] > 0
+    assert session.last_observation["case_id"] == "unicode-case"
+    assert session.last_observation["pixels_sha256"] == hashlib.sha256(b"fixed-image").hexdigest()
+    assert run["cleanup"]["owned_process_exited"] is True
+    assert "detected_source" not in run["cold_start"]
+    assert "translation" not in run["cleanup"]
+
+
+def test_real_local_adapter_session_contract_integrates_with_collector():
+    from vision_product_path_local_adapter import ProductPathLocalSession
+
+    class Process:
+        pid = 73
+        exited = False
+        def poll(self):
+            return 0 if self.exited else None
+
+    class AdapterWorker(FakeWorker):
+        def __init__(self):
+            super().__init__(0)
+            self.process = Process()
+            self.local_multimodal_provider = type(
+                "Provider", (), {"clear_cache": lambda _provider: None}
+            )()
+            self.local_vision_runtime = type(
+                "VisionRuntime", (), {"_context_size": 4096, "_gpu_layers": 99}
+            )()
+
+        def _clear_translation_memories(self):
+            for name in (
+                "translation_cache",
+                "preferred_text_memory",
+                "hud_memory",
+                "exact_image_cache",
+            ):
+                memory = getattr(self, name, None)
+                if hasattr(memory, "clear"):
+                    memory.clear()
+
+        def ensure_local_runtime_ready(self, *, timeout_seconds):
+            return True
+
+        def local_runtime_evidence(self):
+            return {
+                "ready": True,
+                "profile": "vision",
+                "mode": "gpu",
+                "gpu_backend_confirmed": True,
+                "gpu_offload_layers": 99,
+                "base_url": "http://127.0.0.1:43123",
+                "owned_process": True,
+                "owned_process_handle": self.process,
+                "pid": self.process.pid,
+                "server_path": __file__,
+            }
+
+        def cleanup(self):
+            super().cleanup()
+            self.process.exited = True
+
+    worker = AdapterWorker()
+    condition = _condition("candidate", "candidate")
+    condition["context"]["n_ctx"] = 4096
+    condition["runtime_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    run = collect_condition_raw(
+        _manifest(b"fixed-image"), condition,
+        worker_factory=lambda: pytest.fail("legacy worker must not be used"),
+        session_factory=lambda: ProductPathLocalSession(lambda: worker),
+        configure_worker=lambda *_: pytest.fail("warm must not configure session as a worker"),
+        image_loader=lambda case: (bytearray(b"fixed-image"), b"fixed-image"),
+        residual_probe=lambda _: pytest.fail("warm must not use legacy residual probe"),
+        runtime_mode_probe=lambda _: pytest.fail("warm must not use legacy mode probe"),
+    )
+    assert worker.scan_calls == 5 and worker.cleanup_calls == 1
+    assert run["cleanup"]["owned_process_exited"] is True
+
+    invalid_gpu = AdapterWorker()
+    evidence = invalid_gpu.local_runtime_evidence()
+    evidence["gpu_backend_confirmed"] = False
+    invalid_gpu.local_runtime_evidence = lambda: evidence
+    with pytest.raises(ValueError, match="ready gpu"):
+        collect_condition_raw(
+            _manifest(b"fixed-image"), condition,
+            worker_factory=lambda: pytest.fail("legacy worker must not be used"),
+            session_factory=lambda: ProductPathLocalSession(lambda: invalid_gpu),
+            configure_worker=lambda *_: pytest.fail("warm must not configure session as a worker"),
+            image_loader=lambda case: (bytearray(b"fixed-image"), b"fixed-image"),
+            residual_probe=lambda _: pytest.fail("warm must not use legacy residual probe"),
+            runtime_mode_probe=lambda _: pytest.fail("warm must not use legacy mode probe"),
+        )
+
+
+def test_warm_session_closes_after_scan_failure_and_rejects_invalid_runtime_evidence():
+    failed = WarmSession(fail=True)
+    with pytest.raises(RuntimeError, match="scan failed"):
+        _collect_warm(lambda: failed)
+    assert failed.close_calls == 1
+
+    for field, value in [
+        ("ready", False), ("mode", "cpu"), ("runtime_profile", "other"),
+        ("endpoint", "10.0.0.1:43123"), ("owned_pid", 0),
+        ("server_executable_identity", "other"), ("cache_hit", True),
+    ]:
+        evidence = WarmSession().evidence.copy()
+        evidence[field] = value
+        with pytest.raises(ValueError, match=field):
+            _collect_warm(lambda evidence=evidence: WarmSession(evidence=evidence))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("provider", "remote", "local"),
+        ("fallback_reason", "remote_timeout", "fallback_reason"),
+        ("cache_hit", True, "cache_hit"),
+    ],
+)
+def test_warm_session_rejects_nonlocal_provider_fallback_and_cache_hit_trace(
+    field, value, message
+):
+    class InvalidTraceSession(WarmSession):
+        def run_repeat(self, case_id, pixels):
+            observation = super().run_repeat(case_id, pixels)
+            setattr(self.last_scan_trace.events[-1], field, value)
+            observation["trace_events"] = self.last_scan_trace.events
+            return observation
+
+    with pytest.raises(ValueError, match=message):
+        _collect_warm(InvalidTraceSession)
+
+
+def test_warm_session_preserves_scan_error_when_cleanup_evidence_is_missing():
+    class ScanAndCleanupFailureSession(WarmSession):
+        def run_repeat(self, case_id, pixels):
+            raise RuntimeError("scan failed")
+
+        def close(self):
+            self.close_calls += 1
+            raise RuntimeError("cleanup failed")
+
+    session = ScanAndCleanupFailureSession()
+    with pytest.raises(RuntimeError, match="scan failed"):
+        _collect_warm(lambda: session)
+
+    assert session.close_calls == 1
+
+
+def test_warm_session_reports_cleanup_error_without_masking_it():
+    class CleanupFailureSession(WarmSession):
+        def close(self):
+            self.close_calls += 1
+            raise RuntimeError("cleanup failed")
+
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        _collect_warm(CleanupFailureSession)

@@ -51,6 +51,7 @@
         "tests/test_ocr_backend_thread_safety.py",
         "tests/test_ocr_refinement.py",
         "tests/test_ocr_text_processing.py",
+        "tests/test_ocr_worker_local_runtime_evidence.py",
         "tests/test_ocr_worker_mode_matrix.py",
         "tests/test_scan_pipeline_contract.py"
       ]
@@ -63,6 +64,7 @@
         "tests/test_local_vision_assets.py",
         "tests/test_local_vision_integration.py",
         "tests/test_local_vision_runtime.py",
+        "tests/test_vision_product_path_local_adapter.py",
         "tests/test_managed_asset_store.py"
       ]
     },
@@ -87,7 +89,8 @@
         "tests/test_temporal_holdout_benchmark.py",
         "tests/test_vision_e2e_benchmark.py",
         "tests/test_vision_owner_review.py",
-        "tests/test_vision_product_path_collector.py"
+        "tests/test_vision_product_path_collector.py",
+        "tests/test_vision_product_path_benchmark.py"
       ]
     }
   ]

@@ -22,8 +22,14 @@ import time
 import threading
 import traceback
 from collections import Counter, OrderedDict, deque
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    TimeoutError as FutureTimeoutError,
+    as_completed,
+    wait,
+)
 from urllib import request, error
+from urllib.parse import urlsplit
 import numpy as np
 import cv2
 import mss
@@ -752,6 +758,138 @@ class OCRWorker(QObject):
                 )
         return runtime.start()
 
+    def _owned_local_runtime_ready(self, runtime, state):
+        if runtime is None or state is None or getattr(state, "name", "") != "ready":
+            return False
+        try:
+            process = runtime.owned_process
+            process_running = process is not None and process.poll() is None
+        except Exception:
+            return False
+        if not process_running:
+            return False
+        base_url = getattr(state, "base_url", "")
+        if not isinstance(base_url, str):
+            return False
+        try:
+            parsed = urlsplit(base_url)
+            return (
+                parsed.scheme == "http"
+                and parsed.hostname == "127.0.0.1"
+                and parsed.port is not None
+                and parsed.path == "/v1"
+                and not parsed.username
+                and not parsed.password
+                and not parsed.query
+                and not parsed.fragment
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def _local_runtime_provider_synced(self, state):
+        provider = getattr(self, "local_multimodal_provider", None)
+        if provider is None or state is None:
+            return False
+        runtime_endpoint = getattr(state, "base_url", "").rstrip("/")
+        expected_model = getattr(self, "local_multimodal_model", "gemma-3-4b-it")
+        return (
+            bool(getattr(provider, "_runtime_ready", False))
+            and getattr(provider, "base_url", "").rstrip("/") == runtime_endpoint
+            and getattr(provider, "model_name", "") == expected_model
+        )
+
+    def _wait_for_local_vision_callback(self, future, deadline):
+        while getattr(self, "_local_vision_load_future", None) is future:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.005, remaining))
+        return True
+
+    def ensure_local_runtime_ready(self, timeout_seconds):
+        """啟動或等待本 worker 持有的 loopback LocalVisionRuntime。"""
+        try:
+            timeout = float(timeout_seconds)
+        except (TypeError, ValueError):
+            return False
+        if timeout < 0:
+            return False
+
+        deadline = time.monotonic() + timeout
+        runtime = getattr(self, "local_vision_runtime", None)
+        state = getattr(runtime, "_state", None) if runtime is not None else None
+        if (
+            OCRWorker._owned_local_runtime_ready(self, runtime, state)
+            and OCRWorker._local_runtime_provider_synced(self, state)
+        ):
+            return True
+
+        try:
+            self.request_local_vision_start()
+        except Exception:
+            return False
+
+        future = getattr(self, "_local_vision_load_future", None)
+        if future is not None:
+            try:
+                future.result(timeout=max(0.0, deadline - time.monotonic()))
+            except FutureTimeoutError:
+                return False
+            except Exception:
+                OCRWorker._wait_for_local_vision_callback(self, future, deadline)
+                return False
+            if not OCRWorker._wait_for_local_vision_callback(self, future, deadline):
+                return False
+
+        state = getattr(runtime, "_state", None) if runtime is not None else None
+        return (
+            OCRWorker._owned_local_runtime_ready(self, runtime, state)
+            and OCRWorker._local_runtime_provider_synced(self, state)
+        )
+
+    def local_runtime_evidence(self):
+        """回傳不含內容或密鑰的本 worker 本機 runtime 證據。"""
+        runtime = getattr(self, "local_vision_runtime", None)
+        state = getattr(runtime, "_state", None) if runtime is not None else None
+        try:
+            process = runtime.owned_process if runtime is not None else None
+        except Exception:
+            process = None
+        assets = getattr(self, "_local_vision_assets", None)
+        if assets is None and runtime is not None:
+            assets = getattr(runtime, "_assets", None)
+        server_path = getattr(assets, "server_path", None)
+        profile = getattr(runtime, "profile_name", "") if runtime is not None else ""
+        ready = OCRWorker._owned_local_runtime_ready(self, runtime, state)
+        gpu_offload_layers = 0
+        gpu_total_layers = 0
+        if ready:
+            try:
+                gpu_offload_layers = max(0, int(getattr(state, "gpu_offload_layers", 0)))
+                gpu_total_layers = max(0, int(getattr(state, "gpu_total_layers", 0)))
+            except (TypeError, ValueError):
+                gpu_offload_layers = 0
+                gpu_total_layers = 0
+        mode = getattr(state, "mode", "") if ready else ""
+        gpu_backend_confirmed = (
+            mode == "gpu"
+            and gpu_offload_layers > 0
+            and gpu_total_layers >= gpu_offload_layers
+        )
+        return {
+            "ready": ready,
+            "profile": profile if profile in {"text", "vision"} else "",
+            "mode": mode,
+            "gpu_offload_layers": gpu_offload_layers,
+            "gpu_total_layers": gpu_total_layers,
+            "gpu_backend_confirmed": gpu_backend_confirmed,
+            "base_url": getattr(state, "base_url", "") if ready else "",
+            "owned_process": process is not None,
+            "owned_process_handle": process,
+            "pid": getattr(process, "pid", None) if process is not None else None,
+            "server_path": str(server_path) if server_path is not None else "",
+        }
+
     def request_local_vision_start(self):
         runtime = getattr(self, "local_vision_runtime", None)
         profile_name = getattr(self, "_local_runtime_profile", None)
@@ -820,24 +958,28 @@ class OCRWorker(QObject):
         if provider is not None:
             registry.register("gemma", provider)
     def _on_local_vision_load_done(self, future):
-        if self._local_vision_load_future is future:
-            self._local_vision_load_future = None
         try:
             state = future.result()
         except Exception as exc:
             self.local_multimodal_provider.update_runtime("", "", False)
-            OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
-            return
-
-        self.local_multimodal_provider.update_runtime(
-            state.base_url if state.name == "ready" else "",
-            getattr(self, "local_multimodal_model", "gemma-3-4b-it") if state.name == "ready" else "",
-            ready=state.name == "ready",
-        )
-        if state.name == "ready":
-            self._refresh_translation_registry()
-        OCRWorker._emit_local_vision_status(self, state.name, state.detail)
-
+            OCRWorker._emit_local_vision_status(
+                self,
+                "failed",
+                f"{type(exc).__name__}: {exc}",
+            )
+        else:
+            ready = state.name == "ready"
+            self.local_multimodal_provider.update_runtime(
+                state.base_url if ready else "",
+                getattr(self, "local_multimodal_model", "gemma-3-4b-it") if ready else "",
+                ready=ready,
+            )
+            if ready:
+                self._refresh_translation_registry()
+            OCRWorker._emit_local_vision_status(self, state.name, state.detail)
+        finally:
+            if getattr(self, "_local_vision_load_future", None) is future:
+                self._local_vision_load_future = None
     request_local_vision_load = request_local_vision_start
 
     def shutdown_local_vision_runtime(self):

@@ -32,10 +32,11 @@ def _manifest(*cases):
     return {"version": 1, "cases": list(cases)}
 
 
-def _condition(name, *, gpu_mode="gpu", route="route-a", model_sha="1" * 64):
+def _condition(name, *, gpu_mode="gpu", route="route-a", model_sha="1" * 64, runtime_profile="text"):
     return {
         "condition_id": name,
         "route": route,
+        "runtime_profile": runtime_profile,
         "model_sha256": model_sha,
         "runtime_sha256": "2" * 64,
         "prompt_sha256": "3" * 64,
@@ -47,7 +48,7 @@ def _condition(name, *, gpu_mode="gpu", route="route-a", model_sha="1" * 64):
 
 
 def _record(case_id, repeat, *, translation="正確翻譯", source="原文", total=20,
-            residual=0, runtime_mode="gpu", stages=None):
+            residual=0, runtime_mode="gpu", runtime_profile="text", stages=None):
     return {
         "case_id": case_id,
         "repeat": repeat,
@@ -57,6 +58,7 @@ def _record(case_id, repeat, *, translation="正確翻譯", source="原文", tot
         "fallback_reason": "",
         "stages_ms": {"total": total} if stages is None else dict(stages),
         "runtime_mode": runtime_mode,
+        "runtime_profile": runtime_profile,
         "residual_processes": residual,
     }
 
@@ -65,7 +67,11 @@ def _run(condition, cases, **kwargs):
     return {
         "condition": condition,
         "records": [
-            _record(case["id"], repeat, **kwargs)
+            _record(
+                case["id"], repeat,
+                runtime_profile=condition["runtime_profile"],
+                **kwargs,
+            )
             for case in cases
             for repeat in range(1, 6)
         ],
@@ -353,3 +359,33 @@ def test_ci_inventory_includes_targeted_test():
     )
     benchmark_group = next(group for group in inventory["groups"] if group["name"] == "benchmarks")
     assert "tests/test_vision_e2e_benchmark.py" in benchmark_group["test_files"]
+
+
+def test_route_profiles_may_differ_without_changing_fixed_condition_fingerprint():
+    text = _condition("base", route="ocr-first", runtime_profile="text")
+    vision = _condition("candidate", route="vision-first", runtime_profile="vision")
+
+    assert evaluator.condition_fingerprint(text) == evaluator.condition_fingerprint(vision)
+
+
+def test_observed_runtime_profile_must_match_declared_route_profile():
+    cases = [_case("a")]
+    baseline = _run(_condition("base", route="a", runtime_profile="text"), cases)
+    candidate = _run(
+        _condition("candidate", route="b", runtime_profile="vision"), cases
+    )
+    candidate["records"][0]["runtime_profile"] = "text"
+
+    with pytest.raises(ValueError, match="runtime_profile mismatch"):
+        evaluator.evaluate_paired(_manifest(*cases), baseline, candidate)
+
+
+def test_runtime_profile_is_required_and_bounded():
+    condition = _condition("base")
+    condition.pop("runtime_profile")
+    with pytest.raises(ValueError, match="runtime_profile"):
+        evaluator.condition_fingerprint(condition)
+
+    condition = _condition("base", runtime_profile="audio")
+    with pytest.raises(ValueError, match="runtime_profile"):
+        evaluator.condition_fingerprint(condition)

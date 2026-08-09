@@ -25,6 +25,7 @@ Task 2：LocalVisionRuntime 生命週期管理。
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from collections import deque
 import threading
@@ -104,6 +105,9 @@ class VisionRuntimeState:
     detail: str
     base_url: str
     mode: str
+    gpu_offload_layers: int = 0
+    gpu_total_layers: int = 0
+    gpu_backend_confirmed: bool = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -341,17 +345,27 @@ class LocalVisionRuntime:
         health_url = f"http://127.0.0.1:{port}/health"
         stderr_lines = deque(maxlen=256)
         stderr_lock = threading.Lock()
+        gpu_offload_layers = 0
+        gpu_total_layers = 0
 
         def _snapshot_stderr() -> str:
             with stderr_lock:
                 return "".join(stderr_lines)[:_STDERR_MAX_CHARS]
 
+        def _snapshot_gpu_offload() -> tuple[int, int]:
+            with stderr_lock:
+                return gpu_offload_layers, gpu_total_layers
+
         # [FIX-1] daemon thread：非阻塞消化 stderr
         def _drain() -> None:
+            nonlocal gpu_offload_layers, gpu_total_layers
             try:
                 for line in proc.stderr:  # type: ignore[union-attr]
+                    gpu_offload = _find_gpu_offload_layers(line)
                     with stderr_lock:
                         stderr_lines.append(line)
+                        if gpu_offload is not None:
+                            gpu_offload_layers, gpu_total_layers = gpu_offload
                     self._report_line_progress(line)
             except Exception:
                 pass
@@ -385,8 +399,20 @@ class LocalVisionRuntime:
                 resp = self._urlopen(health_url, timeout=min(2.0, remaining))
                 base_url = f"http://127.0.0.1:{port}/v1"
                 self._report_progress("ready", 100)
+                gpu_offload_layers, gpu_total_layers = _snapshot_gpu_offload()
+                gpu_backend_confirmed = (
+                    mode == "gpu"
+                    and gpu_offload_layers > 0
+                    and gpu_total_layers >= gpu_offload_layers
+                )
                 return VisionRuntimeState(
-                    name="ready", detail="", base_url=base_url, mode=mode
+                    name="ready",
+                    detail="",
+                    base_url=base_url,
+                    mode=mode,
+                    gpu_offload_layers=gpu_offload_layers,
+                    gpu_total_layers=gpu_total_layers,
+                    gpu_backend_confirmed=gpu_backend_confirmed,
                 )
             except Exception:
                 pass
@@ -477,6 +503,25 @@ class LocalVisionRuntime:
 # 內部工具
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+_GPU_OFFLOAD_RE = re.compile(
+    r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers\s+to\s+gpu",
+    flags=re.IGNORECASE,
+)
+
+
+def _find_gpu_offload_layers(stderr_text: str) -> tuple[int, int] | None:
+    """回傳最後一筆 llama.cpp GPU offload marker；無 marker 則為 None。"""
+    matches = _GPU_OFFLOAD_RE.findall(str(stderr_text or ""))
+    if not matches:
+        return None
+    offloaded, total = matches[-1]
+    return int(offloaded), int(total)
+
+
+def _parse_gpu_offload_layers(stderr_snapshot: str) -> tuple[int, int]:
+    """解析 llama.cpp stderr 文字；保留無 marker 時的 (0, 0) 相容行為。"""
+    return _find_gpu_offload_layers(stderr_snapshot) or (0, 0)
 
 def _is_cuda_error(detail: str) -> bool:
     """判斷 detail 是否含有 CUDA/VRAM 啟動失敗的關鍵字（小寫比對）。"""

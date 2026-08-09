@@ -1212,6 +1212,10 @@ class LocalMultimodalProvider(KnowledgePromptContext):
     def available(self) -> bool:
         return self.enabled and self._runtime_ready and bool(self.base_url) and bool(self.model_name)
 
+    def clear_cache(self) -> None:
+        """Clear translation results without changing local runtime state."""
+        self._translation_cache.clear()
+
     def update_runtime(self, base_url: str, model_name: str, ready: bool) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.model_name = (model_name or "").strip()
