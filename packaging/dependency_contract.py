@@ -14,6 +14,9 @@ import sys
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from packaging.markers import Marker
+from packaging.requirements import InvalidRequirement, Requirement
+
 
 CONTRACT_VERSION = 1
 SUPPORTED_PIP_REPORT_VERSION = "1"
@@ -117,6 +120,90 @@ def validate_lock(report: dict, lock: dict[str, dict[str, object]]) -> None:
             raise ContractError(f"lock mismatch: {name}")
 
 
+def _marker_variables(marker: Marker) -> set[str]:
+    """Return variables referenced by packaging's parsed marker tree."""
+    variables: set[str] = set()
+
+    def visit(nodes: object) -> None:
+        if isinstance(nodes, list):
+            for node in nodes:
+                visit(node)
+        elif isinstance(nodes, tuple):
+            for node in (nodes[0], nodes[2]):
+                if type(node).__name__ == "Variable":
+                    variables.add(node.value)
+
+    visit(marker._markers)
+    return variables
+
+
+def _marker_applies(marker: Marker | None, report_environment: object) -> bool:
+    if marker is None:
+        return True
+    required_keys = _marker_variables(marker)
+    # pip reports do not retain requested root extras, so their activation cannot
+    # be proven. Omitting these edges avoids representing an unproven dependency.
+    if "extra" in required_keys:
+        return False
+    if not isinstance(report_environment, dict):
+        raise ContractError("pip report environment is required for marker dependencies")
+    missing_keys = sorted(
+        key for key in required_keys if not isinstance(report_environment.get(key), str)
+    )
+    if missing_keys:
+        raise ContractError(
+            "pip report environment is incomplete for marker dependencies: "
+            + ", ".join(missing_keys)
+        )
+    environment = {key: report_environment[key] for key in required_keys}
+    return marker.evaluate(environment=environment)
+
+
+def validate_marker_dependencies(report: dict) -> None:
+    """Require pip reports to resolve dependencies selected by target markers."""
+    items = report.get("install")
+    if not isinstance(items, list) or not items:
+        raise ContractError("pip report has no install entries")
+
+    resolved: set[str] = set()
+    missing_dependencies: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ContractError("pip report install entry must be an object")
+        metadata = item.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ContractError("pip report item is missing metadata")
+        raw_name = metadata.get("name")
+        if not isinstance(raw_name, str):
+            raise ContractError("pip report item has invalid name")
+        owner = normalize_name(raw_name)
+        resolved.add(owner)
+    for item in items:
+        metadata = item["metadata"]
+        owner = normalize_name(metadata["name"])
+        requires_dist = metadata.get("requires_dist") or []
+        if not isinstance(requires_dist, list):
+            raise ContractError(f"invalid requires_dist metadata for {owner}")
+        for raw_requirement in requires_dist:
+            if not isinstance(raw_requirement, str):
+                raise ContractError(f"invalid requires_dist entry for {owner}")
+            try:
+                requirement = Requirement(raw_requirement)
+            except InvalidRequirement as exc:
+                raise ContractError(f"invalid requires_dist entry for {owner}: {raw_requirement!r}") from exc
+            if requirement.marker is not None and _marker_applies(
+                requirement.marker, report.get("environment")
+            ):
+                dependency = normalize_name(requirement.name)
+                if dependency not in resolved:
+                    missing_dependencies.append(f"{owner} -> {dependency} ({raw_requirement})")
+    if missing_dependencies:
+        raise ContractError(
+            "resolved marker dependencies missing from pip report: "
+            + "; ".join(sorted(missing_dependencies))
+        )
+
+
 def validate_direct_requirements(report: dict, requirements: dict[str, str]) -> None:
     items = report.get("install")
     if not isinstance(items, list) or not items:
@@ -136,6 +223,7 @@ def validate_direct_requirements(report: dict, requirements: dict[str, str]) -> 
         )
 
 def render_lock(report: dict) -> str:
+    validate_marker_dependencies(report)
     items = report.get("install")
     if not isinstance(items, list) or not items:
         raise ContractError("pip report has no install entries")
@@ -186,14 +274,17 @@ def _license_decl(metadata: dict, name: str) -> dict:
     raise ContractError(f"missing license metadata for {name}")
 
 
-def _dependency_names(metadata: dict) -> list[str]:
+def _dependency_names(metadata: dict, report_environment: object) -> list[str]:
     names: set[str] = set()
     for raw in metadata.get("requires_dist") or []:
         if not isinstance(raw, str):
             continue
-        match = re.match(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)", raw)
-        if match:
-            names.add(normalize_name(match.group(1)))
+        try:
+            requirement = Requirement(raw)
+        except InvalidRequirement:
+            continue
+        if _marker_applies(requirement.marker, report_environment):
+            names.add(normalize_name(requirement.name))
     return sorted(names)
 
 
@@ -229,6 +320,7 @@ def _component(item: dict) -> dict:
 def canonical_report(report: dict, requirements: dict[str, str]) -> dict:
     if report.get("version") != SUPPORTED_PIP_REPORT_VERSION:
         raise ContractError(f"unsupported pip report version: {report.get('version')!r}")
+    validate_marker_dependencies(report)
     items = report.get("install")
     if not isinstance(items, list) or not items:
         raise ContractError("pip report has no install entries")
@@ -277,7 +369,11 @@ def build_sbom(canonical: dict) -> dict:
             metadata = source.get("metadata", {})
             if normalize_name(str(metadata.get("name", ""))) != metadata_name:
                 continue
-            dependency_refs = [refs[name] for name in _dependency_names(metadata) if name in refs]
+            dependency_refs = [
+                refs[name]
+                for name in _dependency_names(metadata, canonical.get("environment"))
+                if name in refs
+            ]
             break
         dependencies.append({"ref": component["bom-ref"], "dependsOn": sorted(set(dependency_refs))})
     return {

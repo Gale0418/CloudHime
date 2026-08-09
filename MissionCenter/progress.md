@@ -266,3 +266,10 @@
 - MSIX launch smoke 改為要求程序通過 liveness window；提早以 0 或非 0 exit 都會失敗。CI fixture 使用可預期存活的 windowless sleeper。
 - 驗證：release／MSIX targeted 53 passed／3 skipped；core 331 passed／3 skipped；compileall 與 `git diff --check` 通過。未執行真 PyInstaller clean rebuild、MSIX install／WACK／Store／GPU。
 - CodeRabbit 本小時三次均未產生 findings：一次短 timeout、一次 WebSocket closed、一次隔離 initial base 被誤判為 162 files 超過 150。未宣稱 review pass；冷卻後改用保留原始 Git 歷史的 worktree。
+## CH-T64 真實 clean release follow-up（2026-08-09）
+
+- 第一次真 build 以 `py -3.10-64` fail-closed，確認主機只裝 3.11；從 python.org 安裝並驗證 PSF 簽章的 CPython 3.10.11 x64 per-user，不加入 PATH、不取代 3.11。
+- 第二次重現 bundled `llama-server --version` cold-start 超過 15 秒與 batch `:cleanup` label 缺失；build 現明示 bounded 120 秒，失敗路徑統一非 0 並保留 cleanup。暖狀態實測 `--version` 3.089 秒。
+- 第三次真 hash install 揭露舊 cross-target lock 漏掉 Python 3.10 marker dependencies；改以真 3.10 對官方 PyPI 解析，production 54 components、CI 60 components，補入 `exceptiongroup`，CI 另補 `tomli`。contract 只使用 report target environment，缺 marker key fail-closed，SBOM edge 依 marker 篩選。
+- 第四次 clean build 完成 PyInstaller、release verifier 與壓縮；外層 1204 秒 timeout 時僅剩 orphaned `Compress-Archive`，精確等待 PID 完成。獨立 verifier：Status ready、485 files、1,623,126,932 bytes、0 model files；provenance 5 files，ZIP 846,606,121 bytes。
+- 聚焦回歸先後為 24 passed、57 passed／2 skipped；最終五組 70 passed／2 skipped；CodeRabbit history-preserving 主 repo review 0 findings。尚未執行 MSIX install／launch／uninstall、WACK、Store 或 GPU onboarding。

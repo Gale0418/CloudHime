@@ -190,3 +190,28 @@ def test_release_build_stages_dependency_provenance_before_pyinstaller_and_specs
     assert prepare < pyinstaller
     assert "provenance" in spec
     assert (root / "packaging" / "prepare_release_provenance.ps1").is_file()
+
+def test_release_build_uses_explicit_bounded_manifest_timeout_and_resolvable_cleanup():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "build_exe.bat").read_text(encoding="utf-8")
+
+    manifest_command = next(
+        line for line in script.splitlines() if "packaging\\runtime_manifest.py" in line
+    )
+    assert "--version-timeout 120" in manifest_command
+
+    failure_label = ":failure"
+    cleanup_label = ":cleanup"
+    failure_label_index = script.index("\n:failure") + 1
+    cleanup_label_index = script.index("\n:cleanup") + 1
+    assert script.splitlines().count(failure_label) == 1
+    assert script.splitlines().count(cleanup_label) == 1
+    assert failure_label_index > script.index(manifest_command)
+    assert failure_label_index < cleanup_label_index
+    assert script.count("goto :failure") >= 1
+    assert "set \"BUILD_EXIT_CODE=1\"" in script[
+        failure_label_index:cleanup_label_index
+    ]
+    assert "goto :cleanup" in script[:failure_label_index]
+    assert "goto :cleanup" in script[failure_label_index:cleanup_label_index]
+    assert "exit /b 1" in script[cleanup_label_index:]
