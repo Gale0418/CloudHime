@@ -1,7 +1,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$DistDir
+    [string]$DistDir,
+    [switch]$UnpackedMsix,
+    [string]$ExpectedIdentityName = "CloudHime",
+    [string]$ExpectedPublisher = "",
+    [ValidateSet("x64")]
+    [string]$ExpectedArchitecture = "x64"
 )
 
 $ErrorActionPreference = "Stop"
@@ -366,9 +371,51 @@ if ($duplicateRuntimeLibraries.Count -gt 0) {
     $names = $duplicateRuntimeLibraries | Select-Object -ExpandProperty FullName
     throw "Release dist contains managed runtime libraries outside the runtime directory: $($names -join ', ')"
 }
-$reservedPackageFiles = @($files | Where-Object { $_.Name -in @("AppxManifest.xml", "AppxBlockMap.xml", "AppxSignature.p7x") })
-if ($reservedPackageFiles.Count -gt 0) {
-    $names = $reservedPackageFiles | Select-Object -ExpandProperty FullName
+if ($UnpackedMsix) {
+    $expectedUnpackedMetadata = @("AppxManifest.xml", "AppxBlockMap.xml")
+    foreach ($metadataName in $expectedUnpackedMetadata) {
+        $metadataPath = Join-Path $dist $metadataName
+        if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf) -or (Get-Item -LiteralPath $metadataPath).Length -le 0) {
+            throw "Unpacked MSIX is missing required root metadata: $metadataName"
+        }
+    }
+    try {
+        [xml]$unpackedManifest = Get-Content -LiteralPath (Join-Path $dist "AppxManifest.xml") -Raw
+        $namespaceManager = New-Object System.Xml.XmlNamespaceManager($unpackedManifest.NameTable)
+        $namespaceManager.AddNamespace("foundation", "http://schemas.microsoft.com/appx/manifest/foundation/windows10")
+        $identity = $unpackedManifest.SelectSingleNode("/foundation:Package/foundation:Identity", $namespaceManager)
+    } catch {
+        throw "Unpacked MSIX AppxManifest.xml is not valid XML: $($_.Exception.Message)"
+    }
+    if ($null -eq $identity -or $identity.Name -ne $ExpectedIdentityName) {
+        throw "Unpacked MSIX AppxManifest.xml has an unexpected identity name. Expected '$ExpectedIdentityName'."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$identity.Publisher)) {
+        throw "Unpacked MSIX AppxManifest.xml is missing a publisher."
+    }
+    if ([string]::IsNullOrWhiteSpace($ExpectedPublisher)) {
+        if ($identity.Publisher -notmatch "^CN=") {
+            throw "Unpacked MSIX AppxManifest.xml publisher must begin with 'CN=' when ExpectedPublisher is not provided."
+        }
+    } elseif ($identity.Publisher -cne $ExpectedPublisher) {
+        throw "Unpacked MSIX AppxManifest.xml has an unexpected publisher. Expected '$ExpectedPublisher'."
+    }
+    if ($identity.ProcessorArchitecture -ne $ExpectedArchitecture) {
+        throw "Unpacked MSIX AppxManifest.xml has an unexpected processor architecture. Expected '$ExpectedArchitecture'."
+    }
+}
+
+$generatedMsixFiles = @($files | Where-Object {
+    $relativePath = $_.FullName.Substring($dist.Length).TrimStart("\", "/")
+    $isExpectedUnpackedRootMetadata = $UnpackedMsix -and
+        ($relativePath -notmatch "[\\/]") -and
+        ($_.Name -in @("AppxManifest.xml", "AppxBlockMap.xml"))
+    $isGeneratedMsixFile = $_.Name -in @("AppxManifest.xml", "AppxBlockMap.xml", "AppxSignature.p7x") -or
+        $_.Extension -in @(".msix", ".appx", ".msixbundle", ".appxbundle")
+    $isGeneratedMsixFile -and -not $isExpectedUnpackedRootMetadata
+})
+if ($generatedMsixFiles.Count -gt 0) {
+    $names = $generatedMsixFiles | Select-Object -ExpandProperty FullName
     throw "Release dist must not contain generated MSIX files: $($names -join ', ')"
 }
 

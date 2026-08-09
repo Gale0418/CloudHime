@@ -273,3 +273,13 @@
 - 第三次真 hash install 揭露舊 cross-target lock 漏掉 Python 3.10 marker dependencies；改以真 3.10 對官方 PyPI 解析，production 54 components、CI 60 components，補入 `exceptiongroup`，CI 另補 `tomli`。contract 只使用 report target environment，缺 marker key fail-closed，SBOM edge 依 marker 篩選。
 - 第四次 clean build 完成 PyInstaller、release verifier 與壓縮；外層 1204 秒 timeout 時僅剩 orphaned `Compress-Archive`，精確等待 PID 完成。獨立 verifier：Status ready、485 files、1,623,126,932 bytes、0 model files；provenance 5 files，ZIP 846,606,121 bytes。
 - 聚焦回歸先後為 24 passed、57 passed／2 skipped；最終五組 70 passed／2 skipped；CodeRabbit history-preserving 主 repo review 0 findings。尚未執行 MSIX install／launch／uninstall、WACK、Store 或 GPU onboarding。
+
+## CH-T64 unsigned development MSIX／unpacked verifier 實證（2026-08-09）
+
+- unsigned development MSIX 已成功產生：`dist/msix-live-gate-20260809/CloudHime-0.1.0.0-x64.msix`，大小 864,880,921 bytes。
+- unpacked verifier 已加強為預設拒絕 generated metadata；`-UnpackedMsix` 僅容許 root `AppxManifest.xml` 與 `AppxBlockMap.xml`，並驗證 `ExpectedIdentityName`、`ExpectedPublisher`、`ExpectedArchitecture`。
+- 初次執行 `python -m pytest -q -p no:cacheprovider --basetemp <unique-temp> tests/test_release_packaging.py tests/test_msix_packaging.py` 為 26 passed in 80.23s。真實 MakeAppx unpack＋verifier＋provenance PASS：487 files、1,625,014,441 bytes、0 model files；Identity=CloudHime、Publisher=`CN=CloudHime Development`、architecture=x64。
+- CodeRabbit Major 已修正：PowerShell Publisher 比對由 `-ne` 改為大小寫敏感的 `-cne`。專項 `python -m pytest tests/test_msix_packaging.py -k unpacked -q -p no:cacheprovider --basetemp <unique temp>` 為 1 passed、13 deselected in 18.68s；`git diff --check` PASS。
+- 修正 CodeRabbit Major 後，前一輪相同完整 command `python -m pytest -q -p no:cacheprovider --basetemp <unique-temp> tests/test_release_packaging.py tests/test_msix_packaging.py` 被外層 300s timeout 截斷：僅輸出 22 個 dots、無 failure，但執行未完成，不得算通過。之後以 600s 重跑同一完整 command，最終為 `26 passed in 106.07s`（PASS）。
+- psutil 唯讀檢查未發現遺留 CloudHime pytest 程序；輸出僅含檢查命令本身與其 pwsh 父程序。
+- CH-T64 維持 In Progress。未執行 install／launch／uninstall、WACK、Store submission、clean-machine 或 GPU gate。安裝 gate 等主人明確允許建立 `CurrentUser\My` 私鑰、暫時匯入 `LocalMachine\TrustedPeople`、sign／`Add-AppxPackage`／launch／`Remove-AppxPackage` 與 finally cleanup；這是授權等待，非 Blocked。
