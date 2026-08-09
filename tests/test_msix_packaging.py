@@ -427,6 +427,99 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
         if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-preflight-"):
             _remove_release_fixture(powershell, temp_root)
 
+def test_release_dist_preflight_unpacked_msix_mode_is_narrow_and_validated():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    temp_root = root / f".tmp-msix-unpacked-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    manifest = """<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Identity Name="CloudHime" Publisher="CN=CloudHime CI" ProcessorArchitecture="x64" Version="0.1.0.0" />
+</Package>
+"""
+    expected_args = [
+        powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture),
+        "-UnpackedMsix", "-ExpectedIdentityName", "CloudHime",
+        "-ExpectedPublisher", "CN=CloudHime CI", "-ExpectedArchitecture", "x64",
+    ]
+    try:
+        _write_release_fixture(powershell, fixture)
+        (fixture / "AppxManifest.xml").write_text(manifest, encoding="utf-8")
+        (fixture / "AppxBlockMap.xml").write_text("<BlockMap />\n", encoding="utf-8")
+
+        default_result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        assert default_result.returncode != 0
+        assert "generated msix files" in (default_result.stdout + default_result.stderr).lower()
+
+        unpacked_result = subprocess.run(
+            expected_args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        assert unpacked_result.returncode == 0, unpacked_result.stdout + unpacked_result.stderr
+
+        custom_manifest = manifest.replace('Name="CloudHime"', 'Name="CloudHime.Store"').replace(
+            'Publisher="CN=CloudHime CI"', 'Publisher="CN=CloudHime Store"',
+        )
+        (fixture / "AppxManifest.xml").write_text(custom_manifest, encoding="utf-8")
+        custom_result = subprocess.run(
+            [
+                *expected_args[:-6],
+                "-ExpectedIdentityName", "CloudHime.Store",
+                "-ExpectedPublisher", "CN=CloudHime Store",
+                "-ExpectedArchitecture", "x64",
+            ],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        assert custom_result.returncode == 0, custom_result.stdout + custom_result.stderr
+        (fixture / "AppxManifest.xml").write_text(manifest, encoding="utf-8")
+
+        invalid_cases = (
+            (fixture / "nested" / "AppxManifest.xml", manifest, expected_args, "generated msix files"),
+            (fixture / "extra.msix", "package", expected_args, "generated msix files"),
+            (fixture / "extra.appx", "package", expected_args, "generated msix files"),
+            (fixture / "release-signing.pfx", "secret", expected_args, "signing material"),
+            (
+                fixture / "AppxManifest.xml",
+                manifest.replace('Name="CloudHime"', 'Name="Unexpected"'),
+                expected_args,
+                "unexpected identity name. expected 'cloudhime'.",
+            ),
+            (
+                fixture / "AppxManifest.xml",
+                manifest.replace('Publisher="CN=CloudHime CI"', 'Publisher="CN=Unexpected Publisher"'),
+                expected_args,
+                "unexpected publisher. expected 'cn=cloudhime ci'.",
+            ),
+            (
+                fixture / "AppxManifest.xml",
+                manifest.replace('ProcessorArchitecture="x64"', 'ProcessorArchitecture="arm64"'),
+                expected_args,
+                "unexpected processor architecture. expected 'x64'.",
+            ),
+        )
+        for invalid_path, payload, verifier_args, expected_message in invalid_cases:
+            original_payload = invalid_path.read_text(encoding="utf-8") if invalid_path.is_file() else None
+            invalid_path.parent.mkdir(parents=True, exist_ok=True)
+            invalid_path.write_text(payload, encoding="utf-8")
+            rejected = subprocess.run(
+                verifier_args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            assert rejected.returncode != 0
+            assert expected_message in (rejected.stdout + rejected.stderr).lower()
+            if original_payload is None:
+                invalid_path.unlink()
+            else:
+                invalid_path.write_text(original_payload, encoding="utf-8")
+    finally:
+        if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-unpacked-"):
+            _remove_release_fixture(powershell, temp_root)
+
 def test_real_release_dist_preflight_when_available():
     powershell = _powershell_executable()
     dist = Path(__file__).resolve().parents[1] / "dist" / "CloudHime"
@@ -494,6 +587,8 @@ def test_release_preflight_requires_self_contained_dependency_provenance_and_ci_
     assert "release_provenance.py stage" in ci
     assert "release_provenance.py verify" in ci
     assert "_internal\\provenance\\release-provenance.json" in ci
+    assert 'verify_release_dist.ps1' in ci
+    assert '-UnpackedMsix' in ci
 
 def test_release_preflight_rejects_missing_or_tampered_dependency_provenance():
     powershell = _powershell_executable()

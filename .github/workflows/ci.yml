@@ -339,6 +339,9 @@ jobs:
           }
           python packaging\release_provenance.py verify --provenance-dir (Split-Path -Parent $provenancePath)
           if ($LASTEXITCODE -ne 0) { throw "Unpacked MSIX release provenance verification failed." }
+          $verifier = Join-Path $env:GITHUB_WORKSPACE 'packaging\verify_release_dist.ps1'
+          pwsh -NoLogo -NoProfile -File $verifier -DistDir $unpackDir -UnpackedMsix -ExpectedIdentityName "CloudHime" -ExpectedPublisher "CN=CloudHime CI" -ExpectedArchitecture "x64"
+          if ($LASTEXITCODE -ne 0) { throw 'Unpacked MSIX release preflight failed.' }
           $signtoolCandidates = @(Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin") -Filter "signtool.exe" -Recurse -File |
             Sort-Object FullName -Descending)
           $signtool = $signtoolCandidates |

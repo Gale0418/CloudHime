@@ -18,6 +18,8 @@ CreateUpload also produces a manually assembled .msixupload archive containing t
 
 這個檢查會確認啟動檔、主 logo、44x44 / 50x50 / 150x150 MSIX 圖示、字典、授權 notices、llama/ggml runtime 與敏感檔案規則，也會拒絕把 GGUF、projector、簽章材料或已生成的 MSIX 檔案帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
 
+MakeAppx 解包後，請只對已解包根目錄使用 `verify_release_dist.ps1 -UnpackedMsix`。此模式仍驗證 payload provenance，且僅容許根目錄的 `AppxManifest.xml`／`AppxBlockMap.xml`；預設 manifest 必須是 CloudHime、具 `CN=` publisher 並為 x64。可用 `-ExpectedIdentityName`、`-ExpectedPublisher` 與 `-ExpectedArchitecture` 覆寫這些期望值；提供 `-ExpectedPublisher` 時，會與 manifest publisher 做大小寫敏感的精確比對，未提供時則只要求 publisher 以 `CN=` 開頭。其他位置的 metadata、額外 `.msix`／`.appx` 與任何簽章材料仍會 fail-closed。
+
 ## Runtime manifest
 
 build_exe.bat stages only the release llama-server files, then runs
