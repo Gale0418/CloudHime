@@ -483,3 +483,9 @@
 - GPU 與 lifecycle 不接受 condition 自報：每筆 record 必須明示 runtime mode 與 residual process count；CPU fallback 不算 GPU 成功，缺證據不得默認為 0 residual。
 - benchmark report 採欄位 allowlist，不輸出 OCR、翻譯、prompt、圖片 bytes、raw model output、憑證或任意未知欄位；provider／fallback reason 僅接受 bounded safe token。
 - Vision partial IDs 不可靜默成功；目前 Region 採整批 OCR fallback。Fullscreen 在 product-path collector 與 locked holdout 通過前維持 OCR-first。
+## 2026-08-09：Owner Review 與 product-path collector 不得繞過人工／生命週期證據
+
+- 模型交叉判讀只能產生 `candidate_requires_owner_confirmation`；promotion API 必須重新驗證 workspace containment、實際 image SHA-256、blocked source family／hash、Owner provenance 與明確 confirmed source／translation，不能相信呼叫端先驗證過。
+- source family 以作品、原影片／遊戲、生成 lineage 或 capture session 為單位；同作品不同頁不得假裝 source-disjoint，每 family 的 deterministic review selection 最多一張。
+- product-path collector 以固定圖片覆寫每個隔離 `OCRWorker` instance 的 capture，仍呼叫正式 `run_scan_once()`；raw source／translation 只在記憶體交給 evaluator，對外只回傳 allowlist／redacted report。
+- Fullscreen 在 Owner 確認 locked manifest、固定 GPU runtime 與 5-repeat paired accuracy-first gate 通過前維持 OCR-first；本階段沒有跑真 GPU，也不宣稱 latency 改善。

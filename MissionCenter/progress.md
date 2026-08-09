@@ -235,3 +235,12 @@
 - CodeRabbit：第 1 次在隔離 repo 因 base branch discovery 失敗；第 2 次審 3 個 tracked files 得 1 Minor 並修正；第 3 次以 empty baseline 審完整 5 檔得 1 Minor（development contamination）並以 RED regression 修正。本小時額度已滿，修後未宣稱 0 issues。
 - Gemini 在 Owner 明確授權本機 loopback 後，以同 request ID 兩次 reconciliation 均在 dispatch 前 deadline；無已確認交付或回覆，不列為審查證據。
 - 本階段未執行新的 GPU A/B，也未改 Fullscreen 預設路由。下一步建立真正走 `OCRWorker.run_scan_once()` 的 paired product-path collector，並補齊主人確認、source-disjoint 的漫畫與遊戲 locked manifest 後，才可評估 Fullscreen Vision-first promotion。
+## CH-T68 Owner Review／product-path collector checkpoint（2026-08-09）
+
+- 新增 `vision_owner_review.py`：實體圖片 hash／workspace containment、blocked family/hash、deterministic one-per-family selection、pending-to-locked promotion gate 與巢狀 Markdown 圖片路徑皆有回歸測試。
+- 新增 `vision_product_path_collector.py`：固定 pixels 仍驅動 `OCRWorker.run_scan_once()`；每 case／repeat／condition 隔離 worker，cleanup 後明示 runtime mode／residual process，完整合併多區輸出，raw 品質文字不進最終 report。
+- 私人審核包已建立於 `records/private/.private_vision_owner_review_pending.{json,md}`，共 4 個不同 provisional family：契約婚姻漫畫、2026-06-29～07-02 漫畫 session、2026-07-18 漫畫 session、2021-04-22 遊戲實況。四者皆 `pending`、`ground_truth_eligible=false` 且不進版控。
+- GPT 與本機 Antigravity Gemini 3.6 Flash High 已獨立判讀四張候選；Gemini request `9d2f0771-435b-4936-988e-0d2bc64097f2` 透過 private RPC 成功，但其文字只作候選，古語 `来たれり／来れり` 等疑點保留給主人。
+- 驗證：targeted 77 passed；修正後 benchmark CI group 135 passed；CI inventory 4 passed；private packet 4 cases／4 selected 且 pending promotion blocked；compileall／diff-check 通過。未執行真 GPU。
+- CodeRabbit 隔離 5 檔首輪 2 Minor（required fields 可繞過、falsey non-string trace token）皆以 regression 修正；第 2 輪 reviewedFiles=5、0 issues。
+- 下一步：主人逐張確認來源 family、原文、繁中譯文與忽略項；只把確認項 promotion 成 locked manifest，再跑相同 model/runtime/prompt/sampling/context 的 GPU 5-repeat paired A/B。
