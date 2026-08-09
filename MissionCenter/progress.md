@@ -253,3 +253,16 @@
 - CodeRabbit 隔離 15 檔：首輪 8 issues（6 Major、2 Minor）均已驗證修正；複審 2 Minor 亦已修正。為節省額度，修後未做第三輪，未宣稱 0 issues。
 - 真 GPU paired run 未執行：4 張 Owner review 仍 pending，且本機 GPU 由外部 Ollama 佔用；CloudHime 未觸碰或終止 Ollama。僅保存 aggregate，未寫入私人原文。
 - 下一步：主人確認 4 張後建立 locked manifest，再等 GPU 空閒跑正式 A/B；CH-T68 維持 Review。
+
+## CH-T68 Owner provenance follow-up（2026-08-09）
+
+- 主人已確認待審四張圖片的作品 provenance；private packet 現為 `provenance_confirmed_by_owner=true` 4/4，但 `owner_confirmation=pending` 4/4、`confirmed_source` 0/4，因此 locked manifest 仍為 0 筆。
+- 僅 `2026-07-02` 案例有主人確認的繁中譯意；作品名稱與截圖類型不能取代完整畫面原文 ground truth。promotion gate 實際拒絕 pending case。
+- Terra 執行 `tests/test_vision_owner_review.py` 為 18 passed；主程序兩次重跑都在 pytest 建立暫存目錄時遇到 Windows `WinError 5` ACL，未宣稱該兩次測試通過。
+
+## CH-T64 Release provenance payload checkpoint（2026-08-09）
+
+- production build 現會產生並嵌入 pip installation report、CycloneDX SBOM、direct requirements、完整 Windows x64 Python 3.10 hash lock，以及逐檔 size／SHA-256 manifest；release verifier 對缺漏、漂移、額外檔案與不安全 URL fail-closed。
+- MSIX launch smoke 改為要求程序通過 liveness window；提早以 0 或非 0 exit 都會失敗。CI fixture 使用可預期存活的 windowless sleeper。
+- 驗證：release／MSIX targeted 53 passed／3 skipped；core 331 passed／3 skipped；compileall 與 `git diff --check` 通過。未執行真 PyInstaller clean rebuild、MSIX install／WACK／Store／GPU。
+- CodeRabbit 本小時三次均未產生 findings：一次短 timeout、一次 WebSocket closed、一次隔離 initial base 被誤判為 162 files 超過 150。未宣稱 review pass；冷卻後改用保留原始 Git 歷史的 worktree。

@@ -178,3 +178,15 @@ def test_release_build_runs_preflight_before_creating_zip():
     zip_index = build_script.index("Compress-Archive")
     assert pyinstaller_index < preflight_index < zip_index
     assert "Release preflight failed." in build_script[preflight_index:zip_index]
+
+
+def test_release_build_stages_dependency_provenance_before_pyinstaller_and_specs_it():
+    root = Path(__file__).resolve().parents[1]
+    build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+
+    prepare = build_script.index("packaging\\prepare_release_provenance.ps1")
+    pyinstaller = build_script.index("python -m PyInstaller --noconfirm")
+    assert prepare < pyinstaller
+    assert "provenance" in spec
+    assert (root / "packaging" / "prepare_release_provenance.ps1").is_file()

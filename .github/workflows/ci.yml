@@ -156,6 +156,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
       - name: Prepare MSIX contract fixture
         timeout-minutes: 5
@@ -164,7 +167,24 @@ jobs:
           $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
           $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
           New-Item -ItemType Directory -Force -Path $dummyDist, $outputDir | Out-Null
-          Copy-Item -LiteralPath (Join-Path $env:WINDIR "System32\cmd.exe") -Destination (Join-Path $dummyDist "CloudHime.exe")
+          $launchWaitSeconds = 3
+          $sleeperMilliseconds = ($launchWaitSeconds + 5) * 1000
+          $sleeperSource = "using System.Threading; public static class Program { [System.STAThread] public static void Main() { Thread.Sleep($sleeperMilliseconds); } }"
+          $sleeperPath = Join-Path $dummyDist "CloudHime.exe"
+          $sleeperSourcePath = Join-Path $dummyDist "CloudHime.cs"
+          [IO.File]::WriteAllText($sleeperSourcePath, $sleeperSource, [Text.UTF8Encoding]::new($false))
+          $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) {
+            throw "Windows C# compiler was not found: $csc"
+          }
+          & $csc /nologo /target:winexe /out:$sleeperPath $sleeperSourcePath
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSIX fixture sleeper compilation failed with code $LASTEXITCODE."
+          }
+          if (-not (Test-Path -LiteralPath $sleeperPath -PathType Leaf)) {
+            throw "MSIX fixture sleeper executable was not created."
+          }
+          Remove-Item -LiteralPath $sleeperSourcePath -Force
           $internalRoot = Join-Path $dummyDist "_internal"
           New-Item -ItemType Directory -Force -Path (Join-Path $internalRoot "assets"), (Join-Path $internalRoot "runtime") | Out-Null
           foreach ($logoFile in @("cloudhime_logo.png", "cloudhime_logo_44.png", "cloudhime_logo_50.png", "cloudhime_logo_150.png")) {
@@ -213,6 +233,20 @@ jobs:
           $runtimeManifest |
             ConvertTo-Json -Depth 8 |
             Set-Content -LiteralPath (Join-Path $runtimeRoot "runtime-manifest.json") -Encoding utf8
+          $provenanceSource = Join-Path $env:RUNNER_TEMP "cloudhime-provenance-fixture"
+          New-Item -ItemType Directory -Force -Path $provenanceSource | Out-Null
+          $fixtureReport = Join-Path $provenanceSource "report.json"
+          $fixtureRequirements = Join-Path $provenanceSource "requirements.txt"
+          $fixtureLock = Join-Path $provenanceSource "requirements-lock-win-amd64-py310.txt"
+          $fixtureSbom = Join-Path $provenanceSource "sbom.cdx.json"
+          $fixtureJson = '{"version":"1","pip_version":"26.0","environment":{"implementation_name":"cpython","python_version":"3.10.14","sys_platform":"win32","platform_machine":"AMD64"},"install":[{"download_info":{"url":"https://files.example.test/alpha-pkg-1.0.0-py3-none-any.whl","archive_info":{"hashes":{"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}},"requested":true,"metadata":{"name":"alpha-pkg","version":"1.0.0","license_expression":"MIT","requires_dist":[]}}]}'
+          [IO.File]::WriteAllText($fixtureReport, $fixtureJson + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText($fixtureRequirements, "alpha-pkg==1.0.0" + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText($fixtureLock, "alpha-pkg==1.0.0 --hash=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+          python packaging\dependency_contract.py validate --report $fixtureReport --requirements $fixtureLock --direct-requirements $fixtureRequirements --lock $fixtureLock --sbom-output $fixtureSbom
+          if ($LASTEXITCODE -ne 0) { throw "MSIX fixture dependency contract generation failed." }
+          python packaging\release_provenance.py stage --report $fixtureReport --requirements $fixtureRequirements --lock $fixtureLock --sbom $fixtureSbom --output (Join-Path $internalRoot "provenance")
+          if ($LASTEXITCODE -ne 0) { throw "MSIX fixture release provenance staging failed." }
           Write-Host "MSIX fixture prepared at $dummyDist"
 
       - name: Build MSIX package
@@ -299,6 +333,12 @@ jobs:
               [string]::IsNullOrWhiteSpace([string]$runtimeManifest.server.version)) {
             throw "MSIX contained an invalid runtime manifest"
           }
+          $provenancePath = Join-Path $unpackDir "_internal\provenance\release-provenance.json"
+          if (-not (Test-Path -LiteralPath $provenancePath)) {
+            throw "MSIX omitted release dependency provenance"
+          }
+          python packaging\release_provenance.py verify --provenance-dir (Split-Path -Parent $provenancePath)
+          if ($LASTEXITCODE -ne 0) { throw "Unpacked MSIX release provenance verification failed." }
           $signtoolCandidates = @(Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin") -Filter "signtool.exe" -Recurse -File |
             Sort-Object FullName -Descending)
           $signtool = $signtoolCandidates |
@@ -335,7 +375,7 @@ jobs:
         shell: pwsh
         run: |
           $package = Join-Path (Join-Path $env:RUNNER_TEMP "cloudhime-msix-output") "CloudHime-0.1.0.0-x64.msix"
-          pwsh -NoLogo -NoProfile -File packaging/test_msix_install.ps1 -PackagePath $package
+          pwsh -NoLogo -NoProfile -File packaging/test_msix_install.ps1 -PackagePath $package -LaunchWaitSeconds 3
 
       - name: Clean up CI signing certificate
         if: always()

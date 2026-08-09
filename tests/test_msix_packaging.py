@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import uuid
+import yaml
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -110,6 +112,9 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Stop-Process -Id $pytestProcess.Id -Force" in ui_step
     assert 'throw "UI test file timed out after 120 seconds: $testFile"' in ui_step
     assert ui_step.count("if ($pytestProcess.ExitCode -ne 0) { exit $pytestProcess.ExitCode }") == 1
+    msix_job = ci[ci.index("  msix-contract:"):]
+    assert "uses: actions/setup-python@v5" in msix_job
+    assert "python-version: '3.10'" in msix_job
     assert "Build MSIX package" in ci
     assert "Inspect and sign MSIX package" in ci
     assert "Install and uninstall MSIX package" in ci
@@ -131,6 +136,72 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Remove-AppxPackageForCleanup" in install_smoke
     assert (root / "packaging" / "msix_install_helpers.ps1").is_file()
     assert "Refusing to modify an existing package" in install_smoke
+
+
+
+def test_msix_launch_liveness_rejects_exits_and_accepts_alive_processes():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the MSIX launch liveness test")
+
+    script = Path(__file__).resolve().parents[1] / "packaging" / "test_msix_install.ps1"
+    script_literal = str(script).replace("'", "''")
+    command = f"""
+$ErrorActionPreference = "Stop"
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile('{script_literal}', [ref]$tokens, [ref]$errors)
+if ($errors.Count -ne 0) {{ throw "Install smoke script did not parse." }}
+$function = $ast.Find({{ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq "Assert-ProcessLaunchLiveness" }}, $true)
+if ($null -eq $function) {{ throw "Launch liveness helper was not found." }}
+. ([scriptblock]::Create($function.Extent.Text))
+$cases = @(
+    @{{ Process = [pscustomobject]@{{ HasExited = $true; ExitCode = 0 }}; Expected = "exited before launch liveness window" }},
+    @{{ Process = [pscustomobject]@{{ HasExited = $true; ExitCode = 23 }}; Expected = "code 23" }},
+    @{{ Process = [pscustomobject]@{{ HasExited = $false; ExitCode = $null }}; Expected = $null }}
+)
+foreach ($case in $cases) {{
+    try {{
+        Assert-ProcessLaunchLiveness -Process $case.Process
+        if ($null -ne $case.Expected) {{ throw "Exited process was accepted." }}
+    }} catch {{
+        if ($null -eq $case.Expected -or $_.Exception.Message -notmatch [regex]::Escape($case.Expected)) {{ throw }}
+    }}
+}}
+"""
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", command],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+
+def test_ci_workflow_parses_as_yaml():
+    root = Path(__file__).resolve().parents[1]
+    workflow = yaml.safe_load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+    assert workflow["jobs"]["msix-contract"]
+
+def test_ci_msix_fixture_uses_a_sleeper_executable_with_liveness_margin():
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    fixture = ci[ci.index("      - name: Prepare MSIX contract fixture"):ci.index("      - name: Build MSIX package")]
+    install = ci[ci.index("      - name: Install and uninstall MSIX package"):]
+
+    assert "cmd.exe" not in fixture
+    assert "$launchWaitSeconds = 3" in fixture
+    assert "$sleeperMilliseconds = ($launchWaitSeconds + 5) * 1000" in fixture
+    assert r"Microsoft.NET\Framework64\v4.0.30319\csc.exe" in fixture
+    assert '/target:winexe' in fixture
+    assert '& $csc /nologo /target:winexe /out:$sleeperPath $sleeperSourcePath' in fixture
+    assert "Thread.Sleep($sleeperMilliseconds);" in fixture
+    assert 'Remove-Item -LiteralPath $sleeperSourcePath -Force' in fixture
+    assert "-LaunchWaitSeconds 3" in install
 
 
 def test_msix_cleanup_helper_retries_and_selects_newest_package():
@@ -229,8 +300,21 @@ foreach ($runtimeFile in @({runtime_literal})) {{
             source_root / "assets" / f"cloudhime_logo_{logo_size}.png",
             root / "_internal" / "assets" / f"cloudhime_logo_{logo_size}.png",
         )
+    _write_release_provenance(root)
 
-
+def _write_release_provenance(root):
+    source_root = Path(__file__).resolve().parents[1]
+    evidence_root = root.parent / "provenance-source"
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    report = evidence_root / "report.json"
+    requirements = evidence_root / "requirements.txt"
+    lock = evidence_root / "requirements-lock-win-amd64-py310.txt"
+    sbom = evidence_root / "sbom.cdx.json"
+    report.write_text(json.dumps({"version": "1", "pip_version": "26.0", "environment": {"implementation_name": "cpython", "python_version": "3.10.14", "sys_platform": "win32", "platform_machine": "AMD64"}, "install": [{"download_info": {"url": "https://files.example.test/alpha-pkg-1.0.0-py3-none-any.whl", "archive_info": {"hashes": {"sha256": "a" * 64}}}, "requested": True, "metadata": {"name": "alpha-pkg", "version": "1.0.0", "license_expression": "MIT", "requires_dist": []}}]}), encoding="utf-8")
+    requirements.write_text("alpha-pkg==1.0.0\n", encoding="utf-8")
+    lock.write_text("alpha-pkg==1.0.0 --hash=sha256:" + "a" * 64 + "\n", encoding="utf-8")
+    subprocess.run([sys.executable, str(source_root / "packaging" / "dependency_contract.py"), "validate", "--report", str(report), "--requirements", str(lock), "--direct-requirements", str(requirements), "--lock", str(lock), "--sbom-output", str(sbom)], check=True, capture_output=True, text=True, encoding="utf-8")
+    subprocess.run([sys.executable, str(source_root / "packaging" / "release_provenance.py"), "stage", "--report", str(report), "--requirements", str(requirements), "--lock", str(lock), "--sbom", str(sbom), "--output", str(root / "_internal" / "provenance")], check=True, capture_output=True, text=True, encoding="utf-8")
 
 def _write_runtime_manifest(runtime_root):
     entries = []
@@ -357,6 +441,12 @@ def test_real_release_dist_preflight_when_available():
     if not any(path.is_file() for path in manifest_candidates):
         pytest.skip("local PyInstaller dist predates the runtime manifest; clean rebuild required")
 
+    provenance_candidates = (
+        dist / "_internal" / "provenance" / "release-provenance.json",
+    )
+    if not any(path.is_file() for path in provenance_candidates):
+        pytest.skip("local PyInstaller dist predates release provenance; clean rebuild required")
+
     script = root / "packaging" / "verify_release_dist.ps1"
     result = subprocess.run(
         [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(dist)],
@@ -391,4 +481,48 @@ def test_release_dist_preflight_rejects_incomplete_third_party_notices():
         assert "third-party notices" in (result.stdout + result.stderr).lower()
     finally:
         if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-notices-"):
+            _remove_release_fixture(powershell, temp_root)
+
+
+def test_release_preflight_requires_self_contained_dependency_provenance_and_ci_unpacks_it():
+    root = Path(__file__).resolve().parents[1]
+    verifier = (root / "packaging" / "verify_release_dist.ps1").read_text(encoding="utf-8")
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "release_provenance.py" in verifier
+    assert "_internal\\provenance" in verifier
+    assert "release_provenance.py stage" in ci
+    assert "release_provenance.py verify" in ci
+    assert "_internal\\provenance\\release-provenance.json" in ci
+
+def test_release_preflight_rejects_missing_or_tampered_dependency_provenance():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    temp_root = root / f".tmp-provenance-preflight-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    try:
+        _write_release_fixture(powershell, fixture)
+        evidence = fixture / "_internal" / "provenance" / "requirements.txt"
+        original = evidence.read_bytes()
+        for payload in (None, b"tampered\n"):
+            if payload is None:
+                evidence.unlink()
+            else:
+                evidence.write_bytes(payload)
+            result = subprocess.run(
+                [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            assert result.returncode != 0
+            assert "provenance" in (result.stdout + result.stderr).lower()
+            evidence.write_bytes(original)
+    finally:
+        if temp_root.parent == root and temp_root.name.startswith(".tmp-provenance-preflight-"):
             _remove_release_fixture(powershell, temp_root)

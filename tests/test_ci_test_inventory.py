@@ -65,3 +65,12 @@ def test_ci_uses_explicit_requirements_without_in_process_llama():
     assert "pip install --require-hashes -r requirements-ci-lock-win-amd64-py310.txt" in workflow
     assert "Where-Object { $_.Trim() -and $_.Trim() -ne 'llama-cpp-python' }" not in workflow
     assert "llama-cpp-python" not in ci_requirements
+
+def test_ci_inventory_includes_release_provenance_contract():
+    inventory = _load_inventory()
+    assigned = {
+        path
+        for group in inventory["groups"]
+        for path in group["test_files"]
+    }
+    assert "tests/test_release_provenance.py" in assigned

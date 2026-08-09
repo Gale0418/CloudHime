@@ -10,6 +10,12 @@ if (-not (Test-Path -LiteralPath $dist -PathType Container)) {
     throw "Release dist directory not found: $dist"
 }
 
+$provenanceRoot = Join-Path $dist "_internal\provenance"
+& python (Join-Path $PSScriptRoot "release_provenance.py") verify --provenance-dir $provenanceRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Release dist dependency provenance verification failed."
+}
+
 $runtimeFiles = @(
     "llama-server.exe",
     "llama-server-impl.dll",
