@@ -506,6 +506,66 @@ def test_start_gpu_mode_accepts_ngl_override(fake_assets):
     assert args[idx + 1] == "20"
 
 
+def test_gpu_offload_parser_accepts_prefixed_case_insensitive_llama_cpp_marker():
+    assert runtime_module._parse_gpu_offload_layers(
+        'llama_model_load: Offloaded 40/43 layers to GPU\n'
+    ) == (40, 43)
+
+
+def test_gpu_offload_parser_reports_zero_or_missing_marker_as_unconfirmed():
+    assert runtime_module._parse_gpu_offload_layers('offloaded 0/43 layers to GPU') == (0, 43)
+    assert runtime_module._parse_gpu_offload_layers('health endpoint is ready') == (0, 0)
+
+
+def test_gpu_health_ready_captures_llama_cpp_offload_evidence(fake_assets):
+    proc = FakeProcess(
+        returncode=None,
+        stderr_lines=['prefix: offloaded 12/43 layers to GPU\n'],
+    )
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([False, True]),
+        port_allocator=_port_allocator(43123),
+        sleep=lambda _: threading.Event().wait(0.01),
+        health_retries=3,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start()
+
+    assert state.name == 'ready'
+    assert state.mode == 'gpu'
+    assert state.gpu_offload_layers == 12
+    assert state.gpu_total_layers == 43
+    assert state.gpu_backend_confirmed is True
+
+def test_gpu_offload_evidence_survives_more_than_256_later_stderr_lines(fake_assets):
+    marker = "load: offloaded 12/43 layers to GPU\n"
+    noise = [f"noise-{index:04d}\n" for index in range(300)]
+    proc = FakeProcess(returncode=None, stderr_lines=[marker, *noise])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([False, True]),
+        port_allocator=_port_allocator(43123),
+        sleep=lambda _: threading.Event().wait(0.01),
+        health_retries=3,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start()
+
+    assert state.gpu_offload_layers == 12
+    assert state.gpu_total_layers == 43
+    assert state.gpu_backend_confirmed is True
+    assert state.detail == ""
+    retained_runtime_state = {
+        key: value for key, value in vars(runtime).items() if key != "_process"
+    }
+    assert marker.strip() not in repr(retained_runtime_state)
+    assert noise[-1].strip() not in repr(retained_runtime_state)
+
 def test_zero_gpu_layers_reports_cpu_mode(fake_assets):
     """-ngl 0 不得被標記成 GPU。"""
     popen = FakePopen([RunningProcess()])
@@ -889,6 +949,13 @@ def test_runtime_state_is_dataclass():
     assert state.base_url == "http://127.0.0.1:43123/v1"
     assert state.mode == "gpu"
 
+
+def test_runtime_state_new_evidence_fields_have_backward_compatible_defaults():
+    state = VisionRuntimeState(name='ready', detail='', base_url='http://x', mode='gpu')
+
+    assert state.gpu_offload_layers == 0
+    assert state.gpu_total_layers == 0
+    assert state.gpu_backend_confirmed is False
 
 def test_ready_state_has_non_empty_base_url(fake_assets):
     """ready 狀態的 base_url 必須非空。"""

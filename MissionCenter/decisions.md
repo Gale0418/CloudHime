@@ -489,3 +489,9 @@
 - source family 以作品、原影片／遊戲、生成 lineage 或 capture session 為單位；同作品不同頁不得假裝 source-disjoint，每 family 的 deterministic review selection 最多一張。
 - product-path collector 以固定圖片覆寫每個隔離 `OCRWorker` instance 的 capture，仍呼叫正式 `run_scan_once()`；raw source／translation 只在記憶體交給 evaluator，對外只回傳 allowlist／redacted report。
 - Fullscreen 在 Owner 確認 locked manifest、固定 GPU runtime 與 5-repeat paired accuracy-first gate 通過前維持 OCR-first；本階段沒有跑真 GPU，也不宣稱 latency 改善。
+## 2026-08-09：CH-T68 condition-scoped benchmark 必須隔離預熱與路徑差異
+
+- paired product-path benchmark 以 condition-scoped bundled llama-server 執行：baseline=text＋Windows OCR，candidate=vision＋0 OCR；固定 n_ctx=4096、temperature=0、repeat_penalty=1.15、zh-TW，差異僅限路徑條件。
+- 每 repeat 清除 provider cache；cold start 與 cleanup 不納入 scan wall time。latency 順序固定 baseline_then_candidate，並明示 latency_order_balanced=false，不得把它解讀為平衡交錯設計。
+- preflight 不啟 GPU；正式 record 必須逐筆驗證實際 runtime context、GPU layers、offloaded X/Y、owned process、127.0.0.1 loopback、server SHA、0 cache 與 fallback，不能以設定值或自報取代。
+- 真 GPU A/B 只在 Owner 確認 4 張並建立 locked manifest、且 GPU 已空閒後執行。外部 Ollama 不屬 CloudHime 管轄；不得觸碰或終止它。報告僅留 aggregate，不保存私人原文。

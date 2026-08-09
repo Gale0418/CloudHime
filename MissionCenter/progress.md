@@ -244,3 +244,12 @@
 - 驗證：targeted 77 passed；修正後 benchmark CI group 135 passed；CI inventory 4 passed；private packet 4 cases／4 selected 且 pending promotion blocked；compileall／diff-check 通過。未執行真 GPU。
 - CodeRabbit 隔離 5 檔首輪 2 Minor（required fields 可繞過、falsey non-string trace token）皆以 regression 修正；第 2 輪 reviewedFiles=5、0 issues。
 - 下一步：主人逐張確認來源 family、原文、繁中譯文與忽略項；只把確認項 promotion 成 locked manifest，再跑相同 model/runtime/prompt/sampling/context 的 GPU 5-repeat paired A/B。
+## CH-T68 condition-scoped bundled runner checkpoint（2026-08-09）
+
+- 新增 condition-scoped bundled llama-server product-path benchmark runner：baseline 固定為 text＋Windows OCR，candidate 固定為 vision＋0 OCR；兩條路徑皆固定 n_ctx=4096、temperature=0、repeat_penalty=1.15 與 zh-TW。
+- 每筆驗證實際 runtime context、GPU layers、offloaded X/Y、owned process、127.0.0.1 loopback、server SHA、0 cache 與 fallback；每個 repeat 先清除 provider cache。cold start 與 cleanup 不計入 scan wall time。
+- latency 固定 baseline_then_candidate，latency_order_balanced=false；runner preflight 不啟 GPU，避免預熱污染正式 paired run。
+- 首次完整 CI／test_groups：core 313、OCR 212、runtime 123 passed／2 skipped、UI 52、benchmarks 158，合計 858 passed／2 skipped；CodeRabbit 修正後 final targeted 195 passed、final benchmark 165 passed，compileall／diff-check 通過。
+- CodeRabbit 隔離 15 檔：首輪 8 issues（6 Major、2 Minor）均已驗證修正；複審 2 Minor 亦已修正。為節省額度，修後未做第三輪，未宣稱 0 issues。
+- 真 GPU paired run 未執行：4 張 Owner review 仍 pending，且本機 GPU 由外部 Ollama 佔用；CloudHime 未觸碰或終止 Ollama。僅保存 aggregate，未寫入私人原文。
+- 下一步：主人確認 4 張後建立 locked manifest，再等 GPU 空閒跑正式 A/B；CH-T68 維持 Review。

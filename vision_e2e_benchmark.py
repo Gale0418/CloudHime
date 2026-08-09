@@ -22,6 +22,7 @@ REPORT_RECORD_FIELDS = (
     "provider",
     "fallback_reason",
     "runtime_mode",
+    "runtime_profile",
     "residual_processes",
     "stages_ms",
     "quality_score",
@@ -40,7 +41,9 @@ FIXED_CONDITION_FIELDS = (
     "context",
     "gpu_mode",
 )
-IDENTITY_FIELDS = frozenset({"condition_id", "condition", "name", "route", "route_id"})
+IDENTITY_FIELDS = frozenset({
+    "condition_id", "condition", "name", "route", "route_id", "runtime_profile",
+})
 ALLOWED_CONDITION_FIELDS = frozenset(FIXED_CONDITION_FIELDS) | IDENTITY_FIELDS
 PROVENANCE_FIELDS = (
     "source_family",
@@ -180,6 +183,15 @@ def _condition_route(condition: Mapping[str, Any]) -> str:
     return _nonempty_text(condition.get("route"), "route", "condition")
 
 
+def _condition_profile(condition: Mapping[str, Any]) -> str:
+    profile = _nonempty_text(
+        condition.get("runtime_profile"), "runtime_profile", "condition"
+    ).lower()
+    if profile not in {"text", "vision"}:
+        raise ValueError("condition runtime_profile must be text or vision")
+    return profile
+
+
 def condition_fingerprint(condition: Mapping[str, Any]) -> str:
     """Fingerprint fixed controls while deliberately excluding condition identity."""
     if not isinstance(condition, Mapping):
@@ -194,6 +206,7 @@ def condition_fingerprint(condition: Mapping[str, Any]) -> str:
         )
 
     _condition_route(condition)
+    _condition_profile(condition)
     clean = {
         key: value
         for key, value in condition.items()
@@ -286,6 +299,18 @@ def _validate_run(
                 f"{label} records contain duplicate case/repeat {key!r}"
             )
         seen.add(key)
+
+        if "runtime_profile" not in raw:
+            raise ValueError(f"{label} record {case_id!r} missing runtime_profile")
+        runtime_profile = _nonempty_text(
+            raw["runtime_profile"], "runtime_profile",
+            f"{label} record {case_id!r}",
+        ).lower()
+        expected_profile = _condition_profile(condition)
+        if runtime_profile != expected_profile:
+            raise ValueError(
+                f"{label} record {case_id!r} runtime_profile mismatch"
+            )
 
         if "runtime_mode" not in raw:
             raise ValueError(f"{label} record {case_id!r} missing runtime_mode")

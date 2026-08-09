@@ -136,6 +136,29 @@ def test_translate_text_reuses_multimodal_runtime_and_cache():
     assert payloads[0]["response_format"] == {"type": "text"}
 
 
+def test_clear_cache_forces_a_new_text_request_without_changing_runtime():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        return "翻譯結果"
+
+    provider._request_chat_completion = fake_request
+    runtime_before = (provider.base_url, provider.model_name, provider.available())
+
+    first = provider.translate("Translate me")
+    cached = provider.translate("Translate me")
+    provider.clear_cache()
+    after_clear = provider.translate("Translate me")
+
+    assert first.from_cache is False
+    assert cached.from_cache is True
+    assert after_clear.from_cache is False
+    assert len(payloads) == 2
+    assert (provider.base_url, provider.model_name, provider.available()) == runtime_before
+
+
 def test_transcribe_screenshot_raises_on_empty_response():
     provider = make_provider()
 
