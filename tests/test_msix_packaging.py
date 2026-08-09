@@ -621,3 +621,97 @@ def test_release_preflight_rejects_missing_or_tampered_dependency_provenance():
     finally:
         if temp_root.parent == root and temp_root.name.startswith(".tmp-provenance-preflight-"):
             _remove_release_fixture(powershell, temp_root)
+
+
+
+def test_wack_wrapper_source_contract_and_parser():
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "packaging" / "test_wack.ps1"
+    assert script_path.is_file(), "WACK wrapper is missing"
+    script = script_path.read_text(encoding="utf-8")
+
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for WACK wrapper parser validation")
+    script_literal = str(script_path).replace("'", "''")
+    result = subprocess.run(
+        [
+            powershell, "-NoLogo", "-NoProfile", "-Command",
+            f"$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile('{script_literal}', [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) {{ $errors | ForEach-Object {{ $_.Message }}; exit 1 }}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    assert "[CmdletBinding(DefaultParameterSetName = 'AppxPackagePath')]" in script
+    assert "[Parameter(Mandatory = $true, ParameterSetName = 'AppxPackagePath')]" in script
+    assert "[Parameter(Mandatory = $true, ParameterSetName = 'PackageFullName')]" in script
+    assert "[Parameter(Mandatory = $true)]" in script
+    assert "[string]$AppxPackagePath" in script
+    assert "[string]$PackageFullName" in script
+    assert "[string]$ReportOutputPath" in script
+    assert "[string]$AppCertPath = 'C:\\Program Files (x86)\\Windows Kits\\10\\App Certification Kit\\appcert.exe'" in script
+
+    assert "Get-Process -IncludeUserName" not in script
+    assert "Get-Process" not in script
+    assert "[System.Diagnostics.Process]::GetCurrentProcess().SessionId" in script
+    assert "[Environment]::UserInteractive" in script
+    assert "WindowsPrincipal" in script
+    assert "WindowsBuiltInRole]::Administrator" in script
+    assert script.index("[Environment]::UserInteractive") < script.index("WindowsPrincipal")
+    assert "WindowsPowerShell\\v1.0\\powershell.exe" in script
+    assert "$PSBoundParameters.GetEnumerator()" in script
+    assert '"-$($boundParameter.Key)"' in script
+
+    assert "$AppxPackagePath = (Resolve-Path -LiteralPath $AppxPackagePath -ErrorAction Stop).Path" in script
+    assert "$AppCertPath = (Resolve-Path -LiteralPath $AppCertPath -ErrorAction Stop).Path" in script
+    assert "$ReportOutputPath = [System.IO.Path]::GetFullPath($ReportOutputPath)" in script
+    assert "GetExtension($ReportOutputPath) -ine '.xml'" in script
+    assert "Test-Path -LiteralPath $reportParent -PathType Container" in script
+    assert "Test-Path -LiteralPath $ReportOutputPath" in script
+    assert "Get-AppxPackage" in script
+    assert "PackageFullName -ceq $PackageFullName" in script
+    assert "(?i)\\.(msix|appx|msixbundle|appxbundle)$" in script
+
+    reset_index = script.index("& $AppCertPath reset")
+    package_test = "& $AppCertPath test -appxpackagepath $AppxPackagePath -reportoutputpath $ReportOutputPath"
+    installed_test = "& $AppCertPath test -packagefullname $PackageFullName -reportoutputpath $ReportOutputPath"
+    assert package_test in script
+    assert installed_test in script
+    assert reset_index < script.index(package_test)
+    assert reset_index < script.index(installed_test)
+    assert script.count("if ($LASTEXITCODE -ne 0)") >= 2
+
+    assert "-Encoding UTF8" not in script
+    assert "[System.Xml.XmlDocument]::new()" in script
+    assert "$report.Load($ReportOutputPath)" in script
+    assert 'SelectNodes("//RESULT/@OVERALL_RESULT")' in script
+    assert "$overallResults.Count -ne 1" in script
+    assert "$overallResult -ine 'PASS'" in script
+    for forbidden in (
+        "New-SelfSignedCertificate", "Import-Certificate", "signtool",
+        "Add-AppxPackage", "Remove-AppxPackage", "-AllUsers", "Start-Process",
+    ):
+        assert forbidden.lower() not in script.lower()
+
+
+def test_wack_readme_sets_optional_deprecated_partner_center_boundary():
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "packaging" / "README.md").read_text(encoding="utf-8").lower()
+
+    assert "wack" in readme
+    assert "deprecated" in readme
+    assert "optional local pre-submission check" in readme
+    assert "partner center" in readme
+    assert "final gate" in readme
+    assert "test_msix_install.ps1" in readme
+    assert "try/finally" in readme
+    assert "admin" in readme
+    assert "active" in readme
+    assert "appcert.exe reset" in readme
+    assert "appcert.exe test -appxpackagepath" in readme
+    assert "appcert.exe test -packagefullname" in readme

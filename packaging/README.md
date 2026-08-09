@@ -57,3 +57,17 @@ pip report 是 provenance 證據；hash lock 才是安裝約束，但只適用�
 正式 ZIP／MSIX 內的 `_internal/provenance/` 由 `prepare_release_provenance.ps1` 以 CPython 3.10、Windows x64 的 fresh venv 產生，並由 `release_provenance.py verify` 在 release preflight 與 MSIX unpack 後 fail-closed 驗證。它固定包含 production pip report、CycloneDX SBOM、direct requirements、hash lock 與 schema 1 manifest；manifest 驗證相對路徑、精確檔案集合、大小與 SHA-256，並從 pip report 實際 environment 驗證 CPython 3.10／Windows／AMD64。
 
 這是「宣告的 production Python dependency provenance」，不是完整 PyInstaller payload SBOM，也不是 OS／CUDA／runtime binary SBOM；不應將它冒充為後兩者。clean-machine、Store、WACK 與 GPU 實機驗證仍未由此流程覆蓋。
+
+
+## Optional local WACK check
+
+Microsoft has deprecated WACK. This wrapper is only an optional local pre-submission check; Partner Center certification is the final gate.
+
+Run it only from an elevated Administrator PowerShell in an active interactive user session (never Session 0). The wrapper accepts exactly one mode and requires a new report path whose parent directory already exists and is writable:
+
+    pwsh -File packaging/test_wack.ps1 -AppxPackagePath .\artifacts\CloudHime.msix -ReportOutputPath .\artifacts\wack-report.xml
+    pwsh -File packaging/test_wack.ps1 -PackageFullName "CloudHime_1.0.0.0_x64__publisherid" -ReportOutputPath .\artifacts\wack-report.xml
+
+These correspond to the Microsoft CLI forms appcert.exe reset followed by appcert.exe test -appxpackagepath <path> -reportoutputpath <path> or appcert.exe test -packagefullname <full-name> -reportoutputpath <path>.
+
+Installed mode does not install or clean up packages. The caller must keep the installation and cleanup try/finally flow from packaging/test_msix_install.ps1; WACK itself requires admin and an active session.
