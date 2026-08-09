@@ -129,8 +129,13 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Add-AppxPackage" in install_smoke
     assert "PSEdition" in install_smoke
     assert "WindowsPowerShell\\v1.0\\powershell.exe" in install_smoke
-    assert "-WindowStyle Hidden" in install_smoke
-    assert "Start-Process" in install_smoke
+    assert '[string]$ApplicationId = "CloudHime"' in install_smoke
+    assert '"-ApplicationId"' in install_smoke
+    assert "$ApplicationId" in install_smoke
+    assert "Start-Process" not in install_smoke
+    assert "Activate-AppxApplication" in install_smoke
+    assert "$processId" in install_smoke
+    assert "Stop-Process -Id $processId" in install_smoke
     assert "Remove-AppxPackage" in install_smoke
     assert "msix_install_helpers.ps1" in install_smoke
     assert "Remove-AppxPackageForCleanup" in install_smoke
@@ -179,6 +184,22 @@ foreach ($case in $cases) {{
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
+
+
+def test_msix_activation_helper_uses_aumid_and_returns_the_activated_process():
+    root = Path(__file__).resolve().parents[1]
+    helper = (root / "packaging" / "msix_install_helpers.ps1").read_text(encoding="utf-8")
+
+    assert "function Activate-AppxApplication" in helper
+    assert "IApplicationActivationManager" in helper
+    assert "2e941141-7f97-4756-ba1d-9decde894a3d" in helper
+    assert "45BA127D-10A8-46EA-8AB7-56EA9078943C" in helper
+    assert "ActivateApplication" in helper
+    assert '"$packageFamilyName!$ApplicationId"' in helper
+    assert "[string]::IsNullOrWhiteSpace($packageFamilyName)" in helper
+    assert "[string]::IsNullOrWhiteSpace($ApplicationId)" in helper
+    assert "ProcessId = [int]$processId" in helper
+    assert "Process = $process" in helper
 
 
 def test_ci_workflow_parses_as_yaml():
@@ -646,6 +667,7 @@ def test_wack_wrapper_source_contract_and_parser():
         errors="replace",
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
 
     assert "[CmdletBinding(DefaultParameterSetName = 'AppxPackagePath')]" in script
     assert "[Parameter(Mandatory = $true, ParameterSetName = 'AppxPackagePath')]" in script

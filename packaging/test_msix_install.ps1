@@ -7,6 +7,8 @@ param(
 
     [string]$ExecutableName = "CloudHime.exe",
 
+    [string]$ApplicationId = "CloudHime",
+
     [ValidateRange(1, 30)]
     [int]$LaunchWaitSeconds = 3
 )
@@ -59,6 +61,8 @@ if ($PSVersionTable.PSEdition -eq "Core") {
         $IdentityName,
         "-ExecutableName",
         $ExecutableName,
+        "-ApplicationId",
+        $ApplicationId,
         "-LaunchWaitSeconds",
         $LaunchWaitSeconds
     )
@@ -73,7 +77,7 @@ if ($existing.Count -gt 0) {
 }
 
 $installed = $null
-$process = $null
+$processId = $null
 try {
     Add-AppxPackage -Path $package
     $installed = Get-AppxPackage -Name $IdentityName |
@@ -88,14 +92,16 @@ try {
         throw "Installed package is missing $ExecutableName."
     }
 
-    $process = Start-Process -FilePath $executablePath -PassThru -WindowStyle Hidden
+    $activation = Activate-AppxApplication -InstalledPackage $installed -ApplicationId $ApplicationId
+    $processId = [int]$activation.ProcessId
     Start-Sleep -Seconds $LaunchWaitSeconds
+    $process = Get-Process -Id $processId -ErrorAction Stop
     Assert-ProcessLaunchLiveness -Process $process
-    Write-Host "Installed and launched $IdentityName from $($installed.InstallLocation)."
+    Write-Host "Installed and launched $IdentityName as $($activation.Aumid) from $($installed.InstallLocation)."
 }
 finally {
-    if ($null -ne $process -and -not $process.HasExited) {
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    if ($null -ne $processId) {
+        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
     }
     Remove-AppxPackageForCleanup -InstalledPackage $installed -IdentityName $IdentityName | Out-Null
 
