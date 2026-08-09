@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -182,6 +183,14 @@ def read_server_version(server_path: str | Path, *, timeout: float = 15.0) -> st
     return output
 
 
+def _positive_finite_timeout(value: str) -> float:
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise argparse.ArgumentTypeError(
+            "--version-timeout must be a finite number greater than zero"
+        )
+    return timeout
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime-dir", required=True, type=Path)
@@ -189,7 +198,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--backend", required=True)
     parser.add_argument("--architecture", required=True)
-    parser.add_argument("--version-timeout", type=float, default=15.0)
+    parser.add_argument("--version-timeout", type=_positive_finite_timeout, default=15.0)
     return parser.parse_args()
 
 

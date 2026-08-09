@@ -47,7 +47,12 @@ def _report() -> dict:
     return {
         "version": "1",
         "pip_version": "26.0",
-        "environment": {"python_version": "3.10", "sys_platform": "win32"},
+        "environment": {
+            "implementation_name": "cpython",
+            "platform_machine": "AMD64",
+            "python_version": "3.10",
+            "sys_platform": "win32",
+        },
         "install": [
             _item(
                 "alpha-pkg",
@@ -64,6 +69,76 @@ def _report() -> dict:
             ),
         ],
     }
+
+
+def test_target_marker_dependencies_are_required_by_lock_and_sbom_contract(tmp_path: Path):
+    report = _report()
+    report["install"][0]["metadata"]["requires_dist"] = [
+        "exceptiongroup>=1.0.2; python_version < '3.11'"
+    ]
+
+    with pytest.raises(contract.ContractError, match="marker dependencies missing.*exceptiongroup"):
+        contract.render_lock(report)
+
+    report["install"].append(
+        _item("exceptiongroup", "1.2.2", requested=False, sha256="c" * 64)
+    )
+    rendered = contract.render_lock(report)
+    canonical = contract._canonical_with_items(
+        report, contract.read_requirements(_requirements(tmp_path))
+    )
+    sbom = contract.build_sbom(canonical)
+
+    assert "exceptiongroup==1.2.2 --hash=sha256:" + "c" * 64 in rendered
+    assert sbom["dependencies"][0]["dependsOn"] == ["pkg:pypi/exceptiongroup@1.2.2"]
+
+
+def test_marker_evaluation_uses_target_environment_not_host_python(tmp_path: Path):
+    report = _report()
+    report["install"][0]["metadata"]["requires_dist"] = [
+        "host-only>=1; python_full_version >= '3.13'"
+    ]
+    report["environment"]["python_full_version"] = "3.10.14"
+
+    contract.render_lock(report)
+    canonical = contract._canonical_with_items(
+        report, contract.read_requirements(_requirements(tmp_path))
+    )
+    assert contract.build_sbom(canonical)["dependencies"][0]["dependsOn"] == []
+
+
+def test_marker_environment_missing_a_referenced_key_fails_closed():
+    report = _report()
+    report["install"][0]["metadata"]["requires_dist"] = [
+        "host-only>=1; python_full_version >= '3.13'"
+    ]
+
+    with pytest.raises(contract.ContractError, match="incomplete.*python_full_version"):
+        contract.render_lock(report)
+
+
+def test_sbom_omits_unsatisfied_and_extra_marker_dependencies(tmp_path: Path):
+    report = _report()
+    report["install"][0]["metadata"]["requires_dist"] = [
+        "beta_pkg>=2; python_version >= '3.11'",
+        "extra-only>=1; extra == 'feature'",
+    ]
+    report["install"].append(
+        _item("extra-only", "1.0.0", requested=False, sha256="c" * 64)
+    )
+
+    canonical = contract._canonical_with_items(
+        report, contract.read_requirements(_requirements(tmp_path))
+    )
+    assert contract.build_sbom(canonical)["dependencies"][0]["dependsOn"] == []
+
+
+def test_committed_py310_locks_include_anyio_marker_dependency():
+    for filename in (
+        "requirements-lock-win-amd64-py310.txt",
+        "requirements-ci-lock-win-amd64-py310.txt",
+    ):
+        assert "exceptiongroup" in contract.read_lock(ROOT / filename)
 
 
 def _requirements(tmp_path: Path, content: str = "alpha-pkg==1.0.0\n") -> Path:
@@ -219,6 +294,7 @@ def test_production_and_ci_locks_keep_distinct_graphs():
         "pygments",
         "pytest",
         "pytest-qt",
+        "tomli",
     }
 
 
