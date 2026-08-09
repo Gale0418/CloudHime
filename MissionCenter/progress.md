@@ -223,3 +223,15 @@
 - GPU worker product-path smoke：再次 startup 14.113s、Region Bubble request 2.309s；0 OCR backend 仍輸出整區 bbox，last_provider=local_multimodal，source text 由 Vision 提供，trace 為 OCR optional no-text → translation success，結束後 llama-server processes: 0。
 - CodeRabbit 隔離 5 檔審查：首輪 1 major（legacy non-JSON MIME）、複輪 1 minor（confidence overflow）、final 1 minor（fenced JSON whitespace），三項皆以 regression 先重現後修正；最後 minor 修後因本小時審查額度已用完，未宣稱 0 issues。Gemini RPC 在 dispatch 前 deadline，交付狀態不確定，未列為審查完成。
 - 尚未完成：source-disjoint 漫畫／遊戲 accuracy 與 latency A/B、Fullscreen Vision-first、Game-safe ResourceGovernor／partial offload、clean Windows／Store gate。
+
+## CH-T68 Paired Vision E2E gate checkpoint（2026-08-09）
+
+- 新增 model-free `vision_e2e_benchmark.py`，只允許 `locked_test`／`public_audit` 進 promotion；development cases 不計分且其 prediction records 會被拒絕，避免調參集污染發版判定。
+- manifest 契約鎖定 source family、image SHA-256、annotation revision、usage/split 與 Owner ground-truth confirmation；source family 或 image hash 跨 split 會立即失敗。
+- baseline／candidate 固定 5 次對稱 repeats；model／runtime／prompt SHA-256、target、sampling、context 與 GPU mode 必須同 fingerprint，route 必須不同。
+- promotion 先判 aggregate 與逐 case 0 quality regression、nonempty／coverage，再顯示 latency；更快不得抵銷品質退化。每筆必須明示 runtime_mode、residual process、provider 與 bounded fallback token，報告使用 allowlist 且不輸出 OCR／翻譯／prompt／raw model output。
+- 修正 Region Vision partial response：回傳 ID 集合不完整時整批視為失敗，有 OCR items 即走既有文字 fallback，避免漏掉區域卻標成功。CodeRabbit 首輪 Minor 要求驗證 fallback 收到兩段 OCR hint，已補測試。
+- 本地驗證：evaluator targeted 42 passed；benchmark CI group final 100 passed；OCR CI group 206 passed；CI inventory 4 passed；compileall 與 diff-check 通過。沙盒 `%TEMP%`／workspace basetemp 曾產生 6 個 ACL setup errors，改以 elevated fresh basetemp 後全綠並精確清理。
+- CodeRabbit：第 1 次在隔離 repo 因 base branch discovery 失敗；第 2 次審 3 個 tracked files 得 1 Minor 並修正；第 3 次以 empty baseline 審完整 5 檔得 1 Minor（development contamination）並以 RED regression 修正。本小時額度已滿，修後未宣稱 0 issues。
+- Gemini 在 Owner 明確授權本機 loopback 後，以同 request ID 兩次 reconciliation 均在 dispatch 前 deadline；無已確認交付或回覆，不列為審查證據。
+- 本階段未執行新的 GPU A/B，也未改 Fullscreen 預設路由。下一步建立真正走 `OCRWorker.run_scan_once()` 的 paired product-path collector，並補齊主人確認、source-disjoint 的漫畫與遊戲 locked manifest 後，才可評估 Fullscreen Vision-first promotion。

@@ -474,3 +474,12 @@
 - 失敗策略：Vision 成功即為主要結果；Vision 失敗且 OCR 有字才回退既有 OCR-first translation；兩者皆無時安全失敗並保留 bounded trace，不記 prompt、OCR 原文、raw model output 或 API key。
 - 模型政策：Vision-first selectable／callable surface 不保留 text-only Gemma 3 1B；只保留 legacy settings alias 以保護升級。
 - ResourceGovernor 不與本 PR 混做。gpu_layers=999/0、partial offload、VRAM budget、idle TTL 與 buffer lifecycle 另立後續里程碑，避免把路由 correctness 與資源政策綁成大爆炸修改。
+
+## 2026-08-09：CH-T68 先鎖 paired promotion gate，再切 Fullscreen
+
+- promotion 只接受 `locked_test`／`public_audit`，development／example 調參資料不得進發版分數；若沒有 Owner 確認 ground truth 的 locked case，evaluator 必須拒絕執行。
+- baseline 與 candidate 必須同模型、runtime、prompt、target、sampling、context 與 GPU 條件，固定 5 次 paired repeats；唯一允許的核心差異是 route identity。
+- 準確度是硬閘門：aggregate 與逐 case 皆不得退化，nonempty／coverage 不得下降；只有品質先通過才輸出 latency 比較，速度不能抵銷品質。
+- GPU 與 lifecycle 不接受 condition 自報：每筆 record 必須明示 runtime mode 與 residual process count；CPU fallback 不算 GPU 成功，缺證據不得默認為 0 residual。
+- benchmark report 採欄位 allowlist，不輸出 OCR、翻譯、prompt、圖片 bytes、raw model output、憑證或任意未知欄位；provider／fallback reason 僅接受 bounded safe token。
+- Vision partial IDs 不可靜默成功；目前 Region 採整批 OCR fallback。Fullscreen 在 product-path collector 與 locked holdout 通過前維持 OCR-first。
