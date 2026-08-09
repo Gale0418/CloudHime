@@ -283,3 +283,10 @@
 - 修正 CodeRabbit Major 後，前一輪相同完整 command `python -m pytest -q -p no:cacheprovider --basetemp <unique-temp> tests/test_release_packaging.py tests/test_msix_packaging.py` 被外層 300s timeout 截斷：僅輸出 22 個 dots、無 failure，但執行未完成，不得算通過。之後以 600s 重跑同一完整 command，最終為 `26 passed in 106.07s`（PASS）。
 - psutil 唯讀檢查未發現遺留 CloudHime pytest 程序；輸出僅含檢查命令本身與其 pwsh 父程序。
 - CH-T64 維持 In Progress。未執行 install／launch／uninstall、WACK、Store submission、clean-machine 或 GPU gate。安裝 gate 等主人明確允許建立 `CurrentUser\My` 私鑰、暫時匯入 `LocalMachine\TrustedPeople`、sign／`Add-AppxPackage`／launch／`Remove-AppxPackage` 與 finally cleanup；這是授權等待，非 Blocked。
+## CH-T64 WACK wrapper checkpoint（2026-08-10）
+
+- 新增 `packaging/test_wack.ps1` 的 TDD／wrapper contract：package path 與 package full name 互斥；PowerShell 7 會 bridge 至 Windows PowerShell 5.1；要求 active user session 與 Administrator；package path 會正規化為 absolute path；report parent 必須既存且可寫；拒絕覆寫既有 report；固定 `reset` 後 `test`；以 `XmlDocument.Load` 驗證唯一 `OVERALL_RESULT=PASS`，其他情況一律 fail-closed。刻意不含憑證／簽章／安裝／卸載／all-users／`Start-Process`。
+- Microsoft 官方文件確認 appcert CLI：`reset` 後以 `test -appxpackagepath ... -reportoutputpath ...` 測未安裝 package，或以 `test -packagefullname ...` 測目前 active user 已安裝 package；兩者均需 active user session 與 Administrator。WACK 已 deprecated，僅為 optional local pre-submission；Partner Center certification 才是最終 gate。
+- TDD：初始 collection error 為 `0 collected / 1 error`（f-string，已修；不算功能 RED baseline）；真正 RED 為 `16 collected, 14 passed, 2 failed, 2 warnings in 66.75s`（wrapper／README 缺失）；第一版 GREEN `16 passed, 1 warning in 61.68s`；硬化專項 `2 passed / 14 deselected`；分身 full `16 passed in 59.68s`；主程序獨立 basetemp full `16 passed in 60.27s`。
+- Gemini／Antigravity 協作嘗試失敗：RPC `127.0.0.1:57447` refused，agy fallback 被 `127.0.0.1:9` proxy refused；未取得可用回答、未修改檔案，未宣稱 Gemini review。CodeRabbit 本階段 uncommitted review 已完成，`0 issues`；僅代表本階段 review，不代表全 repo 內容均重新驗證。
+- `appcert.exe /?` 在 sandbox 回 `0xc0000142`；提升權限後 30 秒 timeout 且無輸出，確認無殘留 process，因此以官方文件作為命令依據。未執行真 appcert／WACK、安裝、簽章、憑證或 Store；CH-T64 維持 In Progress，WACK 應在主人明確授權 install／sign／cert gate 後才執行。
