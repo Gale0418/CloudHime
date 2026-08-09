@@ -85,7 +85,9 @@
         "tests/test_translation_e2e_benchmark.py",
         "tests/test_vision_smoke_benchmark.py",
         "tests/test_temporal_holdout_benchmark.py",
-        "tests/test_vision_e2e_benchmark.py"
+        "tests/test_vision_e2e_benchmark.py",
+        "tests/test_vision_owner_review.py",
+        "tests/test_vision_product_path_collector.py"
       ]
     }
   ]
