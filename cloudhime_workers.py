@@ -4228,6 +4228,9 @@ class OCRWorker(QObject):
                 if self._abort_stale_scan(ScanStage.TRANSLATION):
                     return
                 by_id = {result.id: result for result in vision_results}
+                expected_ids = {hint["id"] for hint in vision_hints}
+                if set(by_id) != expected_ids:
+                    raise ValueError("incomplete_region_vision_response")
                 final_results, source_texts = [], []
                 current_provider = self._canonical_cache_provider(provider_name)
                 for hint in vision_hints:

@@ -1797,3 +1797,41 @@ def test_region_vision_takes_over_when_ocr_backend_raises(monkeypatch, qtbot):
         assert worker.last_combined_text == "Vision 原文"
     finally:
         worker.cleanup()
+
+def test_region_vision_partial_response_falls_back_without_dropping_items(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(interpret_regions=Mock(return_value=[
+        SimpleNamespace(id=0, source_text="Vision 原文", translation="Vision 翻譯")
+    ]))
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    items = [
+        {"text": "OCR one", "x": 17, "y": 21, "w": 40, "h": 16},
+        {"text": "OCR two", "x": 60, "y": 45, "w": 50, "h": 18},
+    ]
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, items))
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["Fallback one", "Fallback two"], ["google", "google"])
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+        fallback_args = worker.translate_items_with_ai_and_providers.call_args.args
+        assert fallback_args[0] == ["OCR one", "OCR two"]
+
+        assert finished == [[
+            ["Fallback one", 17, 21, 40, 16],
+            ["Fallback two", 60, 45, 50, 18],
+        ]]
+        assert worker.last_provider == "google"
+        translation_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+        ]
+        assert translation_events[-1].outcome is ScanOutcome.FALLBACK
+        assert translation_events[-1].fallback_reason == "translation_region_vision_failed"
+    finally:
+        worker.cleanup()
