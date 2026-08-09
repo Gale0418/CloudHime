@@ -13,6 +13,27 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Assert-ProcessLaunchLiveness {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Process
+    )
+
+    if (-not $Process.HasExited) {
+        return
+    }
+
+    $exitCode = [int]$Process.ExitCode
+    if ($exitCode -eq 0) {
+        throw "Packaged executable exited before launch liveness window."
+    }
+
+    throw "Packaged executable exited with code $exitCode before launch liveness window."
+}
+
+
+
 $helperPath = Join-Path $PSScriptRoot "msix_install_helpers.ps1"
 if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
     throw "MSIX install helper not found: $helperPath"
@@ -69,9 +90,7 @@ try {
 
     $process = Start-Process -FilePath $executablePath -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds $LaunchWaitSeconds
-    if ($process.HasExited -and $process.ExitCode -ne 0) {
-        throw "Packaged executable exited with code $($process.ExitCode)."
-    }
+    Assert-ProcessLaunchLiveness -Process $process
     Write-Host "Installed and launched $IdentityName from $($installed.InstallLocation)."
 }
 finally {

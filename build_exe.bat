@@ -114,6 +114,12 @@ if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
 if exist "%ZIP_FILE%" del /f /q "%ZIP_FILE%"
 
 rem Keep the release independent from optional TensorFlow/Keras OCR environments.
+pwsh -NoLogo -NoProfile -File "packaging\prepare_release_provenance.ps1"
+if errorlevel 1 (
+  echo Release provenance preparation failed.
+  set "BUILD_EXIT_CODE=1"
+  goto :cleanup
+)
 echo Building %APP_NAME% release...
 python -m PyInstaller --noconfirm --clean CloudHime.spec
 if errorlevel 1 (
