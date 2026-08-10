@@ -97,14 +97,34 @@ namespace AppxSmoke
     public class ApplicationActivationManager
     {
     }
+
+    public static class ApplicationActivationManagerLauncher
+    {
+        public static uint ActivateApplication(string appUserModelId)
+        {
+            IApplicationActivationManager activationManager = null;
+            try
+            {
+                activationManager = (IApplicationActivationManager)Activator.CreateInstance(typeof(ApplicationActivationManager));
+                uint processId;
+                activationManager.ActivateApplication(appUserModelId, null, ActivateOptions.None, out processId);
+                return processId;
+            }
+            finally
+            {
+                if (activationManager != null)
+                {
+                    Marshal.ReleaseComObject(activationManager);
+                }
+            }
+        }
+    }
 }
 "@
     }
 
     $aumid = "$packageFamilyName!$ApplicationId"
-    $activationManager = [AppxSmoke.IApplicationActivationManager](New-Object AppxSmoke.ApplicationActivationManager)
-    [uint32]$processId = 0
-    $activationManager.ActivateApplication($aumid, $null, [AppxSmoke.ActivateOptions]::None, [ref]$processId)
+    [uint32]$processId = [AppxSmoke.ApplicationActivationManagerLauncher]::ActivateApplication($aumid)
     if ($processId -eq 0) {
         throw "Application activation returned no process ID for '$aumid'."
     }
