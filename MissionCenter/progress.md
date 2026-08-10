@@ -290,3 +290,11 @@
 - TDD：初始 collection error 為 `0 collected / 1 error`（f-string，已修；不算功能 RED baseline）；真正 RED 為 `16 collected, 14 passed, 2 failed, 2 warnings in 66.75s`（wrapper／README 缺失）；第一版 GREEN `16 passed, 1 warning in 61.68s`；硬化專項 `2 passed / 14 deselected`；分身 full `16 passed in 59.68s`；主程序獨立 basetemp full `16 passed in 60.27s`。
 - Gemini／Antigravity 協作嘗試失敗：RPC `127.0.0.1:57447` refused，agy fallback 被 `127.0.0.1:9` proxy refused；未取得可用回答、未修改檔案，未宣稱 Gemini review。CodeRabbit 本階段 uncommitted review 已完成，`0 issues`；僅代表本階段 review，不代表全 repo 內容均重新驗證。
 - `appcert.exe /?` 在 sandbox 回 `0xc0000142`；提升權限後 30 秒 timeout 且無輸出，確認無殘留 process，因此以官方文件作為命令依據。未執行真 appcert／WACK、安裝、簽章、憑證或 Store；CH-T64 維持 In Progress，WACK 應在主人明確授權 install／sign／cert gate 後才執行。
+
+## CH-T64 post-change 自簽 MSIX gate 與 optional WACK（2026-08-10）
+
+- commits：`f3d4d6d` 完成 AUMID 啟動；`b9fa6d9` 加入 C# COM wrapper。`tests/test_msix_packaging.py` 為 `17 passed in 51.66s`。
+- 假 AUMID 在 Windows PowerShell 5.1 回覆 `MethodInvocationException`／`Value does not fall within expected range`，已不再出現 `PSInvalidCastException`。
+- 真實短效自簽 MSIX gate PASS：`signature_verified=true`、`install_launch_uninstall=true`、`aumid_activation=true`、`test_exit_code=0`；輸出 `Installed and launched CloudHime as CloudHime_4nvnqyjwyamgj!CloudHime from C:\Program Files\WindowsApps\CloudHime_0.1.0.0_x64__4nvnqyjwyamgj`。finally cleanup：CurrentUser cert 0、LocalMachine cert 0、package 0、temp 0。
+- post-change optional WACK 不是 PASS／FAIL：第一輪因多餘 PS5 child bridge parameter-set ambiguous 而未啟動 WACK；改 direct wrapper 後 appcert 確實執行，但外層 15 分鐘 timeout 為 124，未產生 XML／`OVERALL_RESULT`，故記為 incomplete。收尾驗證：appcert 0、WACK PowerShell 0、CurrentUser cert 0、LocalMachine cert 0、CloudHime package 0、temp dir 0。
+- 舊 Application resources／DPI PASS 僅是舊 artifact evidence，不能當作本次 post-change WACK 結果。CH-T64 維持 In Progress；WACK、clean-machine 與 Store 仍待辦。
