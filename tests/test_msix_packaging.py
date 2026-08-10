@@ -195,6 +195,11 @@ def test_msix_activation_helper_uses_aumid_and_returns_the_activated_process():
     assert "2e941141-7f97-4756-ba1d-9decde894a3d" in helper
     assert "45BA127D-10A8-46EA-8AB7-56EA9078943C" in helper
     assert "ActivateApplication" in helper
+    assert "public static class ApplicationActivationManagerLauncher" in helper
+    assert "public static uint ActivateApplication(string appUserModelId)" in helper
+    assert "(IApplicationActivationManager)Activator.CreateInstance(typeof(ApplicationActivationManager))" in helper
+    assert "Marshal.ReleaseComObject(activationManager)" in helper
+    assert "[AppxSmoke.IApplicationActivationManager](New-Object AppxSmoke.ApplicationActivationManager)" not in helper
     assert '"$packageFamilyName!$ApplicationId"' in helper
     assert "[string]::IsNullOrWhiteSpace($packageFamilyName)" in helper
     assert "[string]::IsNullOrWhiteSpace($ApplicationId)" in helper
