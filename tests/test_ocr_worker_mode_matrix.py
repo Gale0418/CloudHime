@@ -1655,6 +1655,40 @@ def _configure_region_vision_worker(worker, image, render_mode, provider):
     worker.trigger_background_threshold_refresh = lambda *args, **kwargs: None
 
 
+def test_region_vision_skips_provider_when_generation_changes_before_request(
+    monkeypatch, qtbot
+):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        interpret_regions=Mock(return_value=[
+            SimpleNamespace(id=0, source_text="不應送出", translation="不應送出")
+        ])
+    )
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "hint", "x": 17, "y": 21, "w": 40, "h": 16}
+    ]))
+
+    def invalidate_after_provider_resolution():
+        worker.set_scan_generation(2)
+        return "local_multimodal"
+
+    worker.resolve_multimodal_provider_name = invalidate_after_provider_resolution
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        provider.interpret_regions.assert_not_called()
+        assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
+        assert worker.last_scan_trace.events[-1].error_code is ScanErrorCode.SCAN_CANCELLED
+    finally:
+        worker.cleanup()
+
+
 @pytest.mark.parametrize("render_mode", [REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF])
 def test_region_vision_uses_image_source_and_relative_ocr_hints(monkeypatch, qtbot, render_mode):
     image = np.zeros((80, 160, 3), dtype=np.uint8)

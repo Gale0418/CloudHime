@@ -4447,6 +4447,8 @@ class OCRWorker(QObject):
                 ]
 
             provider_name = self.resolve_multimodal_provider_name()
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return
             provider = self._get_translation_provider(provider_name) if provider_name else None
             try:
                 if provider is None or not hasattr(provider, "interpret_regions"):
