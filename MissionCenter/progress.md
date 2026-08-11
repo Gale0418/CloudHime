@@ -350,3 +350,9 @@
 - 受控 token screening：`--vision-max-tokens 512` 直接以 `ValueError`／`translation_failed` 失敗，未計入成功 benchmark；`768` 可完整通過但 candidate translation `9872.061ms`、total `10196.094ms`，completion 仍為 `546`，沒有達到有意義的速度收益。實驗入口已移除，正式動態 budget 不變。
 - 回歸：runtime metrics／safe numeric filtering／Product Path stage tests／benchmark schema focused tests 共 `7 passed`；local output budget／existing bound tests `3 passed`；compileall 與 `git diff --check` PASS。測試仍出現既有 `.pytest_cache` ACL `WinError 5` warning，但未影響 assertion。
 - 結論：不 promotion width/token 調整；保留 telemetry 供下一輪 crop、server batching 或 runtime decode 實驗使用。CodeRabbit 本小時 quota 已用滿，這批最新修改尚未複審，不宣稱 review pass。
+
+## CH-T74 Local Vision compact-response screening／negative result（2026-08-11）
+
+- 受控加入短 JSON key（只保留 `id/source/translation` 語意）做單圖 screening，未改正式 schema；目標是減少 decode token，不犧牲 Vision-first 的 source correction。
+- dense Marchen Crown、candidate-first、5 repeats、同一 locked image：promotion gate `true`、coverage/nonempty `1.0`，但 candidate quality `0.2479801888`，低於完整 schema candidate `0.2796548522`；translation avg `9841.841ms`、total avg `10165.479ms`，只比完整 schema約快 1%。runtime metrics 約 `prompt_tokens=987`、`completion_tokens=541`、`vision_prompt=1293.178ms`、`vision_decode=8289.524ms`。
+- 結論：準確度下降遠大於速度收益，compact response 不 promotion，所有 compact condition／CLI／parser 入口已撤回；正式仍使用完整 `source_text／translation／confidence` schema。回歸 `118 passed`、compileall／diff-check PASS。
