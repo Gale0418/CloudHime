@@ -377,3 +377,11 @@
 - Preflight exit `0`。Marchen Crown dense 單圖、candidate-first、5 repeats：`256` 的 promotion／quality gate 通過，quality `0.2796548522`、candidate total `10166.271ms`、prompt `1285.539ms`、decode `8294.174ms`，與 default candidate total 約 `10158.310ms` 沒有收益；`512` 同樣 gate 通過且品質相同，candidate total `10128.421ms`、prompt `1283.066ms`、decode `8244.602ms`，總延遲僅約改善 `0.3%`。
 - 兩個值都低於至少 3% 的有效收益門檻，沒有執行四案例 promotion；cache reuse condition、CLI、runtime setter 與回歸測試已撤回，正式 server 行為不變。這證明目前重複掃描的 prompt cache 沒有成為可量化瓶頸，不把小幅噪聲宣稱成優化。
 - `compileall`／`git diff --check` 通過；cache reuse focused regression 在撤回前曾通過 `3 + 16` 個 targeted tests。CodeRabbit 本輪完成，`findings=0`；尚未建立 Git checkpoint 前不宣稱提交完成。
+
+## CH-T78 Region Vision stale-request preflight gate（2026-08-11）
+
+- Root cause：Region Vision 原本只在 `interpret_regions()` 完成後檢查 scan generation；若使用者在 provider 解析後切換畫面，過期請求仍會完整消耗一次 multimodal generation，最後才丟棄結果。
+- 依 TDD 先加入 regression：在 provider 名稱解析期間使 generation 失效，確認 `provider.interpret_regions` 不得被呼叫，且最後事件為 `SCAN_CANCELLED`。
+- 實作只在 `resolve_multimodal_provider_name()` 後、provider lookup／圖片建立／模型呼叫前加入既有 `_abort_stale_scan(ScanStage.TRANSLATION)` gate；不改 prompt、provider fallback、cache key、UI signals 或正常當代請求。
+- 驗證：targeted `1 passed`；完整 `tests/test_ocr_worker_mode_matrix.py` `75 passed in 4.39s`；`python -m compileall -q cloudhime_workers.py tests/test_ocr_worker_mode_matrix.py` PASS；`git diff --check` PASS；CodeRabbit CLI authenticated，`findings=0`。
+- 邊界：這是取消 correctness 與省算力修正，沒有宣稱 GPU benchmark 或平均延遲改善；完整 runtime test 仍受既有 Windows pytest temp ACL `WinError 5` 限制，未冒充通過。
