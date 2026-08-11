@@ -356,3 +356,9 @@
 - 受控加入短 JSON key（只保留 `id/source/translation` 語意）做單圖 screening，未改正式 schema；目標是減少 decode token，不犧牲 Vision-first 的 source correction。
 - dense Marchen Crown、candidate-first、5 repeats、同一 locked image：promotion gate `true`、coverage/nonempty `1.0`，但 candidate quality `0.2479801888`，低於完整 schema candidate `0.2796548522`；translation avg `9841.841ms`、total avg `10165.479ms`，只比完整 schema約快 1%。runtime metrics 約 `prompt_tokens=987`、`completion_tokens=541`、`vision_prompt=1293.178ms`、`vision_decode=8289.524ms`。
 - 結論：準確度下降遠大於速度收益，compact response 不 promotion，所有 compact condition／CLI／parser 入口已撤回；正式仍使用完整 `source_text／translation／confidence` schema。回歸 `118 passed`、compileall／diff-check PASS。
+
+## CH-T75 llama-server Flash Attention screening／negative result（2026-08-11）
+
+- 依官方 llama.cpp server help 與本機 Gemini 只讀建議，暫時把 `--flash-attn on` 做成 condition-scoped runtime 實驗；模型、mmproj、圖片、prompt bundle、sampling、context、GPU 與 paired execution order 均固定，預設仍維持 `auto`。
+- dense Marchen Crown、candidate-first、5 repeats 實機結果：`promotion_gate=true`、candidate quality `0.2796548522`，與完整 schema baseline candidate 相同；`vision_decode=8305.377ms`、translation `9842.409ms`、total `10165.982ms`。對照 default adaptive：decode `8387.442ms`、translation `9938.864ms`、total `10261.276ms`，改善約 1%。
+- runtime 啟動、GPU evidence、coverage/nonempty、provider local 與 residual process 全部通過；但未達 3% 最小收益門檻，所有 Flash Attention condition／CLI／runtime hooks 已撤回，不改產品預設。下一步轉向 request 排程／cache reuse／更高層 batching，不再重複 kernel flag screening。
