@@ -1839,7 +1839,32 @@ def test_region_vision_exception_without_ocr_safely_emits_empty(monkeypatch, qtb
             if event.detail == "translation_region_vision_failed"
         )
         assert failure.exception_token == "RuntimeError"
+        assert failure.fallback_reason == "translation_region_vision_provider_error"
         assert "secret" not in failure.detail
+    finally:
+        worker.cleanup()
+
+
+def test_region_vision_failure_trace_keeps_safe_response_reason(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        interpret_regions=Mock(side_effect=ValueError("empty_region_vision_response"))
+    )
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_RELIEF, provider)
+    worker.ocr_backends = []
+    worker.run_ocr_with_best_threshold = Mock(side_effect=AssertionError("OCR must be optional"))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        failure = next(
+            event for event in worker.last_scan_trace.events
+            if event.detail == "translation_region_vision_failed"
+        )
+        assert failure.fallback_reason == "translation_region_vision_response_empty"
+        assert failure.exception_token == "ValueError"
     finally:
         worker.cleanup()
 

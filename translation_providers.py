@@ -71,6 +71,52 @@ LOCAL_RUNTIME_METRIC_KEYS = frozenset({
 })
 
 
+_REGION_VISION_VALUE_ERROR_CODES = {
+    "missing_image_context": "request_missing_image",
+    "missing_region_hints": "request_missing_hints",
+    "missing_google_api_key": "provider_unavailable",
+    "gemma_rate_limited": "provider_rate_limited",
+    "local_multimodal_unavailable": "provider_unavailable",
+    "empty_region_vision_response": "response_empty",
+    "incomplete_region_vision_response": "response_region_mismatch",
+    "Response is not valid JSON.": "response_json_invalid",
+    "Response contains text outside the JSON value.": "response_json_invalid",
+    "Response must be text.": "response_schema_invalid",
+    "Response must be a JSON object containing only regions.": "response_schema_invalid",
+    "regions must be a JSON array.": "response_schema_invalid",
+    "Each region must contain exactly id, source_text, translation, and confidence.": "response_schema_invalid",
+    "source_text and translation must be non-empty strings.": "response_schema_invalid",
+    "confidence must be a finite number.": "response_schema_invalid",
+    "Region id must be an integer.": "response_region_mismatch",
+    "Response contains an id outside allowed_ids.": "response_region_mismatch",
+    "Response contains a duplicate region id.": "response_region_mismatch",
+}
+
+
+def classify_region_vision_failure(exception: BaseException | None) -> str:
+    """Return a bounded diagnostic token without exposing exception text."""
+    if exception is None:
+        return "unknown"
+    if isinstance(exception, error.HTTPError):
+        status = getattr(exception, "code", None)
+        if isinstance(status, int) and 100 <= status <= 599:
+            return f"request_http_{status}"
+        return "request_http_error"
+    if isinstance(exception, TimeoutError):
+        return "request_timeout"
+    if isinstance(exception, error.URLError):
+        return "request_transport"
+    if isinstance(exception, json.JSONDecodeError):
+        return "response_json_invalid"
+    if isinstance(exception, (KeyError, IndexError, TypeError)):
+        return "response_schema_invalid"
+    if isinstance(exception, ValueError):
+        # Only exact, internal sentinel messages are classified; arbitrary
+        # provider text is intentionally collapsed to the generic token.
+        return _REGION_VISION_VALUE_ERROR_CODES.get(str(exception), "provider_error")
+    return "provider_error"
+
+
 @dataclass(frozen=True)
 class TranslationProviderConfig:
     google_api_key: str = ""

@@ -104,7 +104,12 @@ from model_catalog import (
     get_model_spec,
 )
 from translation_registry import TranslationProviderRegistry, TranslationProviderRegistryConfig
-from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider, LocalMultimodalProvider
+from translation_providers import (
+    GemmaTranslationProvider,
+    GoogleTranslationProvider,
+    LocalMultimodalProvider,
+    classify_region_vision_failure,
+)
 from translation_contracts import TranslationResult
 from translation_orchestrator import TranslationOrchestrator
 from local_vision_runtime import LocalVisionRuntime
@@ -4509,6 +4514,10 @@ class OCRWorker(QObject):
                     started_at=vision_started,
                     error_code=ScanErrorCode.TRANSLATION_FAILED,
                     detail="translation_region_vision_failed",
+                    fallback_reason=(
+                        "translation_region_vision_"
+                        + classify_region_vision_failure(exc)
+                    ),
                     exception=exc,
                 )
                 if not filtered_items:

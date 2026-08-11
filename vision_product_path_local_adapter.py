@@ -439,6 +439,7 @@ class ProductPathLocalSession:
                     f"provider={trace_code(get_value('provider'))}",
                     f"error_code={trace_code(get_value('error_code'))}",
                     f"fallback={trace_code(get_value('fallback_reason'))}",
+                    f"detail={trace_code(get_value('detail'))}",
                     f"exception={trace_code(get_value('exception_token'))}",
                 )
             )
