@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 import vision_e2e_benchmark as evaluator
 
 REPEATS = 5
+_LOCAL_PROVIDER_TOKENS = frozenset({"local", "local_gemma", "local_multimodal"})
 _SAFE_PROVIDER = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")
 _SAFE_FALLBACK = re.compile(r"^(?:[a-z0-9][a-z0-9_.:-]{0,63})?$")
 _SAFE_RUNTIME = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")
@@ -215,8 +216,9 @@ def _warm_events_from_observation(observation: Mapping[str, Any]) -> tuple[list[
     provider = final_provider
     if fallback:
         raise ValueError("warm session fallback_reason must be empty")
+    normalized_events: list[dict[str, Any]] = []
     for event in events:
-        if event["provider"] and event["provider"] != "local":
+        if event["provider"] and event["provider"] not in _LOCAL_PROVIDER_TOKENS:
             raise ValueError("warm session provider must be local")
         if event["fallback_reason"]:
             raise ValueError("warm session fallback_reason must be empty")
@@ -224,7 +226,8 @@ def _warm_events_from_observation(observation: Mapping[str, Any]) -> tuple[list[
             raise ValueError("warm session trace must not fail, cancel, or hit cache")
         if _value(event, "cache_hit", False) is not False:
             raise ValueError("cache_hit must be false")
-    return events, stages, provider, fallback
+        normalized_events.append({**event, "provider": "local"} if event["provider"] else event)
+    return normalized_events, stages, provider, fallback
 
 
 def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, Any], *,

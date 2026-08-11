@@ -540,6 +540,29 @@ def test_gpu_health_ready_captures_llama_cpp_offload_evidence(fake_assets):
     assert state.gpu_total_layers == 43
     assert state.gpu_backend_confirmed is True
 
+
+def test_gpu_health_ready_accepts_owned_process_probe_without_offload_marker(fake_assets):
+    proc = RunningProcess()
+    proc.pid = 4242
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        health_retries=1,
+        asset_minimum_bytes=_TEST_MIN,
+        gpu_process_probe=lambda pid: pid == 4242,
+    )
+
+    state = runtime.start()
+
+    assert state.name == "ready"
+    assert state.mode == "gpu"
+    assert state.gpu_offload_layers == 0
+    assert state.gpu_process_confirmed is True
+    assert state.gpu_backend_confirmed is True
+
 def test_gpu_offload_evidence_survives_more_than_256_later_stderr_lines(fake_assets):
     marker = "load: offloaded 12/43 layers to GPU\n"
     noise = [f"noise-{index:04d}\n" for index in range(300)]

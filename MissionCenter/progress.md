@@ -305,3 +305,11 @@
 - private packet 已為 `owner_confirmed_ready_for_promotion`、`ground_truth_eligible=true`；每筆 `owner_confirmation=confirmed`、`provenance_confirmed_by_owner=true`，並依實體 SHA-256 promotion 成 `records/private/.private_vision_owner_review_locked.json` 的 4 筆 `locked_test`。私人原文與圖片不進版控。
 - 驗證：JSON duplicate-key check、pending/locked SHA 對照與 promotion lock check PASS；`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`、乾淨 Windows 暫存路徑執行 `python -m pytest -q -p no:cacheprovider --basetemp <temp> tests/test_vision_owner_review.py tests/test_vision_product_path_collector.py tests/test_vision_e2e_benchmark.py`，結果 `95 passed in 0.42s`。工作區既有 pytest ACL 只造成另一次 session setup `WinError 5`，不列為產品測試失敗。
 - Gemini 本輪 fallback 未取得有效回覆：Hub `attempt to write a readonly database`，agy `127.0.0.1:9 proxy refused`；未修改檔案、未宣稱 Gemini review。CH-T68 仍維持 Review，下一步是 GPU 空閒後固定 runtime 的 5-repeat paired A/B；Fullscreen 仍 OCR-first。
+
+## CH-T68 GPU Vision product-path paired benchmark（2026-08-11）
+
+- 根因修正：新版 `llama-server.exe` ready stderr 不一定包含舊版 `offloaded X/Y layers to GPU` marker；LocalVisionRuntime 新增 NVIDIA process snapshot 證據，仍限制為 CloudHime 自己持有的 process。另修正 local Vision 常見的 fenced top-level region array，以及 array item 缺少 `confidence` 時採保守 `0.0`；文件化 object schema 仍維持嚴格驗證。
+- 先以單張 candidate 實機重現並修正：`2026-07-02 00 05 12.png`、game screenshot 各自恢復 `provider=local`；每次 session cleanup 均 `owned_process_exited=true`。過程中兩次正式 benchmark 被真實 fallback gate 攔下，未冒充通過。
+- 正式命令：`$env:QT_QPA_PLATFORM='offscreen'; python -X utf8 vision_product_path_benchmark.py --manifest records/private/.private_vision_owner_review_locked.json --startup-timeout 30`。結果：exit 0；`repeats=5`、4 cases、baseline/candidate fingerprint 相同；`promotion_gate.passed=true`、`quality_passed=true`、`case_regressions=[]`；baseline quality `0.2394875813`、candidate quality `0.2517884620`；baseline total avg `969.018ms`、candidate `6606.594ms`；兩邊 coverage/nonempty `1.0`，每筆 provider `local`，residual process `0`。
+- 回歸與靜態驗證：`QT_QPA_PLATFORM=offscreen`、乾淨 Windows `--basetemp` 執行受影響 tests，`187 passed in 1.91s`；指定檔案 `compileall=PASS`；`git diff --check` 無 whitespace error。工作區既有 pytest temp ACL 仍會造成無關 setup `WinError 5`，本輪以提升權限與全新 basetemp 重跑，不列為產品 failure。
+- 結論：CH-T68 可標記 Done；Vision-first Region path 的準確度閘門已通過。candidate 明顯較慢，下一步應優先處理 OCR／Vision latency 與 latency-order balancing；Fullscreen 仍刻意維持 OCR-first，不在本輪擴大範圍。

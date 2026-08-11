@@ -417,6 +417,20 @@ def test_warm_session_rejects_nonlocal_provider_fallback_and_cache_hit_trace(
         _collect_warm(InvalidTraceSession)
 
 
+def test_warm_session_accepts_local_multimodal_provider_alias():
+    class LocalMultimodalTraceSession(WarmSession):
+        def run_repeat(self, case_id, pixels):
+            observation = super().run_repeat(case_id, pixels)
+            self.last_scan_trace.events[-1].provider = "local_multimodal"
+            observation["trace_events"] = self.last_scan_trace.events
+            return observation
+
+    run = _collect_warm(LocalMultimodalTraceSession)
+
+    assert run["records"]
+    assert all(record["provider"] == "local" for record in run["records"])
+
+
 def test_warm_session_preserves_scan_error_when_cleanup_evidence_is_missing():
     class ScanAndCleanupFailureSession(WarmSession):
         def run_repeat(self, case_id, pixels):

@@ -108,6 +108,7 @@ class VisionRuntimeState:
     gpu_offload_layers: int = 0
     gpu_total_layers: int = 0
     gpu_backend_confirmed: bool = False
+    gpu_process_confirmed: bool = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -133,6 +134,8 @@ class LocalVisionRuntime:
         簽名相容 ``subprocess.Popen`` 的 callable，用於依賴注入。
     urlopen:
         簽名相容 ``urllib.request.urlopen`` 的 callable（健康檢查用）。
+    gpu_process_probe:
+        回報指定 process PID 是否被 NVIDIA driver 列為 GPU process；測試可注入。
     port_allocator:
         無參數 callable，回傳可用的整數 port。
     sleep:
@@ -156,6 +159,7 @@ class LocalVisionRuntime:
         gpu_layers: int = 999,
         asset_minimum_bytes: dict[str, int] | None = None,
         progress_callback: Optional[Callable[[str, int], None]] = None,
+        gpu_process_probe: Optional[Callable[[int], bool]] = None,
     ) -> None:
         self._assets = assets
         self._profile = resolve_runtime_profile(profile)
@@ -168,6 +172,7 @@ class LocalVisionRuntime:
         self._context_size = max(512, int(context_size))
         self._gpu_layers = max(0, int(gpu_layers))
         self._progress_callback = progress_callback
+        self._gpu_process_probe = gpu_process_probe or _default_gpu_process_probe
         self._last_progress = 0
         # 可注入資產大小最小值（測試用小數值，生產用正式大小）
         self._asset_minimum_bytes: dict[str, int] = (
@@ -400,10 +405,19 @@ class LocalVisionRuntime:
                 base_url = f"http://127.0.0.1:{port}/v1"
                 self._report_progress("ready", 100)
                 gpu_offload_layers, gpu_total_layers = _snapshot_gpu_offload()
+                gpu_process_confirmed = False
+                process_pid = getattr(proc, "pid", None)
+                if mode == "gpu" and isinstance(process_pid, int) and process_pid > 0:
+                    try:
+                        gpu_process_confirmed = bool(self._gpu_process_probe(process_pid))
+                    except Exception:
+                        gpu_process_confirmed = False
                 gpu_backend_confirmed = (
                     mode == "gpu"
-                    and gpu_offload_layers > 0
-                    and gpu_total_layers >= gpu_offload_layers
+                    and (
+                        (gpu_offload_layers > 0 and gpu_total_layers >= gpu_offload_layers)
+                        or gpu_process_confirmed
+                    )
                 )
                 return VisionRuntimeState(
                     name="ready",
@@ -413,6 +427,7 @@ class LocalVisionRuntime:
                     gpu_offload_layers=gpu_offload_layers,
                     gpu_total_layers=gpu_total_layers,
                     gpu_backend_confirmed=gpu_backend_confirmed,
+                    gpu_process_confirmed=gpu_process_confirmed,
                 )
             except Exception:
                 pass
@@ -508,6 +523,32 @@ _GPU_OFFLOAD_RE = re.compile(
     r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers\s+to\s+gpu",
     flags=re.IGNORECASE,
 )
+
+
+def _default_gpu_process_probe(pid: int) -> bool:
+    """以 NVIDIA driver 的 process snapshot 補足新版 server 缺少的 offload marker。"""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=pid",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    for line in result.stdout.splitlines():
+        token = line.split(",", 1)[0].strip()
+        if token.isdigit() and int(token) == pid:
+            return True
+    return False
 
 
 def _find_gpu_offload_layers(stderr_text: str) -> tuple[int, int] | None:
