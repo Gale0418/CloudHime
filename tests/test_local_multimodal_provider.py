@@ -1,11 +1,17 @@
 import json
+import threading
+import time
 from io import BytesIO
 
 import pytest
 
 import translation_providers as providers_module
 
-from translation_providers import LocalMultimodalProvider
+from translation_providers import (
+    LocalMultimodalProvider,
+    LocalRequestCancelled,
+    _LocalRequestScheduler,
+)
 
 
 def make_provider():
@@ -16,6 +22,96 @@ def make_provider():
         enabled=True,
         timeout_seconds=12,
     )
+
+
+def test_local_request_scheduler_serializes_fifo_without_merging_jobs():
+    scheduler = _LocalRequestScheduler()
+    first_started = threading.Event()
+    release_first = threading.Event()
+    calls = []
+    results = []
+
+    def first_job():
+        calls.append("first")
+        first_started.set()
+        assert release_first.wait(1)
+        return "first-result"
+
+    def second_job():
+        calls.append("second")
+        return "second-result"
+
+    first_thread = threading.Thread(
+        target=lambda: results.append(scheduler.run(first_job))
+    )
+    second_thread = threading.Thread(
+        target=lambda: results.append(scheduler.run(second_job))
+    )
+    first_thread.start()
+    assert first_started.wait(1)
+    second_thread.start()
+    time.sleep(0.02)
+    assert calls == ["first"]
+
+    release_first.set()
+    first_thread.join(timeout=1)
+    second_thread.join(timeout=1)
+    scheduler.close()
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert calls == ["first", "second"]
+    assert sorted(results) == ["first-result", "second-result"]
+
+
+def test_local_request_scheduler_cancels_queued_job_before_dispatch():
+    scheduler = _LocalRequestScheduler()
+    first_started = threading.Event()
+    release_first = threading.Event()
+    cancel_second = threading.Event()
+    dispatched = []
+    errors = []
+
+    def first_job():
+        dispatched.append("first")
+        first_started.set()
+        assert release_first.wait(1)
+
+    def second_job():
+        dispatched.append("second")
+
+    first_thread = threading.Thread(target=lambda: scheduler.run(first_job))
+    first_thread.start()
+    assert first_started.wait(1)
+
+    def run_second():
+        try:
+            scheduler.run(second_job, cancel_predicate=cancel_second.is_set)
+        except LocalRequestCancelled:
+            errors.append("cancelled")
+
+    second_thread = threading.Thread(target=run_second)
+    second_thread.start()
+    time.sleep(0.02)
+    cancel_second.set()
+    second_thread.join(timeout=1)
+    release_first.set()
+    first_thread.join(timeout=1)
+    scheduler.close()
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert dispatched == ["first"]
+    assert errors == ["cancelled"]
+
+
+def test_local_multimodal_provider_close_rejects_new_requests():
+    provider = make_provider()
+
+    provider.close()
+
+    with pytest.raises(RuntimeError, match="local_request_scheduler_closed"):
+        provider._request_chat_completion({})
 
 
 def test_translate_multimodal_builds_openai_compatible_payload():
@@ -317,7 +413,7 @@ def test_interpret_regions_scales_output_budget_with_hint_count():
     provider = make_provider()
     payloads = []
 
-    def fake_request(payload):
+    def fake_request(payload, *, cancel_predicate=None):
         payloads.append(payload)
         prompt = payload["messages"][0]["content"][0]["text"]
         count = 8 if "id=7" in prompt else 1
