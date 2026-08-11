@@ -1796,12 +1796,6 @@ class OCRWorker(QObject):
             if any(
                 marker in text
                 for marker in (
-                    "?????",
-                    "??????",
-                    "?????",
-                    "????",
-                    "??",
-                    "??",
                     "Gemma",
                     "OCR",
                     "v3.0",
@@ -4144,6 +4138,21 @@ class OCRWorker(QObject):
         # 截圖後立刻預取 Google OCR（與本地 OCR 並列進行）
         # 注意：多模態 AI 翻譯已包含看圖能力，可代替 Google OCR refine，故不重複呼叫
         _google_ocr_future = None
+        _google_executor = None
+        _google_executor_shutdown = False
+
+        def _shutdown_google_ocr_executor(wait=False):
+            nonlocal _google_executor, _google_executor_shutdown
+            if _google_executor is None or _google_executor_shutdown:
+                return
+            executor = _google_executor
+            _google_executor = None
+            _google_executor_shutdown = True
+            try:
+                executor.shutdown(wait=wait)
+            except Exception:
+                pass
+
         _prefetch_image_parts = None
         _use_google_ocr_refine = self.google_ocr_enabled and self.google_api_key and not self.has_any_multimodal_ai()
         if _use_google_ocr_refine and self.scan_mode == SCAN_MODE_REGION:
@@ -4161,8 +4170,12 @@ class OCRWorker(QObject):
                         except Exception:
                             return None
                     _google_ocr_future = _google_executor.submit(_bg_google_ocr)
+                    _google_ocr_future.add_done_callback(
+                        lambda _completed: _shutdown_google_ocr_executor(wait=False)
+                    )
                     _log("① 截圖完成 (Google OCR 預取已啟動)")
             except Exception:
+                _shutdown_google_ocr_executor(wait=False)
                 _google_ocr_future = None
 
         if is_screenshot_mode:
@@ -4691,13 +4704,17 @@ class OCRWorker(QObject):
                 if _google_ocr_future is not None:
                     _log("⑤ 等待 Google OCR 預取結果...")
                     try:
-                        _google_result = _google_ocr_future.result()
+                        _google_result = _google_ocr_future.result(timeout=30)
                         _log("⑥ Google OCR 精煉完成 (已預取)")
                         if _google_result is not None:
                             _google_lines = [normalize_ocr_text(line) for line in str(_google_result.text or "").splitlines() if normalize_ocr_text(line)]
                             merged_items = merge_google_lines_into_items(_google_lines, merged_items)
+                    except FutureTimeoutError:
+                        _google_ocr_future.cancel()
                     except Exception:
                         pass
+                    finally:
+                        _shutdown_google_ocr_executor(wait=False)
                 else:
                     if ai_image_parts is None:
                         _log("④-pre 開始 build_ai_image_parts (Google OCR)")

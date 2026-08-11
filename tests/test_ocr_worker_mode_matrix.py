@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from unittest.mock import Mock
 
 import numpy as np
@@ -1137,6 +1138,69 @@ def test_deadline_executor_barrier_is_evaluator_opt_in(monkeypatch, qtbot):
             deadline=1e100,
         )
         assert shutdown_calls[-1] == {"wait": True, "cancel_futures": True}
+    finally:
+        worker.cleanup()
+
+
+def test_screenshot_hint_filter_keeps_question_text_and_drops_known_status_markers(qtbot):
+    worker = OCRWorker()
+    worker.convert_to_trad = lambda text: text
+    box = SimpleNamespace(x=1, y=2, w=30, h=12)
+    ocr_result = SimpleNamespace(
+        lines=[
+            SimpleNamespace(text="這是問題??", confidence=0.9, box=box),
+            SimpleNamespace(text="Gemma OCR v3.0 5s", confidence=0.9, box=box),
+        ]
+    )
+
+    try:
+        items = worker._collect_screenshot_hint_items(ocr_result)
+
+        assert [item["text"] for item in items] == ["這是問題??"]
+    finally:
+        worker.cleanup()
+
+
+def test_google_ocr_prefetch_has_bounded_wait_and_executor_cleanup(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.google_ocr_enabled = True
+    worker.google_api_key = "test-key"
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "abc"}}])
+    provider = SimpleNamespace(
+        transcribe_screenshot=Mock(return_value=SimpleNamespace(text="Google OCR"))
+    )
+    worker._get_translation_provider = lambda name: provider if name == "gemma" else None
+    result_timeouts = []
+    shutdown_calls = []
+
+    class FakeFuture:
+        def result(self, timeout=None):
+            result_timeouts.append(timeout)
+            raise FutureTimeoutError()
+
+        def add_done_callback(self, callback):
+            callback(self)
+
+    class FakeExecutor:
+        def __init__(self, max_workers):
+            self.future = FakeFuture()
+
+        def submit(self, callback):
+            return self.future
+
+        def shutdown(self, **kwargs):
+            shutdown_calls.append(kwargs)
+
+    monkeypatch.setattr(workers_module, "ThreadPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert result_timeouts == [30]
+        assert shutdown_calls == [{"wait": False}]
     finally:
         worker.cleanup()
 
