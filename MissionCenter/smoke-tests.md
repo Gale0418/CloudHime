@@ -1,6 +1,6 @@
 # Smoke Tests
 
-| 日期 | 任務 | 測試名稱 | 操作 | 預期結果 | 觀察結果 | 結果 | 類型 |
+| 日期 | 對應任務 ID | 測試名稱 | 操作 | 預期結果 | 觀察結果 | 通過 / 失敗 | 類型 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-04-29 | CH-T1 | MissionCenter 重設 | `python MissionCenter/sync_visual_state.py` | HUD 只顯示本次設定頁改造任務 | visual-state 已同步，任務表改為本次 UI 改造 | Pass | automated |
 | 2026-04-29 | CH-T2 | 設定頁語法檢查 | `python -m py_compile CloudHime.py translation_settings_panel.py ocr_backend_panel.py translation_helpers.py` | 無 SyntaxError | 通過 | Pass | automated |
