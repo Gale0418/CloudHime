@@ -298,3 +298,10 @@
 - 真實短效自簽 MSIX gate PASS：`signature_verified=true`、`install_launch_uninstall=true`、`aumid_activation=true`、`test_exit_code=0`；輸出 `Installed and launched CloudHime as CloudHime_4nvnqyjwyamgj!CloudHime from C:\Program Files\WindowsApps\CloudHime_0.1.0.0_x64__4nvnqyjwyamgj`。finally cleanup：CurrentUser cert 0、LocalMachine cert 0、package 0、temp 0。
 - post-change optional WACK 不是 PASS／FAIL：第一輪因多餘 PS5 child bridge parameter-set ambiguous 而未啟動 WACK；改 direct wrapper 後 appcert 確實執行，但外層 15 分鐘 timeout 為 124，未產生 XML／`OVERALL_RESULT`，故記為 incomplete。收尾驗證：appcert 0、WACK PowerShell 0、CurrentUser cert 0、LocalMachine cert 0、CloudHime package 0、temp dir 0。
 - 舊 Application resources／DPI PASS 僅是舊 artifact evidence，不能當作本次 post-change WACK 結果。CH-T64 維持 In Progress；WACK、clean-machine 與 Store 仍待辦。
+
+## CH-T68 Owner confirmation promotion checkpoint（2026-08-11）
+
+- 主人已逐項確認 4 張 review 圖片的原文、繁中翻譯與作品 provenance：`10001.png`（《契約結婚は、先に離婚を言い出したほうの勝ち》封面）、`2026-07-02 00 05 12.png`（《女性向遊戲世界對路人角色很不友好》）、`2026-07-18 20 11 48.png`（Marchen Crown）、`VS--YouTube-2021042202-106’55”.jpg`（Lorena and the Land of Ruins）。
+- private packet 已為 `owner_confirmed_ready_for_promotion`、`ground_truth_eligible=true`；每筆 `owner_confirmation=confirmed`、`provenance_confirmed_by_owner=true`，並依實體 SHA-256 promotion 成 `records/private/.private_vision_owner_review_locked.json` 的 4 筆 `locked_test`。私人原文與圖片不進版控。
+- 驗證：JSON duplicate-key check、pending/locked SHA 對照與 promotion lock check PASS；`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`、乾淨 Windows 暫存路徑執行 `python -m pytest -q -p no:cacheprovider --basetemp <temp> tests/test_vision_owner_review.py tests/test_vision_product_path_collector.py tests/test_vision_e2e_benchmark.py`，結果 `95 passed in 0.42s`。工作區既有 pytest ACL 只造成另一次 session setup `WinError 5`，不列為產品測試失敗。
+- Gemini 本輪 fallback 未取得有效回覆：Hub `attempt to write a readonly database`，agy `127.0.0.1:9 proxy refused`；未修改檔案、未宣稱 Gemini review。CH-T68 仍維持 Review，下一步是 GPU 空閒後固定 runtime 的 5-repeat paired A/B；Fullscreen 仍 OCR-first。
