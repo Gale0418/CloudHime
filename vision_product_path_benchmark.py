@@ -143,6 +143,7 @@ def build_conditions(
     assets: Any,
     *,
     asset_hashes: Mapping[str, str] | None = None,
+    vision_image_max_width: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     hashes = dict(asset_hashes) if asset_hashes is not None else _verify_assets(assets)
     fixed = {
@@ -154,6 +155,8 @@ def build_conditions(
         "context": dict(_FIXED_CONTEXT),
         "gpu_mode": "gpu",
     }
+    if vision_image_max_width is not None:
+        fixed["vision_image_max_width"] = vision_image_max_width
     baseline = {**fixed, "route": "baseline", "runtime_profile": "text"}
     candidate = {**fixed, "route": "candidate", "runtime_profile": "vision"}
     if condition_fingerprint(baseline) != condition_fingerprint(candidate):
@@ -161,7 +164,12 @@ def build_conditions(
     return baseline, candidate
 
 
-def preflight(manifest_path: str | Path, *, lock_path: str | Path = DEFAULT_LOCK_PATH) -> dict[str, Any]:
+def preflight(
+    manifest_path: str | Path,
+    *,
+    lock_path: str | Path = DEFAULT_LOCK_PATH,
+    vision_image_max_width: int | None = None,
+) -> dict[str, Any]:
     """Verify only immutable inputs; never create an OCR worker or use the GPU."""
     lock = validate_benchmark_lock(PROJECT_ROOT, lock_path)
     if lock.get("ok") is not True:
@@ -171,7 +179,11 @@ def preflight(manifest_path: str | Path, *, lock_path: str | Path = DEFAULT_LOCK
     _verify_images(cases)
     assets = resolve_preferred_vision_assets(PROJECT_ROOT)
     asset_hashes = _verify_assets(assets)
-    baseline, candidate = build_conditions(assets, asset_hashes=asset_hashes)
+    baseline, candidate = build_conditions(
+        assets,
+        asset_hashes=asset_hashes,
+        vision_image_max_width=vision_image_max_width,
+    )
     return {"ok": True, "manifest": manifest, "assets": assets, "baseline": baseline, "candidate": candidate}
 
 
@@ -197,6 +209,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest", required=True, help="locked owner-confirmed manifest JSON")
     parser.add_argument("--startup-timeout", type=int, default=30, help="local runtime startup timeout in seconds")
     parser.add_argument(
+        "--vision-max-width",
+        type=int,
+        choices=range(640, 1537),
+        help="optional controlled local Vision width experiment; default keeps product policy",
+    )
+    parser.add_argument(
         "--execution-order",
         choices=sorted(EXECUTION_ORDERS),
         default="baseline_then_candidate",
@@ -211,7 +229,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.startup_timeout < 1:
         raise ValueError("startup-timeout must be at least 1")
     try:
-        ready = preflight(args.manifest)
+        preflight_kwargs = {}
+        if args.vision_max_width is not None:
+            preflight_kwargs["vision_image_max_width"] = args.vision_max_width
+        ready = preflight(args.manifest, **preflight_kwargs)
         if args.preflight:
             print(json.dumps({"ok": True, "preflight": True}, separators=(",", ":")))
             return 0

@@ -188,6 +188,7 @@ def test_registry_refreshes_once_with_local_provider_and_correct_profile(
     assert worker.refresh_profiles == [profile]
     assert worker.translation_registry.get("gemma") == "local"
     assert worker.get_current_ai_provider() == "local"
+
     assert worker.gemma_model == "gemma-3-4b-it-local"
     assert worker.active_gemma_model == "gemma-3-4b-it-local"
     assert worker.local_multimodal_model == "gemma-3-4b-it"
@@ -199,6 +200,21 @@ def test_registry_refreshes_once_with_local_provider_and_correct_profile(
     assert worker.ocr_backend_chain == ocr_chain
     assert worker.ensure_calls == [9]
     assert worker.google_api_key == ""
+
+
+def test_local_vision_width_experiment_is_applied_without_changing_default():
+    worker = FakeWorker()
+    session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)
+
+    session.start_cold(_condition(vision_image_max_width=896))
+
+    assert worker._local_vision_image_max_width == 896
+
+    default_worker = FakeWorker()
+    default_session = ProductPathLocalSession(lambda: default_worker, timeout_seconds=9)
+    default_session.start_cold(_condition())
+
+    assert default_worker._local_vision_image_max_width is None
 
 
 @pytest.mark.parametrize(

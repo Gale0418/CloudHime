@@ -87,6 +87,23 @@ def test_conditions_are_identical_except_route_and_runtime_profile(monkeypatch, 
     assert baseline["target"] == "zh-TW"
 
 
+def test_conditions_record_optional_vision_width_as_a_fixed_experiment_control(
+    monkeypatch, tmp_path
+):
+    assets = _assets(tmp_path)
+    monkeypatch.setattr(benchmark, "resolve_preferred_vision_assets", lambda _: assets)
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64, "model_path": "b" * 64, "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+
+    baseline, candidate = benchmark.build_conditions(assets, vision_image_max_width=896)
+
+    assert baseline["vision_image_max_width"] == 896
+    assert candidate["vision_image_max_width"] == 896
+    assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
+
+
 def test_unicode_image_loader_uses_path_bytes_and_cv2_imdecode(monkeypatch, tmp_path):
     image = tmp_path / "測試影像.png"
     image.write_bytes(b"encoded")
