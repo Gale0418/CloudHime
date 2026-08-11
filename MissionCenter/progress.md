@@ -313,3 +313,9 @@
 - 正式命令：`$env:QT_QPA_PLATFORM='offscreen'; python -X utf8 vision_product_path_benchmark.py --manifest records/private/.private_vision_owner_review_locked.json --startup-timeout 30`。結果：exit 0；`repeats=5`、4 cases、baseline/candidate fingerprint 相同；`promotion_gate.passed=true`、`quality_passed=true`、`case_regressions=[]`；baseline quality `0.2394875813`、candidate quality `0.2517884620`；baseline total avg `969.018ms`、candidate `6606.594ms`；兩邊 coverage/nonempty `1.0`，每筆 provider `local`，residual process `0`。
 - 回歸與靜態驗證：`QT_QPA_PLATFORM=offscreen`、乾淨 Windows `--basetemp` 執行受影響 tests，`187 passed in 1.91s`；指定檔案 `compileall=PASS`；`git diff --check` 無 whitespace error。工作區既有 pytest temp ACL 仍會造成無關 setup `WinError 5`，本輪以提升權限與全新 basetemp 重跑，不列為產品 failure。
 - 結論：CH-T68 可標記 Done；Vision-first Region path 的準確度閘門已通過。candidate 明顯較慢，下一步應優先處理 OCR／Vision latency 與 latency-order balancing；Fullscreen 仍刻意維持 OCR-first，不在本輪擴大範圍。
+## CH-T69 Local Vision adaptive payload（2026-08-11）
+
+- 只在 local `Region Vision` 圖片編碼前套用保守寬度策略：大圖預設 1280px；若 OCR hint 顯示高度不超過 20px 的小字，保留既有 1536px；小圖不放大。Google、remote provider、screenshot 與 Fullscreen 路徑不變。
+- 正式 benchmark exit 0；`promotion_gate.passed=true`、`quality_passed=true`、`case_regressions=[]`；baseline quality `0.2394875813`、candidate `0.2712081049`；coverage/nonempty `1.0`；provider 全為 `local`；residual process `0`。
+- 回歸：core `350 passed, 2 skipped`；ocr `215 passed`；runtime `134 passed, 2 skipped`；ui `52 passed`；benchmarks `166 passed`；compileall 與 `git diff --check` PASS。CodeRabbit review `0 issues`。
+- 限制：candidate total avg `6505.1ms`、baseline `993.5ms`；本輪只能證明品質沒有退步，不能宣稱 latency 已改善。CH-T69 維持 Review，後續先做 balanced order，再受控評估 `max_tokens`／crop payload；不直接激進縮圖。

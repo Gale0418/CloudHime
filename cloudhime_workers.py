@@ -151,6 +151,8 @@ AUTO_THRESHOLD_LOCAL_OFFSETS = (-10, 0, 10)
 MAX_OCR_SCALE_FACTOR = 3.0
 MIN_OCR_SCALE_FACTOR = 1.0
 AI_IMAGE_MAX_WIDTH = 1536
+LOCAL_VISION_REDUCED_IMAGE_MAX_WIDTH = 1280
+LOCAL_VISION_TINY_TEXT_HEIGHT = 20
 AI_TOP_CONTEXT_RATIO = 0.22
 NOISE_ONLY_PATTERN = re.compile(r'^[-_=.,|/\\:;~^]+$')
 HAS_CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff]')
@@ -203,6 +205,23 @@ def startup_log(stage, detail=""):
     if detail:
         message += f" | {detail}"
     logger.info(message)
+
+
+def resolve_local_vision_image_max_width(img_np, hints=None):
+    """Choose a conservative local-Vision image width without upscaling."""
+    try:
+        width = max(0, int(img_np.shape[1]))
+    except (AttributeError, IndexError, TypeError, ValueError):
+        return AI_IMAGE_MAX_WIDTH
+    if width <= LOCAL_VISION_REDUCED_IMAGE_MAX_WIDTH:
+        return width
+    for hint in hints or ():
+        try:
+            if int(hint.get("h", 0)) <= LOCAL_VISION_TINY_TEXT_HEIGHT:
+                return min(width, AI_IMAGE_MAX_WIDTH)
+        except (AttributeError, TypeError, ValueError):
+            return min(width, AI_IMAGE_MAX_WIDTH)
+    return min(width, LOCAL_VISION_REDUCED_IMAGE_MAX_WIDTH)
 
 # ==========================================
 # 🛡️ 核心：Windows 原生熱鍵過濾器
@@ -1717,8 +1736,12 @@ class OCRWorker(QObject):
     def encode_image_for_ai(self, img_np):
         return translation_tools.encode_image_for_ai(img_np, max_width=AI_IMAGE_MAX_WIDTH)
 
-    def build_ai_image_parts(self, img_np):
-        return translation_tools.build_ai_image_parts(img_np, max_width=AI_IMAGE_MAX_WIDTH)
+    def build_ai_image_parts(self, img_np, max_width=AI_IMAGE_MAX_WIDTH):
+        return translation_tools.build_ai_image_parts(img_np, max_width=max_width)
+
+    def build_local_vision_image_parts(self, img_np, hints=None):
+        max_width = resolve_local_vision_image_max_width(img_np, hints)
+        return self.build_ai_image_parts(img_np, max_width=max_width)
 
     def _collect_screenshot_hint_items(self, ocr_result, min_confidence=0.35):
         raw_items = []
@@ -4376,7 +4399,10 @@ class OCRWorker(QObject):
             try:
                 if provider is None or not hasattr(provider, "interpret_regions"):
                     raise ValueError("region_vision_unavailable")
-                ai_image_parts = self.build_ai_image_parts(img)
+                if provider_name == "local_multimodal":
+                    ai_image_parts = self.build_local_vision_image_parts(img, vision_hints)
+                else:
+                    ai_image_parts = self.build_ai_image_parts(img)
                 vision_results = provider.interpret_regions(
                     ai_image_parts,
                     vision_hints,
