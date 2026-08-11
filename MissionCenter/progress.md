@@ -362,3 +362,11 @@
 - 依官方 llama.cpp server help 與本機 Gemini 只讀建議，暫時把 `--flash-attn on` 做成 condition-scoped runtime 實驗；模型、mmproj、圖片、prompt bundle、sampling、context、GPU 與 paired execution order 均固定，預設仍維持 `auto`。
 - dense Marchen Crown、candidate-first、5 repeats 實機結果：`promotion_gate=true`、candidate quality `0.2796548522`，與完整 schema baseline candidate 相同；`vision_decode=8305.377ms`、translation `9842.409ms`、total `10165.982ms`。對照 default adaptive：decode `8387.442ms`、translation `9938.864ms`、total `10261.276ms`，改善約 1%。
 - runtime 啟動、GPU evidence、coverage/nonempty、provider local 與 residual process 全部通過；但未達 3% 最小收益門檻，所有 Flash Attention condition／CLI／runtime hooks 已撤回，不改產品預設。下一步轉向 request 排程／cache reuse／更高層 batching，不再重複 kernel flag screening。
+
+## CH-T76 llama-server speculative decoding screening／negative result（2026-08-11）
+
+- 受控加入 `--spec-type ngram-mod` condition／runtime wiring，只固定同一 model、mmproj、圖片、prompt bundle、sampling、context、GPU 與 candidate-first 順序；先以 Marchen Crown 單圖 5 repeats screening，再執行 4 locked cases × 5 repeats。
+- 單圖結果：`ngram-mod` quality `0.2796548522`、coverage/nonempty `1.0`，candidate total `3732.403ms`，default `10158.310ms`；但完整四案例才是判定依據。四案例 `ngram-mod` candidate total avg `3474.664ms`、vision decode `1804.649ms`，default candidate total `6596.676ms`、decode `4929.298ms`，速度約改善 47.3%／63.4%。
+- 準確度 gate 相對 baseline 通過且 20/20 nonempty，但與 default candidate 做 paired per-case 比較時，`owner-review-manga-2026-07-18` quality 由 `0.2796548522` 降至 `0.2704999226`；其他案例為上升或持平。因準確度優先，不能 promotion。
+- 所有 speculative condition／CLI／runtime hooks／regression tests 已撤回，產品回到預設 llama-server 行為；這次實機結果只作 negative evidence，不宣稱 speculative decoding 可用。下一步不再追求單一 kernel flag，改看 request 排程、cache reuse 或 batching，仍須先證明無任何 locked case 退化。
+- 收尾驗證：受影響 Vision／benchmark／adapter 回歸 `118 passed in 1.13s`；`compileall` 與 `git diff --check` 通過；CodeRabbit CLI 審查完成，`findings=0`。完整 runtime test 命令因 `tmp_path` 所在 Windows temp／basetemp ACL 在 session cleanup 報 `WinError 5`，未把該環境錯誤冒充產品通過。
