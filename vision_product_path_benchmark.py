@@ -234,7 +234,14 @@ def main(argv: list[str] | None = None) -> int:
         ))
         return 0
     except Exception as exc:
-        print(f"benchmark_failed: {type(exc).__name__}", file=sys.stderr)
+        safe_message = str(exc)
+        if safe_message.startswith("scan trace rejected: "):
+            print(
+                f"benchmark_failed: {type(exc).__name__}: {safe_message}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"benchmark_failed: {type(exc).__name__}", file=sys.stderr)
         return 2
 
 

@@ -4002,6 +4002,7 @@ class OCRWorker(QObject):
                 logger.info(f"[浮雕計時] {label}: +{elapsed:.1f}ms (累計)")
         ai_image_parts = None
         region_vision_failed = False
+        ocr_trace_recorded = False
         if not is_screenshot_mode and not is_region_vision_mode and not self.ocr_backends:
             self._record_scan_event(
                 ScanStage.OCR,
@@ -4370,6 +4371,18 @@ class OCRWorker(QObject):
             return
 
         if is_region_vision_mode:
+            self._record_scan_event(
+                ScanStage.OCR,
+                ScanOutcome.SUCCESS if filtered_items else ScanOutcome.NO_TEXT,
+                started_at=ocr_started,
+                detail=(
+                    "ocr_optional_geometry"
+                    if filtered_items
+                    else "ocr_optional_unavailable"
+                ),
+                item_count=len(filtered_items),
+            )
+            ocr_trace_recorded = True
             vision_started = time.perf_counter()
             vision_hints = [
                 {
@@ -4471,17 +4484,6 @@ class OCRWorker(QObject):
                     final_results,
                     current_provider,
                     current_combined_text,
-                )
-                self._record_scan_event(
-                    ScanStage.OCR,
-                    ScanOutcome.SUCCESS if filtered_items else ScanOutcome.NO_TEXT,
-                    started_at=ocr_started,
-                    detail=(
-                        "ocr_optional_geometry"
-                        if filtered_items
-                        else "ocr_optional_unavailable"
-                    ),
-                    item_count=len(filtered_items),
                 )
                 self._record_scan_event(
                     ScanStage.TRANSLATION,
@@ -4590,13 +4592,14 @@ class OCRWorker(QObject):
             self.handle_empty()
             return
 
-        self._record_scan_event(
-            ScanStage.OCR,
-            ScanOutcome.SUCCESS,
-            started_at=ocr_started,
-            detail="ocr_completed",
-            item_count=len(filtered_items),
-        )
+        if not ocr_trace_recorded:
+            self._record_scan_event(
+                ScanStage.OCR,
+                ScanOutcome.SUCCESS,
+                started_at=ocr_started,
+                detail="ocr_completed",
+                item_count=len(filtered_items),
+            )
         self.show_ui.emit()
 
         merged_items = filtered_items

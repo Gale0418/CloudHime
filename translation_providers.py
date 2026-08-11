@@ -1428,7 +1428,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             prompt=prompt,
             image_parts=image_parts,
             response_format="json_object",
-            max_tokens=2048,
+            max_tokens=min(2048, max(384, len(hints) * 160 + 128)),
         )
         try:
             raw_text = self._request_chat_completion(payload)

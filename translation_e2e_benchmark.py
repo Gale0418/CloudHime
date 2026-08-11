@@ -12,7 +12,16 @@ from typing import Any, Iterable, Mapping, Sequence
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = PROJECT_ROOT / "benchmarks" / "translation_e2e_cases.json"
 VALID_SPLITS = frozenset({"train", "dev", "test"})
-LATENCY_STAGES = ("capture", "ocr", "encode", "runtime", "model", "fallback", "total")
+LATENCY_STAGES = (
+    "capture",
+    "ocr",
+    "translation",
+    "encode",
+    "runtime",
+    "model",
+    "fallback",
+    "total",
+)
 QUALITY_WEIGHTS = {
     "translation_char_score": 0.65,
     "required_terms_recall": 0.20,

@@ -458,16 +458,41 @@ def _latency(
     return output
 
 
-def redact_report(value: Any) -> Any:
+def redact_report(value: Any, *, parent_key: str = "") -> Any:
     """Remove exact raw-content and credential keys before report emission."""
     if isinstance(value, Mapping):
         return {
-            str(key): redact_report(item)
+            str(key): redact_report(item, parent_key=str(key).lower())
             for key, item in value.items()
-            if str(key).lower() not in SENSITIVE_FIELDS
+            if (
+                str(key).lower() not in SENSITIVE_FIELDS
+                or (
+                    str(key).lower() == "translation"
+                    and (
+                        (
+                            parent_key == "stages_ms"
+                            and isinstance(item, (int, float))
+                            and not isinstance(item, bool)
+                        )
+                        or (
+                            isinstance(item, Mapping)
+                            and set(str(metric).lower() for metric in item)
+                            <= {"avg", "p95", "coverage", "count", "total_cases"}
+                            and all(
+                                metric_value is None
+                                or (
+                                    isinstance(metric_value, (int, float))
+                                    and not isinstance(metric_value, bool)
+                                )
+                                for metric_value in item.values()
+                            )
+                        )
+                    )
+                )
+            )
         }
     if isinstance(value, list):
-        return [redact_report(item) for item in value]
+        return [redact_report(item, parent_key=parent_key) for item in value]
     return value
 
 

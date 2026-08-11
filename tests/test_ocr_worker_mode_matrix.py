@@ -1689,6 +1689,42 @@ def test_region_vision_uses_image_source_and_relative_ocr_hints(monkeypatch, qtb
         worker.cleanup()
 
 
+def test_region_vision_attributes_model_time_to_translation_stage(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    clock = {"value": 0.0}
+
+    def fake_perf_counter():
+        clock["value"] += 0.001
+        return clock["value"]
+
+    def delayed_interpret_regions(*_args, **_kwargs):
+        clock["value"] += 1.0
+        return [SimpleNamespace(id=0, source_text="正確原文", translation="正確翻譯")]
+
+    provider = SimpleNamespace(interpret_regions=delayed_interpret_regions)
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, []))
+    monkeypatch.setattr(workers_module.time, "perf_counter", fake_perf_counter)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        ocr_event = next(
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.OCR and event.detail == "ocr_optional_unavailable"
+        )
+        translation_event = next(
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+            and event.detail == "translation_region_vision_completed"
+        )
+        assert ocr_event.elapsed_ms < translation_event.elapsed_ms
+    finally:
+        worker.cleanup()
+
+
 def test_region_vision_without_ocr_backend_uses_whole_region_hint(monkeypatch, qtbot):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     provider = SimpleNamespace(interpret_regions=Mock(return_value=[

@@ -232,3 +232,25 @@ def test_runner_stdout_and_errors_do_not_leak_raw_content_or_paths(monkeypatch, 
     assert captured.out == ""
     assert raw_path not in captured.err and "raw-content" not in captured.err
     assert captured.err == "benchmark_failed: RuntimeError\n"
+
+
+def test_runner_emits_only_sanitized_trace_rejection_diagnostics(monkeypatch, capsys):
+    monkeypatch.setattr(benchmark, "preflight", lambda _: {
+        "ok": True, "manifest": {}, "assets": SimpleNamespace(), "baseline": {}, "candidate": {},
+    })
+    monkeypatch.setattr(
+        benchmark,
+        "evaluate_product_path_pair",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError(
+                "scan trace rejected: reason=fallback stage=translation "
+                "outcome=fallback provider=local error_code=translation_failed "
+                "fallback=translation_region_vision_failed exception=ValueError"
+            )
+        ),
+    )
+
+    assert benchmark.main(["--manifest", "fixture.json"]) == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("benchmark_failed: ValueError: scan trace rejected:")
+    assert "translation_region_vision_failed" in captured.err

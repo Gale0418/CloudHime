@@ -269,6 +269,44 @@ def test_request_chat_completion_rejects_truncated_response(monkeypatch):
     with pytest.raises(ValueError, match="truncated_local_multimodal_response"):
         provider._request_chat_completion({"model": "test"})
 
+
+def test_interpret_regions_scales_output_budget_with_hint_count():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        prompt = payload["messages"][0]["content"][0]["text"]
+        count = 8 if "id=7" in prompt else 1
+        return json.dumps({
+            "regions": [
+                {"id": index, "source_text": "source", "translation": "翻譯", "confidence": 0.9}
+                for index in range(count)
+            ]
+        }, ensure_ascii=False)
+
+    provider._request_chat_completion = fake_request
+    one_hint = [{"id": 0, "x": 0, "y": 0, "w": 100, "h": 100, "text": "hint"}]
+    many_hints = [
+        {"id": index, "x": index, "y": index, "w": 100, "h": 100, "text": f"id={index}"}
+        for index in range(8)
+    ]
+
+    provider.interpret_regions(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+        one_hint,
+        image_width=800,
+        image_height=600,
+    )
+    provider.interpret_regions(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+        many_hints,
+        image_width=800,
+        image_height=600,
+    )
+
+    assert [payload["max_tokens"] for payload in payloads] == [384, 1408]
+
 def test_local_multimodal_operations_bound_output_tokens():
     provider = make_provider()
     payloads = []

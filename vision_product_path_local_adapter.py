@@ -400,6 +400,28 @@ class ProductPathLocalSession:
 
     @staticmethod
     def _require_local_trace(events: tuple[Any, ...]) -> None:
+        def trace_code(value: Any) -> str:
+            raw = str(getattr(value, "value", value) or "").strip().lower()
+            if not raw:
+                return "none"
+            if not re.fullmatch(r"[a-z0-9_-]{1,64}", raw):
+                return "redacted"
+            return raw
+
+        def reject(reason: str, event: Any) -> None:
+            get_value = event.get if isinstance(event, Mapping) else lambda name, default=None: getattr(event, name, default)
+            details = " ".join(
+                (
+                    f"stage={trace_code(get_value('stage'))}",
+                    f"outcome={trace_code(get_value('outcome'))}",
+                    f"provider={trace_code(get_value('provider'))}",
+                    f"error_code={trace_code(get_value('error_code'))}",
+                    f"fallback={trace_code(get_value('fallback_reason'))}",
+                    f"exception={trace_code(get_value('exception_token'))}",
+                )
+            )
+            raise ValueError(f"scan trace rejected: reason={reason} {details}")
+
         if not events:
             raise ValueError("scan trace is required")
         rejected_outcomes = {
@@ -421,12 +443,12 @@ class ProductPathLocalSession:
             stage = str(getattr(raw_stage, "value", raw_stage)).lower()
             outcome = str(getattr(raw_outcome, "value", raw_outcome)).lower()
             if provider and provider not in _LOCAL_PROVIDERS:
-                raise ValueError("scan provider must be local")
+                reject("non_local_provider", event)
             if fallback:
-                raise ValueError("scan fallback is not permitted")
+                reject("fallback", event)
             cache_hit = "cache" in stage and outcome in {"hit", "cache_hit"}
             if outcome in rejected_outcomes or cache_hit:
-                raise ValueError("scan failure, cancellation, or cache hit is not permitted")
+                reject("rejected_outcome", event)
 
     def _source(self) -> str:
         source = getattr(self._worker, "last_combined_text", "")

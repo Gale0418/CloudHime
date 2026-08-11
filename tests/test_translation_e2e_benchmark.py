@@ -157,6 +157,8 @@ def test_latency_coverage_and_p95_do_not_treat_missing_as_zero() -> None:
     assert result["latency"]["ocr"]["coverage"] == 0.5
     assert result["latency"]["model"]["avg"] is None
     assert result["latency"]["model"]["p95"] is None
+    assert result["latency"]["translation"]["avg"] is None
+    assert result["latency"]["translation"]["coverage"] == 0.0
     assert result["latency"]["total"]["avg"] == 100.0
     assert result["latency"]["total"]["coverage"] == 0.5
 
