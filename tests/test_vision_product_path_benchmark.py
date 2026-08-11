@@ -124,6 +124,51 @@ def test_run_prints_only_redacted_evaluator_json_and_cannot_inject_cpu_or_endpoi
     assert captured["kwargs"]["session_factory"]()._timeout_seconds == 7
 
 
+def test_runner_forwards_explicit_execution_order(monkeypatch, tmp_path, capsys):
+    image = tmp_path / "image.png"
+    image.write_bytes(b"image")
+    manifest_path = _write_manifest(tmp_path, _manifest(image, b"image"))
+    assets = _assets(tmp_path)
+    captured = {}
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64,
+        "model_path": "b" * 64,
+        "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+    baseline, candidate = benchmark.build_conditions(assets)
+    monkeypatch.setattr(
+        benchmark,
+        "preflight",
+        lambda _: {
+            "ok": True,
+            "assets": assets,
+            "manifest": _manifest(image, b"image"),
+            "baseline": baseline,
+            "candidate": candidate,
+        },
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "evaluate_product_path_pair",
+        lambda manifest, baseline, candidate, **kwargs: captured.update(
+            kwargs=kwargs
+        ) or {"records": []},
+    )
+
+    assert benchmark.main([
+        "--manifest", str(manifest_path),
+        "--execution-order", "candidate_then_baseline",
+    ]) == 0
+
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["metadata"] == {
+        "execution_order": "candidate_then_baseline",
+        "latency_order_balanced": False,
+    }
+    assert captured["kwargs"]["execution_order"] == "candidate_then_baseline"
+
+
 def test_preflight_rejects_manifest_without_locked_owner_confirmed_case(monkeypatch, tmp_path):
     image = tmp_path / "image.png"
     image.write_bytes(b"image")

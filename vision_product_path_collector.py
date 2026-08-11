@@ -13,6 +13,10 @@ from urllib.parse import urlsplit
 import vision_e2e_benchmark as evaluator
 
 REPEATS = 5
+EXECUTION_ORDERS = frozenset({
+    "baseline_then_candidate",
+    "candidate_then_baseline",
+})
 _LOCAL_PROVIDER_TOKENS = frozenset({"local", "local_gemma", "local_multimodal"})
 _SAFE_PROVIDER = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")
 _SAFE_FALLBACK = re.compile(r"^(?:[a-z0-9][a-z0-9_.:-]{0,63})?$")
@@ -386,9 +390,28 @@ def evaluate_product_path_pair(
     manifest: Mapping[str, Any],
     baseline: Mapping[str, Any],
     candidate: Mapping[str, Any],
+    *,
+    execution_order: str = "baseline_then_candidate",
     **collector_kwargs: Any,
 ) -> dict[str, Any]:
-    """Collect both conditions and return only evaluator's redacted paired report."""
-    baseline_raw = collect_condition_raw(manifest, baseline, **collector_kwargs)
-    candidate_raw = collect_condition_raw(manifest, candidate, **collector_kwargs)
+    """Collect both conditions in a controlled order and evaluate the pair."""
+    if execution_order not in EXECUTION_ORDERS:
+        raise ValueError(
+            "execution_order must be baseline_then_candidate or candidate_then_baseline"
+        )
+    conditions = {
+        "baseline": baseline,
+        "candidate": candidate,
+    }
+    first, second = {
+        "baseline_then_candidate": ("baseline", "candidate"),
+        "candidate_then_baseline": ("candidate", "baseline"),
+    }[execution_order]
+    raw_runs: dict[str, Mapping[str, Any]] = {}
+    for name in (first, second):
+        raw_runs[name] = collect_condition_raw(
+            manifest, conditions[name], **collector_kwargs
+        )
+    baseline_raw = raw_runs["baseline"]
+    candidate_raw = raw_runs["candidate"]
     return evaluator.evaluate_paired(manifest, baseline_raw, candidate_raw)

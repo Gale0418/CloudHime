@@ -35,6 +35,7 @@ from vision_e2e_benchmark import (
     validate_manifest,
 )
 from vision_product_path_collector import evaluate_product_path_pair
+from vision_product_path_collector import EXECUTION_ORDERS
 from vision_product_path_local_adapter import ProductPathLocalSession
 
 
@@ -178,11 +179,13 @@ def _session_factory(timeout_seconds: int):
     return lambda: ProductPathLocalSession(OCRWorker, timeout_seconds=timeout_seconds)
 
 
-def _with_runner_metadata(report: Mapping[str, Any]) -> dict[str, Any]:
+def _with_runner_metadata(
+    report: Mapping[str, Any], execution_order: str
+) -> dict[str, Any]:
     result = dict(report)
     metadata = dict(result.get("metadata", {}))
     metadata.update({
-        "execution_order": "baseline_then_candidate",
+        "execution_order": execution_order,
         "latency_order_balanced": False,
     })
     result["metadata"] = metadata
@@ -193,6 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Locked local Vision product-path benchmark")
     parser.add_argument("--manifest", required=True, help="locked owner-confirmed manifest JSON")
     parser.add_argument("--startup-timeout", type=int, default=30, help="local runtime startup timeout in seconds")
+    parser.add_argument(
+        "--execution-order",
+        choices=sorted(EXECUTION_ORDERS),
+        default="baseline_then_candidate",
+        help="condition order for this paired run; execute both orders for balanced latency evidence",
+    )
     parser.add_argument("--preflight", action="store_true", help="validate immutable inputs without starting GPU runtime")
     return parser
 
@@ -216,9 +225,10 @@ def main(argv: list[str] | None = None) -> int:
                 residual_probe=lambda _worker: 0,
                 runtime_mode_probe=lambda _worker: "gpu",
                 session_factory=_session_factory(args.startup_timeout),
+                execution_order=args.execution_order,
             )
         print(json.dumps(
-            redact_report(_with_runner_metadata(report)),
+            redact_report(_with_runner_metadata(report, args.execution_order)),
             ensure_ascii=False,
             separators=(",", ":"),
         ))
