@@ -106,6 +106,37 @@ def test_candidate_fallback_token_and_final_report_excludes_quality_text():
 
     assert "translation" not in report["records"][0] and "detected_source" not in report["records"][0]
 
+
+def test_pair_collector_can_run_candidate_before_baseline():
+    made = []
+
+    def factory():
+        worker = FakeWorker(len(made))
+        made.append(worker)
+        return worker
+
+    report = evaluate_product_path_pair(
+        _manifest(b"fixed-image"),
+        _condition("baseline", "baseline-route"),
+        _condition("candidate", "candidate-route"),
+        execution_order="candidate_then_baseline",
+        worker_factory=factory,
+        configure_worker=lambda worker, condition: setattr(
+            worker, "configured", condition["route"]
+        ),
+        image_loader=lambda case: ({"pixels": "fixed"}, b"fixed-image"),
+        residual_probe=lambda worker: 0,
+        runtime_mode_probe=lambda worker: "gpu",
+    )
+
+    assert report["promotion_gate"]["passed"] is True
+    assert [worker.configured for worker in made[:5]] == [
+        "candidate-route"
+    ] * 5
+    assert [worker.configured for worker in made[5:]] == [
+        "baseline-route"
+    ] * 5
+
 def test_hash_mismatch_and_invalid_probes_are_rejected():
     with pytest.raises(ValueError, match="image_sha256"): _collect(image_loader=lambda case: ({"pixels": "fixed"}, b"wrong"))
     with pytest.raises(ValueError, match="residual"): _collect(residual_probe=lambda worker: -1)

@@ -270,6 +270,9 @@ class ProductPathLocalSession:
             worker.local_multimodal_timeout_seconds = 30
             worker.auto_threshold_enabled = False
             worker.japanese_rescue_enabled = False
+            # Product-path runs must prove local-only behavior; do not inherit
+            # a host Google key into the benchmark fallback chain.
+            worker.google_api_key = ""
             worker.google_ocr_enabled = False
             worker.scan_mode = "region"
             worker.region_render_mode = "bubble"

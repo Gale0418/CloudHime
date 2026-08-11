@@ -97,6 +97,7 @@ class FakeWorker:
         self.process = FakeProcess()
         self.local_vision_runtime = SimpleNamespace(_context_size=4096, _gpu_layers=999)
         self.translation_registry = FakeRegistry("remote")
+        self.google_api_key = "benchmark-fixture-key"
         self._local_runtime_profile = None
         self.local_multimodal_provider = FakeLocalMultimodalProvider()
         self.clear_worker_cache_calls = 0
@@ -197,6 +198,7 @@ def test_registry_refreshes_once_with_local_provider_and_correct_profile(
     assert worker.local_gemma_repeat_penalty == 1.05
     assert worker.ocr_backend_chain == ocr_chain
     assert worker.ensure_calls == [9]
+    assert worker.google_api_key == ""
 
 
 @pytest.mark.parametrize(

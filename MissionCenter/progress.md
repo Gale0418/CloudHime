@@ -319,3 +319,9 @@
 - 正式 benchmark exit 0；`promotion_gate.passed=true`、`quality_passed=true`、`case_regressions=[]`；baseline quality `0.2394875813`、candidate `0.2712081049`；coverage/nonempty `1.0`；provider 全為 `local`；residual process `0`。
 - 回歸：core `350 passed, 2 skipped`；ocr `215 passed`；runtime `134 passed, 2 skipped`；ui `52 passed`；benchmarks `166 passed`；compileall 與 `git diff --check` PASS。CodeRabbit review `0 issues`。
 - 限制：candidate total avg `6505.1ms`、baseline `993.5ms`；本輪只能證明品質沒有退步，不能宣稱 latency 已改善。CH-T69 維持 Review，後續先做 balanced order，再受控評估 `max_tokens`／crop payload；不直接激進縮圖。
+## CH-T70 Balanced latency order／local-only benchmark boundary（2026-08-11）
+
+- Gemini 只讀建議：固定 `baseline → candidate` 會混入 GPU 熱狀態與暖機順序偏差；先提供相反順序的可控 runner，再以兩次完整 paired run 交叉檢查。`max_tokens` 暫不直接改產品，避免 JSON 截斷與 fallback 污染品質 gate。
+- 實作：`vision_product_path_collector.evaluate_product_path_pair()` 新增 `execution_order`；runner 新增 `--execution-order baseline_then_candidate／candidate_then_baseline`；`ProductPathLocalSession` 進入 local-only benchmark 時清除 worker 繼承的 Google API key，避免 host 設定改變條件。
+- TDD／回歸：新增 candidate-first collector、CLI forwarding、local-only key isolation tests；targeted `80 passed`；ocr `215 passed`；runtime `134 passed, 2 skipped`；benchmarks `168 passed`；preflight、compileall、diff-check PASS；CodeRabbit `0 issues`。
+- 正式兩次 GPU run 均被真實 local Vision fallback gate 擋下，結果只到 `benchmark_failed: ValueError`，伴隨 bounded `source_script_retained` debug；因此本輪沒有可採信的 balanced latency 數字，也沒有把失敗報告算成通過。下一個 correctness gate 是查明 Region Vision 偶發 fallback 的精確 stage/error code，再重跑兩種順序。
