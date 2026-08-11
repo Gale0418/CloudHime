@@ -139,6 +139,8 @@ class ProductPathLocalSession:
             getattr(getattr(self._worker, "last_scan_trace", None), "events", ())
         )
         self._require_local_trace(events)
+        stages = self._stages_ms(events)
+        stages.update(self._local_vision_timing_stages())
         return {
             "case_id": case_id,
             "pixels_sha256": self._pixels_hash(pixels),
@@ -146,7 +148,15 @@ class ProductPathLocalSession:
             "source": self._source(),
             "translation": self._translation(),
             "trace_events": events,
-            "stages_ms": self._stages_ms(events),
+            "stages_ms": stages,
+            "runtime_metrics": dict(
+                getattr(self._worker, "_last_local_vision_request_metrics", {})
+                if isinstance(
+                    getattr(self._worker, "_last_local_vision_request_metrics", {}),
+                    Mapping,
+                )
+                else {}
+            ),
             "wall_time_ms": wall_time_ms,
             "runtime_evidence": dict(self._evidence),
         }
@@ -482,3 +492,20 @@ class ProductPathLocalSession:
             ):
                 translations.append(item[0])
         return "\n".join(translations)
+
+    def _local_vision_timing_stages(self) -> dict[str, float]:
+        metrics = getattr(self._worker, "_last_local_vision_request_metrics", {})
+        if not isinstance(metrics, Mapping):
+            return {}
+        stages = {}
+        for source_key, stage_key in (
+            ("prompt_ms", "vision_prompt"),
+            ("predicted_ms", "vision_decode"),
+        ):
+            value = metrics.get(source_key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if not math.isfinite(float(value)) or value < 0:
+                continue
+            stages[stage_key] = float(value)
+        return stages

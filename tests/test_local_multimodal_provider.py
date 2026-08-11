@@ -270,6 +270,49 @@ def test_request_chat_completion_rejects_truncated_response(monkeypatch):
         provider._request_chat_completion({"model": "test"})
 
 
+def test_request_chat_completion_keeps_only_safe_numeric_runtime_metrics(monkeypatch):
+    provider = make_provider()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "choices": [{
+                    "finish_reason": "stop",
+                    "message": {"content": "{}"},
+                }],
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 9,
+                    "secret": "must-not-survive",
+                },
+                "timings": {
+                    "prompt_ms": 321.5,
+                    "predicted_ms": 456.25,
+                    "raw_text": "must-not-survive",
+                },
+            }).encode("utf-8")
+
+    monkeypatch.setattr(
+        providers_module.request,
+        "urlopen",
+        lambda *_args, **_kwargs: FakeResponse(),
+    )
+
+    assert provider._request_chat_completion({"model": "test"}) == "{}"
+    assert provider.get_last_request_metrics() == {
+        "prompt_tokens": 120,
+        "completion_tokens": 9,
+        "prompt_ms": 321.5,
+        "predicted_ms": 456.25,
+    }
+
+
 def test_interpret_regions_scales_output_budget_with_hint_count():
     provider = make_provider()
     payloads = []
@@ -306,6 +349,7 @@ def test_interpret_regions_scales_output_budget_with_hint_count():
     )
 
     assert [payload["max_tokens"] for payload in payloads] == [384, 1408]
+
 
 def test_local_multimodal_operations_bound_output_tokens():
     provider = make_provider()

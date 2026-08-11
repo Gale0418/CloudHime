@@ -301,6 +301,37 @@ def test_redaction_removes_exact_sensitive_keys_without_overmatching_metrics_or_
     }
 
 
+def test_runtime_metrics_are_numeric_and_preserved_without_raw_content():
+    cases = [_case("a")]
+    baseline = _run(_condition("base"), cases)
+    candidate = _run(_condition("candidate", route="route-b"), cases)
+    for run in (baseline, candidate):
+        for record in run["records"]:
+            record["runtime_metrics"] = {
+                "prompt_tokens": 120,
+                "predicted_n": 96,
+                "prompt_ms": 12.5,
+            }
+
+    report = evaluator.evaluate_paired(_manifest(*cases), baseline, candidate)
+
+    assert report["records"][0]["runtime_metrics"] == {
+        "prompt_tokens": 120,
+        "predicted_n": 96,
+        "prompt_ms": 12.5,
+    }
+
+
+def test_runtime_metrics_reject_raw_or_unsupported_values():
+    cases = [_case("a")]
+    baseline = _run(_condition("base"), cases)
+    candidate = _run(_condition("candidate", route="route-b"), cases)
+    candidate["records"][0]["runtime_metrics"] = {"raw_text": "秘密"}
+
+    with pytest.raises(ValueError, match="unsupported runtime metric"):
+        evaluator.evaluate_paired(_manifest(*cases), baseline, candidate)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

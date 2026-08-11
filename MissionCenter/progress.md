@@ -342,3 +342,11 @@
 - Marchen Crown dense 單圖 screening（candidate-first、5 repeats、同一 locked image）：`896px` promotion gate 通過但 candidate quality `0.248219`、translation avg `10605.642ms`、total avg `10926.587ms`；`1280px` quality `0.279655`、translation avg `9895.692ms`、total avg `10218.724ms`。兩者都沒有勝過現有 adaptive 結果（約 `9204ms` translation、`9515ms` total），896 直接淘汰，1280 不 promotion。
 - 受影響 tests：可執行 subset `86 passed`；width／adapter policy focused `7 passed`；另一個合併命令僅剩 1 個新 benchmark condition test 被 pytest temp ACL `WinError 5` setup 擋住，指定 workspace basetemp 仍在 cleanup `WinError 5`，未進入 assertion。正式四圖 promotion 尚未執行，因 screening 已無速度收益。
 - CodeRabbit CLI 已透過 WSL 安裝並驗證 `0.7.2`／authenticated；但 22:00 checkpoint 前一小時已使用三次 review，本輪遵守每小時上限，尚未 review，不能宣稱 0 issues。下一步優先加入 server response usage／prompt-vs-decode telemetry，再評估 crop 或 runtime flags；不把縮圖結果寫入產品預設。
+
+## CH-T73 Local Vision runtime telemetry／token-budget negative result（2026-08-11）
+
+- 新增 bounded local server response telemetry：只保留 allowlisted numeric usage/timing 欄位（prompt/completion/total tokens、prompt/predicted n、prompt/predicted ms）；Product Path 將 `vision_prompt` 與 `vision_decode` 納入 stages，benchmark report 保留 runtime metrics，但不保存 raw response、OCR 原文或 prompt。
+- 正式 dense Marchen Crown telemetry（candidate-first、5 repeats、同一 locked image）：candidate quality `0.2796548522`、baseline `0.2358730159`、promotion gate `true`；candidate translation avg `9938.864ms`、total `10261.276ms`；`vision_prompt=1301.176ms`、`vision_decode=8387.442ms`；每次約 `prompt_tokens=1009`、`completion_tokens=546`、`predicted_n=546`。因此目前主瓶頸明確是 decode，不是 OCR／圖片編碼。
+- 受控 token screening：`--vision-max-tokens 512` 直接以 `ValueError`／`translation_failed` 失敗，未計入成功 benchmark；`768` 可完整通過但 candidate translation `9872.061ms`、total `10196.094ms`，completion 仍為 `546`，沒有達到有意義的速度收益。實驗入口已移除，正式動態 budget 不變。
+- 回歸：runtime metrics／safe numeric filtering／Product Path stage tests／benchmark schema focused tests 共 `7 passed`；local output budget／existing bound tests `3 passed`；compileall 與 `git diff --check` PASS。測試仍出現既有 `.pytest_cache` ACL `WinError 5` warning，但未影響 assertion。
+- 結論：不 promotion width/token 調整；保留 telemetry 供下一輪 crop、server batching 或 runtime decode 實驗使用。CodeRabbit 本小時 quota 已用滿，這批最新修改尚未複審，不宣稱 review pass。

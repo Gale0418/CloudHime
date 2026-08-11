@@ -600,6 +600,39 @@ def test_run_repeat_aggregates_valid_trace_stage_elapsed_ms():
     assert observation["stages_ms"] == {"ocr": 3.5, "translation": 4.0}
 
 
+def test_run_repeat_exposes_safe_local_vision_timing_stages():
+    worker = FakeWorker()
+    session = ProductPathLocalSession(lambda: worker)
+    session.start_cold(_condition())
+    original_scan = worker.run_scan_once
+
+    def scan_with_runtime_metrics():
+        original_scan()
+        worker.last_scan_trace.events = [
+            {
+                "stage": "translation",
+                "elapsed_ms": 0.0,
+                "outcome": "success",
+                "provider": "local",
+            },
+        ]
+        worker._last_local_vision_request_metrics = {
+            "prompt_ms": 12.5,
+            "predicted_ms": 34.75,
+            "prompt_tokens": 99,
+        }
+
+    worker.run_scan_once = scan_with_runtime_metrics
+
+    observation = session.run_repeat("case-a", Pixels())
+
+    assert observation["stages_ms"] == {
+        "translation": 0.0,
+        "vision_prompt": 12.5,
+        "vision_decode": 34.75,
+    }
+
+
 def test_run_repeat_keeps_stages_ms_empty_without_valid_elapsed_values():
     worker = FakeWorker()
     session = ProductPathLocalSession(lambda: worker)
