@@ -38,6 +38,7 @@ class Event:
     outcome: str
     provider: str
     fallback_reason: str = ""
+    detail: str = ""
 
 
 class Pixels:
@@ -660,6 +661,7 @@ def test_trace_rejection_reports_safe_stage_diagnostics_without_source_text():
         outcome="fallback",
         provider="local",
         fallback_reason="translation_region_vision_failed",
+        detail="translation_region_vision_response_json_invalid",
     )
 
     with pytest.raises(ValueError) as raised:
@@ -670,4 +672,5 @@ def test_trace_rejection_reports_safe_stage_diagnostics_without_source_text():
     assert "outcome=fallback" in message
     assert "provider=local" in message
     assert "fallback=translation_region_vision_failed" in message
+    assert "detail=translation_region_vision_response_json_invalid" in message
     assert "原文" not in message

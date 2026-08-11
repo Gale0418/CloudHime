@@ -1,9 +1,15 @@
 import json
+from urllib import error
 
 import pytest
 
 from translation_providers import GoogleTranslationProvider
-from translation_providers import GemmaTranslationProvider, LocalGemmaProvider, LocalMultimodalProvider
+from translation_providers import (
+    GemmaTranslationProvider,
+    LocalGemmaProvider,
+    LocalMultimodalProvider,
+    classify_region_vision_failure,
+)
 from translation_helpers import build_gemma_prompt
 
 
@@ -447,3 +453,35 @@ def test_interpret_regions_uses_text_response_for_legacy_non_json_model():
 
     assert requests[0][0] == "gemma-3-27b-it"
     assert requests[0][2]["response_mime_type"] == "text/plain"
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected"),
+    [
+        (ValueError("Response is not valid JSON."), "response_json_invalid"),
+        (ValueError("empty_region_vision_response"), "response_empty"),
+        (ValueError("incomplete_region_vision_response"), "response_region_mismatch"),
+        (ValueError("Response contains an id outside allowed_ids."), "response_region_mismatch"),
+        (ValueError("source_text and translation must be non-empty strings."), "response_schema_invalid"),
+        (TimeoutError("private timeout details"), "request_timeout"),
+        (RuntimeError("prompt and OCR text must never be logged"), "provider_error"),
+    ],
+)
+def test_region_vision_failure_classification_is_bounded(exception, expected):
+    assert classify_region_vision_failure(exception) == expected
+
+
+def test_region_vision_http_failure_classification_keeps_only_status_code():
+    response = type(
+        "Response",
+        (),
+        {
+            "read": lambda self: b"secret prompt",
+            "close": lambda self: None,
+        },
+    )()
+    exception = error.HTTPError(
+        "http://127.0.0.1/private", 400, "private response", {}, response
+    )
+
+    assert classify_region_vision_failure(exception) == "request_http_400"
