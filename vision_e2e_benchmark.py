@@ -25,6 +25,7 @@ REPORT_RECORD_FIELDS = (
     "runtime_profile",
     "residual_processes",
     "stages_ms",
+    "runtime_metrics",
     "quality_score",
     "ocr_char_similarity",
     "translation_char_score",
@@ -33,6 +34,15 @@ REPORT_RECORD_FIELDS = (
     "image_sha256",
     "annotation_revision",
 )
+RUNTIME_METRIC_FIELDS = frozenset({
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "prompt_n",
+    "predicted_n",
+    "prompt_ms",
+    "predicted_ms",
+})
 HASH_FIELDS = ("model_sha256", "runtime_sha256", "prompt_sha256")
 FIXED_CONDITION_FIELDS = (
     *HASH_FIELDS,
@@ -269,6 +279,26 @@ def _clean_stages(value: Any, label: str) -> dict[str, float]:
     return result
 
 
+def _clean_runtime_metrics(value: Any, label: str) -> dict[str, int | float]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"record {label!r} runtime_metrics must be an object")
+    result: dict[str, int | float] = {}
+    for key, raw in value.items():
+        if key not in RUNTIME_METRIC_FIELDS:
+            raise ValueError(f"record {label!r} has unsupported runtime metric")
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"record {label!r} runtime metric must be numeric")
+        number = float(raw)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError(
+                f"record {label!r} runtime metric must be finite and >= 0"
+            )
+        result[key] = raw
+    return result
+
+
 def _validate_run(
     run: Mapping[str, Any],
     cases: Sequence[Mapping[str, Any]],
@@ -371,7 +401,7 @@ def _validate_run(
             raise ValueError(
                 f"{label} record {case_id!r} condition fingerprint mismatch"
             )
-        records.append({
+        normalized_record = {
             **dict(raw),
             "case_id": case_id,
             "repeat": repeat,
@@ -381,7 +411,12 @@ def _validate_run(
             "fallback_reason": fallback_reason,
             "stages_ms": _clean_stages(raw.get("stages_ms"), case_id),
             "condition_fingerprint": fingerprint,
-        })
+        }
+        if "runtime_metrics" in raw:
+            normalized_record["runtime_metrics"] = _clean_runtime_metrics(
+                raw.get("runtime_metrics"), case_id
+            )
+        records.append(normalized_record)
 
     missing = sorted(expected - seen)
     if missing:

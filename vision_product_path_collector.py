@@ -284,6 +284,7 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
                                 "condition_fingerprint": fingerprint, "provider": provider,
                                 "fallback_reason": fallback, "runtime_mode": evidence["mode"],
                                 "residual_processes": 0, "runtime_profile": evidence["runtime_profile"], "stages_ms": stages,
+                                "runtime_metrics": observation.get("runtime_metrics", {}),
                                 "detected_source": source, "translation": translation,
                                 "trace_events": trace_events})
     except Exception as exc:

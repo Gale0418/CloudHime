@@ -16,6 +16,8 @@ LATENCY_STAGES = (
     "capture",
     "ocr",
     "translation",
+    "vision_prompt",
+    "vision_decode",
     "encode",
     "runtime",
     "model",

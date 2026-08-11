@@ -5,9 +5,11 @@ import hashlib
 import difflib
 import re
 import time
+import math
 import os
 import threading
 from collections import Counter, OrderedDict, deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 from urllib import error, request
@@ -58,6 +60,15 @@ GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
 }
 TRANSLATION_CACHE_LIMIT = 512
 LOCAL_MULTIMODAL_BATCH_SIZE = 4
+LOCAL_RUNTIME_METRIC_KEYS = frozenset({
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "prompt_n",
+    "predicted_n",
+    "prompt_ms",
+    "predicted_ms",
+})
 
 
 @dataclass(frozen=True)
@@ -1207,6 +1218,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self._runtime_ready = bool(self.base_url and self.model_name)
         self._dictionary = load_translation_dictionary()
         self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
+        self._last_request_metrics: dict[str, int | float] = {}
         self._init_knowledge_prompt_context()
 
     def available(self) -> bool:
@@ -1215,6 +1227,10 @@ class LocalMultimodalProvider(KnowledgePromptContext):
     def clear_cache(self) -> None:
         """Clear translation results without changing local runtime state."""
         self._translation_cache.clear()
+
+    def get_last_request_metrics(self) -> dict[str, int | float]:
+        """Return bounded numeric server timing/token metrics only."""
+        return dict(self._last_request_metrics)
 
     def update_runtime(self, base_url: str, model_name: str, ready: bool) -> None:
         self.base_url = (base_url or "").rstrip("/")
@@ -1263,6 +1279,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         }
 
     def _request_chat_completion(self, payload: dict[str, Any]) -> str:
+        self._last_request_metrics = {}
         req = request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -1271,6 +1288,19 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         )
         with request.urlopen(req, timeout=self.timeout_seconds) as response:
             body = json.loads(response.read().decode("utf-8"))
+        metrics: dict[str, int | float] = {}
+        for container_name in ("usage", "timings"):
+            container = body.get(container_name)
+            if not isinstance(container, Mapping):
+                continue
+            for key in LOCAL_RUNTIME_METRIC_KEYS:
+                value = container.get(key)
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                if not math.isfinite(float(value)) or value < 0:
+                    continue
+                metrics[key] = value
+        self._last_request_metrics = metrics
         choice = body["choices"][0]
         if choice.get("finish_reason") == "length":
             raise ValueError("truncated_local_multimodal_response")

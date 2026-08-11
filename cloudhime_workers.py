@@ -18,6 +18,7 @@ import difflib
 import random
 import re
 import json
+import math
 import time
 import threading
 import traceback
@@ -277,6 +278,7 @@ class OCRWorker(QObject):
         self._translation_registry_batch_depth = 0
         self._translation_registry_batch_dirty = False
         self._pending_gemma_prompt = ""
+        self._last_local_vision_request_metrics = {}
         self.translation_target_lang = localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE)
         self.google_translation_provider = GoogleTranslationProvider(target_lang=self.translation_target_lang)
         self.gemma_translation_provider = GemmaTranslationProvider(
@@ -414,6 +416,33 @@ class OCRWorker(QObject):
 
     def _reset_scan_trace(self):
         self.last_scan_trace = ScanTrace()
+        self._last_local_vision_request_metrics = {}
+
+    def _capture_local_vision_request_metrics(self, provider):
+        getter = getattr(provider, "get_last_request_metrics", None)
+        if not callable(getter):
+            self._last_local_vision_request_metrics = {}
+            return
+        try:
+            raw = getter()
+        except Exception:
+            self._last_local_vision_request_metrics = {}
+            return
+        if not isinstance(raw, dict):
+            self._last_local_vision_request_metrics = {}
+            return
+        metrics = {}
+        for key in (
+            "prompt_tokens", "completion_tokens", "total_tokens",
+            "prompt_n", "predicted_n", "prompt_ms", "predicted_ms",
+        ):
+            value = raw.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if not math.isfinite(float(value)) or value < 0:
+                continue
+            metrics[key] = value
+        self._last_local_vision_request_metrics = metrics
 
     def _record_scan_event(
         self,
@@ -4426,13 +4455,16 @@ class OCRWorker(QObject):
                     ai_image_parts = self.build_local_vision_image_parts(img, vision_hints)
                 else:
                     ai_image_parts = self.build_ai_image_parts(img)
-                vision_results = provider.interpret_regions(
-                    ai_image_parts,
-                    vision_hints,
-                    image_width=int(img.shape[1]),
-                    image_height=int(img.shape[0]),
-                    target_lang=self.translation_target_lang,
-                )
+                try:
+                    vision_results = provider.interpret_regions(
+                        ai_image_parts,
+                        vision_hints,
+                        image_width=int(img.shape[1]),
+                        image_height=int(img.shape[0]),
+                        target_lang=self.translation_target_lang,
+                    )
+                finally:
+                    self._capture_local_vision_request_metrics(provider)
                 self.sync_gemma_call_timestamps_from_provider(provider)
                 if self._abort_stale_scan(ScanStage.TRANSLATION):
                     return
