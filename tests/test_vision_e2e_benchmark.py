@@ -285,12 +285,16 @@ def test_redaction_removes_exact_sensitive_keys_without_overmatching_metrics_or_
         "access_token": "secret",
         "api_key": "secret",
         "nested": {"detected_source": "原文", "translation": "秘密"},
+        "stages_ms": {"translation": 12.5},
+        "latency": {"candidate": {"translation": {"avg": 12.5, "p95": 15.0, "coverage": 1.0}}},
         "translation_char_score": 0.9,
         "prompt_sha256": "3" * 64,
         "case_id": "a",
     }
     assert evaluator.redact_report(report) == {
         "nested": {},
+        "stages_ms": {"translation": 12.5},
+        "latency": {"candidate": {"translation": {"avg": 12.5, "p95": 15.0, "coverage": 1.0}}},
         "translation_char_score": 0.9,
         "prompt_sha256": "3" * 64,
         "case_id": "a",

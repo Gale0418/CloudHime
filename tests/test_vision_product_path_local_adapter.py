@@ -603,3 +603,22 @@ def test_run_repeat_keeps_stages_ms_empty_without_valid_elapsed_values():
     observation = session.run_repeat("case-a", Pixels())
 
     assert observation["stages_ms"] == {}
+
+
+def test_trace_rejection_reports_safe_stage_diagnostics_without_source_text():
+    event = Event(
+        stage="translation",
+        outcome="fallback",
+        provider="local",
+        fallback_reason="translation_region_vision_failed",
+    )
+
+    with pytest.raises(ValueError) as raised:
+        ProductPathLocalSession._require_local_trace((event,))
+
+    message = str(raised.value)
+    assert "stage=translation" in message
+    assert "outcome=fallback" in message
+    assert "provider=local" in message
+    assert "fallback=translation_region_vision_failed" in message
+    assert "原文" not in message

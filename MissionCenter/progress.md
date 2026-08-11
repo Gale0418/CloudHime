@@ -325,3 +325,12 @@
 - 實作：`vision_product_path_collector.evaluate_product_path_pair()` 新增 `execution_order`；runner 新增 `--execution-order baseline_then_candidate／candidate_then_baseline`；`ProductPathLocalSession` 進入 local-only benchmark 時清除 worker 繼承的 Google API key，避免 host 設定改變條件。
 - TDD／回歸：新增 candidate-first collector、CLI forwarding、local-only key isolation tests；targeted `80 passed`；ocr `215 passed`；runtime `134 passed, 2 skipped`；benchmarks `168 passed`；preflight、compileall、diff-check PASS；CodeRabbit `0 issues`。
 - 正式兩次 GPU run 均被真實 local Vision fallback gate 擋下，結果只到 `benchmark_failed: ValueError`，伴隨 bounded `source_script_retained` debug；因此本輪沒有可採信的 balanced latency 數字，也沒有把失敗報告算成通過。下一個 correctness gate 是查明 Region Vision 偶發 fallback 的精確 stage/error code，再重跑兩種順序。
+
+## CH-T71 Local Vision generation budget／stage observability（2026-08-11）
+
+- 修正 local multimodal `interpret_regions()` 的輸出 budget：依 hint 數量計算 `min(2048, max(384, hints * 160 + 128))`，保留 JSON 截斷上限；此修正讓先前 Marchen Crown 圖片可完成，未把 timeout 當成成功。
+- 修正 Region Vision stage trace：OCR optional hint 在 Vision 呼叫前封存，避免 Vision 等待時間被錯誤歸入 OCR；`translation_e2e_benchmark` 與 Vision evaluator 現在保留 `translation` aggregate stage，但原始翻譯文字仍會被精確脫敏。
+- TDD／回歸：local provider／translation schema／redaction／worker mode matrix／product-path diagnostics 受影響測試共 `188 passed`；同一批若含 product-path benchmark setup，另有 `12 errors`，全部是 Windows `C:\Users\USER\AppData\Local\Temp\pytest-of-David2019` ACL setup `WinError 5`，未進入測試本體；`-p no:pytestqt` 仍重現，故不列為產品 assertion failure。
+- 正式命令：`python -X utf8 vision_product_path_benchmark.py --manifest records/private/.private_vision_owner_review_locked.json --startup-timeout 30 --execution-order candidate_then_baseline`，exit `0`；4 locked cases、每條件 20 筆、provider 全為 `local`、coverage/nonempty `1.0`、residual `0`，`promotion_gate.passed=true`、`case_regressions=[]`；baseline quality `0.2394875813`、candidate quality `0.2712081049`。
+- 延遲證據：baseline total avg `949.615ms`、candidate `6198.197ms`；OCR `219.745ms → 224.316ms`，translation `693.175ms → 5936.779ms`。因此 Vision-first 的準確度 gate 通過，但速度沒有改善，主要瓶頸已鎖定為本地多模態 generation，而非 OCR。
+- `python -m compileall -q` 與 `git diff --check` 已通過；CodeRabbit 本小時已達三次上限，最新修改不冒充已複審。下一步只做受控的 crop／vision resolution／runtime budget 實驗，維持同一 locked manifest 與品質 gate；不直接大幅縮圖，也不擴大到 Fullscreen。
