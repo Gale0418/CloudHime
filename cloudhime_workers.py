@@ -207,12 +207,18 @@ def startup_log(stage, detail=""):
     logger.info(message)
 
 
-def resolve_local_vision_image_max_width(img_np, hints=None):
+def resolve_local_vision_image_max_width(img_np, hints=None, max_width=None):
     """Choose a conservative local-Vision image width without upscaling."""
     try:
         width = max(0, int(img_np.shape[1]))
     except (AttributeError, IndexError, TypeError, ValueError):
         return AI_IMAGE_MAX_WIDTH
+    if max_width is not None:
+        try:
+            requested = int(max_width)
+        except (TypeError, ValueError):
+            requested = AI_IMAGE_MAX_WIDTH
+        return min(width, max(1, requested))
     if width <= LOCAL_VISION_REDUCED_IMAGE_MAX_WIDTH:
         return width
     for hint in hints or ():
@@ -1740,7 +1746,11 @@ class OCRWorker(QObject):
         return translation_tools.build_ai_image_parts(img_np, max_width=max_width)
 
     def build_local_vision_image_parts(self, img_np, hints=None):
-        max_width = resolve_local_vision_image_max_width(img_np, hints)
+        max_width = resolve_local_vision_image_max_width(
+            img_np,
+            hints,
+            max_width=getattr(self, "_local_vision_image_max_width", None),
+        )
         return self.build_ai_image_parts(img_np, max_width=max_width)
 
     def _collect_screenshot_hint_items(self, ocr_result, min_confidence=0.35):

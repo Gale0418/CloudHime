@@ -210,6 +210,16 @@ class ProductPathLocalSession:
         n_ctx = context.get("n_ctx")
         if isinstance(n_ctx, bool) or not isinstance(n_ctx, int) or n_ctx <= 0:
             raise ValueError("condition context.n_ctx must be a positive integer")
+        vision_image_max_width = condition.get("vision_image_max_width")
+        if vision_image_max_width is not None and (
+            isinstance(vision_image_max_width, bool)
+            or not isinstance(vision_image_max_width, int)
+            or not 640 <= vision_image_max_width <= 1536
+        ):
+            raise ValueError(
+                "condition vision_image_max_width must be an integer "
+                "between 640 and 1536"
+            )
         return {
             "route": route,
             "runtime_profile": "text" if route == "baseline" else "vision",
@@ -218,6 +228,7 @@ class ProductPathLocalSession:
             "target": target.strip(),
             "temperature": float(temperature),
             "repeat_penalty": float(repeat_penalty),
+            "vision_image_max_width": vision_image_max_width,
         }
 
     @staticmethod
@@ -267,6 +278,7 @@ class ProductPathLocalSession:
             worker.translation_target_lang = condition["target"]
             worker.local_gemma_temperature = condition["temperature"]
             worker.local_gemma_repeat_penalty = condition["repeat_penalty"]
+            worker._local_vision_image_max_width = condition["vision_image_max_width"]
             worker.local_multimodal_timeout_seconds = 30
             worker.auto_threshold_enabled = False
             worker.japanese_rescue_enabled = False

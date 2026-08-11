@@ -44,7 +44,12 @@ FIXED_CONDITION_FIELDS = (
 IDENTITY_FIELDS = frozenset({
     "condition_id", "condition", "name", "route", "route_id", "runtime_profile",
 })
-ALLOWED_CONDITION_FIELDS = frozenset(FIXED_CONDITION_FIELDS) | IDENTITY_FIELDS
+OPTIONAL_CONDITION_FIELDS = frozenset({"vision_image_max_width"})
+ALLOWED_CONDITION_FIELDS = (
+    frozenset(FIXED_CONDITION_FIELDS)
+    | IDENTITY_FIELDS
+    | OPTIONAL_CONDITION_FIELDS
+)
 PROVENANCE_FIELDS = (
     "source_family",
     "image_sha256",
@@ -221,6 +226,17 @@ def condition_fingerprint(condition: Mapping[str, Any]) -> str:
     for field in ("target", "gpu_mode"):
         clean[field] = _nonempty_text(clean[field], field, "condition")
     clean["gpu_mode"] = clean["gpu_mode"].lower()
+    if "vision_image_max_width" in clean:
+        value = clean["vision_image_max_width"]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 640 <= value <= 1536
+        ):
+            raise ValueError(
+                "condition field 'vision_image_max_width' must be an integer "
+                "between 640 and 1536"
+            )
     if not isinstance(clean["sampling"], Mapping):
         raise ValueError("condition sampling must be an object")
     if not isinstance(clean["context"], Mapping):

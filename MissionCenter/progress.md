@@ -334,3 +334,11 @@
 - 正式命令：`python -X utf8 vision_product_path_benchmark.py --manifest records/private/.private_vision_owner_review_locked.json --startup-timeout 30 --execution-order candidate_then_baseline`，exit `0`；4 locked cases、每條件 20 筆、provider 全為 `local`、coverage/nonempty `1.0`、residual `0`，`promotion_gate.passed=true`、`case_regressions=[]`；baseline quality `0.2394875813`、candidate quality `0.2712081049`。
 - 延遲證據：baseline total avg `949.615ms`、candidate `6198.197ms`；OCR `219.745ms → 224.316ms`，translation `693.175ms → 5936.779ms`。因此 Vision-first 的準確度 gate 通過，但速度沒有改善，主要瓶頸已鎖定為本地多模態 generation，而非 OCR。
 - `python -m compileall -q` 與 `git diff --check` 已通過；CodeRabbit 本小時已達三次上限，最新修改不冒充已複審。下一步只做受控的 crop／vision resolution／runtime budget 實驗，維持同一 locked manifest 與品質 gate；不直接大幅縮圖，也不擴大到 Fullscreen。
+
+## CH-T72 Vision width experiment／negative result（2026-08-11）
+
+- Gemini 與只讀分身一致建議：先把影像寬度做成版本化 condition，再測 crop／payload；不要直接改 `n_ctx`、sampling 或 llama-server flags，避免污染既有 paired fingerprint。新增 `vision_image_max_width` optional fixed control，未指定時維持原本 adaptive policy，產品預設沒有改變。
+- 新增 `--vision-max-width 640..1536`、adapter worker wiring 與 policy regression；baseline/candidate 必須共享同一 width，且 width 會進 condition fingerprint，避免把不同實驗誤當成同一條件。
+- Marchen Crown dense 單圖 screening（candidate-first、5 repeats、同一 locked image）：`896px` promotion gate 通過但 candidate quality `0.248219`、translation avg `10605.642ms`、total avg `10926.587ms`；`1280px` quality `0.279655`、translation avg `9895.692ms`、total avg `10218.724ms`。兩者都沒有勝過現有 adaptive 結果（約 `9204ms` translation、`9515ms` total），896 直接淘汰，1280 不 promotion。
+- 受影響 tests：可執行 subset `86 passed`；width／adapter policy focused `7 passed`；另一個合併命令僅剩 1 個新 benchmark condition test 被 pytest temp ACL `WinError 5` setup 擋住，指定 workspace basetemp 仍在 cleanup `WinError 5`，未進入 assertion。正式四圖 promotion 尚未執行，因 screening 已無速度收益。
+- CodeRabbit CLI 已透過 WSL 安裝並驗證 `0.7.2`／authenticated；但 22:00 checkpoint 前一小時已使用三次 review，本輪遵守每小時上限，尚未 review，不能宣稱 0 issues。下一步優先加入 server response usage／prompt-vs-decode telemetry，再評估 crop 或 runtime flags；不把縮圖結果寫入產品預設。
