@@ -108,6 +108,7 @@ from translation_providers import (
     GemmaTranslationProvider,
     GoogleTranslationProvider,
     LocalMultimodalProvider,
+    LocalRequestCancelled,
     classify_region_vision_failure,
 )
 from translation_contracts import TranslationResult
@@ -1556,6 +1557,12 @@ class OCRWorker(QObject):
             self.japanese_rescue_runtime.disable()
         if hasattr(self, '_japanese_rescue_executor'):
             self._japanese_rescue_executor.shutdown(wait=True)
+        local_provider = getattr(self, "local_multimodal_provider", None)
+        if local_provider is not None:
+            try:
+                local_provider.close()
+            except Exception:
+                pass
         self.shutdown_local_vision_runtime()
 
     def get_translation_provider_priority(self, provider):
@@ -4475,13 +4482,18 @@ class OCRWorker(QObject):
                     ai_image_parts = self.build_local_vision_image_parts(img, vision_hints)
                 else:
                     ai_image_parts = self.build_ai_image_parts(img)
+                interpret_kwargs = {
+                    "image_width": int(img.shape[1]),
+                    "image_height": int(img.shape[0]),
+                    "target_lang": self.translation_target_lang,
+                }
+                if isinstance(provider, LocalMultimodalProvider):
+                    interpret_kwargs["cancel_predicate"] = lambda: not self._active_scan_is_current()
                 try:
                     vision_results = provider.interpret_regions(
                         ai_image_parts,
                         vision_hints,
-                        image_width=int(img.shape[1]),
-                        image_height=int(img.shape[0]),
-                        target_lang=self.translation_target_lang,
+                        **interpret_kwargs,
                     )
                 finally:
                     self._capture_local_vision_request_metrics(provider)
@@ -4519,6 +4531,10 @@ class OCRWorker(QObject):
                     final_results.append((translated_text, *output_rect))
                 if not final_results:
                     raise ValueError("empty_region_vision_response")
+            except LocalRequestCancelled:
+                if self._abort_stale_scan(ScanStage.TRANSLATION):
+                    return
+                raise
             except Exception as exc:
                 region_vision_failed = True
                 self._record_scan_event(

@@ -9,6 +9,7 @@
   - [2026-08-11] 舊 project、progress、CH-E1 closeout 與 legacy HUD 已移至 `MissionCenter/archive/`；canonical 任務真相維持 `tasks.md`。
   - [2026-08-11] 產品焦點回到 CH-E9／CH-T79；CH-T64 與 CH-T67 不因文件遷移升格。
   - [2026-08-12] CH-T79 後續 hardening：Google OCR 預取改為 30 秒 bounded wait、executor 收尾冪等，並移除損壞的問號 hint marker；受影響測試 `93 passed`。CodeRabbit 前兩輪發現均已修正，最後複審因 WSL `E_ACCESSDENIED` 未完成，未宣稱通過。
+  - [2026-08-12] CH-T84 完成 local Vision provider single-flight：FIFO、獨立 payload、不合併圖片；排隊中的 stale request 可取消，已送出的 request 不強制中斷。核心受影響測試 `215 passed`，未宣稱 GPU 速度改善。
 - 開放問題:
   - CH-T79 已完成：bounded fallback attribution 與兩種順序 GPU balanced rerun 均通過；候選品質提升但延遲仍待後續受控優化。
   - CH-T64：post-change WACK、clean-machine 與 Store gate 尚未完成。

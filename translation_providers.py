@@ -1240,6 +1240,61 @@ class LocalGemmaProvider(KnowledgePromptContext):
             raise RuntimeError(f"Fallback translation failed: {e}")
 
 
+class LocalRequestCancelled(RuntimeError):
+    """A local inference request was cancelled before it reached HTTP."""
+
+
+class _LocalRequestScheduler:
+    """Serialize local inference without merging independent image prompts."""
+
+    def __init__(self):
+        self._condition = threading.Condition()
+        self._next_ticket = 0
+        self._serving_ticket = 0
+        self._cancelled_tickets: set[int] = set()
+        self._closed = False
+
+    def _skip_cancelled_locked(self):
+        while self._serving_ticket in self._cancelled_tickets:
+            self._cancelled_tickets.remove(self._serving_ticket)
+            self._serving_ticket += 1
+
+    def run(self, callback: Callable[[], Any], *, cancel_predicate=None):
+        with self._condition:
+            if self._closed:
+                raise RuntimeError("local_request_scheduler_closed")
+            ticket = self._next_ticket
+            self._next_ticket += 1
+            while ticket != self._serving_ticket:
+                if self._closed:
+                    raise RuntimeError("local_request_scheduler_closed")
+                if cancel_predicate is not None and cancel_predicate():
+                    self._cancelled_tickets.add(ticket)
+                    self._condition.notify_all()
+                    raise LocalRequestCancelled("local_request_cancelled_before_dispatch")
+                self._condition.wait(timeout=0.05)
+            if self._closed:
+                raise RuntimeError("local_request_scheduler_closed")
+            if cancel_predicate is not None and cancel_predicate():
+                self._serving_ticket += 1
+                self._skip_cancelled_locked()
+                self._condition.notify_all()
+                raise LocalRequestCancelled("local_request_cancelled_before_dispatch")
+
+        try:
+            return callback()
+        finally:
+            with self._condition:
+                self._serving_ticket += 1
+                self._skip_cancelled_locked()
+                self._condition.notify_all()
+
+    def close(self):
+        with self._condition:
+            self._closed = True
+            self._condition.notify_all()
+
+
 class LocalMultimodalProvider(KnowledgePromptContext):
     name = "local_multimodal"
 
@@ -1265,6 +1320,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self._dictionary = load_translation_dictionary()
         self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
         self._last_request_metrics: dict[str, int | float] = {}
+        self._request_scheduler = _LocalRequestScheduler()
         self._init_knowledge_prompt_context()
 
     def available(self) -> bool:
@@ -1273,6 +1329,11 @@ class LocalMultimodalProvider(KnowledgePromptContext):
     def clear_cache(self) -> None:
         """Clear translation results without changing local runtime state."""
         self._translation_cache.clear()
+
+    def close(self) -> None:
+        self._request_scheduler.close()
+        self._translation_cache.clear()
+        self._last_request_metrics = {}
 
     def get_last_request_metrics(self) -> dict[str, int | float]:
         """Return bounded numeric server timing/token metrics only."""
@@ -1324,7 +1385,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             "response_format": {"type": response_format},
         }
 
-    def _request_chat_completion(self, payload: dict[str, Any]) -> str:
+    def _perform_chat_completion(self, payload: dict[str, Any]) -> str:
         self._last_request_metrics = {}
         req = request.Request(
             f"{self.base_url}/chat/completions",
@@ -1351,6 +1412,12 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         if choice.get("finish_reason") == "length":
             raise ValueError("truncated_local_multimodal_response")
         return choice["message"]["content"]
+
+    def _request_chat_completion(self, payload: dict[str, Any], *, cancel_predicate=None) -> str:
+        return self._request_scheduler.run(
+            lambda: self._perform_chat_completion(payload),
+            cancel_predicate=cancel_predicate,
+        )
 
     def _parse_segmented_response(self, raw_text: str, expected_count: int) -> list[str]:
         translated = parse_segmented_translation_json(raw_text, expected_count)
@@ -1479,6 +1546,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         image_width: int,
         image_height: int,
         target_lang: str = "zh-TW",
+        cancel_predicate=None,
     ) -> list[VisionRegionResult]:
         if not image_parts:
             raise ValueError("missing_image_context")
@@ -1506,8 +1574,13 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             response_format="json_object",
             max_tokens=min(2048, max(384, len(hints) * 160 + 128)),
         )
+        request_kwargs = (
+            {"cancel_predicate": cancel_predicate}
+            if cancel_predicate is not None
+            else {}
+        )
         try:
-            raw_text = self._request_chat_completion(payload)
+            raw_text = self._request_chat_completion(payload, **request_kwargs)
         except error.HTTPError as exc:
             if exc.code != 400:
                 raise
@@ -1529,7 +1602,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             if not format_error:
                 raise
             payload["response_format"] = {"type": "text"}
-            raw_text = self._request_chat_completion(payload)
+            raw_text = self._request_chat_completion(payload, **request_kwargs)
         results = parse_region_vision_response(
             raw_text,
             allowed_ids=allowed_ids,
