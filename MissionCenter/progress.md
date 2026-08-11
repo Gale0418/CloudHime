@@ -370,3 +370,10 @@
 - 準確度 gate 相對 baseline 通過且 20/20 nonempty，但與 default candidate 做 paired per-case 比較時，`owner-review-manga-2026-07-18` quality 由 `0.2796548522` 降至 `0.2704999226`；其他案例為上升或持平。因準確度優先，不能 promotion。
 - 所有 speculative condition／CLI／runtime hooks／regression tests 已撤回，產品回到預設 llama-server 行為；這次實機結果只作 negative evidence，不宣稱 speculative decoding 可用。下一步不再追求單一 kernel flag，改看 request 排程、cache reuse 或 batching，仍須先證明無任何 locked case 退化。
 - 收尾驗證：受影響 Vision／benchmark／adapter 回歸 `118 passed in 1.13s`；`compileall` 與 `git diff --check` 通過；CodeRabbit CLI 審查完成，`findings=0`。完整 runtime test 命令因 `tmp_path` 所在 Windows temp／basetemp ACL 在 session cleanup 報 `WinError 5`，未把該環境錯誤冒充產品通過。
+
+## CH-T77 llama-server prompt cache reuse screening／negative result（2026-08-11）
+
+- 依官方 llama.cpp server help 與 Gemini 只讀建議，暫時把 `--cache-reuse` 做成 condition-scoped 實驗；模型、mmproj、圖片、prompt、sampling、context、GPU、`--parallel 1` 與 paired order 均固定，產品預設不帶旗標。
+- Preflight exit `0`。Marchen Crown dense 單圖、candidate-first、5 repeats：`256` 的 promotion／quality gate 通過，quality `0.2796548522`、candidate total `10166.271ms`、prompt `1285.539ms`、decode `8294.174ms`，與 default candidate total 約 `10158.310ms` 沒有收益；`512` 同樣 gate 通過且品質相同，candidate total `10128.421ms`、prompt `1283.066ms`、decode `8244.602ms`，總延遲僅約改善 `0.3%`。
+- 兩個值都低於至少 3% 的有效收益門檻，沒有執行四案例 promotion；cache reuse condition、CLI、runtime setter 與回歸測試已撤回，正式 server 行為不變。這證明目前重複掃描的 prompt cache 沒有成為可量化瓶頸，不把小幅噪聲宣稱成優化。
+- `compileall`／`git diff --check` 通過；cache reuse focused regression 在撤回前曾通過 `3 + 16` 個 targeted tests。CodeRabbit 本輪完成，`findings=0`；尚未建立 Git checkpoint 前不宣稱提交完成。
