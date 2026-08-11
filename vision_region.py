@@ -73,9 +73,16 @@ def parse_region_vision_response(
         raise ValueError("Response must be text.")
 
     payload = _decode_json_response(raw_text)
-    if not isinstance(payload, dict) or set(payload) != {"regions"}:
+    allow_missing_confidence = False
+    if isinstance(payload, dict) and set(payload) == {"regions"}:
+        regions = payload["regions"]
+    elif isinstance(payload, list):
+        # Some local llama-server vision responses omit the documented wrapper
+        # but still return a strictly validated region array.
+        regions = payload
+        allow_missing_confidence = True
+    else:
         raise ValueError("Response must be a JSON object containing only regions.")
-    regions = payload["regions"]
     if not isinstance(regions, list):
         raise ValueError("regions must be a JSON array.")
 
@@ -83,7 +90,12 @@ def parse_region_vision_response(
     seen_ids: set[int] = set()
     results = []
     for region in regions:
-        result = _parse_region(region, permitted_ids, seen_ids)
+        result = _parse_region(
+            region,
+            permitted_ids,
+            seen_ids,
+            allow_missing_confidence=allow_missing_confidence,
+        )
         seen_ids.add(result.id)
         results.append(result)
     return results
@@ -103,16 +115,27 @@ def _decode_json_response(raw_text: str) -> Any:
 
 
 def _parse_region(
-    region: Any, permitted_ids: set[int], seen_ids: set[int]
+    region: Any,
+    permitted_ids: set[int],
+    seen_ids: set[int],
+    *,
+    allow_missing_confidence: bool = False,
 ) -> VisionRegionResult:
     required_keys = {"id", "source_text", "translation", "confidence"}
-    if not isinstance(region, dict) or set(region) != required_keys:
+    if (
+        not isinstance(region, dict)
+        or set(region) != required_keys
+        and not (
+            allow_missing_confidence
+            and set(region) == required_keys - {"confidence"}
+        )
+    ):
         raise ValueError("Each region must contain exactly id, source_text, translation, and confidence.")
 
     region_id = region["id"]
     source_text = region["source_text"]
     translation = region["translation"]
-    confidence = region["confidence"]
+    confidence = region.get("confidence", 0.0)
     if isinstance(region_id, bool) or not isinstance(region_id, int):
         raise ValueError("Region id must be an integer.")
     if region_id not in permitted_ids:

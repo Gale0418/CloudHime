@@ -311,11 +311,12 @@ class ProductPathLocalSession:
         ):
             raise ValueError("runtime evidence must be ready gpu")
         offload_layers = raw.get("gpu_offload_layers")
+        process_confirmed = raw.get("gpu_process_confirmed") is True
         if (
             isinstance(offload_layers, bool)
             or not isinstance(offload_layers, (int, float))
             or offload_layers <= 0
-        ):
+        ) and not process_confirmed:
             raise ValueError("runtime evidence must report gpu offload layers")
         if raw.get("profile") != condition["runtime_profile"]:
             raise ValueError("runtime profile must match condition")
@@ -341,7 +342,7 @@ class ProductPathLocalSession:
         if identity != condition["runtime_sha256"]:
             raise ValueError("server_executable_identity must match condition")
         self._owned_process = process
-        return {
+        evidence = {
             "ready": True,
             "mode": "gpu",
             "gpu_backend_confirmed": True,
@@ -352,6 +353,9 @@ class ProductPathLocalSession:
             "server_executable_identity": identity,
             "cache_hit": False,
         }
+        if "gpu_process_confirmed" in raw:
+            evidence["gpu_process_confirmed"] = process_confirmed
+        return evidence
 
     def _clear_scan_state(self) -> None:
         clear_worker_caches = getattr(self._worker, "_clear_translation_memories", None)

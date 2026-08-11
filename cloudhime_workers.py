@@ -863,20 +863,35 @@ class OCRWorker(QObject):
         ready = OCRWorker._owned_local_runtime_ready(self, runtime, state)
         gpu_offload_layers = 0
         gpu_total_layers = 0
+        gpu_process_confirmed = False
         if ready:
             try:
                 gpu_offload_layers = max(0, int(getattr(state, "gpu_offload_layers", 0)))
                 gpu_total_layers = max(0, int(getattr(state, "gpu_total_layers", 0)))
+                gpu_process_confirmed = getattr(state, "gpu_process_confirmed", False) is True
             except (TypeError, ValueError):
                 gpu_offload_layers = 0
                 gpu_total_layers = 0
+                gpu_process_confirmed = False
         mode = getattr(state, "mode", "") if ready else ""
-        gpu_backend_confirmed = (
-            mode == "gpu"
-            and gpu_offload_layers > 0
-            and gpu_total_layers >= gpu_offload_layers
-        )
-        return {
+        has_process_probe_evidence = hasattr(state, "gpu_process_confirmed")
+        state_backend_confirmed = getattr(state, "gpu_backend_confirmed", None)
+        if not has_process_probe_evidence or state_backend_confirmed is None:
+            gpu_backend_confirmed = (
+                mode == "gpu"
+                and gpu_offload_layers > 0
+                and gpu_total_layers >= gpu_offload_layers
+            )
+        else:
+            gpu_backend_confirmed = (
+                mode == "gpu"
+                and state_backend_confirmed is True
+                and (
+                    gpu_process_confirmed
+                    or (gpu_offload_layers > 0 and gpu_total_layers >= gpu_offload_layers)
+                )
+            )
+        evidence = {
             "ready": ready,
             "profile": profile if profile in {"text", "vision"} else "",
             "mode": mode,
@@ -889,6 +904,9 @@ class OCRWorker(QObject):
             "pid": getattr(process, "pid", None) if process is not None else None,
             "server_path": str(server_path) if server_path is not None else "",
         }
+        if has_process_probe_evidence:
+            evidence["gpu_process_confirmed"] = gpu_process_confirmed
+        return evidence
 
     def request_local_vision_start(self):
         runtime = getattr(self, "local_vision_runtime", None)

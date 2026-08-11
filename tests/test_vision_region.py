@@ -60,6 +60,22 @@ def test_parse_accepts_pure_or_fenced_json_and_clamps_confidence() -> None:
     ]
 
 
+def test_parse_accepts_strict_region_array_emitted_by_local_vision_models() -> None:
+    raw = '[{"id":1,"source_text":"a","translation":"b","confidence":0.75}]'
+
+    assert parse_region_vision_response(raw, allowed_ids={1}) == [
+        VisionRegionResult(1, "a", "b", 0.75)
+    ]
+
+
+def test_parse_defaults_missing_confidence_for_strict_local_region_array() -> None:
+    raw = '```json\n[{"id":1,"source_text":"a","translation":"b"}]\n```'
+
+    assert parse_region_vision_response(raw, allowed_ids={1}) == [
+        VisionRegionResult(1, "a", "b", 0.0)
+    ]
+
+
 @pytest.mark.parametrize(
     "raw_text",
     [

@@ -346,6 +346,24 @@ def test_rejects_gpu_mode_without_confirmed_backend_and_offload(evidence_update)
         ProductPathLocalSession(lambda: worker).start_cold(_condition())
 
 
+def test_accepts_gpu_process_confirmation_when_server_omits_offload_marker():
+    worker = FakeWorker()
+    original_evidence = worker.local_runtime_evidence
+
+    def process_confirmed_evidence():
+        evidence = original_evidence()
+        evidence.update({"gpu_offload_layers": 0, "gpu_process_confirmed": True})
+        return evidence
+
+    worker.local_runtime_evidence = process_confirmed_evidence
+    session = ProductPathLocalSession(lambda: worker)
+
+    evidence = session.start_cold(_condition())
+
+    assert evidence["gpu_process_confirmed"] is True
+    assert evidence["gpu_backend_confirmed"] is True
+
+
 @pytest.mark.parametrize("missing_api", ["_clear_translation_memories", "clear_cache"])
 def test_rejects_benchmark_when_required_cache_clear_api_is_missing(missing_api):
     worker = FakeWorker()
