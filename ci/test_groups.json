@@ -53,6 +53,7 @@
         "tests/test_ocr_refinement.py",
         "tests/test_ocr_text_processing.py",
         "tests/test_ocr_worker_local_runtime_evidence.py",
+        "tests/test_local_vision_image_policy.py",
         "tests/test_ocr_worker_mode_matrix.py",
         "tests/test_scan_pipeline_contract.py"
       ]
