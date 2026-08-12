@@ -79,18 +79,18 @@ def _validate_scheduling_condition(condition: Any) -> list[str]:
         "repeatability_metadata_required": True,
     }
     errors = [
-        f"invalid scheduling condition: {key}"
+        f"invalid scheduling condition: scheduling.{key}"
         for key, value in expected.items()
         if not _exact_value(condition.get(key), value)
     ]
     certified_run = condition.get("certified_run")
     if not isinstance(certified_run, dict):
-        errors.append("invalid scheduling condition: certified_run")
+        errors.append("invalid scheduling condition: scheduling.certified_run")
     else:
         expected_run = {"repeats": 10, "burst_size": 8, "work_ms": 1.0}
         for key, value in expected_run.items():
             if not _exact_value(certified_run.get(key), value):
-                errors.append(f"invalid scheduling condition: certified_run.{key}")
+                errors.append(f"invalid scheduling condition: scheduling.certified_run.{key}")
     return errors
 
 
