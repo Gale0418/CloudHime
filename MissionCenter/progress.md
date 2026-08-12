@@ -2,9 +2,9 @@
 
 - 專案: CloudHime
 - 目標: 準確度優先、local-first，先收斂 Region Vision 偶發 fallback，再完成發行供應鏈與 clean-machine gate
-- 目前狀態: 64/97 tasks
+- 目前狀態: 66/97 tasks
 - 里程碑: CH-T64 發行供應鏈與 clean-machine gate
-- 進度條: [#######---] 66%
+- 進度條: [#######---] 68%
 - 進行中任務:
   - CH-E6 精準與效能補強 Milestone 2 (In Progress)
   - CH-T34 圖片多模態 OCR smoke 與參數基準 (Review)
