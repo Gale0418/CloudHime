@@ -113,7 +113,7 @@ try {
 } catch {
     throw "WACK report is not valid XML: $ReportOutputPath"
 }
-$overallResults = @($report.SelectNodes("//RESULT/@OVERALL_RESULT"))
+$overallResults = @($report.SelectNodes("/REPORT/@OVERALL_RESULT"))
 if ($overallResults.Count -ne 1) {
     throw "WACK report must contain exactly one OVERALL_RESULT value; found $($overallResults.Count)."
 }

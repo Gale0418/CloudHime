@@ -717,7 +717,8 @@ def test_wack_wrapper_source_contract_and_parser():
     assert "-Encoding UTF8" not in script
     assert "[System.Xml.XmlDocument]::new()" in script
     assert "$report.Load($ReportOutputPath)" in script
-    assert 'SelectNodes("//RESULT/@OVERALL_RESULT")' in script
+    assert 'SelectNodes("/REPORT/@OVERALL_RESULT")' in script
+    assert 'SelectNodes("//RESULT/@OVERALL_RESULT")' not in script
     assert "$overallResults.Count -ne 1" in script
     assert "$overallResult -ine 'PASS'" in script
     for forbidden in (
@@ -726,6 +727,36 @@ def test_wack_wrapper_source_contract_and_parser():
     ):
         assert forbidden.lower() not in script.lower()
 
+
+
+def test_wack_report_reads_root_overall_result_attribute(tmp_path):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for WACK report schema validation")
+
+    report_path = tmp_path / "wack-report.xml"
+    report_path.write_text(
+        "<REPORT OVERALL_RESULT=\"PASS\"><REQUIREMENTS><TEST><RESULT>FAIL</RESULT></TEST></REQUIREMENTS></REPORT>",
+        encoding="utf-8",
+    )
+    report_literal = str(report_path).replace("'", "''")
+    command = (
+        "$report = [System.Xml.XmlDocument]::new(); "
+        f"$report.Load('{report_literal}'); "
+        "$overallResults = @($report.SelectNodes('/REPORT/@OVERALL_RESULT')); "
+        "if ($overallResults.Count -ne 1 -or $overallResults[0].Value -cne 'PASS') { exit 1 }; "
+        "Write-Output $overallResults[0].Value"
+    )
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", command],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "PASS"
 
 def test_wack_readme_sets_optional_deprecated_partner_center_boundary():
     root = Path(__file__).resolve().parents[1]
