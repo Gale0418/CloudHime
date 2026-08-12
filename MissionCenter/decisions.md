@@ -209,7 +209,7 @@
 
 ## 2026-07-24：漫畫多模態品質評估器
 
-- 決策：vision smoke evaluator 同時接受既有 sample_source／xpected 與漫畫 holdout 的 image／isible_text_anchors，不複製第二套 GPU runtime。
+- 決策：vision smoke evaluator 同時接受既有 sample_source／expected 與漫畫 holdout 的 image／visible_text_anchors，不複製第二套 GPU runtime。
 - 決策：dense-region detector 的離線 probe 對目前封面／漫畫頁召回不穩定，不接入預設 OCR；先以可重現的多模態品質數據引導下一輪裁切／prompt 實驗。
 - GPU evidence：6/6 成功，anchor 2/6，average_match=0.497，平均 request=1.758s，p95=2.674s。
 
@@ -522,3 +522,24 @@
 - 一次性簽署副本的 x64 SignTool /pa /all 驗章成功，但從管理員 Windows PowerShell bridge 呼叫 packaging/test_wack.ps1 時收到 Parameter set cannot be resolved using the specified named parameters，未產生 XML，故不得宣稱 WACK Pass。
 - gate finally 已清除短命憑證、暫存 MSIX 與報告目錄；同機簽章／安裝／AUMID 啟動／卸載 gate 的 Pass 證據不受影響。
 - CH-T64 維持 In Progress；後續需先建立可重現的 wrapper parameter-set regression，再修正並重新執行 appcert，仍不等同 clean Windows VM 或 Store certification。
+
+
+## 2026-08-13：CH-T64 鎖定 WACK bridge 單一 parameter set
+
+- 新增行為 regression，透過 PowerShell 7 入口呼叫 packaging/test_wack.ps1，只傳 -PackageFullName 與 -ReportOutputPath，確認 core bridge 只重新送出選定的 mode，不會把互斥的 -AppxPackagePath 一起帶入。
+- 提升環境 targeted 4 passed；完整 MSIX／release packaging 37 passed。測試在 WACK 前置檢查前停止，不啟動 appcert，也不產生 XML；因此它只證明 parameter forwarding contract，不代表 WACK Pass。
+- 官方 appcert CLI 仍要求先 `reset`，再以 `test -appxpackagepath` 或 `test -packagefullname` 搭配 `-reportoutputpath` 執行；下一次實機 gate 必須重新取得 XML 與唯一 `OVERALL_RESULT`。
+
+
+## 2026-08-13：CH-T64 將環境隔離 smoke 接入 Windows CI
+
+- msix-contract fixture preparation 後新增 environment-isolated release executable smoke；它呼叫 packaging/test_clean_machine.ps1，只驗證清空繼承環境、GUI liveness 與 exact PID cleanup。
+- TDD：CI contract 先以 1 failed 證明 workflow 尚未接線，再接入 step 後 1 passed；完整 MSIX/release packaging 37 passed。
+- 這是 CI contract 與 dummy executable smoke，不是 frozen CloudHime payload、clean Windows VM、Store certification 或 GPU onboarding 證據。
+
+
+## 2026-08-13：CodeRabbit WACK bridge evidence disposition
+
+- 本輪 CodeRabbit uncommitted review 回傳 2 個 minor findings：一項確認 appcert 指令文件含控制字元，已修正為可複製的 `reset`／`test`；另一項要求確認日期。
+- 日期 finding 判定為 false positive：本機時間與本輪執行日期均為 2026-08-13，未把實際工作標成未來完成；所有未完成的 WACK／clean Windows／Store／GPU gate 仍維持明確 incomplete 或 pending。
+- 本輪沒有產品程式 finding；下一步仍需重新執行真正 appcert WACK，取得 XML 與唯一 `OVERALL_RESULT`。
