@@ -515,3 +515,10 @@
 - 以目前 frozen dist/CloudHime-0.1.0.0-x64.msix 的隔離副本執行管理員互動 session gate；短命 CN=CloudHime Development 憑證只在驗證期間存在，結束後從 LocalMachine Root、CurrentUser My 與 CurrentUser TrustedPeople 移除。
 - x64 SignTool /pa /all 驗章、Add-AppxPackage、AUMID CloudHime_4nvnqyjwyamgj!CloudHime 啟動、3 秒 liveness、卸載與 package/certificate cleanup 全部成功；正式 dist 未覆寫。
 - 這證明本機開發自簽 sideload lifecycle 可重跑，不代表 Store 代簽、Store certification、clean Windows VM 或 GPU onboarding 已完成。
+
+
+## 2026-08-13：CH-T64 WACK wrapper invocation incomplete
+
+- 一次性簽署副本的 x64 SignTool /pa /all 驗章成功，但從管理員 Windows PowerShell bridge 呼叫 packaging/test_wack.ps1 時收到 Parameter set cannot be resolved using the specified named parameters，未產生 XML，故不得宣稱 WACK Pass。
+- gate finally 已清除短命憑證、暫存 MSIX 與報告目錄；同機簽章／安裝／AUMID 啟動／卸載 gate 的 Pass 證據不受影響。
+- CH-T64 維持 In Progress；後續需先建立可重現的 wrapper parameter-set regression，再修正並重新執行 appcert，仍不等同 clean Windows VM 或 Store certification。
