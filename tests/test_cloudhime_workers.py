@@ -1,3 +1,4 @@
+import threading
 import json
 from collections import OrderedDict
 from concurrent.futures import Future
@@ -878,6 +879,74 @@ def test_vision_runtime_exception_keeps_remote_text_provider_unchanged():
     assert registrations == []
     assert statuses == [("failed", "RuntimeError: startup failed")]
 
+
+def test_request_local_vision_start_does_not_clear_shutdown_signal_race():
+    class CoordinatedCancelEvent:
+        def __init__(self):
+            self._event = threading.Event()
+            self.clear_entered = threading.Event()
+            self.shutdown_set = threading.Event()
+            self.release_clear = threading.Event()
+            self.shutdown_thread = None
+            self.shutdown_callback = None
+
+        def clear(self):
+            self.clear_entered.set()
+            self.shutdown_thread = threading.Thread(target=self.shutdown_callback)
+            self.shutdown_thread.start()
+            self.shutdown_set.wait(timeout=0.2)
+            self.release_clear.wait(timeout=1)
+            self._event.clear()
+
+        def set(self):
+            self._event.set()
+            self.shutdown_set.set()
+
+        def is_set(self):
+            return self._event.is_set()
+
+    cancel_event = CoordinatedCancelEvent()
+    pending = Future()
+    submitted = []
+    stopped = []
+
+    class Executor:
+        def submit(self, callback):
+            submitted.append(callback)
+            return pending
+
+    provider = SimpleNamespace(update_runtime=lambda *args, **kwargs: None)
+    worker = SimpleNamespace(
+        use_gemma_translation=True,
+        local_multimodal_enabled=True,
+        local_vision_runtime=SimpleNamespace(
+            _state=SimpleNamespace(name="stopped"),
+            profile_name="vision",
+            stop=lambda: stopped.append(True),
+        ),
+        local_multimodal_provider=provider,
+        vision_executor=Executor(),
+        _local_vision_load_future=None,
+        _local_vision_cancel_event=cancel_event,
+        _local_vision_lifecycle_lock=threading.RLock(),
+        _local_vision_lifecycle_generation=0,
+        local_vision_status=SimpleNamespace(emit=lambda *args: None),
+    )
+    cancel_event.shutdown_callback = lambda: OCRWorker.shutdown_local_vision_runtime(worker)
+
+    request_thread = threading.Thread(target=lambda: OCRWorker.request_local_vision_start(worker))
+    request_thread.start()
+    assert cancel_event.clear_entered.wait(timeout=1)
+    cancel_event.release_clear.set()
+    request_thread.join(timeout=1)
+    cancel_event.shutdown_thread.join(timeout=1)
+
+    assert not request_thread.is_alive()
+    assert not cancel_event.shutdown_thread.is_alive()
+    assert cancel_event.is_set() is True
+    assert stopped == [True]
+    assert len(submitted) == 1
+
 def test_request_local_vision_start_does_not_submit_duplicate_future():
     statuses = []
     submitted = []
@@ -1047,6 +1116,78 @@ def test_prepare_local_vision_ensures_assets_before_runtime_start(monkeypatch):
     assert calls == [("ensure", assets), "start"]
 
 
+def test_prepare_local_vision_skips_start_when_cancelled_before_warmup(monkeypatch):
+    calls = []
+    cancel_event = SimpleNamespace(is_set=lambda: True)
+    runtime = SimpleNamespace(
+        start=lambda: calls.append("start") or "ready",
+        stop=lambda: calls.append("stop") or "stopped",
+    )
+    worker = SimpleNamespace(
+        _local_vision_assets=SimpleNamespace(),
+        _local_vision_cancel_event=cancel_event,
+        local_vision_runtime=runtime,
+    )
+    monkeypatch.setattr(
+        workers_module,
+        "ensure_vision_model_assets",
+        lambda *_args, **_kwargs: calls.append("ensure"),
+    )
+
+    result = OCRWorker._prepare_and_start_local_vision(worker)
+
+    assert result == "stopped"
+    assert calls == ["stop"]
+
+
+def test_prepare_local_vision_skips_start_when_cancelled_during_asset_check(monkeypatch):
+    calls = []
+    cancel_event = SimpleNamespace(cancelled=False)
+    cancel_event.is_set = lambda: cancel_event.cancelled
+    runtime = SimpleNamespace(
+        start=lambda: calls.append("start") or "ready",
+        stop=lambda: calls.append("stop") or "stopped",
+    )
+    worker = SimpleNamespace(
+        _local_vision_assets=SimpleNamespace(),
+        _local_vision_cancel_event=cancel_event,
+        local_vision_runtime=runtime,
+    )
+
+    def ensure_assets(*_args, **_kwargs):
+        calls.append("ensure")
+        cancel_event.cancelled = True
+
+    monkeypatch.setattr(workers_module, "ensure_vision_model_assets", ensure_assets)
+
+    result = OCRWorker._prepare_and_start_local_vision(worker)
+
+    assert result == "stopped"
+    assert calls == ["ensure", "stop"]
+
+
+def test_prepare_local_vision_passes_cancel_event_to_runtime_start(monkeypatch):
+    calls = []
+    cancel_event = SimpleNamespace(is_set=lambda: False)
+    runtime = SimpleNamespace(
+        start=lambda **kwargs: calls.append(kwargs) or "ready",
+        stop=lambda: "stopped",
+    )
+    worker = SimpleNamespace(
+        _local_vision_assets=SimpleNamespace(),
+        _local_vision_cancel_event=cancel_event,
+        local_vision_runtime=runtime,
+    )
+    monkeypatch.setattr(
+        workers_module,
+        "ensure_vision_model_assets",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = OCRWorker._prepare_and_start_local_vision(worker)
+
+    assert result == "ready"
+    assert calls == [{"cancel_event": cancel_event}]
 def test_disabling_local_multimodal_cancels_pending_asset_download():
     cancel_event = SimpleNamespace(set_calls=0)
     cancel_event.set = lambda: setattr(cancel_event, "set_calls", cancel_event.set_calls + 1)

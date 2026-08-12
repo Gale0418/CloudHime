@@ -84,6 +84,19 @@ _CUDA_ERROR_KEYWORDS = (
 )
 
 
+
+def _cancel_requested(cancel_event) -> bool:
+    """以 fail-closed 方式讀取外部取消訊號，避免取消物件異常時啟動模型。"""
+    if cancel_event is None:
+        return False
+    checker = getattr(cancel_event, "is_set", None)
+    if not callable(checker):
+        return True
+    try:
+        return bool(checker())
+    except Exception:
+        return True
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 狀態資料類別 [FIX-2] frozen=True
 # ──────────────────────────────────────────────────────────────────────────────
@@ -203,12 +216,21 @@ class LocalVisionRuntime:
             if self._state.name in ("ready", "starting"):
                 raise RuntimeError("runtime_profile_requires_stop")
             self._profile = resolved
-    def start(self, profile: LocalRuntimeProfile | str | None = None) -> VisionRuntimeState:
+
+    def start(
+        self,
+        profile: LocalRuntimeProfile | str | None = None,
+        *,
+        cancel_event=None,
+    ) -> VisionRuntimeState:
         """啟動 vision runtime（idempotent：已 ready/starting 時直接回傳現有狀態）。
 
         狀態機：stopped → missing | starting → ready | failed
         """
         with self._start_lock:
+            if _cancel_requested(cancel_event):
+                self._stop_owned_process()
+                return _STOPPED
             requested_profile = (
                 resolve_runtime_profile(profile)
                 if profile is not None
@@ -226,6 +248,9 @@ class LocalVisionRuntime:
             self._report_progress("checking_assets", 5)
 
             # 1. 資產驗證
+            if _cancel_requested(cancel_event):
+                self._stop_owned_process()
+                return _STOPPED
             missing_detail = self._check_assets()
             if missing_detail:
                 self._state = VisionRuntimeState(
@@ -245,11 +270,23 @@ class LocalVisionRuntime:
                 )
                 return self._state
             self._port = port
+            if _cancel_requested(cancel_event):
+                self._stop_owned_process()
+                return _STOPPED
             self._report_progress("starting_server", 10)
             initial_mode = "gpu" if self._gpu_layers > 0 else "cpu"
-            state = self._try_spawn(port, gpu_layers=self._gpu_layers, mode=initial_mode)
-            if self._cancel_event.is_set() or state.name == "stopped":
-                self._state = _STOPPED
+            state = self._try_spawn(
+                port,
+                gpu_layers=self._gpu_layers,
+                mode=initial_mode,
+                cancel_event=cancel_event,
+            )
+            if (
+                self._cancel_event.is_set()
+                or _cancel_requested(cancel_event)
+                or state.name == "stopped"
+            ):
+                self._stop_owned_process()
                 return self._state
             if state.name == "ready":
                 self._state = state
@@ -258,8 +295,16 @@ class LocalVisionRuntime:
             # 3. GPU 啟動失敗時才允許單次 CPU fallback。
             # [FIX-3] GPU proc 已在 _try_spawn 內 cleanup，此處直接 spawn CPU
             if initial_mode == "gpu" and _is_cuda_error(state.detail):
-                cpu_state = self._try_spawn(port, gpu_layers=0, mode="cpu")
-                self._state = _STOPPED if self._cancel_event.is_set() else cpu_state
+                cpu_state = self._try_spawn(
+                    port,
+                    gpu_layers=0,
+                    mode="cpu",
+                    cancel_event=cancel_event,
+                )
+                if self._cancel_event.is_set() or _cancel_requested(cancel_event):
+                    self._stop_owned_process()
+                else:
+                    self._state = cpu_state
                 return self._state
 
             self._state = state
@@ -284,12 +329,21 @@ class LocalVisionRuntime:
 
     # ── 內部：spawn 單次嘗試 ─────────────────────────────────────────────────
 
-    def _try_spawn(self, port: int, *, gpu_layers: int, mode: str) -> VisionRuntimeState:
+    def _try_spawn(
+        self,
+        port: int,
+        *,
+        gpu_layers: int,
+        mode: str,
+        cancel_event=None,
+    ) -> VisionRuntimeState:
         """建立一個 process 並等待健康檢查。
 
         [FIX-3] 若健康檢查失敗，在回傳前 terminate/wait/kill 該 process，
         確保不殘留任何廢棄 handle。
         """
+        if self._cancel_event.is_set() or _cancel_requested(cancel_event):
+            return _STOPPED
         assets = self._assets
         args = [
             str(assets.server_path),
@@ -329,7 +383,11 @@ class LocalVisionRuntime:
             )
 
         self._process = proc
-        state = self._wait_healthy(proc, port, mode)
+        if self._cancel_event.is_set() or _cancel_requested(cancel_event):
+            self._cleanup_process(proc)
+            self._process = None
+            return _STOPPED
+        state = self._wait_healthy(proc, port, mode, cancel_event=cancel_event)
 
         # [FIX-3] 失敗時清理 process，確保不殘留
         if state.name != "ready" and self._process is proc:
@@ -340,7 +398,7 @@ class LocalVisionRuntime:
 
     # ── 內部：健康輪詢 ────────────────────────────────────────────────────────
 
-    def _wait_healthy(self, proc, port: int, mode: str) -> VisionRuntimeState:
+    def _wait_healthy(self, proc, port: int, mode: str, *, cancel_event=None) -> VisionRuntimeState:
         """輪詢 /health 端點；process 提早退出則立即 failed。
 
         [FIX-1] stderr 由 daemon thread 消化，health loop 絕不在 caller thread
@@ -380,7 +438,7 @@ class LocalVisionRuntime:
 
         deadline = self._monotonic() + (self._health_retries * _HEALTH_SLEEP_SEC)
         for _ in range(self._health_retries):
-            if self._cancel_event.is_set():
+            if self._cancel_event.is_set() or _cancel_requested(cancel_event):
                 return _STOPPED
 
             remaining = deadline - self._monotonic()
@@ -402,6 +460,8 @@ class LocalVisionRuntime:
             resp = None
             try:
                 resp = self._urlopen(health_url, timeout=min(2.0, remaining))
+                if self._cancel_event.is_set() or _cancel_requested(cancel_event):
+                    return _STOPPED
                 base_url = f"http://127.0.0.1:{port}/v1"
                 self._report_progress("ready", 100)
                 gpu_offload_layers, gpu_total_layers = _snapshot_gpu_offload()
@@ -444,6 +504,8 @@ class LocalVisionRuntime:
             self._sleep(min(_HEALTH_SLEEP_SEC, remaining))
 
         # 全部嘗試耗盡 → health_timeout
+        if self._cancel_event.is_set() or _cancel_requested(cancel_event):
+            return _STOPPED
         drain_thread.join(timeout=_STDERR_JOIN_TIMEOUT)
         stderr_text = _snapshot_stderr()
         return VisionRuntimeState(

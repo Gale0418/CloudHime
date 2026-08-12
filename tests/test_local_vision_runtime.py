@@ -335,6 +335,63 @@ def test_default_health_budget_allows_slow_cold_start(fake_assets):
     assert runtime.start().name == "ready"
 
 
+def test_start_returns_stopped_without_spawning_when_external_cancelled():
+    cancel_event = threading.Event()
+    cancel_event.set()
+    assets = VisionAssets(
+        server_path=Path("unused-server"),
+        model_path=Path("unused-model"),
+        projector_path=Path("unused-projector"),
+    )
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+
+    state = runtime.start(cancel_event=cancel_event)
+
+    assert state.name == "stopped"
+    assert popen.call_count == 0
+    assert runtime.owned_process is None
+
+
+def test_start_cleans_process_when_cancelled_after_health_ready(monkeypatch):
+    cancel_event = threading.Event()
+    assets = VisionAssets(
+        server_path=Path("unused-server"),
+        model_path=Path("unused-model"),
+        projector_path=Path("unused-projector"),
+    )
+    proc = RunningProcess()
+    proc.pid = 1234
+    popen = FakePopen([proc])
+
+    def probe(_pid):
+        cancel_event.set()
+        return True
+
+    runtime = LocalVisionRuntime(
+        assets=assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+        gpu_process_probe=probe,
+    )
+    monkeypatch.setattr(runtime_module, "verify_asset", lambda *_args, **_kwargs: None)
+
+    state = runtime.start(cancel_event=cancel_event)
+
+    assert state.name == "stopped"
+    assert runtime.owned_process is None
+    assert proc.terminate_calls == 1
+
 def test_stop_interrupts_slow_cold_start(fake_assets):
     entered_sleep = threading.Event()
     release_sleep = threading.Event()
