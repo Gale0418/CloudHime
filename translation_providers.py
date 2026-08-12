@@ -1267,14 +1267,14 @@ class _LocalRequestScheduler:
             self._next_ticket += 1
             while ticket != self._serving_ticket:
                 if self._closed:
-                    raise RuntimeError("local_request_scheduler_closed")
+                    raise LocalRequestCancelled("local_request_scheduler_closed")
                 if cancel_predicate is not None and cancel_predicate():
                     self._cancelled_tickets.add(ticket)
                     self._condition.notify_all()
                     raise LocalRequestCancelled("local_request_cancelled_before_dispatch")
                 self._condition.wait(timeout=0.05)
             if self._closed:
-                raise RuntimeError("local_request_scheduler_closed")
+                raise LocalRequestCancelled("local_request_scheduler_closed")
             if cancel_predicate is not None and cancel_predicate():
                 self._serving_ticket += 1
                 self._skip_cancelled_locked()

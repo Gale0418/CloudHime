@@ -1550,7 +1550,17 @@ class OCRWorker(QObject):
         translation_tools.remember_translation(self.translation_cache, cache_key, translated_text, TRANSLATION_CACHE_LIMIT)
 
 
+    def invalidate_scan_requests(self):
+        """Invalidate active and queued scans before provider/runtime teardown."""
+        with self._scan_request_lock:
+            self._scan_generation += 1
+            self._pending_scan_requests.clear()
+            return self._scan_generation
+
     def cleanup(self):
+        invalidate = getattr(self, "invalidate_scan_requests", None)
+        if callable(invalidate):
+            invalidate()
         if hasattr(self, '_bg_threshold_executor'):
             self._bg_threshold_executor.shutdown(wait=True)
         if hasattr(self, 'japanese_rescue_runtime'):

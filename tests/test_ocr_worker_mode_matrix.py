@@ -8,6 +8,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QFont
 
 import cloudhime_workers as workers_module
+from translation_providers import LocalRequestCancelled
 from scan_pipeline import ScanErrorCode, ScanOutcome, ScanStage
 from cloudhime_ui import OverlayWindow
 from cloudhime_workers import (
@@ -1752,6 +1753,47 @@ def test_region_vision_skips_provider_when_generation_changes_before_request(
     finally:
         worker.cleanup()
 
+
+def test_cleanup_cancels_shutdown_queued_vision_without_fallback(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(close=Mock())
+    worker = OCRWorker()
+    _configure_region_vision_worker(worker, image, REGION_RENDER_BUBBLE, provider)
+    worker.local_multimodal_provider = provider
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "shutdown", "x": 17, "y": 21, "w": 40, "h": 16}
+    ]))
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+
+    def cancel_during_request(*_args, **_kwargs):
+        worker.cleanup()
+        raise LocalRequestCancelled("local_request_scheduler_closed")
+
+    provider.interpret_regions = Mock(side_effect=cancel_during_request)
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == []
+        assert provider.interpret_regions.call_count == 1
+        assert any(
+            event.outcome is ScanOutcome.CANCELLED
+            and event.error_code is ScanErrorCode.SCAN_CANCELLED
+            for event in worker.last_scan_trace.events
+        )
+        assert not any(
+            event.detail == "translation_region_vision_failed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
 
 @pytest.mark.parametrize("render_mode", [REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF])
 def test_region_vision_uses_image_source_and_relative_ocr_hints(monkeypatch, qtbot, render_mode):
