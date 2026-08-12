@@ -495,3 +495,16 @@
 - 每 repeat 清除 provider cache；cold start 與 cleanup 不納入 scan wall time。latency 順序固定 baseline_then_candidate，並明示 latency_order_balanced=false，不得把它解讀為平衡交錯設計。
 - preflight 不啟 GPU；正式 record 必須逐筆驗證實際 runtime context、GPU layers、offloaded X/Y、owned process、127.0.0.1 loopback、server SHA、0 cache 與 fallback，不能以設定值或自報取代。
 - 真 GPU A/B 只在 Owner 確認 4 張並建立 locked manifest、且 GPU 已空閒後執行。外部 Ollama 不屬 CloudHime 管轄；不得觸碰或終止它。報告僅留 aggregate，不保存私人原文。
+
+## 2026-08-13：CodeRabbit evidence-date findings disposition
+
+- CodeRabbit uncommitted review completed at local Windows time `2026-08-13 06:26 +08:00`; it returned two minor findings about future-dated evidence.
+- Finding verified as false positive: all referenced execution, test, replay, and audit commands ran on local date 2026-08-13, and the rows already use that date. No measurement or evidence claim was moved earlier.
+- The findings are not code defects; no product code change was needed. Remaining `Partial` statuses accurately represent pending owner ground truth, full CI, clean Windows/Store, and GPU paired promotion.
+
+## 2026-08-13：CH-T34 基準差異定位為 sampling drift
+
+- 以鎖定不變的 `benchmarks/ocr_accuracy_cases.json`（SHA-256 `5fc1f7073c3099a9b6fb60b23a5cceb88835962beab79becdff63384ca4898f`）、同一 Gemma 3 4B、同一 llama-server GPU、`-ngl 999`、`n_ctx=4096` 與 baseline prompt 重播。
+- 現行 provider 預設 `temperature=0.2`、`repeat_penalty=1.15` 得到 avg match `0.9492087912`、avg latency `1788.176ms`；不應與舊紀錄的 `0.9892` 直接比較。
+- 將 sampling 改為歷史 `temperature=0.1` 並省略 `repeat_penalty`，實機得到 `0.9892087912`／`1697.840ms`；改成現行 payload 可表達的 `temperature=0.1`／`repeat_penalty=1.0`，再次得到 `0.9892087912`／`1706.875ms`。兩次均 7/7 images、25/25 cases、line `22/25`、GPU。
+- 結論：舊基準差異已由 sampling drift 重現並定位，不是 manifest 漂移；先不直接把參數 promotion 到所有翻譯路徑，需另做 source-disjoint local text translation paired regression，並確認 cache／翻譯品質後才改產品預設。

@@ -380,6 +380,38 @@ def test_transcribe_screenshot_accepts_ocr_prompt_override() -> None:
     assert captured["prompt"] == "STRICT OCR"
 
 
+def test_transcribe_screenshot_uses_ocr_sampling_profile():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        return "OCR result"
+
+    provider._request_chat_completion = fake_request
+    provider.transcribe_screenshot(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}]
+    )
+
+    assert payloads[0]["temperature"] == pytest.approx(0.1)
+    assert payloads[0]["repeat_penalty"] == pytest.approx(1.0)
+
+
+def test_translate_keeps_translation_sampling_profile():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        return "翻譯結果"
+
+    provider._request_chat_completion = fake_request
+    provider.translate("hello")
+
+    assert payloads[0]["temperature"] == pytest.approx(0.2)
+    assert payloads[0]["repeat_penalty"] == pytest.approx(1.15)
+
+
 def test_transcribe_screenshot_rejects_degenerate_repetition():
     provider = make_provider()
     repeated = "\n".join(["光が"] * 12)

@@ -60,6 +60,9 @@ GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
 }
 TRANSLATION_CACHE_LIMIT = 512
 LOCAL_MULTIMODAL_BATCH_SIZE = 4
+LOCAL_MULTIMODAL_OCR_TEMPERATURE = 0.1
+LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY = 1.0
+
 LOCAL_RUNTIME_METRIC_KEYS = frozenset({
     "prompt_tokens",
     "completion_tokens",
@@ -1372,14 +1375,16 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         image_parts: Sequence[dict[str, Any]],
         response_format: str,
         max_tokens: int = 1024,
+        temperature: float | None = None,
+        repeat_penalty: float | None = None,
     ) -> dict[str, Any]:
         content = [{"type": "text", "text": prompt}]
         content.extend(self._inline_part_to_content(part) for part in image_parts)
         return {
             "model": self.model_name,
             "messages": [{"role": "user", "content": content}],
-            "temperature": self.temperature,
-            "repeat_penalty": self.repeat_penalty,
+            "temperature": self.temperature if temperature is None else float(temperature),
+            "repeat_penalty": self.repeat_penalty if repeat_penalty is None else float(repeat_penalty),
             "stream": False,
             "max_tokens": max(64, int(max_tokens)),
             "response_format": {"type": response_format},
@@ -1654,7 +1659,14 @@ class LocalMultimodalProvider(KnowledgePromptContext):
                 f"\n\nOCR hint:\n{source_text_hint[:1200]}"
             )
         raw_text = self._request_chat_completion(
-            self._build_chat_payload(prompt=prompt, image_parts=image_parts, response_format="text", max_tokens=384)
+            self._build_chat_payload(
+                prompt=prompt,
+                image_parts=image_parts,
+                response_format="text",
+                max_tokens=384,
+                temperature=LOCAL_MULTIMODAL_OCR_TEMPERATURE,
+                repeat_penalty=LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY,
+            )
         )
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
