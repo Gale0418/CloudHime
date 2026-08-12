@@ -1,6 +1,5 @@
 import json
 import threading
-import time
 from io import BytesIO
 
 import pytest
@@ -28,6 +27,7 @@ def test_local_request_scheduler_serializes_fifo_without_merging_jobs():
     scheduler = _LocalRequestScheduler()
     first_started = threading.Event()
     release_first = threading.Event()
+    second_queued = threading.Event()
     calls = []
     results = []
 
@@ -41,16 +41,22 @@ def test_local_request_scheduler_serializes_fifo_without_merging_jobs():
         calls.append("second")
         return "second-result"
 
+    def second_cancel_predicate():
+        second_queued.set()
+        return False
+
     first_thread = threading.Thread(
         target=lambda: results.append(scheduler.run(first_job))
     )
     second_thread = threading.Thread(
-        target=lambda: results.append(scheduler.run(second_job))
+        target=lambda: results.append(
+            scheduler.run(second_job, cancel_predicate=second_cancel_predicate)
+        )
     )
     first_thread.start()
     assert first_started.wait(1)
     second_thread.start()
-    time.sleep(0.02)
+    assert second_queued.wait(1)
     assert calls == ["first"]
 
     release_first.set()
@@ -69,6 +75,7 @@ def test_local_request_scheduler_cancels_queued_job_before_dispatch():
     first_started = threading.Event()
     release_first = threading.Event()
     cancel_second = threading.Event()
+    second_queued = threading.Event()
     dispatched = []
     errors = []
 
@@ -80,19 +87,23 @@ def test_local_request_scheduler_cancels_queued_job_before_dispatch():
     def second_job():
         dispatched.append("second")
 
+    def second_cancel_predicate():
+        second_queued.set()
+        return cancel_second.is_set()
+
     first_thread = threading.Thread(target=lambda: scheduler.run(first_job))
     first_thread.start()
     assert first_started.wait(1)
 
     def run_second():
         try:
-            scheduler.run(second_job, cancel_predicate=cancel_second.is_set)
+            scheduler.run(second_job, cancel_predicate=second_cancel_predicate)
         except LocalRequestCancelled:
             errors.append("cancelled")
 
     second_thread = threading.Thread(target=run_second)
     second_thread.start()
-    time.sleep(0.02)
+    assert second_queued.wait(1)
     cancel_second.set()
     second_thread.join(timeout=1)
     release_first.set()
