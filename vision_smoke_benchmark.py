@@ -276,6 +276,7 @@ def run_smoke(
             rescue_second_similarity = None
             rescue_shadow_actual = ""
             rescue_error = ""
+            rescue_gate_reason = "disabled" if not japanese_rescue else "pending"
             try:
                 stage_started = time.perf_counter()
                 try:
@@ -310,16 +311,21 @@ def run_smoke(
                 if japanese_rescue:
                     try:
                         source_image = _load_color_image(image_path)
-                        if source_image is not None and rescue_gate(
+                        if source_image is None:
+                            rescue_gate_reason = "image_unreadable"
+                        elif not rescue_gate(
                             actual,
                             image_width=source_image.shape[1],
                             image_height=source_image.shape[0],
                         ):
+                            rescue_gate_reason = "geometry_rejected"
+                        else:
                             rescue_stage = time.perf_counter()
                             candidate = japanese_rescuer.run(source_image)
                             meiki_ms = (time.perf_counter() - rescue_stage) * 1000.0
                             rescue_candidate = candidate.text
                             if is_usable_meiki_candidate(candidate, actual):
+                                rescue_gate_reason = "verification_requested"
                                 rescue_triggered = True
                                 rescue_stage = time.perf_counter()
                                 try:
@@ -330,6 +336,7 @@ def run_smoke(
                                     ).text.strip()
                                 except Exception as exc:
                                     rescue_error = f"{type(exc).__name__}: {exc}"
+                                    rescue_gate_reason = "verification_error"
                                 else:
                                     decision_started = time.perf_counter()
                                     decision = decide_rescue_text(actual, rescued, candidate)
@@ -341,14 +348,20 @@ def run_smoke(
                                     actual = decision.selected_text
                                     rescue_adopted = bool(decision.adopted)
                                     rescue_decision_completed = True
+                                    rescue_gate_reason = (
+                                        "adopted" if rescue_adopted else "verification_rejected"
+                                    )
                                     rescue_shadow_actual = (
                                         rescue_second if rescue_adopted else rescue_candidate
                                     )
                                 finally:
                                     rescue_request_ms = (time.perf_counter() - rescue_stage) * 1000.0
                                     model_request_ms += rescue_request_ms
+                            else:
+                                rescue_gate_reason = "candidate_unusable"
                     except Exception as exc:
                         rescue_error = f"{type(exc).__name__}: {exc}"
+                        rescue_gate_reason = "rescue_error"
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
             latency_ms = (time.perf_counter() - request_started) * 1000.0
@@ -364,6 +377,7 @@ def run_smoke(
                     "rescue_second_similarity": rescue_second_similarity,
                     "rescue_shadow_actual": rescue_shadow_actual,
                     "rescue_error": rescue_error,
+                    "rescue_gate_reason": rescue_gate_reason,
                     "latency_ms": latency_ms,
                     "hint_ms": hint_ms,
                     "image_encode_ms": image_encode_ms,
