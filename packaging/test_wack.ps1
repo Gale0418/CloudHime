@@ -36,10 +36,15 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
     }
 
     $forwardedArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
-    foreach ($boundParameter in $PSBoundParameters.GetEnumerator()) {
-        $forwardedArgs += "-$($boundParameter.Key)"
-        $forwardedArgs += [string]$boundParameter.Value
+    if ($PSCmdlet.ParameterSetName -eq 'AppxPackagePath') {
+        $forwardedArgs += @('-AppxPackagePath', $AppxPackagePath)
+    } else {
+        $forwardedArgs += @('-PackageFullName', $PackageFullName)
     }
+    $forwardedArgs += @(
+        '-ReportOutputPath', $ReportOutputPath,
+        '-AppCertPath', $AppCertPath
+    )
     & $windowsPowerShell @forwardedArgs
     exit $LASTEXITCODE
 }

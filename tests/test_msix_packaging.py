@@ -692,8 +692,6 @@ def test_wack_wrapper_source_contract_and_parser():
     assert "WindowsBuiltInRole]::Administrator" in script
     assert script.index("[Environment]::UserInteractive") < script.index("WindowsPrincipal")
     assert "WindowsPowerShell\\v1.0\\powershell.exe" in script
-    assert "$PSBoundParameters.GetEnumerator()" in script
-    assert '"-$($boundParameter.Key)"' in script
 
     assert "$AppxPackagePath = (Resolve-Path -LiteralPath $AppxPackagePath -ErrorAction Stop).Path" in script
     assert "$AppCertPath = (Resolve-Path -LiteralPath $AppCertPath -ErrorAction Stop).Path" in script
@@ -727,6 +725,17 @@ def test_wack_wrapper_source_contract_and_parser():
     ):
         assert forbidden.lower() not in script.lower()
 
+
+def test_wack_core_bridge_forwards_explicit_parameter_set_arguments():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "packaging" / "test_wack.ps1").read_text(encoding="utf-8")
+
+    assert "if ($PSCmdlet.ParameterSetName -eq 'AppxPackagePath')" in script
+    assert "'-AppxPackagePath', $AppxPackagePath" in script
+    assert "'-PackageFullName', $PackageFullName" in script
+    assert "'-ReportOutputPath', $ReportOutputPath" in script
+    assert "'-AppCertPath', $AppCertPath" in script
+    assert "$PSBoundParameters.GetEnumerator()" not in script
 
 
 def test_wack_report_reads_root_overall_result_attribute(tmp_path):
