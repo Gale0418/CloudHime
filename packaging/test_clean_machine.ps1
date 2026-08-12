@@ -74,7 +74,13 @@ try {
 finally {
     if ($processId -gt 0) {
         if (-not $process.HasExited) {
-            $process.Kill()
+            try {
+                $process.Kill()
+            } catch [InvalidOperationException] {
+                if (-not $process.HasExited) {
+                    throw
+                }
+            }
         }
         $process.WaitForExit(5000) | Out-Null
         if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {

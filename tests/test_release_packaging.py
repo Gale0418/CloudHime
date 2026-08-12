@@ -270,6 +270,7 @@ def test_clean_machine_smoke_script_is_environment_isolated_and_exact_cleanup():
         "Kill()",
         "WaitForExit",
         "Get-Process -Id",
+        "InvalidOperationException",
     ):
         assert marker in script
     assert "CLOUDHIME_PACKAGED_IMPORT_SMOKE" not in script
@@ -277,3 +278,13 @@ def test_clean_machine_smoke_script_is_environment_isolated_and_exact_cleanup():
     assert "Ollama" not in script
     assert "Conda" not in script
     assert "python.exe" not in script.lower()
+
+
+def test_release_spec_keeps_lazy_japanese_ocr_runtime_modules():
+    root = Path(__file__).resolve().parents[1]
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+
+    hidden_imports = spec.split("japanese_ocr_hiddenimports = [", 1)[1].split("]", 1)[0]
+    for module_name in ("meikiocr", "meikiocr.ocr", "onnxruntime"):
+        assert f'"{module_name}"' in hidden_imports
+    assert "*japanese_ocr_hiddenimports" in spec
