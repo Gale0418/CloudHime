@@ -191,6 +191,7 @@ def test_japanese_rescue_uses_runtime_lifecycle_without_network(monkeypatch, tmp
     image_result = result["image_results"][0]
     case_result = result["results"][0]
     assert image_result["rescue_triggered"] is True
+    assert image_result["rescue_gate_reason"] == "adopted"
     assert image_result["rescue_decision_completed"] is True
     assert image_result["actual"] == "救出"
     assert image_result["rescue_baseline"] == "かなかな"
@@ -296,6 +297,7 @@ def test_japanese_rescue_rejection_keeps_actual_and_shadows_candidate(
     assert image_result["rescue_baseline"] == "baseline"
     assert image_result["rescue_decision_completed"] is (not second_raises)
     assert image_result["rescue_second"] == ("" if second_raises else "second")
+    assert image_result["rescue_gate_reason"] == ("verification_error" if second_raises else "verification_rejected")
     assert image_result["rescue_shadow_actual"] == ("baseline" if second_raises else "候選")
     assert case_result["baseline_actual"] == "baseline"
     assert case_result["shadow_actual"] == ("baseline" if second_raises else "候選")
@@ -362,6 +364,7 @@ def test_japanese_rescue_without_trigger_does_not_add_provider_call(monkeypatch,
     case_result = result["results"][0]
     assert events.count("provider_run") == 1
     assert image_result["rescue_triggered"] is False
+    assert image_result["rescue_gate_reason"] == "geometry_rejected"
     assert image_result["rescue_decision_completed"] is False
     assert image_result["actual"] == image_result["rescue_baseline"] == image_result["rescue_shadow_actual"] == "baseline"
     assert image_result["rescue_second"] == ""
