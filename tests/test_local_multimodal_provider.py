@@ -116,6 +116,51 @@ def test_local_request_scheduler_cancels_queued_job_before_dispatch():
     assert errors == ["cancelled"]
 
 
+def test_local_request_scheduler_cancels_queued_job_when_closed():
+    scheduler = _LocalRequestScheduler()
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_queued = threading.Event()
+    dispatched = []
+    errors = []
+
+    def first_job():
+        dispatched.append("first")
+        first_started.set()
+        assert release_first.wait(1)
+
+    def second_job():
+        dispatched.append("second")
+
+    def second_cancel_predicate():
+        second_queued.set()
+        return False
+
+    first_thread = threading.Thread(target=lambda: scheduler.run(first_job))
+    first_thread.start()
+    assert first_started.wait(1)
+
+    def run_second():
+        try:
+            scheduler.run(second_job, cancel_predicate=second_cancel_predicate)
+        except LocalRequestCancelled as exc:
+            errors.append(str(exc))
+
+    second_thread = threading.Thread(target=run_second)
+    second_thread.start()
+    assert second_queued.wait(1)
+
+    scheduler.close()
+    second_thread.join(timeout=1)
+    release_first.set()
+    first_thread.join(timeout=1)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert dispatched == ["first"]
+    assert errors == ["local_request_scheduler_closed"]
+
+
 def test_local_multimodal_provider_close_rejects_new_requests():
     provider = make_provider()
 
