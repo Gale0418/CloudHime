@@ -13,6 +13,7 @@
   - [2026-08-12] CH-T85 建立 model-free scheduling benchmark：burst 8、10 repeats 驗證 `max_inflight=1`、FIFO 與 queued cancellation；CodeRabbit 四次 scope 嘗試仍未取得有效覆蓋結果（正確 scope 受 free review rate limit 擋下），任務維持 Review。
   - [2026-08-12] CH-T86 完成 local Vision shutdown cancellation hardening：scheduler close 對已排隊 request 發出取消語意，worker cleanup 先失效 active generation；217 passed，未宣稱 GPU latency 或 CodeRabbit 通過。
   - [2026-08-12] CH-T87 補上 local Vision warm-up cancellation gate：取消在 warm-up 前、資產檢查中，以及 runtime spawn/health 邊界都不再保留 server；`142 + 79 + 17 passed`，另 runtime 外部取消案例 `2 passed`；CodeRabbit 複審 `0 issues`。完整 local runtime suite 受既有 Windows pytest temp ACL `WinError 5` 卡在 setup，未宣稱 GPU benchmark。
+  - [2026-08-12] CH-T86／CH-T87 完成 lifecycle closeout：completion council、受影響回歸、CodeRabbit `0 issues` 與 Git checkpoint 均有紀錄；兩項任務升為 Done。
 - 開放問題:
   - CH-T79 已完成：bounded fallback attribution 與兩種順序 GPU balanced rerun 均通過；候選品質提升但延遲仍待後續受控優化。
   - CH-T64：post-change WACK、clean-machine 與 Store gate 尚未完成。
