@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "locked",
-  "lock_id": "cloudhime-accuracy-speed-temporal-v2",
+  "lock_id": "cloudhime-accuracy-speed-temporal-v3",
   "datasets": [
     {
       "id": "ocr_accuracy_seed",
@@ -85,7 +85,30 @@
         "event_recall": 1.0,
         "single_frame_recall": 1.0
       }
+    },
+    "scheduling": {
+      "target_benchmark": "local_vision_request_scheduler",
+      "runtime": "mock",
+      "policy": "fifo_single_flight_with_queued_cancel",
+      "max_inflight": 1,
+      "queued_cancellation_dispatch": "first_and_latest",
+      "promotion_gate": false,
+      "gpu_latency_claim": false,
+      "repeatability_metadata_required": true,
+      "certified_run": {
+        "repeats": 10,
+        "burst_size": 8,
+        "work_ms": 1.0
+      }
     }
   },
-  "change_policy": "Changing a dataset or locked condition requires a deliberate benchmark review and a new lock_id. CH-T61 temporal holdout is frame-policy-only and must not add OCR anchors."
+  "change_policy": "Changing a dataset or locked condition requires a deliberate benchmark review and a new lock_id. CH-T61 temporal holdout is frame-policy-only and must not add OCR anchors.",
+  "artifacts": [
+    {
+      "id": "vision_scheduling_benchmark",
+      "path": "vision_scheduling_benchmark.py",
+      "sha256": "a5dbf7ac0104d74bb77560b4e1267ada226beecfe9f711836ca0c2a99d67335b",
+      "role": "CH-T85 deterministic local Vision scheduler harness"
+    }
+  ]
 }

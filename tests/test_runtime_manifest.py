@@ -59,6 +59,22 @@ def test_runtime_manifest_round_trip_records_metadata_and_hashes(tmp_path):
     validate_manifest(runtime, manifest)
 
 
+def test_runtime_manifest_requires_canonical_server_path(tmp_path):
+    runtime = tmp_path / "runtime"
+    _write_runtime(runtime)
+    manifest = build_manifest(
+        runtime,
+        server_version="fixture",
+        source_commit="fixture",
+        backend="cuda",
+        architecture="x64",
+    )
+    manifest["server"]["path"] = "ggml-cuda.dll"
+
+    with pytest.raises(ValueError, match="server path must be llama-server.exe"):
+        validate_manifest(runtime, manifest)
+
+
 @pytest.mark.parametrize(
     "mutate, expected",
     [
