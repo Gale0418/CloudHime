@@ -42,6 +42,17 @@ def test_msix_builder_prefers_x64_makeappx_for_large_payloads():
     assert "x64[\\\\/]makeappx" in script
     assert "Where-Object" in script
 
+def test_ci_msix_contract_runs_environment_isolated_launch_smoke():
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "packaging/test_clean_machine.ps1" in ci
+    assert "Environment-isolated release executable smoke" in ci
+    assert "-ExecutablePath $executable" in ci
+    assert "-LaunchWaitSeconds 3" in ci
+    assert ci.index("Environment-isolated release executable smoke") > ci.index("Prepare MSIX contract fixture")
+    assert ci.index("Environment-isolated release executable smoke") < ci.index("Build MSIX package")
+
 def test_ci_msix_signing_prefers_x64_signtool():
     root = Path(__file__).resolve().parents[1]
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -737,6 +748,41 @@ def test_wack_core_bridge_forwards_explicit_parameter_set_arguments():
     assert "'-AppCertPath', $AppCertPath" in script
     assert "$PSBoundParameters.GetEnumerator()" not in script
 
+
+def test_wack_core_bridge_reparses_one_parameter_set_without_ambiguity(tmp_path):
+    powershell = shutil.which("pwsh")
+    if not powershell:
+        pytest.skip("PowerShell 7 is required for WACK bridge validation")
+
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "packaging" / "test_wack.ps1"
+    report_path = tmp_path / "bridge-probe.xml"
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            str(script_path),
+            "-PackageFullName",
+            "CloudHime_1.0.0.0_x64__publisherid",
+            "-ReportOutputPath",
+            str(report_path),
+            "-AppCertPath",
+            str(tmp_path / "missing-appcert.exe"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "AmbiguousParameterSet" not in output
+    assert "WACK requires an elevated Administrator session" in output or "appcert.exe was not found" in output
+    assert not report_path.exists()
 
 def test_wack_report_reads_root_overall_result_attribute(tmp_path):
     powershell = _powershell_executable()
