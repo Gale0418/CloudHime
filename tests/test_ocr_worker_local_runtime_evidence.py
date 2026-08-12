@@ -67,8 +67,11 @@ class FakeOwnedRuntime:
     def profile_name(self):
         return "vision"
 
-    def start(self):
+    def start(self, *, cancel_event=None):
         self.start_calls += 1
+        if cancel_event is not None and cancel_event.is_set():
+            self._state = state("stopped")
+            return self._state
         self._state = self._start_state
         return self._state
 
