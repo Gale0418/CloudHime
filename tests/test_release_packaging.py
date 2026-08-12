@@ -252,3 +252,28 @@ def test_release_build_uses_explicit_bounded_manifest_timeout_and_resolvable_cle
     assert "goto :cleanup" in script[:failure_label_index]
     assert "goto :cleanup" in script[failure_label_index:cleanup_label_index]
     assert "exit /b 1" in script[cleanup_label_index:]
+
+
+def test_clean_machine_smoke_script_is_environment_isolated_and_exact_cleanup():
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "packaging" / "test_clean_machine.ps1"
+    assert script_path.is_file(), "clean-machine smoke script is missing"
+    script = script_path.read_text(encoding="utf-8")
+
+    for marker in (
+        "ProcessStartInfo",
+        "$processEnvironment.Clear()",
+        "SystemRoot",
+        "LOCALAPPDATA",
+        "PATH",
+        "LaunchWaitSeconds",
+        "Kill()",
+        "WaitForExit",
+        "Get-Process -Id",
+    ):
+        assert marker in script
+    assert "CLOUDHIME_PACKAGED_IMPORT_SMOKE" not in script
+    assert "Start-Process" not in script
+    assert "Ollama" not in script
+    assert "Conda" not in script
+    assert "python.exe" not in script.lower()

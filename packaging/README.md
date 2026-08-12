@@ -71,3 +71,11 @@ Run it only from an elevated Administrator PowerShell in an active interactive u
 These correspond to the Microsoft CLI forms appcert.exe reset followed by appcert.exe test -appxpackagepath <path> -reportoutputpath <path> or appcert.exe test -packagefullname <full-name> -reportoutputpath <path>.
 
 Installed mode does not install or clean up packages. The caller must keep the installation and cleanup try/finally flow from packaging/test_msix_install.ps1; WACK itself requires admin and an active session.
+
+## Environment-isolated packaged launch smoke
+
+After building the frozen release directory, run the optional launch gate with a scrubbed child-process environment:
+
+    pwsh -File packaging/test_clean_machine.ps1 -ExecutablePath .\dist\CloudHime\CloudHime.exe -LaunchWaitSeconds 20
+
+The gate keeps only required Windows and user AppData variables, removes inherited developer PATH entries, verifies GUI liveness, and cleans up the exact child PID. This is environment-isolated packaged evidence, not proof from a clean Windows VM or Store certification.
