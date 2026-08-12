@@ -130,10 +130,21 @@ def image_parts(image_path: Path, *, small_image_scale: float = 1.0) -> list[dic
     return [{"inline_data": {"mime_type": mime_type, "data": encoded}}]
 
 
+def _load_color_image(image_path: Path) -> np.ndarray | None:
+    """Decode image bytes without relying on Windows ANSI path handling."""
+
+    try:
+        encoded = np.frombuffer(image_path.read_bytes(), dtype=np.uint8)
+    except OSError:
+        return None
+    if encoded.size == 0:
+        return None
+    return cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+
 def build_windows_ocr_hint(worker: Any, image_path: Path) -> str:
     if worker is None:
         return ""
-    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    image = _load_color_image(image_path)
     if image is None:
         return ""
     try:
@@ -298,7 +309,7 @@ def run_smoke(
 
                 if japanese_rescue:
                     try:
-                        source_image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                        source_image = _load_color_image(image_path)
                         if source_image is not None and rescue_gate(
                             actual,
                             image_width=source_image.shape[1],

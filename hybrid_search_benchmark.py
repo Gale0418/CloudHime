@@ -146,6 +146,17 @@ def _line_to_item(line: Any, scale: float) -> dict[str, Any]:
     }
 
 
+def _load_image(image_path: Path) -> np.ndarray | None:
+    """Decode image bytes so Windows paths containing Unicode remain readable."""
+
+    try:
+        encoded = np.frombuffer(image_path.read_bytes(), dtype=np.uint8)
+    except OSError:
+        return None
+    if encoded.size == 0:
+        return None
+    return cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+
 def _prepare_image(image: np.ndarray, strategy: SearchStrategy) -> np.ndarray:
     height, width = image.shape[:2]
     scaled = cv2.resize(
@@ -194,7 +205,7 @@ def evaluate_strategy(
 
     for case in cases:
         image_path = root_path / str(case.get("sample_source", ""))
-        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        image = _load_image(image_path)
         if image is None:
             continue
         start = time.perf_counter()

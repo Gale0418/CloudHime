@@ -1,3 +1,6 @@
+import cv2
+import pytest
+
 from hybrid_search_benchmark import (
     SearchStrategy,
     TrialResult,
@@ -62,3 +65,24 @@ def test_should_not_prune_before_minimum_evidence():
         best_hits=8,
         min_cases=3,
     )
+
+
+def test_unicode_path_loader_uses_path_bytes_and_cv2_imdecode(monkeypatch):
+    class FakePath:
+        def read_bytes(self):
+            return b"encoded-image"
+
+    received = {}
+
+    def fake_decode(payload, flags):
+        received["payload"] = bytes(payload)
+        received["flags"] = flags
+        return "pixels"
+
+    monkeypatch.setattr("hybrid_search_benchmark.cv2.imread", lambda *args, **kwargs: pytest.fail("cv2.imread must not load Unicode paths"))
+    monkeypatch.setattr("hybrid_search_benchmark.cv2.imdecode", fake_decode)
+
+    from hybrid_search_benchmark import _load_image
+
+    assert _load_image(FakePath()) == "pixels"
+    assert received == {"payload": b"encoded-image", "flags": cv2.IMREAD_COLOR}

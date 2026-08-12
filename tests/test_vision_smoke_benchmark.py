@@ -401,3 +401,21 @@ def test_require_gpu_rejects_cpu_controls() -> None:
 
     with pytest.raises(ValueError, match="gpu_layers"):
         run_smoke(require_gpu=True, gpu_layers=0)
+
+def test_unicode_path_loader_uses_path_bytes_and_cv2_imdecode(monkeypatch):
+    class FakePath:
+        def read_bytes(self):
+            return b"encoded-image"
+
+    received = {}
+
+    def fake_decode(payload, flags):
+        received["payload"] = bytes(payload)
+        received["flags"] = flags
+        return "pixels"
+
+    monkeypatch.setattr(benchmark.cv2, "imread", lambda *args, **kwargs: pytest.fail("cv2.imread must not load Unicode paths"))
+    monkeypatch.setattr(benchmark.cv2, "imdecode", fake_decode)
+
+    assert benchmark._load_color_image(FakePath()) == "pixels"
+    assert received == {"payload": b"encoded-image", "flags": cv2.IMREAD_COLOR}
