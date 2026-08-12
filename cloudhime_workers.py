@@ -341,6 +341,8 @@ class OCRWorker(QObject):
         self._local_vision_reconfigure_generation = 0
         self._local_vision_reconfigure_waiting_for_load = False
         self._local_vision_cancel_event = threading.Event()
+        self._local_vision_lifecycle_lock = threading.RLock()
+        self._local_vision_lifecycle_generation = 0
         self._japanese_rescue_executor = ThreadPoolExecutor(max_workers=1)
         self._japanese_rescue_load_future = None
         self.japanese_rescue_runtime = JapaneseOCRRuntime(
@@ -775,8 +777,15 @@ class OCRWorker(QObject):
         else:
             OCRWorker._emit_japanese_rescue_status(self, "failed", runtime.last_error)
 
-    def _prepare_and_start_local_vision(self):
+    def _prepare_and_start_local_vision(self, *, start_generation=None):
         runtime = self.local_vision_runtime
+        cancel_event = getattr(self, "_local_vision_cancel_event", None)
+        start_is_stale = (
+            start_generation is not None
+            and start_generation != getattr(self, "_local_vision_lifecycle_generation", start_generation)
+        )
+        if start_is_stale or (cancel_event is not None and cancel_event.is_set()):
+            return runtime.stop()
         profile_name = getattr(self, "_local_runtime_profile", None)
         if profile_name is None:
             if getattr(self, "local_multimodal_enabled", False):
@@ -802,7 +811,6 @@ class OCRWorker(QObject):
             progress_callback = lambda phase, progress: OCRWorker._emit_local_vision_status(
                 self, "progress", f"{progress}|{phase}"
             )
-            cancel_event = getattr(self, "_local_vision_cancel_event", None)
             if profile is not None and profile.name == "text":
                 ensure_vision_model_assets(
                     assets,
@@ -816,7 +824,15 @@ class OCRWorker(QObject):
                     progress_callback=progress_callback,
                     cancel_event=cancel_event,
                 )
-        return runtime.start()
+        start_is_stale = (
+            start_generation is not None
+            and start_generation != getattr(self, "_local_vision_lifecycle_generation", start_generation)
+        )
+        if start_is_stale or (cancel_event is not None and cancel_event.is_set()):
+            return runtime.stop()
+        if cancel_event is None:
+            return runtime.start()
+        return runtime.start(cancel_event=cancel_event)
 
     def _owned_local_runtime_ready(self, runtime, state):
         if runtime is None or state is None or getattr(state, "name", "") != "ready":
@@ -1000,29 +1016,43 @@ class OCRWorker(QObject):
             OCRWorker._emit_local_vision_status(self, state.name, state.detail)
             return
 
-        pending_future = getattr(self, "_local_vision_load_future", None)
-        if pending_future is not None and not pending_future.done():
-            return
+        lifecycle_lock = getattr(self, "_local_vision_lifecycle_lock", None)
+        if lifecycle_lock is None:
+            lifecycle_lock = threading.RLock()
+            self._local_vision_lifecycle_lock = lifecycle_lock
 
-        OCRWorker._emit_local_vision_status(self, "starting", "")
         executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
         if executor is None:
             OCRWorker._emit_local_vision_status(self, "failed", "vision_executor_missing")
             return
         try:
-            cancel_event = getattr(self, "_local_vision_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.clear()
-            future = executor.submit(
-                lambda: OCRWorker._prepare_and_start_local_vision(self)
-            )
+            with lifecycle_lock:
+                pending_future = getattr(self, "_local_vision_load_future", None)
+                if pending_future is not None and not pending_future.done():
+                    return
+                OCRWorker._emit_local_vision_status(self, "starting", "")
+                cancel_event = getattr(self, "_local_vision_cancel_event", None)
+                start_generation = getattr(self, "_local_vision_lifecycle_generation", 0)
+                if cancel_event is not None:
+                    cancel_event.clear()
+                if (
+                    start_generation != getattr(
+                        self, "_local_vision_lifecycle_generation", start_generation
+                    )
+                    or (cancel_event is not None and cancel_event.is_set())
+                ):
+                    return
+                future = executor.submit(
+                    lambda: OCRWorker._prepare_and_start_local_vision(
+                        self, start_generation=start_generation
+                    )
+                )
+                self._local_vision_load_future = future
         except Exception as exc:
             self._local_vision_load_future = None
             self.local_multimodal_provider.update_runtime("", "", False)
             OCRWorker._emit_local_vision_status(self, "failed", f"{type(exc).__name__}: {exc}")
             return
-
-        self._local_vision_load_future = future
         future.add_done_callback(
             lambda completed: OCRWorker._on_local_vision_load_done(self, completed)
         )
@@ -1060,20 +1090,33 @@ class OCRWorker(QObject):
                 self._local_vision_load_future = None
     request_local_vision_load = request_local_vision_start
 
+    def _invalidate_local_vision_start(self):
+        lifecycle_lock = getattr(self, "_local_vision_lifecycle_lock", None)
+        if lifecycle_lock is None:
+            lifecycle_lock = threading.RLock()
+            self._local_vision_lifecycle_lock = lifecycle_lock
+        with lifecycle_lock:
+            self._local_vision_lifecycle_generation = (
+                getattr(self, "_local_vision_lifecycle_generation", 0) + 1
+            )
+            cancel_event = getattr(self, "_local_vision_cancel_event", None)
+            if cancel_event is not None:
+                cancel_event.set()
     def shutdown_local_vision_runtime(self):
-        cancel_event = getattr(self, "_local_vision_cancel_event", None)
-        if cancel_event is not None:
-            cancel_event.set()
-        runtime = getattr(self, "local_vision_runtime", None)
-        if runtime is not None:
-            runtime.stop()
-        executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
-        if executor is not None:
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                executor.shutdown(wait=False)
-
+        lifecycle_lock = getattr(self, "_local_vision_lifecycle_lock", None)
+        if lifecycle_lock is None:
+            lifecycle_lock = threading.RLock()
+            self._local_vision_lifecycle_lock = lifecycle_lock
+        with lifecycle_lock:
+            self._local_vision_lifecycle_generation = (
+                getattr(self, "_local_vision_lifecycle_generation", 0) + 1
+            )
+            cancel_event = getattr(self, "_local_vision_cancel_event", None)
+            if cancel_event is not None:
+                cancel_event.set()
+            runtime = getattr(self, "local_vision_runtime", None)
+            if runtime is not None:
+                runtime.stop()
     def _clear_translation_memories(self):
         """清除可能把舊語言、prompt 或影像結果帶回翻譯流程的 worker 記憶。"""
         for memory_name in (
@@ -1240,10 +1283,7 @@ class OCRWorker(QObject):
     def set_gemma_enabled(self, enabled):
         self.use_gemma_translation = bool(enabled)
         if not self.use_gemma_translation:
-            for name in ("_local_vision_cancel_event",):
-                cancel_event = getattr(self, name, None)
-                if cancel_event is not None:
-                    cancel_event.set()
+            OCRWorker._invalidate_local_vision_start(self)
         self._refresh_translation_registry()
 
     def set_gemma_auto_switch_enabled(self, enabled):
@@ -1352,9 +1392,7 @@ class OCRWorker(QObject):
     def set_local_multimodal_config(self, *, enabled, base_url, model_name, timeout_seconds, cpu_only=None):
         self.local_multimodal_enabled = bool(enabled)
         if not self.local_multimodal_enabled:
-            cancel_event = getattr(self, "_local_vision_cancel_event", None)
-            if cancel_event is not None:
-                cancel_event.set()
+            OCRWorker._invalidate_local_vision_start(self)
         self.local_multimodal_base_url = (base_url or "").rstrip("/")
         self.local_multimodal_model = (model_name or "").strip()
         self.local_multimodal_timeout_seconds = max(1, int(timeout_seconds))
