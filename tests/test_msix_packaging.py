@@ -426,6 +426,7 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             (fixture / "_internal" / "_llama_cpp.cp310-win_amd64.pyd", b"binding", "in-process llama"),
             (fixture / "_internal" / "llama_cpp" / "__init__.py", b"binding", "in-process llama"),
             (fixture / "_internal" / "llama.dll", b"duplicate", "outside the runtime directory"),
+            (fixture / "_internal" / "llama-server.exe", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "ggml-extra.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "cudart64_12.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "runtime" / "llama.dll", b"", "required llama/ggml runtime"),
