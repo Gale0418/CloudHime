@@ -19,6 +19,7 @@ def _is_duplicate_runtime_binary(entry):
     )
 
 ddgs_engine_hiddenimports = collect_submodules("ddgs.engines")
+japanese_ocr_hiddenimports = ["meikiocr", "meikiocr.ocr", "onnxruntime"]
 fake_useragent_datas = collect_data_files("fake_useragent")
 certifi_datas = collect_data_files("certifi")
 
@@ -28,7 +29,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('assets', 'assets'), ('dictionary.json', '.'), ('LICENSE', '.'), ('THIRD_PARTY_NOTICES.md', '.'), ('build\\runtime', 'runtime'), ('build\\provenance', 'provenance'), *fake_useragent_datas, *certifi_datas],
-    hiddenimports=['winrt.windows.media.ocr', 'winrt.windows.globalization', 'winrt.windows.graphics.imaging', 'winrt.windows.storage.streams', 'ddgs', 'ddgs.ddgs', 'lxml.html', 'lxml.etree', *ddgs_engine_hiddenimports],
+    hiddenimports=['winrt.windows.media.ocr', 'winrt.windows.globalization', 'winrt.windows.graphics.imaging', 'winrt.windows.storage.streams', 'ddgs', 'ddgs.ddgs', 'lxml.html', 'lxml.etree', *ddgs_engine_hiddenimports, *japanese_ocr_hiddenimports],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
