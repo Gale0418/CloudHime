@@ -11,6 +11,12 @@ set "DIST_DIR=dist\%APP_NAME%"
 set "ZIP_FILE=dist\%APP_NAME%.zip"
 set "RUNTIME_STAGE=build\runtime"
 set "BUILD_EXIT_CODE=0"
+set "PYTHON=py -3.10-64"
+%PYTHON% -c "import platform, sys; ok = sys.implementation.name == 'cpython' and sys.version_info[:2] == (3, 10) and sys.platform == 'win32' and platform.machine().lower() in ('amd64', 'x86_64'); sys.exit('Python 3.10 x64 is required for the production release build.') if not ok else None"
+if errorlevel 1 (
+  echo Python 3.10 x64 is required for the production release build.
+  goto :failure
+)
 
 if not exist "runtime\llama-server.exe" (
   echo Missing runtime\llama-server.exe
@@ -78,20 +84,20 @@ if not defined RUNTIME_COMMIT (
   echo Unable to determine the runtime source commit.
   goto :failure
 )
-python packaging\runtime_manifest.py --runtime-dir "%RUNTIME_STAGE%" --output "%RUNTIME_STAGE%\runtime-manifest.json" --source-commit "%RUNTIME_COMMIT%" --backend "cuda" --architecture "x64" --version-timeout 120
+%PYTHON% packaging\runtime_manifest.py --runtime-dir "%RUNTIME_STAGE%" --output "%RUNTIME_STAGE%\runtime-manifest.json" --source-commit "%RUNTIME_COMMIT%" --backend "cuda" --architecture "x64" --version-timeout 120
 if errorlevel 1 (
   echo Runtime manifest generation failed. The staged llama-server must pass --version.
   goto :failure
 )
 rem CloudHime ships a lightweight Windows OCR build.
 rem Optional OCR backends are source-mode only; packaged builds do not install Python packages.
-python -m PyInstaller --version >nul 2>&1
+%PYTHON% -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
-  echo PyInstaller is not installed. Run "python -m pip install pyinstaller -r requirements.txt" first.
+  echo PyInstaller is not installed. Run "py -3.10-64 -m pip install pyinstaller -r requirements-lock-win-amd64-py310.txt" first.
   goto :failure
 )
 
-python -c "import ddgs, lxml, primp, fake_useragent, certifi" >nul 2>&1
+%PYTHON% -c "import ddgs, lxml, primp, fake_useragent, certifi" >nul 2>&1
 if errorlevel 1 (
   echo Missing DDGS runtime dependencies. Install requirements.txt before building the packaged release.
   goto :failure
@@ -107,11 +113,18 @@ if errorlevel 1 (
   goto :failure
 )
 echo Building %APP_NAME% release...
-python -m PyInstaller --noconfirm --clean CloudHime.spec
+%PYTHON% -m PyInstaller --noconfirm --clean CloudHime.spec
 if errorlevel 1 (
   goto :failure
 )
 
+set "CLOUDHIME_PACKAGED_IMPORT_SMOKE=1"
+"%DIST_DIR%\CloudHime.exe" >nul 2>&1
+if errorlevel 1 (
+  echo Frozen DDGS import smoke failed.
+  goto :failure
+)
+set "CLOUDHIME_PACKAGED_IMPORT_SMOKE="
 powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%"
 if errorlevel 1 (
   echo Release preflight failed.

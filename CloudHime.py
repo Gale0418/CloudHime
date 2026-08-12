@@ -152,7 +152,26 @@ from cloudhime_workers import OCRWorker
 
 from cloudhime_ui import Controller, OverlayWindow
 
+PACKAGED_IMPORT_SMOKE_ENV = "CLOUDHIME_PACKAGED_IMPORT_SMOKE"
+PACKAGED_IMPORT_SMOKE_MODULES = (
+    "ddgs",
+    "lxml",
+    "primp",
+    "fake_useragent",
+    "certifi",
+)
+
+
+def run_packaged_import_smoke():
+    if os.environ.get(PACKAGED_IMPORT_SMOKE_ENV) != "1":
+        return False
+    for module_name in PACKAGED_IMPORT_SMOKE_MODULES:
+        __import__(module_name)
+    return True
+
 if __name__ == "__main__":
+    if run_packaged_import_smoke():
+        sys.exit(0)
     startup_log("main start")
     app = QApplication(sys.argv)
     

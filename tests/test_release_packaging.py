@@ -158,6 +158,43 @@ def test_release_bundle_includes_knowledge_search_dependency_and_notice():
     for dependency in ("click", "primp", "httpx", "fake-useragent", "certifi"):
         assert dependency in notices
 
+def test_release_build_runs_frozen_dependency_smoke_before_preflight():
+    root = Path(__file__).resolve().parents[1]
+    build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
+    app_source = (root / "CloudHime.py").read_text(encoding="utf-8")
+
+    smoke_env = "CLOUDHIME_PACKAGED_IMPORT_SMOKE"
+    required_modules = ("ddgs", "lxml", "primp", "fake_useragent", "certifi")
+    assert smoke_env in app_source
+    assert "run_packaged_import_smoke" in app_source
+    smoke_call_index = app_source.index("if run_packaged_import_smoke():")
+    assert smoke_call_index < app_source.index("QApplication(sys.argv)")
+    for module_name in required_modules:
+        assert module_name in app_source
+
+    smoke_index = build_script.index('"%DIST_DIR%\\CloudHime.exe"')
+    preflight_index = build_script.index("packaging\\verify_release_dist.ps1")
+    assert smoke_index < preflight_index
+    assert f'set "{smoke_env}=1"' in build_script
+    assert f'set "{smoke_env}="' in build_script[smoke_index:]
+
+def test_release_build_uses_locked_python_major_minor_for_packaging_steps():
+    root = Path(__file__).resolve().parents[1]
+    build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
+
+    assert 'set "PYTHON=py -3.10-64"' in build_script
+    python_commands = [
+        line.strip()
+        for line in build_script.splitlines()
+        if line.strip().startswith("python ")
+    ]
+    assert python_commands == []
+    assert "%PYTHON% -m PyInstaller" in build_script
+    assert "%PYTHON% packaging\\runtime_manifest.py" in build_script
+    assert "%PYTHON% -c \"import platform, sys" in build_script
+    normalized_script = build_script.replace("\r\n", "\n")
+    assert 'set "BUILD_EXIT_CODE=0"\nset "PYTHON=py -3.10-64"' in normalized_script
+
 def test_release_build_uses_the_spec_as_packaging_source_of_truth():
     root = Path(__file__).resolve().parents[1]
     build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
@@ -173,7 +210,7 @@ def test_release_build_runs_preflight_before_creating_zip():
     root = Path(__file__).resolve().parents[1]
     build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
 
-    pyinstaller_index = build_script.index("python -m PyInstaller")
+    pyinstaller_index = build_script.index("%PYTHON% -m PyInstaller --noconfirm --clean CloudHime.spec")
     preflight_index = build_script.index("packaging\\verify_release_dist.ps1")
     zip_index = build_script.index("Compress-Archive")
     assert pyinstaller_index < preflight_index < zip_index
@@ -186,7 +223,7 @@ def test_release_build_stages_dependency_provenance_before_pyinstaller_and_specs
     spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
 
     prepare = build_script.index("packaging\\prepare_release_provenance.ps1")
-    pyinstaller = build_script.index("python -m PyInstaller --noconfirm")
+    pyinstaller = build_script.index("%PYTHON% -m PyInstaller --noconfirm")
     assert prepare < pyinstaller
     assert "provenance" in spec
     assert (root / "packaging" / "prepare_release_provenance.ps1").is_file()
