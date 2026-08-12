@@ -360,16 +360,16 @@ if ($inProcessLlamaBindings.Count -gt 0) {
 }
 
 $runtimePrefix = ([System.IO.Path]::GetFullPath($runtimeRoot).TrimEnd("\", "/")) + [System.IO.Path]::DirectorySeparatorChar
-$managedRuntimeLibraryNames = @($runtimeFiles | Where-Object { $_ -like "*.dll" })
-$duplicateRuntimeLibraries = @($files | Where-Object {
-    $isManagedRuntimeLibrary = ($managedRuntimeLibraryNames -contains $_.Name) -or
-        $_.Name -ieq "llama.dll" -or $_.Name -like "ggml*.dll"
+$managedRuntimeFileNames = @($runtimeFiles)
+$duplicateRuntimeFiles = @($files | Where-Object {
+    $isManagedRuntimeFile = ($managedRuntimeFileNames -contains $_.Name) -or
+        $_.Name -ieq "llama-server.exe" -or $_.Name -ieq "llama.dll" -or $_.Name -like "ggml*.dll"
     $isOutsideRuntime = -not $_.FullName.StartsWith($runtimePrefix, [System.StringComparison]::OrdinalIgnoreCase)
-    $isManagedRuntimeLibrary -and $isOutsideRuntime
+    $isManagedRuntimeFile -and $isOutsideRuntime
 })
-if ($duplicateRuntimeLibraries.Count -gt 0) {
-    $names = $duplicateRuntimeLibraries | Select-Object -ExpandProperty FullName
-    throw "Release dist contains managed runtime libraries outside the runtime directory: $($names -join ', ')"
+if ($duplicateRuntimeFiles.Count -gt 0) {
+    $names = $duplicateRuntimeFiles | Select-Object -ExpandProperty FullName
+    throw "Release dist contains managed runtime files outside the runtime directory: $($names -join ', ')"
 }
 if ($UnpackedMsix) {
     $expectedUnpackedMetadata = @("AppxManifest.xml", "AppxBlockMap.xml")
