@@ -149,6 +149,8 @@ def validate_manifest(runtime_dir: str | Path, manifest: dict[str, Any]) -> None
             raise ValueError(f"runtime manifest hash or size mismatch: {relative}")
 
     server_path = str(server.get("path", "")).replace("\\", "/")
+    if server_path.casefold() != SERVER_PATH.casefold():
+        raise ValueError("runtime manifest server path must be llama-server.exe")
     if server_path not in expected:
         raise ValueError("runtime manifest server path is not listed in files")
 
