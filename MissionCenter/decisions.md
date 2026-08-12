@@ -508,3 +508,10 @@
 - 現行 provider 預設 `temperature=0.2`、`repeat_penalty=1.15` 得到 avg match `0.9492087912`、avg latency `1788.176ms`；不應與舊紀錄的 `0.9892` 直接比較。
 - 將 sampling 改為歷史 `temperature=0.1` 並省略 `repeat_penalty`，實機得到 `0.9892087912`／`1697.840ms`；改成現行 payload 可表達的 `temperature=0.1`／`repeat_penalty=1.0`，再次得到 `0.9892087912`／`1706.875ms`。兩次均 7/7 images、25/25 cases、line `22/25`、GPU。
 - 結論：舊基準差異已由 sampling drift 重現並定位，不是 manifest 漂移；先不直接把參數 promotion 到所有翻譯路徑，需另做 source-disjoint local text translation paired regression，並確認 cache／翻譯品質後才改產品預設。
+
+
+## 2026-08-13：CH-T64 同機短命自簽 MSIX gate
+
+- 以目前 frozen dist/CloudHime-0.1.0.0-x64.msix 的隔離副本執行管理員互動 session gate；短命 CN=CloudHime Development 憑證只在驗證期間存在，結束後從 LocalMachine Root、CurrentUser My 與 CurrentUser TrustedPeople 移除。
+- x64 SignTool /pa /all 驗章、Add-AppxPackage、AUMID CloudHime_4nvnqyjwyamgj!CloudHime 啟動、3 秒 liveness、卸載與 package/certificate cleanup 全部成功；正式 dist 未覆寫。
+- 這證明本機開發自簽 sideload lifecycle 可重跑，不代表 Store 代簽、Store certification、clean Windows VM 或 GPU onboarding 已完成。
