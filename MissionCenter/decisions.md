@@ -856,3 +856,10 @@
 - 啟動鎖定 finding 有效：原本 LocalVisionRuntimeLease.start() 持有 coordinator lock 直到模型暖身完成，暖身中的 stop 無法及時取消。修正為 lock 外呼叫 runtime.start()，entry 以 starting 計數保護，完成時重新確認 entry／lease；acquire 在 startup 中 fail-closed，release 與 stop 保留清理責任。新增 blocked-start regression，修正提交 107ba10。
 - 驗證：受影響 runtime／worker／vision suite 263 passed, 1 skipped in 7.30s；compileall 與 git diff --check Pass。post-fix CodeRabbit 實際回報 rate_limit、waitTime=4 minutes，沒有 findings result，不能宣稱 review 通過。
 - 邊界：未執行真實 GPU／GGUF latency、完整漫畫 holdout、clean-machine、Store submission、WACK；CodeRabbit 需待免費額度恢復後再複審。
+## 2026-08-14：CH-T34/T35 locked GPU Vision paired benchmark
+
+- 資料 gate：使用 records/private/.private_vision_owner_review_locked.json 的 4 個主人已確認案例；immutable preflight 與 benchmark lock 均通過。pending packet 另有 4 案但 owner_expected 填寫數為 0，因此沒有拿它做 ground truth 或 promotion evidence。
+- 條件固定：baseline=text、candidate=vision；manifest、model/runtime hash、prompt、sampling、context、GPU mode 與 target 相同；各條件 20 records（4 cases × 5 repeats），先跑 baseline_then_candidate，再跑 candidate_then_baseline。
+- 結果：兩種順序的 quality 都是 baseline 0.239488、candidate 0.271208；4/4 個案無 regression，coverage/nonempty=1.0、GPU/local provider、residual=0，quality promotion gate=true。兩種順序合併平均 total：baseline 958.142ms、candidate 6220.130ms，candidate 約 6.492x 慢；candidate decode 平均約 4502.604ms，確認瓶頸在 Vision generation/decode 而不是 OCR。
+- 決策：Vision-first 目前是品質候選，但速度 gate 不成立，不改 production default、不宣稱全域最佳。下一個受控實驗只研究 decode/request budget 或真正多請求排程，必須沿用同一 quality／case-regression gate；不再用 OCR threshold 猜測解法。
+- 實機收尾：GPU 回到 0%／約 1812 MiB used，沒有 CloudHime 或 llama-server residual。未完成 Store/WACK，亦未把 pending owner annotation 自動填入。
