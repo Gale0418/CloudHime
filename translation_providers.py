@@ -1049,6 +1049,9 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self._translation_cache.clear()
 
     def close(self) -> None:
+        # Closing is terminal for this provider instance; never advertise stale readiness.
+        self.enabled = False
+        self._runtime_ready = False
         self._request_scheduler.close()
         self._translation_cache.clear()
         self._last_request_metrics = {}

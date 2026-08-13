@@ -165,6 +165,7 @@ def test_local_multimodal_provider_close_rejects_new_requests():
     provider = make_provider()
 
     provider.close()
+    assert provider.available() is False
 
     with pytest.raises(RuntimeError, match="local_request_scheduler_closed"):
         provider._request_chat_completion({})
