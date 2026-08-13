@@ -621,3 +621,10 @@
 - TDD RED：availability parameterized regression 4 failed, 35 deselected；修正後四個 API 在組 prompt／發 request 前統一回報 ValueError("local_multimodal_unavailable")。
 - 驗證：targeted 4 passed, 35 deselected in 0.86s；provider/runtime/OCR/vision affected suite 182 passed in 6.96s；ci/test_groups.json 全量 998 passed, 2 skipped in 85.39s；compileall exit 0。
 - 本階段沒有啟動真實 GGUF／GPU／llama-server；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。
+
+## 2026-08-13：CH-E9 stale local vision callback generation gate
+
+- TDD 先重現 shutdown 後 late-ready callback：RED 1 failed, 78 deselected；修正後 stale callback 會停止 late-created runtime、清空 provider 並阻止 registry refresh。
+- 追加 superseded-future regression：RED 1 failed, 1 passed, 78 deselected；修正以每個 future 綁定 lifecycle generation，且只有仍是 current future 才能清理；舊 future 完成時不會停止新 runtime。
+- 驗證：兩個 lifecycle targeted 2 passed, 78 deselected in 0.97s；worker/runtime/OCR/coordinator affected suite 224 passed, 1 skipped in 6.48s；ci/test_groups.json 全量 1000 passed, 2 skipped in 77.65s；compileall exit 0。
+- 本階段沒有啟動真實 GGUF／GPU／llama-server；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。

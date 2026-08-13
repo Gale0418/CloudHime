@@ -1067,6 +1067,11 @@ class OCRWorker(QObject):
                         self, start_generation=start_generation
                     )
                 )
+                self._local_vision_load_generation = start_generation
+                try:
+                    future._cloudhime_local_vision_generation = start_generation
+                except Exception:
+                    pass
                 self._local_vision_load_future = future
         except Exception as exc:
             self._local_vision_load_future = None
@@ -1096,6 +1101,22 @@ class OCRWorker(QObject):
                 f"{type(exc).__name__}: {exc}",
             )
         else:
+            load_generation = getattr(
+                future,
+                "_cloudhime_local_vision_generation",
+                getattr(self, "_local_vision_load_generation", None),
+            )
+            current_generation = getattr(
+                self, "_local_vision_lifecycle_generation", load_generation
+            )
+            if load_generation is not None and current_generation != load_generation:
+                if getattr(self, "_local_vision_load_future", None) is not future:
+                    return
+                if getattr(state, "name", "") == "ready":
+                    OCRWorker._stop_local_vision_runtime(self)
+                self.local_multimodal_provider.update_runtime("", "", False)
+                OCRWorker._emit_local_vision_status(self, "stopped", "stale_start")
+                return
             ready = state.name == "ready" and OCRWorker._owned_local_runtime_ready(
                 self, getattr(self, "local_vision_runtime", None), state
             )
@@ -1113,6 +1134,7 @@ class OCRWorker(QObject):
         finally:
             if getattr(self, "_local_vision_load_future", None) is future:
                 self._local_vision_load_future = None
+                self._local_vision_load_generation = None
     request_local_vision_load = request_local_vision_start
 
     def _invalidate_local_vision_start(self):
