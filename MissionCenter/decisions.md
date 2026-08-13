@@ -723,3 +723,9 @@
 - 同一個 active lease 重複呼叫 stop 時，現在只會觸發一次底層 runtime.stop()；後續呼叫回傳既有 state，不重複操作 process。
 - TDD：新增 idempotence regression 先得到 `1 failed, 7 deselected`（stop_calls=2）；修正後 coordinator suite `8 passed in 0.12s`，compileall／diff-check Pass。
 - 此為 source-level lifecycle hardening；未做真實 llama-server、GPU、GGUF、clean-machine、Store/WACK 驗證；CodeRabbit 仍在上一輪冷卻，未送本輪 review。
+## 2026-08-14：Local multimodal close readiness hardening
+
+- Root cause：`LocalMultimodalProvider.close()` 原先只關閉 request scheduler、cache 與 metrics，沒有撤銷 `enabled`／`_runtime_ready`；cleanup 後 `available()` 仍可回傳 true，造成上層誤把已停止的 Vision provider 當成可用。
+- 修正：close 對 provider instance 採 terminal semantics，先清除 enabled／runtime-ready，再關閉 scheduler 並清空本地狀態；不改正常 ready、HTTP payload、FIFO 或 fallback 行為。
+- TDD：新增 close readiness regression 先得到 `1 failed, 21 deselected`；修正後 provider suite `22 passed in 0.82s`，受影響 worker cleanup/runtime `28 passed, 53 deselected in 1.25s`；compileall／diff-check Pass。
+- Gemini bridge 本輪唯讀請求實際兩次均回報 `attempt to write a readonly database`，未宣稱 Gemini review 成功；本輪未執行 GPU／GGUF／clean-machine／Store/WACK 驗證。
