@@ -102,6 +102,8 @@ class LocalVisionRuntimeCoordinator:
     def stop(self, lease):
         with self._lock:
             entry = self._entry_for(lease)
+            if entry.stopped:
+                return getattr(entry.runtime, "state", getattr(entry.runtime, "_state", None))
             if entry.leases == 1:
                 result = entry.runtime.stop()
                 entry.stopped = True
