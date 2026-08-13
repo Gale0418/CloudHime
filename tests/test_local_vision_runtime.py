@@ -427,6 +427,44 @@ def test_stop_interrupts_slow_cold_start(fake_assets):
     assert proc.terminate_calls == 1
 
 
+def test_stop_cannot_be_overwritten_by_ready_publish(fake_assets):
+    """stop() 與 ready 發布競態時，不得留下已停止卻仍回傳 ready 的假狀態。"""
+    proc = RunningProcess()
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    runtime._process = proc
+
+    class ReadyStateRace:
+        def __init__(self):
+            self.name_reads = 0
+            self.detail = ""
+            self.base_url = "http://127.0.0.1:43123/v1"
+            self.mode = "gpu"
+
+        @property
+        def name(self):
+            self.name_reads += 1
+            if self.name_reads == 2:
+                runtime.stop()
+            return "ready"
+
+    ready_state = ReadyStateRace()
+    runtime._try_spawn = lambda *_args, **_kwargs: ready_state
+
+    returned = runtime.start()
+
+    assert returned.name == "stopped"
+    assert runtime._state.name == "stopped"
+    assert runtime.owned_process is None
+    assert proc.terminate_calls == 1
+
+
 def test_start_reports_monotonic_warmup_progress(fake_assets):
     updates = []
     popen = FakePopen([RunningProcess()])
