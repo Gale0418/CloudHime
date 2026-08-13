@@ -167,24 +167,44 @@ jobs:
           $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
           $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
           New-Item -ItemType Directory -Force -Path $dummyDist, $outputDir | Out-Null
-          $launchWaitSeconds = 3
-          $sleeperMilliseconds = ($launchWaitSeconds + 5) * 1000
-          $sleeperSource = "using System.Threading; public static class Program { [System.STAThread] public static void Main() { Thread.Sleep($sleeperMilliseconds); } }"
-          $sleeperPath = Join-Path $dummyDist "CloudHime.exe"
-          $sleeperSourcePath = Join-Path $dummyDist "CloudHime.cs"
-          [IO.File]::WriteAllText($sleeperSourcePath, $sleeperSource, [Text.UTF8Encoding]::new($false))
+          $launchWaitSeconds = 5
+          $probeMilliseconds = ($launchWaitSeconds + 5) * 1000
+          $probeSource = @(
+          'using System;'
+          'using System.Threading;'
+          'public static class Program {'
+          '    [System.STAThread]'
+          '    public static int Main() {'
+          '        string systemRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? "";'
+          '        string expectedPath = systemRoot + @"\System32;" + systemRoot;'
+          '        if (String.IsNullOrWhiteSpace(systemRoot)) return 11;'
+          '        if (Environment.GetEnvironmentVariable("WINDIR") != systemRoot) return 12;'
+          '        if (Environment.GetEnvironmentVariable("PATH") != expectedPath) return 13;'
+          '        string[] forbidden = new[] { "PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "OLLAMA_HOST" };'
+          '        foreach (string name in forbidden) {'
+          '            if (!String.IsNullOrEmpty(Environment.GetEnvironmentVariable(name))) return 14;'
+          '        }'
+          '        Thread.Sleep(__PROBE_MS__);'
+          '        return 0;'
+          '    }'
+          ' }'
+          ) -join [Environment]::NewLine
+          $probeSource = $probeSource.Replace("__PROBE_MS__", $probeMilliseconds.ToString())
+          $probePath = Join-Path $dummyDist "CloudHime.exe"
+          $probeSourcePath = Join-Path $dummyDist "CloudHime.cs"
+          [IO.File]::WriteAllText($probeSourcePath, $probeSource, [Text.UTF8Encoding]::new($false))
           $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
           if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) {
             throw "Windows C# compiler was not found: $csc"
           }
-          & $csc /nologo /target:winexe /out:$sleeperPath $sleeperSourcePath
+          & $csc /nologo /target:winexe /out:$probePath $probeSourcePath
           if ($LASTEXITCODE -ne 0) {
-            throw "MSIX fixture sleeper compilation failed with code $LASTEXITCODE."
+            throw "MSIX fixture environment probe compilation failed with code $LASTEXITCODE."
           }
-          if (-not (Test-Path -LiteralPath $sleeperPath -PathType Leaf)) {
-            throw "MSIX fixture sleeper executable was not created."
+          if (-not (Test-Path -LiteralPath $probePath -PathType Leaf)) {
+            throw "MSIX fixture environment probe executable was not created."
           }
-          Remove-Item -LiteralPath $sleeperSourcePath -Force
+          Remove-Item -LiteralPath $probeSourcePath -Force
           $internalRoot = Join-Path $dummyDist "_internal"
           New-Item -ItemType Directory -Force -Path (Join-Path $internalRoot "assets"), (Join-Path $internalRoot "runtime") | Out-Null
           foreach ($logoFile in @("cloudhime_logo.png", "cloudhime_logo_44.png", "cloudhime_logo_50.png", "cloudhime_logo_150.png")) {
@@ -254,7 +274,7 @@ jobs:
         shell: pwsh
         run: |
           $executable = Join-Path (Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist") "CloudHime.exe"
-          pwsh -NoLogo -NoProfile -File packaging/test_clean_machine.ps1 -ExecutablePath $executable -LaunchWaitSeconds 3
+          pwsh -NoLogo -NoProfile -File packaging/test_clean_machine.ps1 -ExecutablePath $executable -LaunchWaitSeconds 5
       - name: Build MSIX package
         timeout-minutes: 10
         shell: pwsh
