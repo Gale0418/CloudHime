@@ -863,3 +863,9 @@
 - 結果：兩種順序的 quality 都是 baseline 0.239488、candidate 0.271208；4/4 個案無 regression，coverage/nonempty=1.0、GPU/local provider、residual=0，quality promotion gate=true。兩種順序合併平均 total：baseline 958.142ms、candidate 6220.130ms，candidate 約 6.492x 慢；candidate decode 平均約 4502.604ms，確認瓶頸在 Vision generation/decode 而不是 OCR。
 - 決策：Vision-first 目前是品質候選，但速度 gate 不成立，不改 production default、不宣稱全域最佳。下一個受控實驗只研究 decode/request budget 或真正多請求排程，必須沿用同一 quality／case-regression gate；不再用 OCR threshold 猜測解法。
 - 實機收尾：GPU 回到 0%／約 1812 MiB used，沒有 CloudHime 或 llama-server residual。未完成 Store/WACK，亦未把 pending owner annotation 自動填入。
+## 2026-08-14：CodeRabbit release-during-start finding disposition
+
+- 初輪 review：base 5f03146，CodeRabbit 回報 2 findings。release race major 與測試 coverage minor 均有效：release 在 startup 阻塞時會讓 entry 留在 zero leases／stopped 狀態，後續 acquire 永久收到 shared_runtime_stopped。
+- TDD：新增 release-during-blocked-start regression，RED 為 1 failed；修正 _finish_start 在 zero leases 且 startup 結束時即使 entry 已 stopped 也必須移除，保留 release 的立即 cancellation；lifecycle targeted 3 passed，受影響 QT_QPA_PLATFORM=offscreen suite 264 passed、1 skipped in 6.07s；compileall／git diff --check Pass；commit 5dce3fe。
+- Post-fix review：以 d29e5bc 為 base 的 CodeRabbit review_completed、findings=0，涵蓋 local_runtime_coordinator.py 與 tests/test_local_vision_runtime.py 及 repository contract context。
+- 邊界：未由此 review 宣稱 GPU quality／latency、Store、WACK 或 clean-machine；Vision paired benchmark 的速度 promotion 仍維持拒絕。
