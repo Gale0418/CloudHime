@@ -49,7 +49,7 @@ def test_ci_msix_contract_runs_environment_isolated_launch_smoke():
     assert "packaging/test_clean_machine.ps1" in ci
     assert "Environment-isolated release executable smoke" in ci
     assert "-ExecutablePath $executable" in ci
-    assert "-LaunchWaitSeconds 3" in ci
+    assert "-LaunchWaitSeconds 5" in ci
     assert ci.index("Environment-isolated release executable smoke") > ci.index("Prepare MSIX contract fixture")
     assert ci.index("Environment-isolated release executable smoke") < ci.index("Build MSIX package")
 
@@ -224,20 +224,24 @@ def test_ci_workflow_parses_as_yaml():
 
     assert workflow["jobs"]["msix-contract"]
 
-def test_ci_msix_fixture_uses_a_sleeper_executable_with_liveness_margin():
+def test_ci_msix_fixture_uses_an_environment_probe_with_liveness_margin():
     root = Path(__file__).resolve().parents[1]
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     fixture = ci[ci.index("      - name: Prepare MSIX contract fixture"):ci.index("      - name: Build MSIX package")]
     install = ci[ci.index("      - name: Install and uninstall MSIX package"):]
 
     assert "cmd.exe" not in fixture
-    assert "$launchWaitSeconds = 3" in fixture
-    assert "$sleeperMilliseconds = ($launchWaitSeconds + 5) * 1000" in fixture
+    assert "$launchWaitSeconds = 5" in fixture
+    assert "$probeMilliseconds = ($launchWaitSeconds + 5) * 1000" in fixture
     assert r"Microsoft.NET\Framework64\v4.0.30319\csc.exe" in fixture
     assert '/target:winexe' in fixture
-    assert '& $csc /nologo /target:winexe /out:$sleeperPath $sleeperSourcePath' in fixture
-    assert "Thread.Sleep($sleeperMilliseconds);" in fixture
-    assert 'Remove-Item -LiteralPath $sleeperSourcePath -Force' in fixture
+    assert '& $csc /nologo /target:winexe /out:$probePath $probeSourcePath' in fixture
+    assert "Environment.GetEnvironmentVariable" in fixture
+    for forbidden in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "OLLAMA_HOST"):
+        assert forbidden in fixture
+    assert "Thread.Sleep(__PROBE_MS__);" in fixture
+    assert '$probeSource = $probeSource.Replace("__PROBE_MS__", $probeMilliseconds.ToString())' in fixture
+    assert 'Remove-Item -LiteralPath $probeSourcePath -Force' in fixture
     assert "-LaunchWaitSeconds 3" in install
 
 

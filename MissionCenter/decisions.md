@@ -875,3 +875,10 @@
 - 驗證環境：QT_QPA_PLATFORM=offscreen、Windows 管理員程序、每組獨立 basetemp；沒有刪除既有 .tmp／.pytest 目錄。
 - 結果：core 404 passed, 2 skipped in 113.19s；OCR 242 passed in 16.62s；runtime 153 passed, 2 skipped in 6.79s；UI 54 passed in 2.34s；benchmarks 179 passed in 7.74s；compileall 與 git diff --check 通過。
 - 判定：本輪 CI 宣告的五組測試均通過；先前並行普通權限執行的 WinError 5 是 pytest basetemp 清理環境問題，不能拿來當產品失敗或成功證據。這次結果仍不涵蓋新的 GPU 品質／延遲 benchmark、GGUF 下載、clean-machine、Store submission 或 WACK。
+
+## 2026-08-14：CI clean-machine environment probe hardening
+
+- Root cause：packaging/test_clean_machine.ps1 已經用 ProcessStartInfo.EnvironmentVariables.Clear() 建立隔離環境，但 GitHub MSIX fixture 只是編譯 sleeper；它沒有讀取環境，因此無法證明 Python／Conda／Ollama 等污染變數沒有洩漏。另發現 workflow 傳入 -LaunchWaitSeconds 3，與 script 的 [ValidateRange(5, 120)] 不相容，會在啟動前直接失敗。
+- 修正：將 .github/workflows/ci.yml fixture 改為自驗證 C# probe，檢查 SystemRoot、WINDIR、精確 PATH，並拒絕 PYTHONHOME、PYTHONPATH、VIRTUAL_ENV、CONDA_PREFIX、OLLAMA_HOST；將 clean-machine smoke 呼叫改為 5 秒，保留 MSIX install smoke 原本的 3 秒。tests/test_msix_packaging.py 改為鎖定 probe contract。
+- TDD／驗證：新增 regression 先 RED（1 failed）；修正後 targeted 1 passed。中途 YAML indentation 造成 workflow parser RED（1 failed），修正後 CI fixture 原始 block 實際編譯、啟動與清理通過，父程序刻意帶入污染環境仍通過；release／MSIX／CI inventory 45 passed in 58.27s；compileall／git diff --check 通過。
+- 邊界：這是 CI fixture／契約 hardening，不等於真實乾淨 Windows、MSIX install／uninstall、GPU onboarding、Store submission 或 WACK 已完成；CH-T64 維持 In Progress。
