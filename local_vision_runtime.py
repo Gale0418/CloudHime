@@ -196,6 +196,7 @@ class LocalVisionRuntime:
         self._process = None   # FakeProcess or Popen；有啟動程序時非 None
         self._port: Optional[int] = None
         self._start_lock = threading.Lock()
+        self._state_lock = threading.Lock()
         self._cancel_event = threading.Event()
 
     # ── 公開介面 ──────────────────────────────────────────────────────────────
@@ -289,7 +290,12 @@ class LocalVisionRuntime:
                 self._stop_owned_process()
                 return self._state
             if state.name == "ready":
-                self._state = state
+                with self._state_lock:
+                    cancelled = self._cancel_event.is_set() or _cancel_requested(cancel_event)
+                    if not cancelled:
+                        self._state = state
+                        return self._state
+                self._stop_owned_process()
                 return self._state
 
             # 3. GPU 啟動失敗時才允許單次 CPU fallback。
@@ -301,13 +307,20 @@ class LocalVisionRuntime:
                     mode="cpu",
                     cancel_event=cancel_event,
                 )
-                if self._cancel_event.is_set() or _cancel_requested(cancel_event):
-                    self._stop_owned_process()
-                else:
-                    self._state = cpu_state
+                with self._state_lock:
+                    cancelled = self._cancel_event.is_set() or _cancel_requested(cancel_event)
+                    if not cancelled:
+                        self._state = cpu_state
+                        return self._state
+                self._stop_owned_process()
                 return self._state
 
-            self._state = state
+            with self._state_lock:
+                cancelled = self._cancel_event.is_set() or _cancel_requested(cancel_event)
+                if not cancelled:
+                    self._state = state
+                    return self._state
+            self._stop_owned_process()
             return self._state
 
     def set_gpu_layers(self, gpu_layers: int) -> None:
@@ -320,12 +333,13 @@ class LocalVisionRuntime:
         return self._state
 
     def _stop_owned_process(self) -> None:
-        self._cancel_event.set()
-        proc = self._process
+        with self._state_lock:
+            self._cancel_event.set()
+            proc = self._process
+            self._process = None
+            self._state = _STOPPED
         if proc is not None:
             self._cleanup_process(proc)
-            self._process = None
-        self._state = _STOPPED
 
     # ── 內部：spawn 單次嘗試 ─────────────────────────────────────────────────
 
