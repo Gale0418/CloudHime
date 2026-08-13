@@ -75,6 +75,20 @@ def test_shared_coordinator_does_not_double_stop_after_explicit_stop():
     assert coordinator.active_lease_count == 0
 
 
+def test_shared_coordinator_rejects_acquire_after_runtime_was_stopped():
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=FakeRuntime)
+    first = coordinator.acquire(_assets(), profile='vision')
+
+    first.stop()
+    with pytest.raises(RuntimeError, match='shared_runtime_stopped'):
+        coordinator.acquire(_assets(), profile='vision')
+
+    first.release()
+    replacement = coordinator.acquire(_assets(), profile='vision')
+    assert replacement.runtime is not first.runtime
+    replacement.release()
+
+
 def test_shared_coordinator_rejects_conflicting_profiles_without_spawning_second_runtime():
     created = []
 
