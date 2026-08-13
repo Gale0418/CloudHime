@@ -25,7 +25,7 @@ MakeAppx 解包後，請只對已解包根目錄使用 `verify_release_dist.ps1 
 build_exe.bat stages only the release llama-server files, then runs
 packaging/runtime_manifest.py. The tool executes the staged
 llama-server.exe --version command and writes runtime-manifest.json beside
-the runtime. The manifest records the source commit, backend, architecture,
+the runtime. The manifest records the explicitly supplied llama runtime commit (from LLAMA_RUNTIME_COMMIT or runtime/llama-runtime-commit.txt), backend, architecture,
 server version, and the size/SHA-256 of every staged runtime file.
 verify_release_dist.ps1 fails closed when the manifest is missing or the
 runtime file set, size, or digest differs.

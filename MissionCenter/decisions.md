@@ -748,3 +748,11 @@
 - 修正：OCRWorker._emit_scan_status() 在送出兩種訊號前檢查 _active_scan_is_current()；stale request 回傳 False 且不發任何 status，current request 保留既有 legacy／generation-tagged 行為。
 - TDD：新增 stale status regression，RED 1 failed, 1 passed, 84 deselected；修正後 targeted 2 passed, 84 deselected in 1.15s；compileall／diff-check Pass。完整 mode matrix 為 85 passed, 1 failed in 5.06s，單獨重跑同一既有 exact_cache_hit_refreshes_frame_gate_consecutive_baseline 仍失敗（預期 Recovered、實際 Hello），與本次 status fence 不相交，未擴大修正。
 - 未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK；CodeRabbit 仍在 rate limit 冷卻，未送本輪 review。
+
+
+## 2026-08-14：Explicit llama runtime provenance gate
+
+- Root cause：build_exe.bat 原先以 git rev-parse HEAD 產生 RUNTIME_COMMIT；那是 CloudHime 專案 commit，不是 bundled llama.cpp／llama-server build provenance。runtime 目錄也沒有可讀的 commit metadata。
+- 修正：release build 只接受明確的 LLAMA_RUNTIME_COMMIT，或 runtime/llama-runtime-commit.txt；兩者皆缺少時 fail-closed，不再把專案 HEAD 冒充 runtime commit。packaging README 已同步說明。
+- TDD：新增 release contract regression 先 RED 1 failed, 17 deselected；修正後 1 passed, 17 deselected；compileall／diff-check Pass。實際 runtime/llama-server.exe --version 嘗試由外層 30 秒 timeout，未取得 version output，未宣稱 frozen build／manifest／GPU gate 通過。
+- 本輪未執行 CodeRabbit（rate limit 冷卻中）；未執行 clean-machine、Store 或 WACK。
