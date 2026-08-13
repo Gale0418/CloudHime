@@ -4169,10 +4169,12 @@ class OCRWorker(QObject):
             ).text
             decision = decide_rescue_text(first_text, second, candidate)
             logger.info(
-                "[Japanese rescue] outcome=%s first_similarity=%.3f second_similarity=%.3f",
+                "[Japanese rescue] outcome=%s first_similarity=%.3f second_similarity=%.3f candidate_first=%.3f candidate_second=%.3f",
                 "adopted" if decision.adopted else "rejected",
                 decision.first_similarity,
                 decision.second_similarity,
+                decision.first_candidate_similarity,
+                decision.second_candidate_similarity,
             )
             return decision.selected_text
         except Exception as exc:

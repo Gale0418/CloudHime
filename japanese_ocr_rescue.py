@@ -69,7 +69,8 @@ class RescueDecision:
     trusted_text: str
     first_similarity: float
     second_similarity: float
-
+    first_candidate_similarity: float = 0.0
+    second_candidate_similarity: float = 0.0
 
 def normalize_ocr_text(value: Any) -> str:
     """Normalize text for conservative OCR similarity comparisons."""
@@ -215,13 +216,20 @@ def decide_rescue_text(first_text: Any, second_text: Any, candidate: MeikiCandid
     trusted = trusted_text(candidate)
     first_score = normalized_similarity(first_text, trusted)
     second_score = normalized_similarity(second_text, trusted)
-    adopted = second_score > first_score
+    first_candidate_score = normalized_similarity(first_text, candidate.text)
+    second_candidate_score = normalized_similarity(second_text, candidate.text)
+    adopted = (
+        second_score > first_score
+        and second_candidate_score >= first_candidate_score
+    )
     return RescueDecision(
         adopted=adopted,
         selected_text=str(second_text if adopted else first_text),
         trusted_text=trusted,
         first_similarity=first_score,
         second_similarity=second_score,
+        first_candidate_similarity=first_candidate_score,
+        second_candidate_similarity=second_candidate_score,
     )
 
 

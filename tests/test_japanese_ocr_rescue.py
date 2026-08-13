@@ -66,6 +66,22 @@ def test_second_result_is_adopted_only_when_trusted_text_similarity_improves() -
     assert regressed.selected_text == first
 
 
+def test_second_result_cannot_trade_away_full_candidate_consistency() -> None:
+    candidate = MeikiCandidate(
+        text="ABCXYZ",
+        characters=tuple(
+            MeikiCharacter(character, 0.9 if index < 3 else 0.2)
+            for index, character in enumerate("ABCXYZ")
+        ),
+    )
+
+    # The second result is closer to the trusted high-confidence prefix, but
+    # drops too much of the candidate that the baseline preserved.
+    decision = decide_rescue_text("ABQXYZ", "ABCX", candidate)
+
+    assert decision.adopted is False
+    assert decision.selected_text == "ABQXYZ"
+
 def test_meiki_loader_is_lazy_and_cpu_only() -> None:
     calls = []
 
