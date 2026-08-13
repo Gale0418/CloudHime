@@ -527,6 +527,8 @@ class OCRWorker(QObject):
         return True
 
     def _emit_scan_status(self, message):
+        if not self._active_scan_is_current():
+            return False
         request = self._active_scan_request
         generation = request.generation if request is not None else self._scan_generation
         self.status_msg.emit(message)

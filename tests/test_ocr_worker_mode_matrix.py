@@ -1708,6 +1708,28 @@ def test_scan_status_emits_legacy_and_generation_tagged_signals(qtbot):
     finally:
         worker.cleanup()
 
+def test_stale_scan_status_is_suppressed_for_both_signal_shapes(qtbot):
+    worker = OCRWorker()
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+    worker._active_scan_request = worker._take_scan_request()
+    legacy = []
+    tokenized = []
+    worker.status_msg.connect(legacy.append)
+    worker.scan_status_msg.connect(
+        lambda generation, message: tokenized.append((generation, message))
+    )
+
+    try:
+        worker.set_scan_generation(2)
+        assert worker._emit_scan_status("stale_status") is False
+
+        assert legacy == []
+        assert tokenized == []
+    finally:
+        worker.cleanup()
+
+
 def test_stale_fullscreen_retry_stops_before_later_ocr_phases_and_translation(
     monkeypatch, qtbot
 ):
