@@ -680,3 +680,10 @@
 - TDD RED：新增面板 contract `1 failed, 10 deselected`，現行 1B note 仍可被直接查出；修正後 panel suite `11 passed in 0.88s`，compileall exit 0、diff-check 無 error。
 - UI 受影響測試合併執行 180 秒 timeout、無 failure summary，未算通過；逐檔 smoke `39 passed in 1.05s`、relief `2 passed in 0.09s`、theme `1 passed in 1.24s`，加 panel suite 共 `53 passed`。
 - 本階段只移除已淘汰模型的 UI metadata，未改模型 catalog／remote provider behavior；未做真實 GPU／GGUF、clean Windows 或 Store certification；CodeRabbit 因冷卻尚未覆蓋本次 commit。
+## 2026-08-13：History export nested-key collision gate
+
+- 唯讀審計發現 `_json_safe_history_value()` 將 nested dict key 全部 `str()`，`{1: "A", "1": "B"}` 會靜默覆蓋一筆值；這違反 schema export 不得無聲遺失資料。
+- TDD RED：新增 collision regression `1 failed`，重現沒有拒絕碰撞；修正後遇到一次未提交的 regex newline 語法錯誤（collection SyntaxError），立即修正並重新驗證。
+- 修正：nested dict 轉換時偵測 string key collision，明確拋出 `TypeError("translation_history_not_serializable")`；不改既有 schema_version/list-of-records 格式。
+- 驗證：history targeted `6 passed, 34 deselected in 0.83s`；完整 `tests/test_cloudhime_ui_smoke.py` `40 passed in 1.01s`；compileall exit 0；diff-check 無 error。
+- 本階段未做真實 GGUF／GPU／llama-server paired benchmark、clean Windows 或 Store certification；CodeRabbit 仍在 rate limit 冷卻。

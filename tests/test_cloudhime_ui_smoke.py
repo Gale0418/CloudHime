@@ -410,6 +410,12 @@ def test_history_export_payload_supports_empty_history():
     }
 
 
+def test_history_export_payload_rejects_colliding_nested_dict_keys():
+    from cloudhime_ui import build_translation_history_export_payload
+
+    with pytest.raises(TypeError, match="translation_history_not_serializable"):
+        build_translation_history_export_payload({("key",): {1: "A", "1": "B"}})
+
 def test_history_export_payload_rejects_unserializable_value():
     from cloudhime_ui import build_translation_history_export_payload
 
