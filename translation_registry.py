@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
+from urllib.parse import urlsplit
 
 from model_catalog import REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
 from translation_contracts import TranslationProvider
@@ -29,6 +30,7 @@ class TranslationProviderRegistryConfig:
     local_multimodal_base_url: str = "http://127.0.0.1:8080/v1"
     local_multimodal_model: str = ""
     local_multimodal_timeout_seconds: int = 20
+    local_runtime_validated: bool = False
 
 
 class TranslationProviderRegistry:
@@ -58,6 +60,22 @@ class TranslationProviderRegistry:
                 resolved.append(provider)
         return resolved
 
+def _is_validated_loopback_endpoint(value: str) -> bool:
+    try:
+        parsed = urlsplit((value or "").rstrip("/"))
+        return (
+            parsed.scheme == "http"
+            and parsed.hostname == "127.0.0.1"
+            and parsed.port is not None
+            and parsed.path == "/v1"
+            and not parsed.username
+            and not parsed.password
+            and not parsed.query
+            and not parsed.fragment
+        )
+    except (TypeError, ValueError):
+        return False
+
 
 def build_translation_registry(config: TranslationProviderRegistryConfig) -> TranslationProviderRegistry:
     providers: list[TranslationProvider] = [
@@ -76,7 +94,12 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
                 supported_models=config.supported_models,
             )
         )
-    if config.local_multimodal_enabled and config.local_multimodal_model:
+    if (
+        config.local_multimodal_enabled
+        and config.local_multimodal_model
+        and config.local_runtime_validated
+        and _is_validated_loopback_endpoint(config.local_multimodal_base_url)
+    ):
         providers.append(
             LocalMultimodalProvider(
                 base_url=config.local_multimodal_base_url,

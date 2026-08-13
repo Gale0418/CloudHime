@@ -607,3 +607,10 @@
 - worker 的 registry stop、取消 race、profile switch、GPU reconfigure、shutdown 與 cleanup 都改走 ownership-aware stop；最後一個 lease 才會停止 server，explicit stop + release 不 double-stop。
 - 驗證：compileall Pass；ownership/worker targeted 83 passed；CI inventory + UI smoke 51 passed；完整受影響 OCR/runtime groups 375 passed, 2 skipped。Windows runtime suite 使用管理員隔離 basetemp；未宣稱真實 GGUF paired accuracy、clean Windows、Store certification 或 GPU hardware gate。
 - 本 stage 已精確暫存 5 個檔案；CodeRabbit 仍在先前 rate limit 冷卻期，尚未對本 stage 宣稱 review 通過，待冷卻後與文件 follow-up 一起送審。
+
+## 2026-08-13：CH-E9 local endpoint ownership gate
+
+- TDD 先加入 registry／worker regression；RED：`3 failed, 5 passed, 103 deselected`，重現未擁有 server process 的 ready state、未驗證外部 endpoint 仍被當成 local provider ready，以及 local routing 忽略 provider availability。
+- 修正：worker 只有在 ready state、owned process 仍存活、endpoint 為 `http://127.0.0.1:<port>/v1` 且 profile 相符時才宣告 local runtime ready；沒有 embedded runtime 時不再把設定檔 endpoint 當作活著的 server。registry builder 另要求明確 `local_runtime_validated` 與 loopback endpoint。
+- 驗證：targeted `8 passed, 103 deselected, 1 warning in 1.13s`；受影響完整套件 `289 passed in 7.67s`；`ci/test_groups.json` 全部測試 `994 passed, 2 skipped in 86.82s`；compileall exit 0；Git whitespace check 以 `--ignore-space-at-eol` 檢查後僅包含預期新增邏輯。
+- 本階段沒有啟動真實 GGUF／GPU／llama-server paired benchmark；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。

@@ -48,12 +48,34 @@ def test_registry_registers_local_multimodal():
     config = TranslationProviderRegistryConfig(
         google_api_key="fake-key",
         local_multimodal_enabled=True,
-        local_multimodal_model="gemma-3n-local"
+        local_multimodal_model="gemma-3n-local",
+        local_runtime_validated=True,
     )
     registry = build_translation_registry(config)
     assert "local_multimodal" in registry._providers
     assert "gemma" in registry._providers
     assert "google" in registry._providers
+
+
+def test_registry_rejects_unvalidated_or_external_local_endpoint():
+    unvalidated = build_translation_registry(
+        TranslationProviderRegistryConfig(
+            local_multimodal_enabled=True,
+            local_multimodal_model="gemma-3n-local",
+            local_multimodal_base_url="http://127.0.0.1:8080/v1",
+        )
+    )
+    external = build_translation_registry(
+        TranslationProviderRegistryConfig(
+            local_multimodal_enabled=True,
+            local_multimodal_model="gemma-3n-local",
+            local_multimodal_base_url="http://example.test/v1",
+            local_runtime_validated=True,
+        )
+    )
+
+    assert "local_multimodal" not in unvalidated._providers
+    assert "local_multimodal" not in external._providers
 def test_save_settings_writes_only_to_appdata(tmp_path):
     install_dir = tmp_path / "readonly-install"
     appdata_dir = tmp_path / "appdata"
