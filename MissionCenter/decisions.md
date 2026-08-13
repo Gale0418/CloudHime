@@ -869,3 +869,9 @@
 - TDD：新增 release-during-blocked-start regression，RED 為 1 failed；修正 _finish_start 在 zero leases 且 startup 結束時即使 entry 已 stopped 也必須移除，保留 release 的立即 cancellation；lifecycle targeted 3 passed，受影響 QT_QPA_PLATFORM=offscreen suite 264 passed、1 skipped in 6.07s；compileall／git diff --check Pass；commit 5dce3fe。
 - Post-fix review：以 d29e5bc 為 base 的 CodeRabbit review_completed、findings=0，涵蓋 local_runtime_coordinator.py 與 tests/test_local_vision_runtime.py 及 repository contract context。
 - 邊界：未由此 review 宣稱 GPU quality／latency、Store、WACK 或 clean-machine；Vision paired benchmark 的速度 promotion 仍維持拒絕。
+
+## 2026-08-14：Full CI test-group rerun after runtime hardening
+
+- 驗證環境：QT_QPA_PLATFORM=offscreen、Windows 管理員程序、每組獨立 basetemp；沒有刪除既有 .tmp／.pytest 目錄。
+- 結果：core 404 passed, 2 skipped in 113.19s；OCR 242 passed in 16.62s；runtime 153 passed, 2 skipped in 6.79s；UI 54 passed in 2.34s；benchmarks 179 passed in 7.74s；compileall 與 git diff --check 通過。
+- 判定：本輪 CI 宣告的五組測試均通過；先前並行普通權限執行的 WinError 5 是 pytest basetemp 清理環境問題，不能拿來當產品失敗或成功證據。這次結果仍不涵蓋新的 GPU 品質／延遲 benchmark、GGUF 下載、clean-machine、Store submission 或 WACK。
