@@ -849,9 +849,13 @@ class OCRWorker(QObject):
         )
         if start_is_stale or (cancel_event is not None and cancel_event.is_set()):
             return OCRWorker._stop_local_vision_runtime(self)
+        runtime_owner = getattr(self, "_local_vision_runtime_lease", None) or runtime
+        starter = getattr(runtime_owner, "start", None)
+        if not callable(starter):
+            raise RuntimeError("local_runtime_start_unavailable")
         if cancel_event is None:
-            return runtime.start()
-        return runtime.start(cancel_event=cancel_event)
+            return starter()
+        return starter(cancel_event=cancel_event)
 
     def _owned_local_runtime_ready(self, runtime, state):
         if runtime is None or state is None or getattr(state, "name", "") != "ready":

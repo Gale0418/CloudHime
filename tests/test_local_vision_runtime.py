@@ -35,6 +35,7 @@ import pytest
 import local_vision_runtime as runtime_module
 from local_vision_assets import VisionAssets
 from local_vision_runtime import LocalVisionRuntime, VisionRuntimeState
+from local_runtime_coordinator import LocalVisionRuntimeCoordinator
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1397,6 +1398,68 @@ def test_text_profile_omits_mmproj_and_allows_missing_projector(tmp_path):
 
     assert state.name == "ready"
     assert "--mmproj" not in popen.calls[0]
+
+
+def test_coordinator_lease_profile_switch_never_overlaps_live_servers(tmp_path):
+    assets = _make_assets(tmp_path, create_files=True)
+    events = []
+    live_count = 0
+    max_live_count = 0
+
+    class OrderedProcess(RunningProcess):
+        def terminate(self):
+            nonlocal live_count
+            events.append("terminate")
+            super().terminate()
+            live_count -= 1
+
+    processes = [OrderedProcess(), OrderedProcess()]
+
+    def popen(args, **kwargs):
+        nonlocal live_count, max_live_count
+        if live_count:
+            raise AssertionError("second llama-server spawned while first is still live")
+        events.append("spawn")
+        process = processes.pop(0)
+        process.args = list(args)
+        live_count += 1
+        max_live_count = max(max_live_count, live_count)
+        return process
+
+    def runtime_factory(runtime_assets, **kwargs):
+        return LocalVisionRuntime(
+            assets=runtime_assets,
+            popen_factory=popen,
+            urlopen=_make_health_urlopen([True, True]),
+            port_allocator=_port_allocator(43123),
+            sleep=_no_sleep,
+            asset_minimum_bytes=_TEST_MIN,
+            **kwargs,
+        )
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=runtime_factory)
+    lease = coordinator.acquire(assets, profile="text")
+
+    assert lease.start().name == "ready"
+    lease.set_profile("vision")
+    assert lease.start().name == "ready"
+
+    assert events == ["spawn", "terminate", "spawn"]
+    assert max_live_count == 1
+    assert "--mmproj" in lease.runtime.owned_process.args
+
+    shared = coordinator.acquire(assets, profile="vision")
+    assert shared.runtime is lease.runtime
+
+    lease.release()
+    assert live_count == 1
+    assert coordinator.active_lease_count == 1
+
+    shared.release()
+
+    assert events == ["spawn", "terminate", "spawn", "terminate"]
+    assert live_count == 0
+    assert coordinator.active_lease_count == 0
 
 def test_profile_switch_stops_old_process_before_starting_new_mode(tmp_path):
     assets = _make_assets(tmp_path, create_files=True)
