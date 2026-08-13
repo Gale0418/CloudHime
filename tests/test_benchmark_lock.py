@@ -16,7 +16,7 @@ DATASET_NAMES = (
     "temporal_holdout_cases.json",
     "translation_e2e_cases.json",
 )
-ARTIFACT_NAMES = ("vision_scheduling_benchmark.py",)
+ARTIFACT_NAMES = ("vision_scheduling_benchmark.py", "translation_e2e_benchmark.py")
 
 
 def _copy_lock_fixture(tmp_path: Path) -> Path:
@@ -42,7 +42,7 @@ def test_benchmark_lock_matches_current_manifests():
         "translation_e2e_contract",
         "temporal_holdout",
     ]
-    assert result["artifact_ids"] == ["vision_scheduling_benchmark"]
+    assert result["artifact_ids"] == ["vision_scheduling_benchmark", "translation_e2e_evaluator"]
 
 
 def test_benchmark_lock_rejects_manifest_mutation(tmp_path):
@@ -139,6 +139,38 @@ def test_benchmark_lock_rejects_boolean_scheduling_values(tmp_path):
     assert result["ok"] is False
     assert any("scheduling.max_inflight" in error for error in result["errors"])
 
+def test_benchmark_lock_requires_translation_e2e_evaluator_artifact(tmp_path):
+    lock_path = _copy_lock_fixture(tmp_path)
+    payload = json.loads(lock_path.read_text(encoding="utf-8"))
+    payload["artifacts"] = [
+        entry
+        for entry in payload["artifacts"]
+        if entry.get("id") != "translation_e2e_evaluator"
+    ]
+    lock_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_benchmark_lock(tmp_path, lock_path)
+
+    assert result["ok"] is False
+    assert any(
+        "required artifact missing: translation_e2e_evaluator" in error
+        for error in result["errors"]
+    )
+
+
+def test_benchmark_lock_rejects_translation_e2e_evaluator_mutation(tmp_path):
+    lock_path = _copy_lock_fixture(tmp_path)
+    artifact = tmp_path / "translation_e2e_benchmark.py"
+    artifact.write_text(artifact.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    result = validate_benchmark_lock(tmp_path, lock_path)
+
+    assert result["ok"] is False
+    assert any(
+        "artifact hash mismatch" in error
+        and "translation_e2e_benchmark.py" in error
+        for error in result["errors"]
+    )
 def test_benchmark_lock_rejects_scheduling_artifact_mutation(tmp_path):
     lock_path = _copy_lock_fixture(tmp_path)
     artifact = tmp_path / "vision_scheduling_benchmark.py"

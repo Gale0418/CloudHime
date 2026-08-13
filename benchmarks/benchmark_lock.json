@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "locked",
-  "lock_id": "cloudhime-accuracy-speed-temporal-v3",
+  "lock_id": "cloudhime-accuracy-speed-temporal-v4",
   "datasets": [
     {
       "id": "ocr_accuracy_seed",
@@ -109,6 +109,12 @@
       "path": "vision_scheduling_benchmark.py",
       "sha256": "a5dbf7ac0104d74bb77560b4e1267ada226beecfe9f711836ca0c2a99d67335b",
       "role": "CH-T85 deterministic local Vision scheduler harness"
+    },
+    {
+      "id": "translation_e2e_evaluator",
+      "path": "translation_e2e_benchmark.py",
+      "sha256": "19170a974e7d42222f9ada809b8e918d905a880c3d9aa46e5ffb2bca7da3936f",
+      "role": "source-disjoint translation quality evaluator"
     }
   ]
 }
