@@ -740,3 +740,11 @@
 - 修正：LocalMultimodalProvider 增加 terminal _closed state；available() 與 update_runtime() 都 fail-closed，close() 後不允許同一 instance 重新活化。正常首次初始化與 ready runtime 行為不變。
 - TDD：先加入「close 後重新設定不得 re-activate」regression，RED 1 failed, 22 passed；修正後 provider 23 passed in 0.79s；受影響 provider／worker／vision 29 passed, 1 skipped in 1.15s；compileall／diff-check 最終 Pass。
 - 本輪未送 CodeRabbit（既有 rate limit 冷卻中）；未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK。
+
+
+## 2026-08-14：Stale scan status generation fence
+
+- Lorentz 唯讀盤點指出：結果／stream 已有 generation fence，但 legacy status_msg 仍會無條件發出 stale scan 的進度或錯誤；scan_status_msg 雖由 UI 過濾，外部 legacy consumer 仍可能誤判目前狀態。
+- 修正：OCRWorker._emit_scan_status() 在送出兩種訊號前檢查 _active_scan_is_current()；stale request 回傳 False 且不發任何 status，current request 保留既有 legacy／generation-tagged 行為。
+- TDD：新增 stale status regression，RED 1 failed, 1 passed, 84 deselected；修正後 targeted 2 passed, 84 deselected in 1.15s；compileall／diff-check Pass。完整 mode matrix 為 85 passed, 1 failed in 5.06s，單獨重跑同一既有 exact_cache_hit_refreshes_frame_gate_consecutive_baseline 仍失敗（預期 Recovered、實際 Hello），與本次 status fence 不相交，未擴大修正。
+- 未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK；CodeRabbit 仍在 rate limit 冷卻，未送本輪 review。
