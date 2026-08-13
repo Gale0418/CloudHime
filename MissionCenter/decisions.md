@@ -833,3 +833,8 @@
 - 修正：在既有 fallback 邊界加入明確的 except LocalRequestCancelled: raise；run_scan_once() 沿用 Region Vision 的 generation fence，只有 stale cancellation 直接返回，非 stale cancellation 重新拋出，不改 public UI signals 或正常 provider error fallback。
 - TDD：RED 1 failed, 86 deselected；GREEN cancellation targeted 2 passed, 86 deselected；受影響 OCR／Vision／Japanese 四檔 101 passed in 4.96s；compileall 與 git diff --check Pass；commit 91cefaf。
 - CodeRabbit 實際嘗試 committed review（base cacbeed）回報 rate_limit、waitTime=20 minutes，沒有 findings result，因此不宣稱 review 通過。未執行真實 GPU／GGUF latency、完整漫畫 holdout、Store、WACK 或 clean-machine gate。
+## 2026-08-14：Hybrid Search bounded cost boundary
+
+- 實驗：以 Windows OCR backend 對 25 個 locked OCR cases、84 個 preprocess／threshold／scale 策略執行全量 screening；不啟動 Gemma、llama-server 或 GPU。
+- 結果：命令達到 180.034 秒 bounded timeout、exit 124，未產生可用結果檔；早先 5-case screening 可完成，但最佳策略只有 1/5 hit，不能推導全域最佳或品質改善。
+- 決策：不把全量 Hybrid Search 放進每次線上掃描。後續若要產品化，先做固定少量候選的 coarse-to-fine、策略 fingerprint／cache 與明確時間 budget；品質必須以人工標註 holdout 重新驗證。
