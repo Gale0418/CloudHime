@@ -640,3 +640,10 @@
 - 使用既有已登入 CodeRabbit CLI 0.7.2／Gale0418，審查 base commit c1207c2 之後的已提交差異；審查範圍限於 8 個小檔案，未納入未追蹤 .tmp。
 - 實際 receipt：reviewType=committed、baseCommit=c1207c2、reviewedFiles=8、findings=0；未將 review 結果擴大解釋為 GPU、clean-machine 或 Store 驗證。
 - 本次 review 覆蓋 owned runtime gate、provider availability gate、stale callback generation gate 與 empty-image fail-closed gate；後續若改動這些檔案，需重新做 targeted regression 與增量 review。
+
+## 2026-08-13：Persisted boolean settings normalization gate
+
+- TDD 先擴充 `normalize_settings_payload()` regression，覆蓋 `use_gemma_translation`、`auto_threshold_enabled`、`google_ocr_enabled`、`gemma_auto_switch_enabled`、`local_multimodal_enabled`、`local_multimodal_cpu_only`、`japanese_ocr_rescue_enabled`、`region_pass_through`、`is_dark_mode` 的 bool、0/1、true/false、yes/no、on/off 與 unknown。
+- RED：`9 failed, 2 passed, 22 deselected in 2.05s`；修正後 targeted `11 passed, 22 deselected in 0.77s`。原設定入口在 `cloudhime_ui.py` 仍保留 `bool(settings.get(...))`，因此 canonical normalization 必須先把字串轉成真正 bool，避免 `bool("false") == True`。
+- 驗證：拆分受影響 suite 分別為 settings `33 passed in 3.36s`、UI smoke `39 passed in 1.14s`、theme `1 passed in 1.39s`、translation panel `10 passed in 0.97s`；四檔合併命令曾超過 120 秒未完成，未視為通過；`compileall` exit 0；`ci/test_groups.json` 全量 `1003 passed, 2 skipped in 75.62s`；`git diff --check` 僅有既有 LF/CRLF warning，無 whitespace error。
+- 本階段沒有啟動真實 GGUF／GPU／llama-server paired benchmark；未宣稱 clean Windows、Store certification 或 hardware gate；CodeRabbit 尚未審查本次新增 commit。

@@ -186,16 +186,28 @@ def test_normalize_settings_payload_sanitizes_active_work_title():
 def test_normalize_settings_payload_coerces_boolean_values(value, expected):
     normalized = normalize_settings_payload(
         {
+            "use_gemma_translation": value,
+            "auto_threshold_enabled": value,
+            "google_ocr_enabled": value,
+            "gemma_auto_switch_enabled": value,
             "local_multimodal_enabled": value,
             "local_multimodal_cpu_only": value,
             "japanese_ocr_rescue_enabled": value,
+            "region_pass_through": value,
+            "is_dark_mode": value,
         },
         region_opacity=40,
     )
 
+    assert normalized["use_gemma_translation"] is expected
+    assert normalized["auto_threshold_enabled"] is expected
+    assert normalized["google_ocr_enabled"] is expected
+    assert normalized["gemma_auto_switch_enabled"] is expected
     assert normalized["local_multimodal_enabled"] is expected
     assert normalized["local_multimodal_cpu_only"] is expected
     assert normalized["japanese_ocr_rescue_enabled"] is expected
+    assert normalized["region_pass_through"] is expected
+    assert normalized["is_dark_mode"] is expected
 
 def test_active_work_title_round_trips_through_appdata_settings(tmp_path):
     install_dir = tmp_path / "install"
