@@ -386,3 +386,4 @@
 - 原始完整內容保留於 archive/smoke-tests-pre-0.3.1-2026-08-13.md。
 - 多任務證據已拆成每列一個精確 task ID；無 task ID 的 Git checkpoint 列只留在 archive，不冒充 task smoke evidence。
 - 新版結果欄只使用 Pass／Fail；Partial、Blocked、Pending review、Review 與 Incomplete 均保守正規化為 Fail，詳細邊界保留在實際結果欄。
+| 2026-08-14 | CH-E9 | Vision runtime terminate failure cleanup | TDD tests/test_local_vision_runtime.py；compileall；git diff --check | terminate() 直接失敗時仍必須 kill owned llama-server，且清空 Python handle；正常 stop／timeout／health-timeout／GPU→CPU／profile switch 不得退化 | PASS：新增 regression direct harness 與既有 lifecycle targeted calls 均通過；compileall／diff-check Pass。pytest target setup／收尾受 Windows temp ACL WinError 5 影響，未宣稱 pytest suite 通過；CodeRabbit 未送出（rate limit 冷卻）；未做 GPU／GGUF／Store／WACK | Pass | runtime, lifecycle, cleanup, regression, evidence |
