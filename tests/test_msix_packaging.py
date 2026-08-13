@@ -237,6 +237,12 @@ def test_ci_msix_fixture_uses_an_environment_probe_with_liveness_margin():
     assert '/target:winexe' in fixture
     assert '& $csc /nologo /target:winexe /out:$probePath $probeSourcePath' in fixture
     assert "Environment.GetEnvironmentVariable" in fixture
+    for guard in (
+        'if (String.IsNullOrWhiteSpace(systemRoot)) return 11;',
+        'if (Environment.GetEnvironmentVariable("WINDIR") != systemRoot) return 12;',
+        'if (Environment.GetEnvironmentVariable("PATH") != expectedPath) return 13;',
+    ):
+        assert guard in fixture
     for forbidden in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "OLLAMA_HOST"):
         assert forbidden in fixture
     assert "Thread.Sleep(__PROBE_MS__);" in fixture
