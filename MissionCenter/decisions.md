@@ -635,3 +635,8 @@
 - TDD RED：parameterized regression 3 failed, 39 deselected；修正後三個 API 在 request 前統一回報 ValueError("missing_image_context")，不改正常 non-empty image payload。
 - 驗證：targeted 3 passed, 39 deselected in 0.74s；affected provider/runtime/OCR/vision suite 185 passed in 5.13s；ci/test_groups.json 全量 1003 passed, 2 skipped in 72.95s；compileall exit 0。
 - 本階段沒有啟動真實 GGUF／GPU／llama-server；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。
+## 2026-08-13：CH-E9 CodeRabbit review for four hardening checkpoints
+
+- 使用既有已登入 CodeRabbit CLI 0.7.2／Gale0418，審查 base commit c1207c2 之後的已提交差異；審查範圍限於 8 個小檔案，未納入未追蹤 .tmp。
+- 實際 receipt：reviewType=committed、baseCommit=c1207c2、reviewedFiles=8、findings=0；未將 review 結果擴大解釋為 GPU、clean-machine 或 Store 驗證。
+- 本次 review 覆蓋 owned runtime gate、provider availability gate、stale callback generation gate 與 empty-image fail-closed gate；後續若改動這些檔案，需重新做 targeted regression 與增量 review。
