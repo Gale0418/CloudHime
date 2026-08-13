@@ -776,3 +776,14 @@
 - 修正：加入短生命週期 state lock；stop 先原子標記 stopped、摘除 owned handle，再清理 process；ready、CPU fallback 與 failed terminal state 發布前重新檢查取消訊號。未改 UI、HTTP payload、profile 或 fallback policy。
 - TDD：race regression 先由手動 harness RED；修正後 race、慢冷啟動取消、ready／starting idempotence、health timeout、GPU→CPU、stop timeout／terminate exception、profile switch targeted calls 均 Pass；`compileall` 與 `git diff --check` Pass。pytest target 仍受 Windows temp ACL `WinError 5` setup／收尾限制，未宣稱 suite 通過。
 - 本輪未送 CodeRabbit（冷卻中）；未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK。
+## 2026-08-14：CodeRabbit cumulative lifecycle review disposition
+
+- 審查範圍：base `8660ef4` 到 `471dfe0`；實際 reviewedFiles=11，未包含 models、dist、runtime DLL 或大型 artifact。
+- Major 日期 findings 判定為 false positive：本機 Taipei clock 為 `2026-08-14 +08:00`，本輪 commits `55f435d`、`52a6a5b`、`e70fd38`、`471dfe0` 的 Git timestamp 也為 2026-08-14；不得為迎合錯誤推論改寫真實執行日期。
+- Minor 表格位置 finding 判定為有效：兩列新 smoke evidence 原先位於 0.3.1 migration note 後，已移回 canonical smoke table 結尾、保留欄位內容。
+- CodeRabbit 實際回報 3 issues（2 major false positive、1 minor corrected）；production code 未發現需修正的 finding。修正文件位置後，後續複審仍需以最新 HEAD 判定，不把本次初輪結果當成 post-fix 0 issues。
+## 2026-08-14：CodeRabbit post-fix review attempt
+
+- 初輪 committed review 實際完成：base `8660ef4`、reviewedFiles=11、回報 3 issues；2 個日期 major 經本機 clock／Git timestamp 查證為 false positive，1 個 smoke table placement minor 已修正。
+- 修正後第一次複審回報 `rate_limit`、`waitTime=3 seconds`；等待 5 秒重試時 WSL bridge 回 `E_ACCESSDENIED`，未取得 post-fix findings result。
+- 因此本輪不能宣稱 CodeRabbit post-fix 0 issues；production code 沒有初輪 finding，MissionCenter 文件 finding 已修正，待 bridge／免費額度恢復後再做最後複審。
