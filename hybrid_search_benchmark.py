@@ -12,6 +12,7 @@ import numpy as np
 
 from ocr_backends import OCRBackend, discover_backends
 from ocr_quality import normalize_ocr_text, score_ocr_items
+from ocr_preprocess import apply_ocr_preprocess
 
 
 DEFAULT_MANIFEST = Path("benchmarks") / "ocr_accuracy_cases.json"
@@ -165,27 +166,11 @@ def _prepare_image(image: np.ndarray, strategy: SearchStrategy) -> np.ndarray:
         interpolation=cv2.INTER_CUBIC,
     )
     gray = cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY)
-    if strategy.preprocess == "gray":
-        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    if strategy.preprocess == "binary_invert":
-        _, binary = cv2.threshold(gray, strategy.threshold, 255, cv2.THRESH_BINARY)
-        return cv2.cvtColor(cv2.bitwise_not(binary), cv2.COLOR_GRAY2BGR)
-    if strategy.preprocess == "adaptive_invert":
-        adaptive = cv2.adaptiveThreshold(
-            gray,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            31,
-            11,
-        )
-        return cv2.cvtColor(cv2.bitwise_not(adaptive), cv2.COLOR_GRAY2BGR)
-    if strategy.preprocess == "clahe_otsu_invert":
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
-        _, binary = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        return cv2.cvtColor(cv2.bitwise_not(binary), cv2.COLOR_GRAY2BGR)
-    raise ValueError(f"unknown preprocess: {strategy.preprocess}")
-
+    return apply_ocr_preprocess(
+        gray,
+        threshold=strategy.threshold,
+        preprocess=strategy.preprocess,
+    )
 
 def evaluate_strategy(
     strategy: SearchStrategy,
