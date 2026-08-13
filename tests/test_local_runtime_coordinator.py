@@ -75,6 +75,16 @@ def test_shared_coordinator_does_not_double_stop_after_explicit_stop():
     assert coordinator.active_lease_count == 0
 
 
+def test_shared_coordinator_stop_is_idempotent_for_one_lease():
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=FakeRuntime)
+    lease = coordinator.acquire(_assets(), profile='vision')
+
+    lease.stop()
+    lease.stop()
+
+    assert lease.runtime.stop_calls == 1
+    lease.release()
+
 def test_shared_coordinator_rejects_acquire_after_runtime_was_stopped():
     coordinator = LocalVisionRuntimeCoordinator(runtime_factory=FakeRuntime)
     first = coordinator.acquire(_assets(), profile='vision')

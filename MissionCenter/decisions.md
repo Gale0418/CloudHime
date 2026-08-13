@@ -718,3 +718,8 @@
 - 修正：entry 已 stopped 時 fail-closed 回報 `shared_runtime_stopped`；必須先 release 舊 lease，才會建立新的 runtime entry，維持單一 engine ownership。
 - TDD：先新增 regression 得到 `1 failed, 6 deselected`；修正後 coordinator suite `7 passed in 0.12s`，受影響 worker/runtime selection `30 passed, 58 deselected in 1.35s`；compileall 與 diff-check Pass。
 - 本輪沒有實機 llama-server、GPU、GGUF、clean-machine、Store/WACK 驗證；CodeRabbit 仍在上一輪 rate limit 冷卻，未送本輪 review。
+## 2026-08-14：Coordinator stop 冪等性收斂
+
+- 同一個 active lease 重複呼叫 stop 時，現在只會觸發一次底層 runtime.stop()；後續呼叫回傳既有 state，不重複操作 process。
+- TDD：新增 idempotence regression 先得到 `1 failed, 7 deselected`（stop_calls=2）；修正後 coordinator suite `8 passed in 0.12s`，compileall／diff-check Pass。
+- 此為 source-level lifecycle hardening；未做真實 llama-server、GPU、GGUF、clean-machine、Store/WACK 驗證；CodeRabbit 仍在上一輪冷卻，未送本輪 review。
