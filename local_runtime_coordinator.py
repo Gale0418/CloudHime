@@ -21,6 +21,7 @@ class _RuntimeEntry:
     runtime: object
     leases: int = 0
     stopped: bool = False
+    starting: int = 0
 
 
 class LocalVisionRuntimeLease:
@@ -88,6 +89,8 @@ class LocalVisionRuntimeCoordinator:
             elif entry.stopped:
                 # A stopped entry must not be handed to a new consumer as if it were ready.
                 raise RuntimeError("shared_runtime_stopped")
+            elif entry.starting:
+                raise RuntimeError("shared_runtime_starting")
             elif getattr(entry.runtime, "profile_name", profile) != profile:
                 raise RuntimeError("shared_runtime_profile_conflict")
             entry.leases += 1
@@ -128,10 +131,43 @@ class LocalVisionRuntimeCoordinator:
     def start(self, lease, *args, **kwargs):
         with self._lock:
             entry = self._entry_for(lease)
+            entry.starting += 1
+            entry.stopped = False
+
+        try:
             state = entry.runtime.start(*args, **kwargs)
-            if getattr(state, "name", "") in ("ready", "starting"):
-                entry.stopped = False
-            return state
+        except BaseException:
+            self._finish_start(lease, entry, None)
+            raise
+        self._finish_start(lease, entry, state)
+        return state
+
+    def _finish_start(self, lease, entry, state) -> None:
+        cleanup_runtime = None
+        with self._lock:
+            entry.starting = max(0, entry.starting - 1)
+            current = self._entries.get(lease._key) is entry
+            if not current:
+                return
+            if getattr(state, "name", "") not in ("ready", "starting"):
+                entry.stopped = True
+            if entry.leases == 0 and entry.starting == 0:
+                if not entry.stopped:
+                    cleanup_runtime = entry.runtime
+                entry.stopped = True
+
+        if cleanup_runtime is None:
+            return
+        try:
+            cleanup_runtime.stop()
+        finally:
+            with self._lock:
+                if (
+                    self._entries.get(lease._key) is entry
+                    and entry.leases == 0
+                    and entry.starting == 0
+                ):
+                    self._entries.pop(lease._key, None)
 
     def set_gpu_layers(self, lease, gpu_layers):
         with self._lock:
@@ -141,6 +177,7 @@ class LocalVisionRuntimeCoordinator:
             return entry.runtime.set_gpu_layers(gpu_layers)
 
     def release(self, lease) -> None:
+        cleanup_runtime = None
         with self._lock:
             entry = self._entries.get(lease._key)
             if entry is None:
@@ -148,8 +185,12 @@ class LocalVisionRuntimeCoordinator:
             entry.leases = max(0, entry.leases - 1)
             if entry.leases:
                 return
-            try:
-                if not entry.stopped:
-                    entry.runtime.stop()
-            finally:
+            was_stopped = entry.stopped
+            entry.stopped = True
+            if not was_stopped:
+                cleanup_runtime = entry.runtime
+            if not entry.starting:
                 self._entries.pop(lease._key, None)
+
+        if cleanup_runtime is not None:
+            cleanup_runtime.stop()
