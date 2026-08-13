@@ -647,3 +647,8 @@
 - RED：`9 failed, 2 passed, 22 deselected in 2.05s`；修正後 targeted `11 passed, 22 deselected in 0.77s`。原設定入口在 `cloudhime_ui.py` 仍保留 `bool(settings.get(...))`，因此 canonical normalization 必須先把字串轉成真正 bool，避免 `bool("false") == True`。
 - 驗證：拆分受影響 suite 分別為 settings `33 passed in 3.36s`、UI smoke `39 passed in 1.14s`、theme `1 passed in 1.39s`、translation panel `10 passed in 0.97s`；四檔合併命令曾超過 120 秒未完成，未視為通過；`compileall` exit 0；`ci/test_groups.json` 全量 `1003 passed, 2 skipped in 75.62s`；`git diff --check` 僅有既有 LF/CRLF warning，無 whitespace error。
 - 本階段沒有啟動真實 GGUF／GPU／llama-server paired benchmark；未宣稱 clean Windows、Store certification 或 hardware gate；CodeRabbit 尚未審查本次新增 commit。
+## 2026-08-13：CodeRabbit review for persisted boolean settings gate
+
+- 使用既有 `/root/.local/bin/coderabbit` CLI 0.7.2，未安裝或下載套件；審查已提交差異 `c994029..b7b7b9f`。
+- 實際 receipt：`reviewType=committed`、`baseCommit=c994029`、`reviewedFiles=4`（`MissionCenter/decisions.md`、`MissionCenter/smoke-tests.md`、`settings_store.py`、`tests/test_settings_store.py`）、`findings=0`。
+- 本結果只代表本次 code/document review；不代表真實 GGUF／GPU accuracy、clean-machine、Store certification 或硬體 gate 通過。
