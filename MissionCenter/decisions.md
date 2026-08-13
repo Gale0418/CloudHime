@@ -850,3 +850,9 @@
 - 修正：LocalVisionRuntimeLease 新增受 coordinator 保護的 start()；成功回傳 ready／starting 時同步清除 stopped 狀態。OCRWorker._prepare_and_start_local_vision() 改由 lease（無 lease 時仍由 runtime）啟動，保留既有 cancel event、profile、HTTP、UI signal 行為。
 - TDD：先加入真實 LocalVisionRuntime fake process regression；RED 為 lease 缺少受控 start 的 1 failure。修正後 targeted 1 passed in 1.03s；受影響 runtime／worker／vision suite 262 passed, 1 skipped in 12.04s；release／MSIX／manifest／dependency contract 85 passed, 2 skipped in 273.39s；compileall 與 git diff --check Pass。
 - 邊界：本輪未執行真實 GPU／GGUF latency、完整漫畫 holdout、clean-machine、Store submission、WACK；CodeRabbit review 尚待本輪實際結果，不預先宣稱通過。
+## 2026-08-14：CodeRabbit shared runtime startup disposition
+
+- 初輪 committed review：base 581d8a6、2 findings。日期 major 指出 decisions.md 的 2026-08-14 證據像是 future-dated；查證本機 clock 為 2026-08-14T05:34:37+08:00，commit 5f03146 為 2026-08-14T05:31:48+08:00，測試也在同一日期完成，因此是 false positive，不改寫歷史日期。
+- 啟動鎖定 finding 有效：原本 LocalVisionRuntimeLease.start() 持有 coordinator lock 直到模型暖身完成，暖身中的 stop 無法及時取消。修正為 lock 外呼叫 runtime.start()，entry 以 starting 計數保護，完成時重新確認 entry／lease；acquire 在 startup 中 fail-closed，release 與 stop 保留清理責任。新增 blocked-start regression，修正提交 107ba10。
+- 驗證：受影響 runtime／worker／vision suite 263 passed, 1 skipped in 7.30s；compileall 與 git diff --check Pass。post-fix CodeRabbit 實際回報 rate_limit、waitTime=4 minutes，沒有 findings result，不能宣稱 review 通過。
+- 邊界：未執行真實 GPU／GGUF latency、完整漫畫 holdout、clean-machine、Store submission、WACK；CodeRabbit 需待免費額度恢復後再複審。
