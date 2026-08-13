@@ -1212,6 +1212,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             self._translation_cache.popitem(last=False)
         return result
     def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
+        if not self.available():
+            raise ValueError("local_multimodal_unavailable")
         if len(texts) > LOCAL_MULTIMODAL_BATCH_SIZE:
             translated: list[TranslationResult] = []
             for start in range(0, len(texts), LOCAL_MULTIMODAL_BATCH_SIZE):
@@ -1268,6 +1270,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         target_lang: str = "zh-TW",
         cancel_predicate=None,
     ) -> list[VisionRegionResult]:
+        if not self.available():
+            raise ValueError("local_multimodal_unavailable")
         if not image_parts:
             raise ValueError("missing_image_context")
         if not hints:
@@ -1366,6 +1370,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         source_text_hint: str | None = None,
         ocr_prompt: str | None = None,
     ) -> TranslationResult:
+        if not self.available():
+            raise ValueError("local_multimodal_unavailable")
         prompt = (ocr_prompt or "").strip() or "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
         if source_text_hint:
             prompt += (
@@ -1386,6 +1392,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
     def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
+        if not self.available():
+            raise ValueError("local_multimodal_unavailable")
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
         prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=resolved_target)
