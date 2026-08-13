@@ -804,3 +804,8 @@
 - 真實 GPU local vision smoke：直接 Windows console 執行 `vision_smoke_benchmark.py --max-cases 1 --require-gpu --timeout 120 --startup-timeout 240 --json` PASS；runtime_mode=gpu、require_gpu=true、1/1 successful、line_match=1/1、match_score=1.0、startup=12229.9ms、average latency=1130.3ms；無 residual process。
 - 同一 smoke 首次因 cp950 無法輸出日文 JSON 暴露 CLI Unicode bug；新增 stdout UTF-8 reconfigure 與 regression，完整 benchmark tests `20 passed`，修正後不設定 PYTHONIOENCODING 的直接 GPU smoke 也 PASS。
 - 以上是 fresh artifact／單 case GPU smoke 證據；不推導完整 4-case／25-case accuracy、Store submission、WACK 或 clean-machine VM 已完成。
+## 2026-08-14：Vision smoke Unicode CodeRabbit disposition
+
+- 本階段 committed review：base `e818e99`、reviewedFiles=4，實際回報 1 個日期 major。
+- 查證為 false positive：本機 Taipei clock 為 `2026-08-14 +08:00`，fresh frozen build、clean-machine、GPU smoke 與 benchmark tests 均在 2026-08-14 執行；smoke rows 保留真實完成日期，不改寫成 8/13，也不把已完成證據改成 planned。
+- production `vision_smoke_benchmark.py`／regression test 未收到 CodeRabbit finding；本階段 review 結果為 1 個文件日期 false positive，非 0 issues。
