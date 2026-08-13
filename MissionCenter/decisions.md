@@ -809,3 +809,9 @@
 - 本階段 committed review：base `e818e99`、reviewedFiles=4，實際回報 1 個日期 major。
 - 查證為 false positive：本機 Taipei clock 為 `2026-08-14 +08:00`，fresh frozen build、clean-machine、GPU smoke 與 benchmark tests 均在 2026-08-14 執行；smoke rows 保留真實完成日期，不改寫成 8/13，也不把已完成證據改成 planned。
 - production `vision_smoke_benchmark.py`／regression test 未收到 CodeRabbit finding；本階段 review 結果為 1 個文件日期 false positive，非 0 issues。
+## 2026-08-14：Fresh MSIX optional WACK elevation boundary
+
+- fresh unsigned MSIX：`artifacts\post-change-msix-20260814\CloudHime-0.1.0.0-x64.msix`；本輪未覆寫正式 `dist`。
+- 一般 terminal 與原生 Windows PowerShell 5.1 都因目前 session `Administrator=False` 被 `packaging\test_wack.ps1` 正確拒絕；沒有 XML，也沒有 `OVERALL_RESULT`。
+- `Start-Process -Verb RunAs -Wait` 嘗試取得真正 UAC token，但目前桌面回報「操作被使用者取消」；因此本 fresh artifact 的 WACK 結果是 incomplete，不是 PASS，也不是產品 FAIL。
+- 不改寫先前 2026-08-13 另一份 signed artifact 的 direct appcert PASS；下一次需在能接受 UAC 的真正互動式管理員桌面重跑，並只採信唯一 `/REPORT/@OVERALL_RESULT=PASS`。
