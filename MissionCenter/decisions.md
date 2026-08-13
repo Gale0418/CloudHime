@@ -600,3 +600,10 @@
 - CodeRabbit final code review 已確認 `dev_local_gemma_provider.py` 的 3 個 findings 均已修正；後續文件修正針對 smoke evidence 的 host path、歷史回填標記與 intentional RED status。
 - 文件修正後的下一次 CodeRabbit 呼叫回傳 rate limit，等待 `42 minutes`；不把 rate limit 當作 review 通過，也不重試消耗額度。
 - 依既定流程先提交目前已驗證的 staged checkpoint；冷卻後以 commit 加上後續變更重新送 CodeRabbit，維持 `MissionCenter` 證據可追溯。
+## 2026-08-13：CH-E9 application-scoped single llama runtime coordinator
+
+- TDD 先新增 	ests/test_local_runtime_coordinator.py；初始 RED：ModuleNotFoundError: No module named 'local_runtime_coordinator'，再加入 coordinator 與 global single-runtime conflict contract。
+- Controller 現在持有一個 LocalVisionRuntimeCoordinator 並注入 OCRWorker；相同資產共用 reference-counted lease，不同資產或 text/vision profile conflict 直接回報，不再 spawn 第二個本地 llama-server。
+- worker 的 registry stop、取消 race、profile switch、GPU reconfigure、shutdown 與 cleanup 都改走 ownership-aware stop；最後一個 lease 才會停止 server，explicit stop + release 不 double-stop。
+- 驗證：compileall Pass；ownership/worker targeted 83 passed；CI inventory + UI smoke 51 passed；完整受影響 OCR/runtime groups 375 passed, 2 skipped。Windows runtime suite 使用管理員隔離 basetemp；未宣稱真實 GGUF paired accuracy、clean Windows、Store certification 或 GPU hardware gate。
+- 本 stage 已精確暫存 5 個檔案；CodeRabbit 仍在先前 rate limit 冷卻期，尚未對本 stage 宣稱 review 通過，待冷卻後與文件 follow-up 一起送審。
