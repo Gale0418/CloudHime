@@ -838,3 +838,9 @@
 - 實驗：以 Windows OCR backend 對 25 個 locked OCR cases、84 個 preprocess／threshold／scale 策略執行全量 screening；不啟動 Gemma、llama-server 或 GPU。
 - 結果：命令達到 180.034 秒 bounded timeout、exit 124，未產生可用結果檔；早先 5-case screening 可完成，但最佳策略只有 1/5 hit，不能推導全域最佳或品質改善。
 - 決策：不把全量 Hybrid Search 放進每次線上掃描。後續若要產品化，先做固定少量候選的 coarse-to-fine、策略 fingerprint／cache 與明確時間 budget；品質必須以人工標註 holdout 重新驗證。
+## 2026-08-14：Hybrid benchmark source deduplication and complete-result gate
+
+- Root cause：25 個 target case 只引用 7 張 unique 圖片；舊 evaluator 對每個 strategy／case 重複 OCR，同一張圖最多重跑多次。舊 TrialResult 也沒有 complete 語意，partial/pruned trial 可能參與 winner 排名。
+- 修正：依 sample_source 分組，每 strategy 對每張圖只呼叫一次 backend，再以該圖的 filtered OCR lines 計算各 target 命中；新增 complete、evaluated_sources，winner／summary／best-hit 更新只接受完整結果；新增 deterministic --max-strategies offline budget，預設不改既有完整 strategy space。
+- TDD／驗證：RED 去重與 complete contract 2 failed；GREEN tests/test_hybrid_search_benchmark.py 10 passed；受影響 benchmark suite 27 passed in 1.67s；compileall／git diff --check Pass。實測 25 targets／7 sources／84 strategies full screening 約 32.2s，14 個完整策略，最佳完整結果 14/25；24 strategies 約 10.1s，4 個完整。這是 evaluator／screening 證據，不是 production OCR 品質提升。
+- 審查：CodeRabbit auth 成功，但本輪 committed review 回報 rate_limit、waitTime=4 minutes，無 findings result，不宣稱 review 通過。Gemini bridge discover 成功，但 prompt 兩次回報 attempt to write a readonly database，無 Gemini 意見可引用。
