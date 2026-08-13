@@ -563,17 +563,26 @@ class LocalVisionRuntime:
     # ── 內部：process 清理 ────────────────────────────────────────────────────
 
     def _cleanup_process(self, proc) -> None:
-        """Terminate + wait；超時後 force-kill。只操作傳入的 handle，不依名稱掃殺。"""
+        """Terminate + wait；超時或 terminate 失敗後 force-kill。"""
         if proc is None:
             return
         try:
             proc.terminate()
-            try:
-                proc.wait(timeout=_CLEANUP_WAIT_TIMEOUT)
-            except Exception:
-                proc.kill()
         except Exception:
-            pass
+            # Windows process handles can reject terminate during teardown;
+            # still make a best-effort kill before returning.
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return
+        try:
+            proc.wait(timeout=_CLEANUP_WAIT_TIMEOUT)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────

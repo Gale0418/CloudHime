@@ -957,6 +957,33 @@ def test_stop_kills_owned_process_when_terminate_times_out(fake_assets):
     assert runtime.owned_process is None
 
 
+def test_stop_kills_owned_process_when_terminate_raises(fake_assets):
+    """terminate() 直接失敗時，stop() 仍必須嘗試 kill 自己持有的 process。"""
+
+    class TerminateErrorProcess(RunningProcess):
+        def terminate(self):
+            self.terminate_calls += 1
+            raise OSError("terminate failed")
+
+    proc = TerminateErrorProcess()
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=FakePopen([proc]),
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+    )
+    runtime.start()
+
+    state = runtime.stop()
+
+    assert state.name == "stopped"
+    assert proc.terminate_calls == 1
+    assert proc.kill_calls == 1
+    assert runtime.owned_process is None
+
+
 def test_stop_without_start_returns_stopped(fake_assets):
     """未 start 就 stop() → 直接回傳 stopped，不拋出例外。"""
     runtime = _make_runtime(fake_assets)
