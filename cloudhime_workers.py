@@ -4744,9 +4744,11 @@ class OCRWorker(QObject):
                         fallback_thresholds,
                         ocr_orientations,
                     )
-                except Exception:
-                    filtered_items = []
-
+                except Exception as exc:
+                    logger.warning(
+                        "[Manga tile retry] failed type=%s; retaining baseline items",
+                        type(exc).__name__,
+                    )
         if (not manga_tile_retry_used and self.scan_mode == SCAN_MODE_FULLSCREEN and page_region):
             used_threshold, filtered_items = self.try_manga_grid_recovery(
                 img,
@@ -4871,8 +4873,12 @@ class OCRWorker(QObject):
                             merged_items = merge_google_lines_into_items(_google_lines, merged_items)
                     except FutureTimeoutError:
                         _google_ocr_future.cancel()
-                    except Exception:
-                        pass
+                        logger.warning("[Google OCR prefetch] timeout")
+                    except Exception as exc:
+                        logger.warning(
+                            "[Google OCR prefetch] failed type=%s",
+                            type(exc).__name__,
+                        )
                     finally:
                         _shutdown_google_ocr_executor(wait=False)
                 else:
@@ -4974,7 +4980,12 @@ class OCRWorker(QObject):
                     self._emit_scan_status(f"{icon} {prefix} {i+1}/{len(merged_items)}")
                     try:
                         trans_text, provider = self.translate_text_preferred_with_provider(source_text)
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning(
+                            "[Translation fallback] failed index=%d type=%s; retaining source",
+                            i,
+                            type(exc).__name__,
+                        )
                         trans_text = source_text
                         provider = ""
 
