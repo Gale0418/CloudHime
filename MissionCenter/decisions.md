@@ -761,5 +761,5 @@
 ## 2026-08-14：Hybrid rescue assertion placement correction
 
 - Root cause：前一輪為了驗證 rescue consumption，新增的 Recovered assertion 被誤插到 exact-cache／FrameGate 測試；該測試的 OCR fixture 固定回傳 Hello，因此造成 85 passed, 1 failed，並非 FrameGate production regression。
-- 修正：移除 exact-cache 測試中的兩個錯誤 assertion；保留真正 no-text hybrid rescue 測試的 Recovered／last_results assertion。未修改 production code。
+- 修正：將 exact-cache 測試中的兩個錯誤 Recovered／你好 assertion 改為 fixture 真正產生的 Hello／Nihao；保留真正 no-text hybrid rescue 測試的 Recovered／你好 assertion。未修改 production code。
 - 驗證：完整 tests/test_ocr_worker_mode_matrix.py 86 passed in 4.84s；hybrid rescue subset 2 passed, 84 deselected in 0.95s；compileall／diff-check Pass。
