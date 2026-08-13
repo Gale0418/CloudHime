@@ -628,3 +628,10 @@
 - 追加 superseded-future regression：RED 1 failed, 1 passed, 78 deselected；修正以每個 future 綁定 lifecycle generation，且只有仍是 current future 才能清理；舊 future 完成時不會停止新 runtime。
 - 驗證：兩個 lifecycle targeted 2 passed, 78 deselected in 0.97s；worker/runtime/OCR/coordinator affected suite 224 passed, 1 skipped in 6.48s；ci/test_groups.json 全量 1000 passed, 2 skipped in 77.65s；compileall exit 0。
 - 本階段沒有啟動真實 GGUF／GPU／llama-server；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。
+
+## 2026-08-13：CH-E9 local multimodal empty-image fail-closed gate
+
+- 唯讀盤點發現三個 local image API 在 runtime ready 但 image_parts 為空時仍會建立純文字 request：translate_multimodal、transcribe_screenshot、translate_screenshot；這可能讓模型依 prompt／OCR hint 猜出看似成功的結果。
+- TDD RED：parameterized regression 3 failed, 39 deselected；修正後三個 API 在 request 前統一回報 ValueError("missing_image_context")，不改正常 non-empty image payload。
+- 驗證：targeted 3 passed, 39 deselected in 0.74s；affected provider/runtime/OCR/vision suite 185 passed in 5.13s；ci/test_groups.json 全量 1003 passed, 2 skipped in 72.95s；compileall exit 0。
+- 本階段沒有啟動真實 GGUF／GPU／llama-server；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。
