@@ -144,6 +144,7 @@ class LocalVisionRuntimeCoordinator:
 
     def _finish_start(self, lease, entry, state) -> None:
         cleanup_runtime = None
+        remove_entry = False
         with self._lock:
             entry.starting = max(0, entry.starting - 1)
             current = self._entries.get(lease._key) is entry
@@ -155,19 +156,20 @@ class LocalVisionRuntimeCoordinator:
                 if not entry.stopped:
                     cleanup_runtime = entry.runtime
                 entry.stopped = True
+                remove_entry = True
 
-        if cleanup_runtime is None:
-            return
         try:
-            cleanup_runtime.stop()
+            if cleanup_runtime is not None:
+                cleanup_runtime.stop()
         finally:
-            with self._lock:
-                if (
-                    self._entries.get(lease._key) is entry
-                    and entry.leases == 0
-                    and entry.starting == 0
-                ):
-                    self._entries.pop(lease._key, None)
+            if remove_entry:
+                with self._lock:
+                    if (
+                        self._entries.get(lease._key) is entry
+                        and entry.leases == 0
+                        and entry.starting == 0
+                    ):
+                        self._entries.pop(lease._key, None)
 
     def set_gpu_layers(self, lease, gpu_layers):
         with self._lock:
