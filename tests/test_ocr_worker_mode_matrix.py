@@ -1792,6 +1792,8 @@ def test_exact_cache_hit_refreshes_frame_gate_consecutive_baseline(monkeypatch, 
         for _ in range(4):
             worker.run_scan_once()
 
+        assert worker.last_combined_text == "Hello"
+        assert worker.last_results == [("Nihao", 10, 12, 40, 16)]
         assert worker.run_ocr_with_best_threshold.call_count == 3
         shadow_event = next(
             event for event in worker.last_scan_trace.events
