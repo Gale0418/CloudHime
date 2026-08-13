@@ -577,9 +577,12 @@ def test_local_gemma_stream_buffers_bad_candidate_and_preserves_fallback_cache_a
     )
 
     chunks = list(provider.translate_stream('same source'))
+    cached_chunks = list(provider.translate_stream('same source'))
     cached = provider.translate('same source')
 
     assert chunks == ['翻譯結果']
+    assert cached_chunks == ['翻譯結果']
+    assert provider.last_stream_result.from_cache is True
     assert cached.text == '翻譯結果'
     assert cached.provider == 'google'
     assert cached.requested_provider == 'local_gemma'
