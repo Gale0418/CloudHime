@@ -173,6 +173,36 @@ def test_local_multimodal_translate_checks_availability_before_empty_input():
         provider.translate("")
 
 
+@pytest.mark.parametrize("operation", [
+    "translate_multimodal",
+    "interpret_regions",
+    "transcribe_screenshot",
+    "translate_screenshot",
+])
+def test_local_multimodal_image_apis_check_availability(operation):
+    provider = LocalMultimodalProvider(enabled=False)
+    provider._request_chat_completion = lambda *args, **kwargs: pytest.fail(
+        "request should not run"
+    )
+    image_parts = [{"inline_data": {"data": "image"}}]
+
+    calls = {
+        "translate_multimodal": lambda: provider.translate_multimodal(
+            ["source"], image_parts
+        ),
+        "interpret_regions": lambda: provider.interpret_regions(
+            image_parts,
+            [{"id": "region-1", "x": 0, "y": 0, "w": 10, "h": 10, "text": "source"}],
+            image_width=100,
+            image_height=100,
+        ),
+        "transcribe_screenshot": lambda: provider.transcribe_screenshot(image_parts),
+        "translate_screenshot": lambda: provider.translate_screenshot(image_parts),
+    }
+
+    with pytest.raises(ValueError, match="local_multimodal_unavailable"):
+        calls[operation]()
+
 def test_local_multimodal_translate_uses_target_for_prompt_and_cache():
     provider = LocalMultimodalProvider(
         base_url="http://127.0.0.1:8080/v1",

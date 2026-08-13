@@ -614,3 +614,10 @@
 - 修正：worker 只有在 ready state、owned process 仍存活、endpoint 為 `http://127.0.0.1:<port>/v1` 且 profile 相符時才宣告 local runtime ready；沒有 embedded runtime 時不再把設定檔 endpoint 當作活著的 server。registry builder 另要求明確 `local_runtime_validated` 與 loopback endpoint。
 - 驗證：targeted `8 passed, 103 deselected, 1 warning in 1.13s`；受影響完整套件 `289 passed in 7.67s`；`ci/test_groups.json` 全部測試 `994 passed, 2 skipped in 86.82s`；compileall exit 0；Git whitespace check 以 `--ignore-space-at-eol` 檢查後僅包含預期新增邏輯。
 - 本階段沒有啟動真實 GGUF／GPU／llama-server paired benchmark；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。
+
+## 2026-08-13：CH-E9 LocalMultimodal public API availability gate
+
+- 唯讀盤點發現 LocalMultimodalProvider.translate_multimodal()、interpret_regions()、transcribe_screenshot()、translate_screenshot() 沒有像 translate() 一樣檢查 available()；worker 正常路徑雖有 provider selection，public API 在 runtime stop／設定切換 race 期間仍可直接送 HTTP。
+- TDD RED：availability parameterized regression 4 failed, 35 deselected；修正後四個 API 在組 prompt／發 request 前統一回報 ValueError("local_multimodal_unavailable")。
+- 驗證：targeted 4 passed, 35 deselected in 0.86s；provider/runtime/OCR/vision affected suite 182 passed in 6.96s；ci/test_groups.json 全量 998 passed, 2 skipped in 85.39s；compileall exit 0。
+- 本階段沒有啟動真實 GGUF／GPU／llama-server；CodeRabbit 仍在已知冷卻期，未宣稱 review 通過，待恢復後與後續變更一併送審。
