@@ -1770,6 +1770,8 @@ def test_exact_cache_hit_refreshes_frame_gate_consecutive_baseline(monkeypatch, 
         for _ in range(4):
             worker.run_scan_once()
 
+        assert worker.last_combined_text == "Recovered"
+        assert worker.last_results == [("你好", 10, 12, 40, 16)]
         assert worker.run_ocr_with_best_threshold.call_count == 3
         shadow_event = next(
             event for event in worker.last_scan_trace.events
@@ -2151,6 +2153,8 @@ def test_no_text_uses_bounded_hybrid_rescue(monkeypatch, qtbot):
     try:
         worker.run_scan_once()
 
+        assert worker.last_combined_text == "Recovered"
+        assert worker.last_results == [("你好", 10, 12, 40, 16)]
         assert worker.run_ocr_with_best_threshold.call_count == 3
         rescue_call = worker.run_ocr_with_best_threshold.call_args_list[-1]
         assert rescue_call.kwargs["preprocess_candidates"] == BOUNDED_RESCUE_PREPROCESSES
