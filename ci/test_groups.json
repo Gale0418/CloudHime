@@ -6,6 +6,7 @@
       "test_files": [
         "tests/test_ci_test_inventory.py",
         "tests/test_benchmark_lock.py",
+        "tests/test_local_runtime_coordinator.py",
         "tests/test_cloudhime_core.py",
         "tests/test_cloudhime_logging.py",
         "tests/test_exact_image_cache_benchmark.py",
