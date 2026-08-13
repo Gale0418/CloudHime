@@ -19,6 +19,7 @@ _REQUIRED_DATASET_IDS = {
 }
 _REQUIRED_ARTIFACT_IDS = {
     "vision_scheduling_benchmark",
+    "translation_e2e_evaluator",
 }
 _REQUIRED_CONDITION_KEYS = {
     "accuracy",
