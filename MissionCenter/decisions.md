@@ -658,3 +658,9 @@
 - 修正：dev-only `LocalGemmaProvider.translate_stream()` 在 cache、正常完成與 fallback 完成時保存 `last_stream_result`；OCRWorker 只讀 optional result metadata，返回實際 provider，既有 chunk 格式與 stream signals 不變。
 - 驗證：targeted `2 passed, 120 deselected in 1.16s`；provider + OCR mode matrix `122 passed in 5.00s`；`ci/test_groups.json` 全量 `1004 passed, 2 skipped in 76.15s`；compileall exit 0；diff-check 無 error。
 - 本階段未啟動真實 GGUF／GPU／llama-server paired benchmark；未宣稱 clean Windows、Store certification 或 hardware gate；待提交後再做 CodeRabbit 增量 review。
+## 2026-08-13：CodeRabbit stream cache finding disposition
+
+- 本輪 CodeRabbit committed review：base `7d0af76`、reviewedFiles `6`、初始 `findings=1`；finding 指出 cached `TranslationResult` 直接掛到 `last_stream_result` 時未標 `from_cache=True`。
+- TDD RED：新增 cache-hit assertion `1 failed, 41 deselected`；修正後 targeted `2 passed, 120 deselected in 0.92s`，affected provider/OCR suite `122 passed in 4.67s`；compileall exit 0；diff-check 無 error。
+- 修正以新 `TranslationResult` 複製 cached text/provider/model/raw/fallback provenance 並設定 `from_cache=True`，不改變 cache 內原物件。
+- 本輪 full CI `1004 passed, 2 skipped in 76.15s` 是 finding 修正前的 checkpoint；finding 修正後已跑 affected suite，未宣稱 post-fix full CI。CodeRabbit 初始 review 已有 1 finding，修正後未重新取得 second review receipt。

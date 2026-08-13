@@ -190,8 +190,17 @@ class LocalGemmaProvider(KnowledgePromptContext):
         cached = self._get_cached(cache_key)
         if cached is not None:
             if isinstance(cached, TranslationResult):
-                self.last_stream_result = cached
-                yield cached.text
+                result = TranslationResult(
+                    text=cached.text,
+                    provider=cached.provider,
+                    model=cached.model,
+                    raw_text=cached.raw_text,
+                    from_cache=True,
+                    requested_provider=cached.requested_provider,
+                    fallback_reason=cached.fallback_reason,
+                )
+                self.last_stream_result = result
+                yield result.text
             else:
                 self.last_stream_result = TranslationResult(
                     text=str(cached), provider=self.name, model="local", from_cache=True
