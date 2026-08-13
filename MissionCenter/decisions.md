@@ -576,3 +576,27 @@
 
 - CodeRabbit uncommitted review 覆蓋目前 CloudHime working tree scope，先前指出的 heading boundary 已修正；本次複審回傳 findings=0。
 - 本結果只代表本階段 6 檔 hardening diff 的靜態 review；不升格為 clean Windows、Store certification、GPU paired promotion 或 legacy llama_cpp migration 完成。
+## 2026-08-13：CH-E9 production LocalGemma in-process boundary isolation
+
+- TDD 先加入 release boundary regression；RED：`dev_local_gemma_provider.py` 不存在且 `translation_providers.py` 仍含 `LocalGemmaProvider`／`llama_cpp`。
+- 將 `LocalGemmaProvider` 原樣移至 `dev_local_gemma_provider.py`，明確標為 development-only；production `translation_providers.py` 不再匯出該類別，也不再含 in-process `llama_cpp` import；未改 LocalMultimodalProvider 的 HTTP／server 行為。
+- 三個 dev compatibility tests 改由 dev module 匯入；fallback monkeypatch 只改到 dev module；`requirements.txt`／CI production 仍不含 llama-cpp-python，依賴保留在 `requirements-llama-dev.txt`。
+- 驗證：targeted `53 passed, 1 skipped`；core elevated isolated `378 passed`；OCR `228 passed`；runtime `147 passed, 2 skipped`；benchmarks `178 passed`；compileall／diff-check 通過。
+- UI test group 兩次在 5 分鐘內無摘要並 timeout；不得宣稱 UI group 通過。CodeRabbit CLI 安裝未完成：PowerShell 官方 URL TLS ProtocolVersion 失敗，WSL 官方腳本 124 秒 timeout；未宣稱 CodeRabbit review 完成，故本 checkpoint 暫不提交 Git。
+- 未完成：實機 GPU／本地模型 paired benchmark、CLOUDHIME_RUN_LOCAL_MODEL=1 的真 GGUF 測試、clean Windows／Store gate；後續仍需在 CodeRabbit 可用後重新審查最後 diff。
+## 2026-08-13：CH-E9 UI group timeout disposition
+
+- 前次四檔 UI 合併命令曾因測試環境／收尾狀態在 5 分鐘內沒有摘要；未將其判為通過，也未修改 UI 產品碼。
+- 以管理員權限、QT_QPA_PLATFORM=offscreen、每檔獨立 basetemp 逐檔重跑：39 passed、2 passed、1 passed、10 passed；再以新的合併 basetemp 重跑四檔，結果 `52 passed in 2.02s`。
+- 因此前次 timeout 判定為可重現性不足的測試 harness／ACL 環境干擾，不是目前 UI assertion failure；完整 test group 證據已補齊。
+## 2026-08-13：CH-E9 CodeRabbit findings disposition
+
+- 使用既有 `/root/.local/bin/coderabbit`（version `0.7.2`，帳號 `Gale0418`，authenticated）審查 staged 變更，並確認新加入的 `dev_local_gemma_provider.py` 已列入 reviewedFiles。
+- CodeRabbit 回報 3 個 findings：省略 `target_lang` 未回落至 provider 設定（major）、stream fallback cache 遺失 provider attribution（minor）、stream 先吐出未驗證候選（major）。
+- 修正：`translate`／`translate_stream` 的 target default 改為 `None`；stream 與 synchronous fallback 都 cache 完整 `TranslationResult`；stream 先收集並驗證完整候選，失敗時只輸出 Google fallback。
+- 修正後 targeted regression `56 passed, 1 skipped`；compileall／diff-check 通過。因本小時已使用 3 次 CodeRabbit allowance，修正後 review 尚未重跑，故本 checkpoint 不提交 Git，待冷卻後將同一批變更重新送審。
+## 2026-08-13：CH-E9 MissionCenter evidence review disposition
+
+- CodeRabbit final code review 已確認 `dev_local_gemma_provider.py` 的 3 個 findings 均已修正；後續文件修正針對 smoke evidence 的 host path、歷史回填標記與 intentional RED status。
+- 文件修正後的下一次 CodeRabbit 呼叫回傳 rate limit，等待 `42 minutes`；不把 rate limit 當作 review 通過，也不重試消耗額度。
+- 依既定流程先提交目前已驗證的 staged checkpoint；冷卻後以 commit 加上後續變更重新送 CodeRabbit，維持 `MissionCenter` 證據可追溯。

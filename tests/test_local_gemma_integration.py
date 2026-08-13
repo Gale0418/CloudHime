@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from translation_providers import LocalGemmaProvider
+from dev_local_gemma_provider import LocalGemmaProvider
+
 
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "gemma-3-4b-it.Q4_K_M.gguf"

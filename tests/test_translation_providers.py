@@ -3,10 +3,11 @@ from urllib import error
 
 import pytest
 
+from dev_local_gemma_provider import LocalGemmaProvider
+
 from translation_providers import GoogleTranslationProvider
 from translation_providers import (
     GemmaTranslationProvider,
-    LocalGemmaProvider,
     LocalMultimodalProvider,
     classify_region_vision_failure,
 )
@@ -217,7 +218,7 @@ def test_local_gemma_fallback_reports_google_and_preserves_attribution_on_cache_
             return {"choices": [{"text": "same source"}]}
 
     monkeypatch.setattr(
-        "translation_providers.GoogleTranslator",
+        "dev_local_gemma_provider.GoogleTranslator",
         lambda source, target: FakeTranslator("翻譯結果"),
     )
     provider = LocalGemmaProvider(enabled=False)
@@ -485,3 +486,55 @@ def test_region_vision_http_failure_classification_keeps_only_status_code():
     )
 
     assert classify_region_vision_failure(exception) == "request_http_400"
+class LocalGemmaStreamLlm:
+    def __init__(self, streamed_text='translated'):
+        self.streamed_text = streamed_text
+        self.prompts = []
+
+    def create_completion(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        if kwargs.get('stream'):
+            return iter([{'choices': [{'text': self.streamed_text}]}])
+        return {'choices': [{'text': self.streamed_text}]}
+
+
+def test_local_gemma_uses_configured_target_when_target_is_omitted():
+    llm = LocalGemmaStreamLlm('translated')
+    provider = LocalGemmaProvider(target_lang='en', enabled=False)
+    provider.enabled = True
+    provider._llm = llm
+
+    result = provider.translate('こんにちは')
+
+    assert result.text == 'translated'
+    assert provider._context_buffer[-1][2] == 'en'
+
+
+def test_local_gemma_stream_buffers_bad_candidate_and_preserves_fallback_cache_attribution(monkeypatch):
+    llm = LocalGemmaStreamLlm('same source')
+    provider = LocalGemmaProvider(enabled=False)
+    provider.enabled = True
+    provider._llm = llm
+    monkeypatch.setattr(
+        'dev_local_gemma_provider.GoogleTranslator',
+        lambda source, target: FakeTranslator('翻譯結果'),
+    )
+
+    chunks = list(provider.translate_stream('same source'))
+    cached = provider.translate('same source')
+
+    assert chunks == ['翻譯結果']
+    assert cached.text == '翻譯結果'
+    assert cached.provider == 'google'
+    assert cached.requested_provider == 'local_gemma'
+    assert cached.fallback_reason == 'bad_translation'
+    assert cached.from_cache is True
+
+
+def test_local_gemma_stream_emits_only_validated_result():
+    llm = LocalGemmaStreamLlm('valid translation')
+    provider = LocalGemmaProvider(enabled=False)
+    provider.enabled = True
+    provider._llm = llm
+
+    assert list(provider.translate_stream('source text')) == ['valid translation']
