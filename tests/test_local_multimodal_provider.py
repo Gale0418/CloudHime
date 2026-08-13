@@ -171,6 +171,20 @@ def test_local_multimodal_provider_close_rejects_new_requests():
         provider._request_chat_completion({})
 
 
+def test_local_multimodal_provider_close_cannot_reactivate_runtime():
+    provider = make_provider()
+
+    provider.close()
+    provider.enabled = True
+    provider.update_runtime(
+        "http://127.0.0.1:8080/v1",
+        "gemma-3n-local",
+        ready=True,
+    )
+
+    assert provider.available() is False
+
+
 def test_translate_multimodal_builds_openai_compatible_payload():
     provider = make_provider()
     payload = provider._build_chat_payload(

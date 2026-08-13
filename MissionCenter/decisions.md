@@ -733,3 +733,10 @@
 
 - CodeRabbit CLI 0.7.2 與 Gale0418 authentication 均確認成功；精準 committed scope 為 base `8660ef4` 到 `e45fb56`，預期只涵蓋本輪 4 個小檔案。
 - 實際 review service 回報 `rate_limit`、`waitTime=24 minutes`；因此本輪沒有 CodeRabbit findings result，也不宣稱 review 通過。等待冷卻期間先繼續本地驗證。
+
+## 2026-08-14：Local multimodal terminal reactivation hardening
+
+- Root cause：cleanup 後 provider 的 scheduler 已關閉，但設定重刷仍可能把 enabled 設回 true，再以 update_runtime(ready=True) 造成錯誤的可用狀態。
+- 修正：LocalMultimodalProvider 增加 terminal _closed state；available() 與 update_runtime() 都 fail-closed，close() 後不允許同一 instance 重新活化。正常首次初始化與 ready runtime 行為不變。
+- TDD：先加入「close 後重新設定不得 re-activate」regression，RED 1 failed, 22 passed；修正後 provider 23 passed in 0.79s；受影響 provider／worker／vision 29 passed, 1 skipped in 1.15s；compileall／diff-check 最終 Pass。
+- 本輪未送 CodeRabbit（既有 rate limit 冷卻中）；未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK。

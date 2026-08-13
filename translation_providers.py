@@ -1035,6 +1035,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self.temperature = float(temperature)
         self.repeat_penalty = float(repeat_penalty)
         self._runtime_ready = bool(self.base_url and self.model_name)
+        self._closed = False
         self._dictionary = load_translation_dictionary()
         self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
         self._last_request_metrics: dict[str, int | float] = {}
@@ -1042,7 +1043,13 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self._init_knowledge_prompt_context()
 
     def available(self) -> bool:
-        return self.enabled and self._runtime_ready and bool(self.base_url) and bool(self.model_name)
+        return (
+            not self._closed
+            and self.enabled
+            and self._runtime_ready
+            and bool(self.base_url)
+            and bool(self.model_name)
+        )
 
     def clear_cache(self) -> None:
         """Clear translation results without changing local runtime state."""
@@ -1052,6 +1059,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         # Closing is terminal for this provider instance; never advertise stale readiness.
         self.enabled = False
         self._runtime_ready = False
+        self._closed = True
         self._request_scheduler.close()
         self._translation_cache.clear()
         self._last_request_metrics = {}
@@ -1061,6 +1069,9 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         return dict(self._last_request_metrics)
 
     def update_runtime(self, base_url: str, model_name: str, ready: bool) -> None:
+        if self._closed:
+            self._runtime_ready = False
+            return
         self.base_url = (base_url or "").rstrip("/")
         self.model_name = (model_name or "").strip()
         self._runtime_ready = bool(ready and self.base_url and self.model_name)
