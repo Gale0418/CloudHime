@@ -313,3 +313,10 @@ def test_translation_panel_availability_keeps_selected_unavailable_model(qtbot):
         "gemini-2.5-pro",
     ]
     assert panel.cmb_ai_model.currentData() == "gemini-2.5-pro"
+
+
+def test_removed_text_only_model_has_no_translation_panel_note():
+    panel = TranslationSettingsPanel.__new__(TranslationSettingsPanel)
+    panel.controller = SimpleNamespace(ui_language="en")
+
+    assert panel._ai_model_note_text("gemma-3-1b-it") == ""

@@ -674,3 +674,9 @@
 
 - 修正 stream cache provenance 後嘗試以 base `7157e5f` 進行增量複審；CodeRabbit 實際回報 `rate_limit`，`waitTime=16 minutes`，沒有產生 post-fix review result。
 - 因此 `cda9254` 只宣稱 affected tests 通過與 initial finding 已修正，不宣稱複審 0 findings；待 cooldown 後可將後續累積變更一起送審。
+## 2026-08-13：Retired Gemma 3 1B UI metadata removal
+
+- 唯讀盤點發現 `model_catalog.py` 與 catalog tests 已排除 `gemma-3-1b-it`，但 `translation_settings_panel.py` 仍保留「快速純文字模型、截圖回退 OCR」提示。
+- TDD RED：新增面板 contract `1 failed, 10 deselected`，現行 1B note 仍可被直接查出；修正後 panel suite `11 passed in 0.88s`，compileall exit 0、diff-check 無 error。
+- UI 受影響測試合併執行 180 秒 timeout、無 failure summary，未算通過；逐檔 smoke `39 passed in 1.05s`、relief `2 passed in 0.09s`、theme `1 passed in 1.24s`，加 panel suite 共 `53 passed`。
+- 本階段只移除已淘汰模型的 UI metadata，未改模型 catalog／remote provider behavior；未做真實 GPU／GGUF、clean Windows 或 Store certification；CodeRabbit 因冷卻尚未覆蓋本次 commit。
