@@ -40,6 +40,8 @@ class TrialResult:
     avg_score: float
     avg_latency_ms: float
     pruned: bool = False
+    complete: bool = True
+    evaluated_sources: int = 0
 
     @property
     def hit_rate(self) -> float:
@@ -47,10 +49,11 @@ class TrialResult:
 
 
 def choose_best_result(results: Sequence[TrialResult]) -> TrialResult | None:
-    if not results:
+    complete_results = [result for result in results if result.complete]
+    if not complete_results:
         return None
     return max(
-        results,
+        complete_results,
         key=lambda result: (
             result.hit_rate,
             result.avg_score,
@@ -93,6 +96,29 @@ def build_default_search_space(
                 )
     return strategies
 
+
+def select_bounded_strategies(
+    strategies: Sequence[SearchStrategy],
+    max_strategies: int | None,
+) -> list[SearchStrategy]:
+    """Select evenly spaced strategies under an explicit offline budget."""
+
+    available = list(strategies)
+    if max_strategies is None:
+        return available
+    budget = int(max_strategies)
+    if budget <= 0:
+        raise ValueError("strategy budget must be positive")
+    if budget >= len(available):
+        return available
+    if budget == 1:
+        return [available[0]]
+
+    last_index = len(available) - 1
+    return [
+        available[(position * last_index) // (budget - 1)]
+        for position in range(budget)
+    ]
 
 def _load_manifest(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8-sig") as handle:
@@ -172,6 +198,16 @@ def _prepare_image(image: np.ndarray, strategy: SearchStrategy) -> np.ndarray:
         preprocess=strategy.preprocess,
     )
 
+def _expected_matches_items(
+    expected: Any,
+    filtered_items: Sequence[dict[str, Any]],
+) -> bool:
+    return any(
+        _expected_matches(expected, item.get("text", ""))
+        for item in filtered_items
+    )
+
+
 def evaluate_strategy(
     strategy: SearchStrategy,
     cases: Sequence[dict[str, Any]],
@@ -184,52 +220,69 @@ def evaluate_strategy(
     hits = 0
     scores: list[int] = []
     latencies: list[float] = []
-    evaluated = 0
+    evaluated_cases = 0
+    evaluated_sources = 0
+    cases_by_source: dict[str, list[dict[str, Any]]] = {}
+    for case in cases:
+        source = str(case.get("sample_source", ""))
+        cases_by_source.setdefault(source, []).append(case)
+
     root_path = Path(root)
     total_cases = len(cases)
 
-    for case in cases:
-        image_path = root_path / str(case.get("sample_source", ""))
+    for source, source_cases in cases_by_source.items():
+        image_path = root_path / source
         image = _load_image(image_path)
         if image is None:
             continue
+
         start = time.perf_counter()
         prepared = _prepare_image(image, strategy)
         result = backend.recognize(prepared)
         latency_ms = (time.perf_counter() - start) * 1000.0
-        raw_items = [_line_to_item(line, strategy.scale) for line in getattr(result, "lines", [])]
+        raw_items = [
+            _line_to_item(line, strategy.scale)
+            for line in getattr(result, "lines", [])
+        ]
         score, filtered_items = score_ocr_items(raw_items)
-        text = _items_to_text(filtered_items)
 
-        evaluated += 1
-        hits += 1 if _expected_matches(case.get("expected"), text) else 0
+        evaluated_sources += 1
+        evaluated_cases += len(source_cases)
+        hits += sum(
+            1
+            for case in source_cases
+            if _expected_matches_items(case.get("expected"), filtered_items)
+        )
         scores.append(score)
         latencies.append(latency_ms)
 
         if should_prune_strategy(
             current_hits=hits,
-            evaluated_cases=evaluated,
+            evaluated_cases=evaluated_cases,
             total_cases=total_cases,
             best_hits=best_hits,
             min_cases=min_prune_cases,
         ):
             return TrialResult(
                 strategy=strategy,
-                cases=evaluated,
+                cases=evaluated_cases,
                 hits=hits,
                 avg_score=sum(scores) / len(scores) if scores else 0.0,
                 avg_latency_ms=sum(latencies) / len(latencies) if latencies else 0.0,
                 pruned=True,
+                complete=False,
+                evaluated_sources=evaluated_sources,
             )
 
     return TrialResult(
         strategy=strategy,
-        cases=evaluated,
+        cases=evaluated_cases,
         hits=hits,
         avg_score=sum(scores) / len(scores) if scores else 0.0,
         avg_latency_ms=sum(latencies) / len(latencies) if latencies else 0.0,
+        complete=evaluated_cases == total_cases,
+        evaluated_sources=evaluated_sources,
     )
-
 
 def evaluate_search_space(
     strategies: Iterable[SearchStrategy],
@@ -243,7 +296,8 @@ def evaluate_search_space(
     for strategy in strategies:
         result = evaluate_strategy(strategy, cases, backend=backend, root=root, best_hits=best_hits)
         results.append(result)
-        best_hits = max(best_hits, result.hits)
+        if result.complete:
+            best_hits = max(best_hits, result.hits)
     return results
 
 
@@ -260,7 +314,11 @@ def _print_summary(results: Sequence[TrialResult]) -> None:
         f"avg_score={best.avg_score:.2f} "
         f"avg_latency_ms={best.avg_latency_ms:.2f}"
     )
-    for result in sorted(results, key=lambda item: (item.hit_rate, item.avg_score), reverse=True)[:8]:
+    for result in sorted(
+        (item for item in results if item.complete),
+        key=lambda item: (item.hit_rate, item.avg_score),
+        reverse=True,
+    )[:8]:
         suffix = " pruned=true" if result.pruned else ""
         print(
             f"- strategy={result.strategy.name} "
@@ -276,6 +334,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("manifest", nargs="?", default=str(DEFAULT_MANIFEST))
     parser.add_argument("--backend", default="windows", help="OCR backend name, defaults to windows.")
     parser.add_argument("--max-cases", type=int, default=5)
+    parser.add_argument(
+        "--max-strategies",
+        type=int,
+        default=None,
+        help="Optional deterministic budget for offline strategy screening.",
+    )
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -289,7 +353,11 @@ def main(argv: list[str] | None = None) -> int:
     backends = discover_backends([args.backend])
     if not backends:
         raise ValueError(f"ocr backend unavailable: {args.backend}")
-    results = evaluate_search_space(build_default_search_space(), cases, backend=backends[0])
+    strategies = select_bounded_strategies(
+        build_default_search_space(),
+        args.max_strategies,
+    )
+    results = evaluate_search_space(strategies, cases, backend=backends[0])
     if args.json:
         print(
             json.dumps(
@@ -302,6 +370,8 @@ def main(argv: list[str] | None = None) -> int:
                         "avg_score": result.avg_score,
                         "avg_latency_ms": result.avg_latency_ms,
                         "pruned": result.pruned,
+                        "complete": result.complete,
+                        "evaluated_sources": result.evaluated_sources,
                     }
                     for result in results
                 ],
