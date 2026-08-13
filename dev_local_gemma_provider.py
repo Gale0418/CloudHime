@@ -49,6 +49,7 @@ class LocalGemmaProvider(KnowledgePromptContext):
         self.last_load_error = ""
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._context_buffer = deque(maxlen=3)
+        self.last_stream_result: TranslationResult | None = None
         self._init_knowledge_prompt_context()
         self._dictionary = load_translation_dictionary()
         self._load_model()
@@ -177,6 +178,7 @@ class LocalGemmaProvider(KnowledgePromptContext):
         return prompt
 
     def translate_stream(self, text: str, *, target_lang: str | None = None):
+        self.last_stream_result = None
         if not self.available() or not self._llm:
             raise ValueError("local_model_unavailable")
         normalized = clean_model_output_multiline(text).strip() if text else ""
@@ -188,8 +190,12 @@ class LocalGemmaProvider(KnowledgePromptContext):
         cached = self._get_cached(cache_key)
         if cached is not None:
             if isinstance(cached, TranslationResult):
+                self.last_stream_result = cached
                 yield cached.text
             else:
+                self.last_stream_result = TranslationResult(
+                    text=str(cached), provider=self.name, model="local", from_cache=True
+                )
                 yield str(cached)
             return
 
@@ -221,6 +227,7 @@ class LocalGemmaProvider(KnowledgePromptContext):
                 fallback_reason="bad_translation",
             )
             self._remember(cache_key, result)
+            self.last_stream_result = result
             self._context_buffer.append((normalized, fallback_text, resolved_target))
             yield fallback_text
             return
@@ -233,6 +240,7 @@ class LocalGemmaProvider(KnowledgePromptContext):
                 raw_text=accumulated,
             )
             self._remember(cache_key, result)
+            self.last_stream_result = result
             self._context_buffer.append((normalized, final, resolved_target))
             yield final
     def translate(

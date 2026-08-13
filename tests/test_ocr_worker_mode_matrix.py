@@ -8,7 +8,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QFont
 
 import cloudhime_workers as workers_module
-from translation_providers import LocalRequestCancelled
+from translation_providers import LocalRequestCancelled, TranslationResult
 from scan_pipeline import ScanErrorCode, ScanOutcome, ScanStage
 from cloudhime_ui import OverlayWindow
 from cloudhime_workers import (
@@ -1565,6 +1565,32 @@ def test_same_generation_requests_remain_fifo_and_do_not_coalesce(monkeypatch, q
     finally:
         worker.cleanup()
 
+
+def test_streaming_translation_returns_actual_fallback_provider():
+    worker = OCRWorker()
+    worker.has_any_multimodal_ai = lambda: False
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "gemma"
+    worker.translation_target_lang = "zh-TW"
+    worker._get_translation_provider = lambda _name: SimpleNamespace(
+        translate_stream=lambda _text: iter(["翻譯結果"]),
+        last_stream_result=TranslationResult(
+            text="翻譯結果",
+            provider="google",
+            requested_provider="local_gemma",
+            fallback_reason="bad_translation",
+        ),
+    )
+    merged_items = [{"x": 1, "y": 2, "w": 30, "h": 12}]
+
+    try:
+        translated, providers = worker.translate_items_with_ai_and_providers(
+            ["source"], [], merged_items
+        )
+        assert translated == ["翻譯結果"]
+        assert providers == ["google"]
+    finally:
+        worker.cleanup()
 
 def test_streaming_generation_change_suppresses_later_chunks_and_final_result(
     monkeypatch, qtbot
