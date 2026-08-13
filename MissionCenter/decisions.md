@@ -770,3 +770,9 @@
 - 修正：`terminate()` 失敗時立即對同一個 owned handle 做 best-effort `kill()`；正常 terminate timeout 的既有 kill 路徑維持不變；不依名稱掃殺、不改外部 process。
 - TDD：新增 terminate-raises regression；直接呼叫 regression harness、既有 stop／timeout／health-timeout／GPU→CPU／profile-switch 回歸均 Pass；`compileall` 與 `git diff --check` Pass。pytest target 因 Windows temp ACL `WinError 5` 在 setup／收尾失敗，未宣稱 pytest suite 通過。
 - 本輪未送 CodeRabbit（冷卻中）；未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK。
+## 2026-08-14：Vision runtime state publication race hardening
+
+- Root cause：`stop()` 可在 `start()` 健康檢查回報 ready 後、終態發布前插入；舊流程可能讓 caller 收到 ready，但 owned process 已被停止，形成假 ready／殘留狀態不一致。
+- 修正：加入短生命週期 state lock；stop 先原子標記 stopped、摘除 owned handle，再清理 process；ready、CPU fallback 與 failed terminal state 發布前重新檢查取消訊號。未改 UI、HTTP payload、profile 或 fallback policy。
+- TDD：race regression 先由手動 harness RED；修正後 race、慢冷啟動取消、ready／starting idempotence、health timeout、GPU→CPU、stop timeout／terminate exception、profile switch targeted calls 均 Pass；`compileall` 與 `git diff --check` Pass。pytest target 仍受 Windows temp ACL `WinError 5` setup／收尾限制，未宣稱 suite 通過。
+- 本輪未送 CodeRabbit（冷卻中）；未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK。
