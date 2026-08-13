@@ -19,12 +19,12 @@ MEIKI = "過ぎた街並は終わりの愛と遠くた"
 class FakeRuntime:
     state = JapaneseOCRRuntimeState.ready
 
-    def __init__(self):
+    def __init__(self, candidate=None):
         chars = tuple(
             MeikiCharacter(char, 0.4 if index == len(MEIKI) - 1 else 0.99)
             for index, char in enumerate(MEIKI)
         )
-        self.candidate = MeikiCandidate(MEIKI, chars)
+        self.candidate = candidate or MeikiCandidate(MEIKI, chars)
         self.calls = 0
 
     def run(self, image):
@@ -78,6 +78,25 @@ def test_worker_keeps_baseline_when_second_transcription_is_worse():
     image = np.zeros((50, 300, 3), dtype=np.uint8)
 
     assert worker.rescue_japanese_text(image, FIRST) == FIRST
+    assert worker.local_multimodal_provider.calls == 1
+
+def test_worker_keeps_full_baseline_when_vlm_drops_candidate_tail():
+    candidate_text = "かなカナABCXYZ1234"
+    candidate = MeikiCandidate(
+        candidate_text,
+        tuple(
+            MeikiCharacter(char, 0.99 if index < len(candidate_text) - 3 else 0.2)
+            for index, char in enumerate(candidate_text)
+        ),
+    )
+    worker = _worker(
+        "かなカナABCXYZ1",
+    )
+    worker.japanese_rescue_runtime = FakeRuntime(candidate)
+    image = np.zeros((50, 300, 3), dtype=np.uint8)
+    baseline = "かなカナABQXYZ1234"
+
+    assert worker.rescue_japanese_text(image, baseline) == baseline
     assert worker.local_multimodal_provider.calls == 1
 
 

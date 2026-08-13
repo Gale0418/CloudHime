@@ -882,3 +882,9 @@
 - 修正：將 .github/workflows/ci.yml fixture 改為自驗證 C# probe，檢查 SystemRoot、WINDIR、精確 PATH，並拒絕 PYTHONHOME、PYTHONPATH、VIRTUAL_ENV、CONDA_PREFIX、OLLAMA_HOST；將 clean-machine smoke 呼叫改為 5 秒，保留 MSIX install smoke 原本的 3 秒。tests/test_msix_packaging.py 改為鎖定 probe contract。
 - TDD／驗證：新增 regression 先 RED（1 failed）；修正後 targeted 1 passed。中途 YAML indentation 造成 workflow parser RED（1 failed），修正後 CI fixture 原始 block 實際編譯、啟動與清理通過，父程序刻意帶入污染環境仍通過；release／MSIX／CI inventory 45 passed in 58.27s；compileall／git diff --check 通過。
 - 邊界：這是 CI fixture／契約 hardening，不等於真實乾淨 Windows、MSIX install／uninstall、GPU onboarding、Store submission 或 WACK 已完成；CH-T64 維持 In Progress。
+
+## 2026-08-14：Japanese OCR worker full-candidate arbitration regression
+
+- 缺口：japanese_ocr_rescue.py 的 pure decision 已保護「不得用可信前綴改善換掉完整候選」，但 worker integration 原本沒有同型案例；未來接線改動可能繞過這個準確度護欄。
+- 修正：tests/test_japanese_ocr_worker_integration.py 新增 fake runtime full Meiki candidate 情境，讓 VLM 輸出更接近 trusted prefix、卻丟掉候選尾段；OCRWorker.rescue_japanese_text() 必須保留完整 baseline。
+- 驗證：worker integration 5 passed in 1.00s；Japanese rescue/runtime/OCR mode matrix 102 passed in 7.04s；未執行 GPU、完整漫畫 holdout、LGPL 授權審查、Store 或 WACK，因此 CH-T35 維持 In Progress。
