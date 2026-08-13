@@ -203,6 +203,32 @@ def test_local_multimodal_image_apis_check_availability(operation):
     with pytest.raises(ValueError, match="local_multimodal_unavailable"):
         calls[operation]()
 
+@pytest.mark.parametrize("operation", [
+    "translate_multimodal",
+    "transcribe_screenshot",
+    "translate_screenshot",
+])
+def test_local_multimodal_image_apis_reject_missing_image_context(operation):
+    provider = LocalMultimodalProvider(
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="gemma-local",
+        enabled=True,
+    )
+    provider._request_chat_completion = lambda *args, **kwargs: pytest.fail(
+        "request should not run"
+    )
+
+    calls = {
+        "translate_multimodal": lambda: provider.translate_multimodal(
+            ["source"], []
+        ),
+        "transcribe_screenshot": lambda: provider.transcribe_screenshot([]),
+        "translate_screenshot": lambda: provider.translate_screenshot([]),
+    }
+
+    with pytest.raises(ValueError, match="missing_image_context"):
+        calls[operation]()
+
 def test_local_multimodal_translate_uses_target_for_prompt_and_cache():
     provider = LocalMultimodalProvider(
         base_url="http://127.0.0.1:8080/v1",

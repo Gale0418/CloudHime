@@ -1214,6 +1214,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
     def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
         if not self.available():
             raise ValueError("local_multimodal_unavailable")
+        if not image_parts:
+            raise ValueError("missing_image_context")
         if len(texts) > LOCAL_MULTIMODAL_BATCH_SIZE:
             translated: list[TranslationResult] = []
             for start in range(0, len(texts), LOCAL_MULTIMODAL_BATCH_SIZE):
@@ -1372,6 +1374,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
     ) -> TranslationResult:
         if not self.available():
             raise ValueError("local_multimodal_unavailable")
+        if not image_parts:
+            raise ValueError("missing_image_context")
         prompt = (ocr_prompt or "").strip() or "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
         if source_text_hint:
             prompt += (
@@ -1394,6 +1398,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
     def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
         if not self.available():
             raise ValueError("local_multimodal_unavailable")
+        if not image_parts:
+            raise ValueError("missing_image_context")
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
         prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=resolved_target)
