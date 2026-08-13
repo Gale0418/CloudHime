@@ -228,6 +228,16 @@ def test_release_build_stages_dependency_provenance_before_pyinstaller_and_specs
     assert "provenance" in spec
     assert (root / "packaging" / "prepare_release_provenance.ps1").is_file()
 
+def test_release_build_requires_explicit_llama_runtime_provenance():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "build_exe.bat").read_text(encoding="utf-8")
+    normalized = script.replace("\r\n", "\n")
+
+    assert "LLAMA_RUNTIME_COMMIT" in script
+    assert "runtime\\llama-runtime-commit.txt" in normalized
+    assert "Missing explicit llama runtime commit provenance." in script
+    assert "git rev-parse HEAD" not in script
+
 def test_release_build_uses_explicit_bounded_manifest_timeout_and_resolvable_cleanup():
     root = Path(__file__).resolve().parents[1]
     script = (root / "build_exe.bat").read_text(encoding="utf-8")

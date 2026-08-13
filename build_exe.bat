@@ -79,11 +79,13 @@ for %%F in (runtime\ggml-cpu-*.dll) do (
   )
 )
 
-for /f "delims=" %%C in ('git rev-parse HEAD 2^>nul') do set "RUNTIME_COMMIT=%%C"
-if not defined RUNTIME_COMMIT (
-  echo Unable to determine the runtime source commit.
+if not defined LLAMA_RUNTIME_COMMIT if exist "runtime\llama-runtime-commit.txt" set /p LLAMA_RUNTIME_COMMIT=<"runtime\llama-runtime-commit.txt"
+if not defined LLAMA_RUNTIME_COMMIT (
+  echo Missing explicit llama runtime commit provenance.
+  echo Set LLAMA_RUNTIME_COMMIT or provide runtime\llama-runtime-commit.txt.
   goto :failure
 )
+set "RUNTIME_COMMIT=%LLAMA_RUNTIME_COMMIT%"
 %PYTHON% packaging\runtime_manifest.py --runtime-dir "%RUNTIME_STAGE%" --output "%RUNTIME_STAGE%\runtime-manifest.json" --source-commit "%RUNTIME_COMMIT%" --backend "cuda" --architecture "x64" --version-timeout 120
 if errorlevel 1 (
   echo Runtime manifest generation failed. The staged llama-server must pass --version.
