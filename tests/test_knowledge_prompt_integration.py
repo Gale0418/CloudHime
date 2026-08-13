@@ -4,9 +4,10 @@ import numpy as np
 
 from cloudhime_workers import OCRWorker
 from exact_image_cache import ExactImageCache
+from dev_local_gemma_provider import LocalGemmaProvider
+
 from translation_providers import (
     GemmaTranslationProvider,
-    LocalGemmaProvider,
     LocalMultimodalProvider,
 )
 

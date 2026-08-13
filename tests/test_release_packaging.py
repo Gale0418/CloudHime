@@ -288,3 +288,13 @@ def test_release_spec_keeps_lazy_japanese_ocr_runtime_modules():
     for module_name in ("meikiocr", "meikiocr.ocr", "onnxruntime"):
         assert f'"{module_name}"' in hidden_imports
     assert "*japanese_ocr_hiddenimports" in spec
+
+def test_production_translation_provider_has_no_inprocess_llama_path():
+    root = Path(__file__).resolve().parents[1]
+    production_source = (root / "translation_providers.py").read_text(encoding="utf-8")
+    dev_source = (root / "dev_local_gemma_provider.py").read_text(encoding="utf-8")
+
+    assert "LocalGemmaProvider" not in production_source
+    assert "from llama_cpp import Llama" not in production_source
+    assert "class LocalGemmaProvider" in dev_source
+    assert "from llama_cpp import Llama" in dev_source
