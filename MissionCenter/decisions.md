@@ -827,3 +827,9 @@
 - 修正：新增 required artifact `translation_e2e_evaluator`，鎖定 `translation_e2e_benchmark.py` SHA-256 `19170a974e7d42222f9ada809b8e918d905a880c3d9aa46e5ffb2bca7da3936f`，並將 lock ID 升為 `cloudhime-accuracy-speed-temporal-v4`；補 missing-artifact 與 mutation regression。
 - TDD：提升環境 GREEN `33 passed in 1.55s`；`python benchmark_lock.py` 回傳 `ok=true`、4 datasets、2 artifacts；compileall／git diff --check Pass。
 - CodeRabbit 本輪 review 實際回報 2 個日期 issues，與本機 clock／實際執行時間不符，查證為 false positive；未改寫已完成證據，也未宣稱 CodeRabbit 0 issues。
+## 2026-08-14：Local translation cancellation propagation
+
+- Root cause：LocalRequestCancelled 繼承 RuntimeError，一般 multimodal、screenshot、stream、batch 與逐項補翻的既有 except Exception 會把 shutdown／stale request 當成普通 provider failure，繼續走文字 fallback，可能產生錯誤結果與 cache side effect。
+- 修正：在既有 fallback 邊界加入明確的 except LocalRequestCancelled: raise；run_scan_once() 沿用 Region Vision 的 generation fence，只有 stale cancellation 直接返回，非 stale cancellation 重新拋出，不改 public UI signals 或正常 provider error fallback。
+- TDD：RED 1 failed, 86 deselected；GREEN cancellation targeted 2 passed, 86 deselected；受影響 OCR／Vision／Japanese 四檔 101 passed in 4.96s；compileall 與 git diff --check Pass；commit 91cefaf。
+- CodeRabbit 實際嘗試 committed review（base cacbeed）回報 rate_limit、waitTime=20 minutes，沒有 findings result，因此不宣稱 review 通過。未執行真實 GPU／GGUF latency、完整漫畫 holdout、Store、WACK 或 clean-machine gate。
