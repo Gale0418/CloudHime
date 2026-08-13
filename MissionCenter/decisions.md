@@ -763,3 +763,10 @@
 - Root cause：前一輪為了驗證 rescue consumption，新增的 Recovered assertion 被誤插到 exact-cache／FrameGate 測試；該測試的 OCR fixture 固定回傳 Hello，因此造成 85 passed, 1 failed，並非 FrameGate production regression。
 - 修正：將 exact-cache 測試中的兩個錯誤 Recovered／你好 assertion 改為 fixture 真正產生的 Hello／Nihao；保留真正 no-text hybrid rescue 測試的 Recovered／你好 assertion。未修改 production code。
 - 驗證：完整 tests/test_ocr_worker_mode_matrix.py 86 passed in 4.84s；hybrid rescue subset 2 passed, 84 deselected in 0.95s；compileall／diff-check Pass。
+
+## 2026-08-14：Vision runtime terminate failure cleanup
+
+- Root cause：`LocalVisionRuntime._cleanup_process()` 原先把 `terminate()`、`wait()` 與 `kill()` 包在同一層 try；若 Windows process handle 的 `terminate()` 直接拋例外，會提前跳出並留下仍可能持有模型的 process。
+- 修正：`terminate()` 失敗時立即對同一個 owned handle 做 best-effort `kill()`；正常 terminate timeout 的既有 kill 路徑維持不變；不依名稱掃殺、不改外部 process。
+- TDD：新增 terminate-raises regression；直接呼叫 regression harness、既有 stop／timeout／health-timeout／GPU→CPU／profile-switch 回歸均 Pass；`compileall` 與 `git diff --check` Pass。pytest target 因 Windows temp ACL `WinError 5` 在 setup／收尾失敗，未宣稱 pytest suite 通過。
+- 本輪未送 CodeRabbit（冷卻中）；未執行真實 GPU／GGUF／llama-server latency、clean-machine、Store 或 WACK。
