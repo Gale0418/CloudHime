@@ -878,6 +878,89 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
     assert refreshes == [True]
 
 
+def test_stale_local_vision_ready_callback_cannot_revive_runtime_after_shutdown():
+    class RunningProcess:
+        pid = 1234
+
+        def poll(self):
+            return None
+
+    stopped = []
+    updates = []
+    statuses = []
+    refreshes = []
+    future = Future()
+    future.set_result(
+        SimpleNamespace(
+            name="ready",
+            detail="",
+            base_url="http://127.0.0.1:43123/v1",
+            mode="gpu",
+        )
+    )
+    worker = SimpleNamespace(
+        _local_vision_load_future=future,
+        _local_vision_load_generation=3,
+        _local_vision_lifecycle_generation=4,
+        local_vision_runtime=SimpleNamespace(
+            owned_process=RunningProcess(),
+            stop=lambda: stopped.append(True),
+        ),
+        local_multimodal_provider=SimpleNamespace(
+            update_runtime=lambda *args, **kwargs: updates.append((args, kwargs)),
+        ),
+        local_multimodal_model="gemma-3-4b-it",
+        local_vision_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+        _refresh_translation_registry=lambda: refreshes.append(True),
+    )
+
+    OCRWorker._on_local_vision_load_done(worker, future)
+
+    assert stopped == [True]
+    assert updates[-1] == (("", "", False), {})
+    assert statuses == [("stopped", "stale_start")]
+    assert refreshes == []
+
+def test_superseded_local_vision_callback_does_not_stop_new_runtime():
+    class RunningProcess:
+        def poll(self):
+            return None
+
+    stopped = []
+    updates = []
+    statuses = []
+    old_future = Future()
+    old_future.set_result(
+        SimpleNamespace(
+            name="ready",
+            detail="",
+            base_url="http://127.0.0.1:43123/v1",
+            mode="gpu",
+        )
+    )
+    current_future = Future()
+    worker = SimpleNamespace(
+        _local_vision_load_future=current_future,
+        _local_vision_load_generation=4,
+        _local_vision_lifecycle_generation=4,
+        local_vision_runtime=SimpleNamespace(
+            owned_process=RunningProcess(),
+            stop=lambda: stopped.append(True),
+        ),
+        local_multimodal_provider=SimpleNamespace(
+            update_runtime=lambda *args, **kwargs: updates.append((args, kwargs)),
+        ),
+        local_multimodal_model="gemma-3-4b-it",
+        local_vision_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+    )
+    old_future._cloudhime_local_vision_generation = 3
+
+    OCRWorker._on_local_vision_load_done(worker, old_future)
+
+    assert stopped == []
+    assert updates == []
+    assert statuses == []
+
 def test_failed_vision_runtime_keeps_local_server_route_unavailable():
     future = Future()
     future.set_result(SimpleNamespace(name="failed", detail="health_timeout", base_url="", mode="gpu"))
