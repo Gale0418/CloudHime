@@ -652,3 +652,9 @@
 - 使用既有 `/root/.local/bin/coderabbit` CLI 0.7.2，未安裝或下載套件；審查已提交差異 `c994029..b7b7b9f`。
 - 實際 receipt：`reviewType=committed`、`baseCommit=c994029`、`reviewedFiles=4`（`MissionCenter/decisions.md`、`MissionCenter/smoke-tests.md`、`settings_store.py`、`tests/test_settings_store.py`）、`findings=0`。
 - 本結果只代表本次 code/document review；不代表真實 GGUF／GPU accuracy、clean-machine、Store certification 或硬體 gate 通過。
+## 2026-08-13：LocalGemma streaming fallback attribution gate
+
+- TDD 先加入 LocalGemma stream provenance 與 OCRWorker 最終 provider regression；RED：worker regression `1 failed, 1 passed, 120 deselected`，重現 stream fallback 文字被回報為 requested `gemma` 而非實際 `google`。
+- 修正：dev-only `LocalGemmaProvider.translate_stream()` 在 cache、正常完成與 fallback 完成時保存 `last_stream_result`；OCRWorker 只讀 optional result metadata，返回實際 provider，既有 chunk 格式與 stream signals 不變。
+- 驗證：targeted `2 passed, 120 deselected in 1.16s`；provider + OCR mode matrix `122 passed in 5.00s`；`ci/test_groups.json` 全量 `1004 passed, 2 skipped in 76.15s`；compileall exit 0；diff-check 無 error。
+- 本階段未啟動真實 GGUF／GPU／llama-server paired benchmark；未宣稱 clean Windows、Store certification 或 hardware gate；待提交後再做 CodeRabbit 增量 review。

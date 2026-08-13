@@ -2662,7 +2662,11 @@ class OCRWorker(QObject):
                             int(item['w']),
                             int(item['h']),
                         )
-                    return [accumulated], [provider_name]
+                    stream_result = getattr(provider_obj, "last_stream_result", None)
+                    actual_provider = (
+                        getattr(stream_result, "provider", None) or provider_name
+                    )
+                    return [accumulated], [actual_provider]
                 except Exception as exc:
                     logger.error(f"Streaming translation failed: {type(exc).__name__}")
                     pass

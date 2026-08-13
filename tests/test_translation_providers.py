@@ -584,6 +584,9 @@ def test_local_gemma_stream_buffers_bad_candidate_and_preserves_fallback_cache_a
     assert cached.provider == 'google'
     assert cached.requested_provider == 'local_gemma'
     assert cached.fallback_reason == 'bad_translation'
+    assert provider.last_stream_result.provider == 'google'
+    assert provider.last_stream_result.requested_provider == 'local_gemma'
+    assert provider.last_stream_result.fallback_reason == 'bad_translation'
     assert cached.from_cache is True
 
 
