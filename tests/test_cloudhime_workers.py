@@ -1671,6 +1671,7 @@ def test_cleanup_only_shuts_down_server_runtime():
         _bg_threshold_executor=SimpleNamespace(shutdown=lambda **kwargs: calls.append(("background", kwargs))),
         japanese_rescue_runtime=SimpleNamespace(disable=lambda: calls.append(("japanese", {}))),
         _japanese_rescue_executor=SimpleNamespace(shutdown=lambda **kwargs: calls.append(("japanese_executor", kwargs))),
+        _local_vision_executor=SimpleNamespace(shutdown=lambda **kwargs: calls.append(("vision_executor", kwargs))),
         shutdown_local_vision_runtime=lambda: calls.append(("server", {})),
     )
 
@@ -1681,6 +1682,7 @@ def test_cleanup_only_shuts_down_server_runtime():
         ("japanese", {}),
         ("japanese_executor", {"wait": True}),
         ("server", {}),
+        ("vision_executor", {"wait": True, "cancel_futures": True}),
     ]
 
 def test_failed_vision_runtime_never_restores_embedded_local_model():
@@ -1732,3 +1734,93 @@ def test_prepare_local_text_runtime_requests_text_profile(monkeypatch):
     assert OCRWorker._prepare_and_start_local_vision(worker) == "ready"
     assert profiles == ["text"]
     assert calls[0]["required_fields"] == ("server_path", "model_path")
+
+def test_refresh_remote_model_stops_embedded_runtime_without_starting_local_model():
+    from translation_providers import (
+        GemmaTranslationProvider,
+        GoogleTranslationProvider,
+        LocalMultimodalProvider,
+    )
+
+    calls = []
+
+    class Runtime:
+        profile_name = "vision"
+        _state = SimpleNamespace(name="ready", detail="", base_url="http://127.0.0.1:5511/v1")
+
+        def stop(self):
+            calls.append("stop")
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    worker.google_api_key = "test-key"
+    worker.gemma_model = "gemma-4-31b-it"
+    worker.gemma_prompt = ""
+    worker.screenshot_gemma_prompt = ""
+    worker.use_gemma_translation = True
+    worker.gemma_auto_switch_enabled = False
+    worker.translation_target_lang = "zh-TW"
+    worker.local_multimodal_enabled = False
+    worker.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+    worker.local_multimodal_model = "vision-local"
+    worker.local_multimodal_timeout_seconds = 20
+    worker.local_vision_runtime = Runtime()
+    worker.request_local_vision_start = lambda: calls.append("start")
+    worker.google_translation_provider = GoogleTranslationProvider(target_lang="zh-TW")
+    worker.gemma_translation_provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-4-31b-it",
+        target_lang="zh-TW",
+    )
+    worker.local_multimodal_provider = LocalMultimodalProvider(enabled=False)
+
+    OCRWorker._refresh_translation_registry(worker)
+
+    assert calls == ["stop"]
+    assert worker.translation_registry.get("gemma") is worker.gemma_translation_provider
+    assert worker.local_multimodal_provider.available() is False
+
+
+def test_refresh_conflicting_local_text_and_multimodal_uses_one_vision_profile():
+    from translation_providers import (
+        GemmaTranslationProvider,
+        GoogleTranslationProvider,
+        LocalMultimodalProvider,
+    )
+
+    starts = []
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    worker.google_api_key = ""
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.gemma_prompt = ""
+    worker.screenshot_gemma_prompt = ""
+    worker.use_gemma_translation = True
+    worker.gemma_auto_switch_enabled = False
+    worker.translation_target_lang = "zh-TW"
+    worker.local_multimodal_enabled = True
+    worker.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+    worker.local_multimodal_model = "vision-local"
+    worker.local_multimodal_timeout_seconds = 20
+    worker.local_vision_runtime = SimpleNamespace(
+        profile_name="vision",
+        _state=SimpleNamespace(name="stopped", detail="", base_url=""),
+    )
+    worker.request_local_vision_start = lambda: starts.append("start")
+    worker.google_translation_provider = GoogleTranslationProvider(target_lang="zh-TW")
+    worker.gemma_translation_provider = GemmaTranslationProvider(
+        google_api_key="",
+        gemma_model="gemma-3-4b-it-local",
+        target_lang="zh-TW",
+    )
+    worker.local_multimodal_provider = LocalMultimodalProvider(enabled=False)
+
+    OCRWorker._refresh_translation_registry(worker)
+
+    assert worker._local_text_runtime_required is True
+    assert worker._local_runtime_profile == "vision"
+    assert starts == ["start"]
+    assert worker.translation_registry.get("gemma") is worker.local_multimodal_provider

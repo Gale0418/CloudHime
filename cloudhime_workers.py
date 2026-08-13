@@ -1612,6 +1612,18 @@ class OCRWorker(QObject):
             except Exception:
                 pass
         self.shutdown_local_vision_runtime()
+        local_vision_executor = getattr(self, "_local_vision_executor", None)
+        if local_vision_executor is not None:
+            try:
+                local_vision_executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                # Python-compatible test doubles or older executors may not expose cancel_futures.
+                try:
+                    local_vision_executor.shutdown(wait=True)
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
     def get_translation_provider_priority(self, provider):
         return translation_tools.get_translation_provider_priority(provider)
