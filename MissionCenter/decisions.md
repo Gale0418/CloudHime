@@ -844,3 +844,9 @@
 - 修正：依 sample_source 分組，每 strategy 對每張圖只呼叫一次 backend，再以該圖的 filtered OCR lines 計算各 target 命中；新增 complete、evaluated_sources，winner／summary／best-hit 更新只接受完整結果；新增 deterministic --max-strategies offline budget，預設不改既有完整 strategy space。
 - TDD／驗證：RED 去重與 complete contract 2 failed；GREEN tests/test_hybrid_search_benchmark.py 10 passed；受影響 benchmark suite 27 passed in 1.67s；compileall／git diff --check Pass。實測 25 targets／7 sources／84 strategies full screening 約 32.2s，14 個完整策略，最佳完整結果 14/25；24 strategies 約 10.1s，4 個完整。這是 evaluator／screening 證據，不是 production OCR 品質提升。
 - 審查：CodeRabbit auth 成功，但本輪 committed review 回報 rate_limit、waitTime=4 minutes，無 findings result，不宣稱 review 通過。Gemini bridge discover 成功，但 prompt 兩次回報 attempt to write a readonly database，無 Gemini 意見可引用。
+## 2026-08-14：Single local runtime profile-transition ownership
+
+- Root cause：LocalVisionRuntimeCoordinator.set_profile() 會先停止既有 process 並標記 entry stopped；worker 後續若直接呼叫 runtime.start()，實際 process 已重新 ready，但 coordinator 不知道這次啟動，後續 consumer 可能錯誤收到 shared_runtime_stopped。這也讓跨層「先停後啟、最多一個 live server」缺少可觀測 contract。
+- 修正：LocalVisionRuntimeLease 新增受 coordinator 保護的 start()；成功回傳 ready／starting 時同步清除 stopped 狀態。OCRWorker._prepare_and_start_local_vision() 改由 lease（無 lease 時仍由 runtime）啟動，保留既有 cancel event、profile、HTTP、UI signal 行為。
+- TDD：先加入真實 LocalVisionRuntime fake process regression；RED 為 lease 缺少受控 start 的 1 failure。修正後 targeted 1 passed in 1.03s；受影響 runtime／worker／vision suite 262 passed, 1 skipped in 12.04s；release／MSIX／manifest／dependency contract 85 passed, 2 skipped in 273.39s；compileall 與 git diff --check Pass。
+- 邊界：本輪未執行真實 GPU／GGUF latency、完整漫畫 holdout、clean-machine、Store submission、WACK；CodeRabbit review 尚待本輪實際結果，不預先宣稱通過。

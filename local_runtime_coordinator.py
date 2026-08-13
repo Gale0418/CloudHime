@@ -42,6 +42,9 @@ class LocalVisionRuntimeLease:
     def set_profile(self, profile):
         return self._coordinator.set_profile(self, profile)
 
+    def start(self, *args, **kwargs):
+        return self._coordinator.start(self, *args, **kwargs)
+
     def set_gpu_layers(self, gpu_layers):
         return self._coordinator.set_gpu_layers(self, gpu_layers)
 
@@ -121,6 +124,14 @@ class LocalVisionRuntimeCoordinator:
             entry.runtime.stop()
             entry.stopped = True
             entry.runtime.set_profile(profile)
+
+    def start(self, lease, *args, **kwargs):
+        with self._lock:
+            entry = self._entry_for(lease)
+            state = entry.runtime.start(*args, **kwargs)
+            if getattr(state, "name", "") in ("ready", "starting"):
+                entry.stopped = False
+            return state
 
     def set_gpu_layers(self, lease, gpu_layers):
         with self._lock:
