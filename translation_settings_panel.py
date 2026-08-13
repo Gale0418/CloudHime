@@ -474,10 +474,6 @@ class TranslationSettingsPanel(QWidget):
         model_name = (model_name or "").strip().lower()
         lang = self._ui_language()
         notes = {
-            "gemma-3-1b-it": {
-                "en": "Fast text-only model; screenshots fall back to OCR.",
-                "zh-TW": "快速純文字模型，截圖會回退 OCR。",
-            },
             "gemma-3-27b-it": {
                 "en": "Best balance for screenshot translation.",
                 "zh-TW": "截圖翻譯的平衡首選。",
