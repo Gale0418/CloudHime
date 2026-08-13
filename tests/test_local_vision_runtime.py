@@ -1515,6 +1515,65 @@ def test_coordinator_stop_can_cancel_blocked_start(tmp_path):
 
     lease.release()
 
+
+def test_coordinator_release_during_blocked_start_removes_entry(tmp_path):
+    assets = _make_assets(tmp_path, create_files=True)
+    health_started = threading.Event()
+    allow_health = threading.Event()
+    process = RunningProcess()
+    created = []
+
+    def blocking_urlopen(_url, timeout=None):
+        health_started.set()
+        assert allow_health.wait(timeout=2)
+        raise OSError("still warming up")
+
+    def runtime_factory(runtime_assets, **kwargs):
+        runtime = LocalVisionRuntime(
+            assets=runtime_assets,
+            popen_factory=FakePopen([process]),
+            urlopen=blocking_urlopen,
+            port_allocator=_port_allocator(43123),
+            sleep=_no_sleep,
+            health_retries=1,
+            asset_minimum_bytes=_TEST_MIN,
+            **kwargs,
+        )
+        created.append(runtime)
+        return runtime
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=runtime_factory)
+    lease = coordinator.acquire(assets, profile="text")
+    start_result = {}
+    start_thread = threading.Thread(
+        target=lambda: start_result.setdefault("state", lease.start()),
+        daemon=True,
+    )
+    start_thread.start()
+
+    assert health_started.wait(timeout=1)
+
+    release_done = threading.Event()
+    release_thread = threading.Thread(
+        target=lambda: (lease.release(), release_done.set()),
+        daemon=True,
+    )
+    release_thread.start()
+    assert release_done.wait(timeout=1), "release() blocked behind runtime startup"
+
+    allow_health.set()
+    start_thread.join(timeout=2)
+    release_thread.join(timeout=2)
+
+    assert not start_thread.is_alive()
+    assert not release_thread.is_alive()
+    assert start_result["state"].name == "stopped"
+    assert coordinator.active_lease_count == 0
+
+    replacement = coordinator.acquire(assets, profile="text")
+    assert len(created) == 2
+    replacement.release()
+
 def test_profile_switch_stops_old_process_before_starting_new_mode(tmp_path):
     assets = _make_assets(tmp_path, create_files=True)
     first = RunningProcess()
