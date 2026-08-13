@@ -1786,7 +1786,13 @@ def _json_safe_history_value(value):
     if isinstance(value, list):
         return [_json_safe_history_value(item) for item in value]
     if isinstance(value, dict):
-        return {str(key): _json_safe_history_value(item) for key, item in value.items()}
+        safe_value = {}
+        for key, item in value.items():
+            safe_key = str(key)
+            if safe_key in safe_value:
+                raise TypeError("translation_history_not_serializable")
+            safe_value[safe_key] = _json_safe_history_value(item)
+        return safe_value
     return value
 
 
