@@ -947,6 +947,31 @@ def test_local_manga_crop_batch_translation_fails_open_per_region(failure, qtbot
         worker.cleanup()
 
 
+def test_manga_tile_retry_exception_preserves_previous_ocr_items(monkeypatch, qtbot):
+    image = np.zeros((1000, 800, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.detect_manga_page_region = lambda _img: (0, 0, 800, 1000)
+    baseline = [{"text": "守りに特化で", "x": 20, "y": 30, "w": 120, "h": 36}]
+    worker.run_ocr_with_best_threshold = Mock(
+        side_effect=[(100, baseline), RuntimeError("tile retry failed")]
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert worker.last_results == [("你好", 20, 30, 120, 36)]
+        assert worker.run_ocr_with_best_threshold.call_count == 2
+        ocr_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.OCR
+        ]
+        assert ocr_events[-1].outcome is not ScanOutcome.NO_TEXT
+    finally:
+        worker.cleanup()
+
 def test_scan_worker_uses_local_manga_crop_batches_before_full_page_parts(monkeypatch, qtbot):
     image = np.zeros((400, 400, 3), dtype=np.uint8)
     worker = OCRWorker()
@@ -1162,7 +1187,16 @@ def test_screenshot_hint_filter_keeps_question_text_and_drops_known_status_marke
         worker.cleanup()
 
 
-def test_google_ocr_prefetch_has_bounded_wait_and_executor_cleanup(monkeypatch, qtbot):
+@pytest.mark.parametrize(
+    ("future_error", "expected_warning"),
+    [
+        (FutureTimeoutError(), "[Google OCR prefetch] timeout"),
+        (RuntimeError("private future failure"), "[Google OCR prefetch] failed type=%s"),
+    ],
+)
+def test_google_ocr_prefetch_has_bounded_wait_and_executor_cleanup(
+    monkeypatch, qtbot, future_error, expected_warning
+):
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     worker = OCRWorker()
     _configure_region_cache_worker(worker, image)
@@ -1175,14 +1209,18 @@ def test_google_ocr_prefetch_has_bounded_wait_and_executor_cleanup(monkeypatch, 
     worker._get_translation_provider = lambda name: provider if name == "gemma" else None
     result_timeouts = []
     shutdown_calls = []
+    warning_messages = []
 
     class FakeFuture:
         def result(self, timeout=None):
             result_timeouts.append(timeout)
-            raise FutureTimeoutError()
+            raise future_error
 
         def add_done_callback(self, callback):
             callback(self)
+
+        def cancel(self):
+            return True
 
     class FakeExecutor:
         def __init__(self, max_workers):
@@ -1196,12 +1234,14 @@ def test_google_ocr_prefetch_has_bounded_wait_and_executor_cleanup(monkeypatch, 
 
     monkeypatch.setattr(workers_module, "ThreadPoolExecutor", FakeExecutor)
     monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(workers_module.logger, "warning", lambda *args: warning_messages.append(args))
 
     try:
         worker.run_scan_once()
 
         assert result_timeouts == [30]
         assert shutdown_calls == [{"wait": False}]
+        assert any(args[0] == expected_warning for args in warning_messages)
     finally:
         worker.cleanup()
 
@@ -1413,7 +1453,10 @@ def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
     worker.translate_text_preferred_with_provider = Mock(
         side_effect=RuntimeError("private fallback failure")
     )
+    worker.get_best_known_translation = Mock(return_value=("", ""))
+    warning_messages = []
     monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(workers_module.logger, "warning", lambda *args: warning_messages.append(args))
 
     try:
         worker.run_scan_once()
@@ -1425,6 +1468,12 @@ def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
         assert event.outcome is ScanOutcome.FALLBACK
         assert event.provider == "google"
         assert event.fallback_reason == "translation_source_fallback"
+        worker.translate_text_preferred_with_provider.assert_called_once_with("Two")
+        assert any(
+            args[0] == "[Translation fallback] failed index=%d type=%s; retaining source"
+            and args[1:] == (1, "RuntimeError")
+            for args in warning_messages
+        )
     finally:
         worker.cleanup()
 
