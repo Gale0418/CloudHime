@@ -352,15 +352,21 @@
 - DPI 採 PyInstaller --manifest 嵌入 EXE，manifest 同時提供 dpiAware=true/pm 舊版 fallback 與 dpiAwareness=PerMonitorV2；保留現有 Qt scaling environment variables，待實機多螢幕 smoke 再決定是否調整。
 - 不採 Python 啟動時 SetProcessDpiAwarenessContext 作為第一方案；官方建議 manifest，且 API 必須早於依賴 DPI 的 UI 建立，與 manifest 同時存在時容易變成失敗／重複設定。
 - 0x8007000B 已由 matching-subject 實測釐清為 Publisher／certificate Subject 不一致；正式 Store signing 必須使用 Store identity，測試自簽只作本機 package gate。
-- 不為 WACK blocked-executable heuristic 直接刪 llama/CUDA；先完成 DPI／signing gate，再另開 runtime dependency graph 與重複 DLL 瘦身任務。## 2026-08-01：WACK DPI follow-up 結論
+- 不為 WACK blocked-executable heuristic 直接刪 llama/CUDA；先完成 DPI／signing gate，再另開 runtime dependency graph 與重複 DLL 瘦身任務。
+
+## 2026-08-01：WACK DPI follow-up 結論
 
 - 完整 PyInstaller rebuild 後，WACK 對新版 signed MSIX 回報 `OVERALL_RESULT=PASS`；`Application resources` 與 `DPIAwarenessValidation` 均 PASS，圖示尺寸與 EXE `PerMonitorV2` 修正已取得實際驗證。
 - `封鎖的可執行檔` 是 optional static heuristic FAIL，列出 Qt/Python/llama/CUDA 的必要 DLL 與處理序 API 參考；不為此刪除本地 Gemma／CUDA／OCR runtime。後續以 dependency graph、最小 runtime 分層與 Store 審查說明處理。
-- WACK 使用的簽章只允許一次性測試憑證，已精確清除 PFX、憑證與報告暫存；正式 Microsoft Store 發布仍需 Store identity／正式 signing。## 2026-08-01：AppX sideload 信任鏈邊界
+- WACK 使用的簽章只允許一次性測試憑證，已精確清除 PFX、憑證與報告暫存；正式 Microsoft Store 發布仍需 Store identity／正式 signing。
+
+## 2026-08-01：AppX sideload 信任鏈邊界
 
 - 本機 `0x800B0109` 不是 Publisher mismatch 新問題，而是自簽 leaf certificate 未被目標機器信任。官方可靠做法是把實際簽章所用的公開 `.cer` 匯入 `Cert:\LocalMachine\TrustedPeople`，不把 leaf cert 當成 Trusted Root。
 - 目前 Codex 執行環境只有 Medium Mandatory Level；寫入 LocalMachine certificate store 回 `E_ACCESSDENIED`。因此不再用 CurrentUser store 假裝完成乾淨機安裝 gate，也不在沒有真正管理員 token 時重跑 1.27GB staging。
-- 短命測試憑證、PFX 與暫存目錄已精確清除。下一次實機 gate 必須由真正系統管理員／乾淨 Windows 執行，並以 thumbprint 清理信任材料。## 2026-08-01：Local Gemma tuning 前的 cache 邊界
+- 短命測試憑證、PFX 與暫存目錄已精確清除。下一次實機 gate 必須由真正系統管理員／乾淨 Windows 執行，並以 thumbprint 清理信任材料。
+
+## 2026-08-01：Local Gemma tuning 前的 cache 邊界
 
 - Generation parameters 是翻譯結果語意的一部分；`temperature` 與 `repeat_penalty` 必須同時進入 Local Gemma cache key，參數實際改變時清除既有 translation cache 與 context buffer。
 - 不把目前少量 vision／漫畫案例直接拿來調 temperature、repeat penalty 或 context；先完成 source-disjoint 日文字幕 holdout 與固定 5-repeat paired A/B，避免把 cache 或隨機輸出誤認成品質提升。
@@ -375,7 +381,9 @@
 
 - `example` 目前 113 張圖片仍只是素材池；模型自身 OCR／視覺輸出不得直接當 ground truth。
 - GPT 多模態視覺初判先建立 3 張 `轉生重騎士` 候選：001、002、003；檔案 `.private_japanese_subtitle_candidate_annotations.json` 明確標為 `draft_requires_owner_confirmation` 與 `ground_truth_eligible=false`，不進版控。
-- 只有主人逐張確認文字、閱讀順序與是否納入後，才能另行提升為正式 source-disjoint 日文字幕 holdout；長段落低於高信心門檻者只作候選，不計入準確率。## 2026-08-03：Knowledge Research Draft 不可自動啟用
+- 只有主人逐張確認文字、閱讀順序與是否納入後，才能另行提升為正式 source-disjoint 日文字幕 holdout；長段落低於高信心門檻者只作候選，不計入準確率。
+
+## 2026-08-03：Knowledge Research Draft 不可自動啟用
 
 - 研究草稿採獨立 schema，狀態固定為 draft，entries 必須為空，owner_confirmed 固定為 false；DDGS／Jina／模型輸出只能留下候選證據，不能直接寫入或 activate Knowledge Pack。
 - 每個來源保留 canonical URL、source id、查詢結果 metadata、擷取時間、內容 SHA-256 與 bounded content；單一來源讀取失敗或內容過大只標記該來源，不中止整份研究草稿。
@@ -557,3 +565,14 @@
 - 上一輪 Major 指出 direct WACK evidence 內的 C0 控制字元；先新增 test_missioncenter_decisions_reject_c0_control_characters，RED 為 3 個 BEL，修正後 GREEN。
 - 修正後 targeted WACK／CI 3 passed；完整 MSIX／release／CI inventory 43 passed in 45.30s；compileall、diff-check、MissionCenter doctor 均通過。
 - 這段紀錄保留測試與修正證據；最後一次控制字元清理後的 CodeRabbit uncommitted review 已完成，findings=0。direct WACK 同機 PASS、clean Windows VM／Store／GPU 未完成狀態均維持不變。
+
+## 2026-08-13：CH-E9 單一 llama runtime lifecycle／CUDA duplicate hardening
+
+- 唯讀盤點確認目前 production worker 主路徑是單一 LocalVisionRuntime 加 llama-server HTTP provider；LocalGemmaProvider 的 llama_cpp in-process 路徑仍保留作 legacy/dev 相容碼，本輪不刪除，避免把 PR2 migration 與 lifecycle correctness 混成大重構。
+- TDD 先重現 cleanup 漏掉 local vision executor 的 1 failed，再修正為停止 owned server 後以 cancel_futures=True 關閉 executor；不支援該參數的舊 executor/test double 仍有 wait-only fallback。
+- 發行 verifier 新增 cudart/cublas、nvrtc、nvJitLink、cufft、curand、cusolver、cusparse 的 runtime 外 duplicate pattern；runtime 內仍由 runtime-manifest 精確檔案集合控管。
+- 目前只證明 lifecycle／release contract；沒有宣稱移除 llama_cpp、clean Windows VM、Store certification 或 GPU paired promotion。
+## 2026-08-13：CH-E9 hardening CodeRabbit final review
+
+- CodeRabbit uncommitted review 覆蓋目前 CloudHime working tree scope，先前指出的 heading boundary 已修正；本次複審回傳 findings=0。
+- 本結果只代表本階段 6 檔 hardening diff 的靜態 review；不升格為 clean Windows、Store certification、GPU paired promotion 或 legacy llama_cpp migration 完成。

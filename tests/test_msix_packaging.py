@@ -440,6 +440,7 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             (fixture / "_internal" / "llama-server.exe", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "ggml-extra.dll", b"duplicate", "outside the runtime directory"),
             (fixture / "_internal" / "cudart64_12.dll", b"duplicate", "outside the runtime directory"),
+            (fixture / "_internal" / "cudart64_11.dll", b"duplicate CUDA runtime", "outside the runtime directory"),
             (fixture / "_internal" / "runtime" / "llama.dll", b"", "required llama/ggml runtime"),
             (fixture / "_internal" / "runtime" / "ggml.dll", b"tampered", "hash or size mismatch"),
             (fixture / "_internal" / "runtime" / "unexpected.dll", b"unexpected", "runtime manifest"),

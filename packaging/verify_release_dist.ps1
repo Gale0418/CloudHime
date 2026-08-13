@@ -363,7 +363,17 @@ $runtimePrefix = ([System.IO.Path]::GetFullPath($runtimeRoot).TrimEnd("\", "/"))
 $managedRuntimeFileNames = @($runtimeFiles)
 $duplicateRuntimeFiles = @($files | Where-Object {
     $isManagedRuntimeFile = ($managedRuntimeFileNames -contains $_.Name) -or
-        $_.Name -ieq "llama-server.exe" -or $_.Name -ieq "llama.dll" -or $_.Name -like "ggml*.dll"
+        $_.Name -ieq "llama-server.exe" -or
+        $_.Name -ieq "llama.dll" -or
+        $_.Name -like "ggml*.dll" -or
+        $_.Name -like "cublas*.dll" -or
+        $_.Name -like "cudart*.dll" -or
+        $_.Name -like "nvrtc*.dll" -or
+        $_.Name -like "nvJitLink*.dll" -or
+        $_.Name -like "cufft*.dll" -or
+        $_.Name -like "curand*.dll" -or
+        $_.Name -like "cusolver*.dll" -or
+        $_.Name -like "cusparse*.dll"
     $isOutsideRuntime = -not $_.FullName.StartsWith($runtimePrefix, [System.StringComparison]::OrdinalIgnoreCase)
     $isManagedRuntimeFile -and $isOutsideRuntime
 })
