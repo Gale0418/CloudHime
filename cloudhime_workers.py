@@ -258,9 +258,11 @@ class OCRWorker(QObject):
     local_vision_status = Signal(str, str)
     japanese_rescue_status = Signal(str, str)
 
-    def __init__(self):
+    def __init__(self, local_runtime_coordinator=None):
         super().__init__()
         startup_log("OCRWorker.__init__ start")
+        self._local_runtime_coordinator = local_runtime_coordinator
+        self._local_vision_runtime_lease = None
         self.ocr_backend_chain = []
         self.ocr_backends = []
         self.translators = {}
@@ -353,13 +355,25 @@ class OCRWorker(QObject):
         )
         
         try:
-            self.local_vision_runtime = LocalVisionRuntime(
-                self._local_vision_assets,
-                gpu_layers=0 if self.local_multimodal_cpu_only else 999,
-                progress_callback=lambda phase, progress: OCRWorker._emit_local_vision_status(
+            runtime_kwargs = {
+                "gpu_layers": 0 if self.local_multimodal_cpu_only else 999,
+                "progress_callback": lambda phase, progress: OCRWorker._emit_local_vision_status(
                     self, "progress", f"{progress}|{phase}"
                 ),
-            )
+            }
+            if self._local_runtime_coordinator is not None:
+                self._local_vision_runtime_lease = self._local_runtime_coordinator.acquire(
+                    self._local_vision_assets,
+                    profile="vision",
+                    runtime_kwargs=runtime_kwargs,
+                )
+                self.local_vision_runtime = self._local_vision_runtime_lease.runtime
+            else:
+                self.local_vision_runtime = LocalVisionRuntime(
+                    self._local_vision_assets,
+                    profile="vision",
+                    **runtime_kwargs,
+                )
         except Exception as exc:
             logger.error(f"Failed to init LocalVisionRuntime: {exc}")
             self.local_vision_runtime = None
@@ -699,7 +713,7 @@ class OCRWorker(QObject):
                 self.translation_registry.register("gemma", self.local_multimodal_provider)
             self.translation_registry_error_code = ""
             if has_embedded_runtime and desired_profile is None:
-                embedded_runtime.stop()
+                OCRWorker._stop_local_vision_runtime(self)
                 self.local_multimodal_provider.update_runtime("", "", ready=False)
             elif desired_profile is not None:
                 self.request_local_vision_start()
@@ -785,7 +799,7 @@ class OCRWorker(QObject):
             and start_generation != getattr(self, "_local_vision_lifecycle_generation", start_generation)
         )
         if start_is_stale or (cancel_event is not None and cancel_event.is_set()):
-            return runtime.stop()
+            return OCRWorker._stop_local_vision_runtime(self)
         profile_name = getattr(self, "_local_runtime_profile", None)
         if profile_name is None:
             if getattr(self, "local_multimodal_enabled", False):
@@ -795,7 +809,8 @@ class OCRWorker(QObject):
         profile = resolve_runtime_profile(profile_name) if profile_name else None
 
         if profile is not None:
-            set_profile = getattr(runtime, "set_profile", None)
+            runtime_owner = getattr(self, "_local_vision_runtime_lease", None) or runtime
+            set_profile = getattr(runtime_owner, "set_profile", None)
             current_profile = getattr(runtime, "profile_name", profile.name)
             if callable(set_profile) and current_profile != profile.name:
                 try:
@@ -803,7 +818,7 @@ class OCRWorker(QObject):
                 except RuntimeError as exc:
                     if str(exc) != "runtime_profile_requires_stop":
                         raise
-                    runtime.stop()
+                    OCRWorker._stop_local_vision_runtime(self)
                     set_profile(profile.name)
 
         assets = getattr(self, "_local_vision_assets", None)
@@ -829,7 +844,7 @@ class OCRWorker(QObject):
             and start_generation != getattr(self, "_local_vision_lifecycle_generation", start_generation)
         )
         if start_is_stale or (cancel_event is not None and cancel_event.is_set()):
-            return runtime.stop()
+            return OCRWorker._stop_local_vision_runtime(self)
         if cancel_event is None:
             return runtime.start()
         return runtime.start(cancel_event=cancel_event)
@@ -995,7 +1010,7 @@ class OCRWorker(QObject):
 
         if not self.use_gemma_translation or profile_name is None:
             if runtime is not None and profile_name is None:
-                runtime.stop()
+                OCRWorker._stop_local_vision_runtime(self)
                 self.local_multimodal_provider.update_runtime("", "", False)
             return
         if runtime is None:
@@ -1102,6 +1117,23 @@ class OCRWorker(QObject):
             cancel_event = getattr(self, "_local_vision_cancel_event", None)
             if cancel_event is not None:
                 cancel_event.set()
+    def _stop_local_vision_runtime(self):
+        """Stop only the runtime owned by this worker, safely and observably."""
+        lease = getattr(self, "_local_vision_runtime_lease", None)
+        runtime = getattr(self, "local_vision_runtime", None)
+        stopper = (
+            getattr(lease, "stop", None)
+            if lease is not None
+            else getattr(runtime, "stop", None)
+        )
+        if not callable(stopper):
+            return None
+        try:
+            return stopper()
+        except Exception as exc:
+            logger.error(f"[LocalVisionRuntime] stop failed type={type(exc).__name__}")
+            return None
+
     def shutdown_local_vision_runtime(self):
         lifecycle_lock = getattr(self, "_local_vision_lifecycle_lock", None)
         if lifecycle_lock is None:
@@ -1116,7 +1148,8 @@ class OCRWorker(QObject):
                 cancel_event.set()
             runtime = getattr(self, "local_vision_runtime", None)
             if runtime is not None:
-                runtime.stop()
+                OCRWorker._stop_local_vision_runtime(self)
+
     def _clear_translation_memories(self):
         """清除可能把舊語言、prompt 或影像結果帶回翻譯流程的 worker 記憶。"""
         for memory_name in (
@@ -1308,13 +1341,16 @@ class OCRWorker(QObject):
         runtime = getattr(self, "local_vision_runtime", None)
         if runtime is None:
             return
-        runtime.stop()
-        runtime.set_gpu_layers(0 if bool(getattr(self, "local_multimodal_cpu_only", False)) else 999)
+        OCRWorker._stop_local_vision_runtime(self)
+        runtime_owner = getattr(self, "_local_vision_runtime_lease", None) or runtime
+        setter = getattr(runtime_owner, "set_gpu_layers", None)
+        if callable(setter):
+            setter(0 if bool(getattr(self, "local_multimodal_cpu_only", False)) else 999)
         profile_name = getattr(self, "_local_runtime_profile", None)
         if profile_name is not None:
-            setter = getattr(runtime, "set_profile", None)
-            if callable(setter):
-                setter(profile_name)
+            profile_setter = getattr(runtime_owner, "set_profile", None)
+            if callable(profile_setter):
+                profile_setter(profile_name)
 
     def _submit_local_vision_reconfigure(self, generation):
         executor = getattr(self, "_local_vision_executor", getattr(self, "vision_executor", None))
@@ -1612,6 +1648,14 @@ class OCRWorker(QObject):
             except Exception:
                 pass
         self.shutdown_local_vision_runtime()
+        runtime_lease = getattr(self, "_local_vision_runtime_lease", None)
+        if runtime_lease is not None:
+            try:
+                runtime_lease.release()
+            except Exception as exc:
+                logger.error(f"[LocalVisionRuntime] lease release failed type={type(exc).__name__}")
+            self._local_vision_runtime_lease = None
+            self.local_vision_runtime = None
         local_vision_executor = getattr(self, "_local_vision_executor", None)
         if local_vision_executor is not None:
             try:

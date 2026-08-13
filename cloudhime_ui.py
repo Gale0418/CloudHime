@@ -106,6 +106,7 @@ from remote_model_discovery import (
     filter_model_choices_for_availability,
 )
 
+from local_runtime_coordinator import LocalVisionRuntimeCoordinator
 from knowledge_pack_store import KnowledgePackStore, create_knowledge_pack_paths
 from knowledge_builder_worker import KnowledgeBuildWorker
 from knowledge_research_service import KnowledgeResearchService
@@ -2923,6 +2924,7 @@ class Controller(QWidget):
         self.cooldown_end_time = 0.0
         self.scan_in_progress = False
         self.scan_generation = 0
+        self.local_runtime_coordinator = LocalVisionRuntimeCoordinator()
         
         self.setWindowTitle("雲朵翻譯姬")
         self.resize(320, 180) 
@@ -3081,7 +3083,7 @@ class Controller(QWidget):
         worker_t0 = time.perf_counter()
         startup_log("Controller.setup_worker start")
         self.ocr_thread = QThread()
-        self.worker = OCRWorker()
+        self.worker = OCRWorker(local_runtime_coordinator=self.local_runtime_coordinator)
         self.worker.set_scan_mode(self.scan_mode)
         self.worker.set_scan_generation(self.scan_generation)
         self.worker.moveToThread(self.ocr_thread)
