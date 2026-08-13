@@ -74,3 +74,13 @@ def test_ci_inventory_includes_release_provenance_contract():
         for path in group["test_files"]
     }
     assert "tests/test_release_provenance.py" in assigned
+
+def test_missioncenter_decisions_reject_c0_control_characters():
+    decisions = ROOT / "MissionCenter" / "decisions.md"
+    content = decisions.read_text(encoding="utf-8")
+    unexpected = [
+        character
+        for character in content
+        if ord(character) < 32 and character not in {"\n", "\r", "\t"}
+    ]
+    assert not unexpected, "MissionCenter decisions contains C0 control characters"

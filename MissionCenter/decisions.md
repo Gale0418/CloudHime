@@ -543,3 +543,17 @@
 - 本輪 CodeRabbit uncommitted review 回傳 2 個 minor findings：一項確認 appcert 指令文件含控制字元，已修正為可複製的 `reset`／`test`；另一項要求確認日期。
 - 日期 finding 判定為 false positive：本機時間與本輪執行日期均為 2026-08-13，未把實際工作標成未來完成；所有未完成的 WACK／clean Windows／Store／GPU gate 仍維持明確 incomplete 或 pending。
 - 本輪沒有產品程式 finding；下一步仍需重新執行真正 appcert WACK，取得 XML 與唯一 `OVERALL_RESULT`。
+
+
+## 2026-08-13：CH-T64 direct appcert WACK gate 通過
+
+- 以一次性短命 CN=CloudHime Development 憑證簽署隔離 MSIX 副本；x64 SignTool /pa /all 驗章成功。依 Microsoft 官方順序直接執行 appcert.exe reset 與 appcert.exe test -appxpackagepath ... -reportoutputpath ...，繞過前次 wrapper bridge 的異常引數向量。
+- appcert reset／test 均 exit 0；XML report 3,105,016 bytes，/REPORT/@OVERALL_RESULT 恰好一個且為 PASS；短命憑證、MSIX 副本與 report 目錄均清除，正式 dist 未修改。
+- 這只完成同機 direct WACK/appcert optional gate；test_wack.ps1 前次 bridge incomplete 仍保留為歷史 evidence，clean Windows VM、Store certification、GPU onboarding 仍未完成。
+
+
+## 2026-08-13：CodeRabbit final review 與控制字元 regression checkpoint
+
+- 上一輪 Major 指出 direct WACK evidence 內的 C0 控制字元；先新增 test_missioncenter_decisions_reject_c0_control_characters，RED 為 3 個 BEL，修正後 GREEN。
+- 修正後 targeted WACK／CI 3 passed；完整 MSIX／release／CI inventory 43 passed in 45.30s；compileall、diff-check、MissionCenter doctor 均通過。
+- 這段紀錄保留測試與修正證據；最後一次控制字元清理後的 CodeRabbit uncommitted review 已完成，findings=0。direct WACK 同機 PASS、clean Windows VM／Store／GPU 未完成狀態均維持不變。
