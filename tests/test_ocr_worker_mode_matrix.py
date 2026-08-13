@@ -1433,6 +1433,52 @@ def test_screenshot_scan_trace_records_text_fallback_actual_provider(monkeypatch
         worker.cleanup()
 
 
+def test_multimodal_request_cancellation_does_not_text_fallback(qtbot):
+    worker = OCRWorker()
+    worker.has_any_multimodal_ai = lambda: True
+    worker.translate_multimodal_gemma = Mock(
+        side_effect=LocalRequestCancelled("local_request_scheduler_closed")
+    )
+    worker.translate_items_in_batches_with_providers = Mock(
+        return_value=(["錯誤文字 fallback"], ["google"])
+    )
+
+    try:
+        with pytest.raises(LocalRequestCancelled):
+            worker.translate_items_with_ai_and_providers(
+                ["原文"],
+                [{"inline_data": {"data": "vision"}}],
+                [{"text": "原文", "x": 0, "y": 0, "w": 20, "h": 20}],
+            )
+
+        worker.translate_items_in_batches_with_providers.assert_not_called()
+    finally:
+        worker.cleanup()
+
+def test_screenshot_request_cancellation_does_not_text_fallback(qtbot):
+    worker = OCRWorker()
+    provider = SimpleNamespace(
+        translate_screenshot=Mock(
+            side_effect=LocalRequestCancelled("local_request_scheduler_closed")
+        )
+    )
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker._get_translation_provider = lambda _name: provider
+    worker.translate_text_preferred_with_provider = Mock(
+        return_value=("錯誤文字 fallback", "google")
+    )
+
+    try:
+        with pytest.raises(LocalRequestCancelled):
+            worker.translate_screenshot_gemma(
+                [{"inline_data": {"data": "vision"}}],
+                source_text_hint="原文",
+            )
+
+        worker.translate_text_preferred_with_provider.assert_not_called()
+    finally:
+        worker.cleanup()
+
 def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     worker = OCRWorker()
