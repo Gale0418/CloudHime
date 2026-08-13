@@ -73,6 +73,7 @@ from ocr_quality import (
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
 from ocr_backend_installer import detect_backend_state
+from ocr_preprocess import apply_ocr_preprocess, BOUNDED_RESCUE_PREPROCESSES, normalize_preprocess_candidates
 from ocr_refinement import (
     normalize_translation_compare_text,
     translation_fallback_reason,
@@ -3875,7 +3876,7 @@ class OCRWorker(QObject):
         self.remember_translation(cache_key, best_threshold)
         return best_threshold
 
-    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False, deadline=None):
+    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False, deadline=None, preprocess_candidates=None):
         base_threshold = int(self.binary_threshold)
         now_ms = time.monotonic() * 1000.0
         should_refresh_auto_threshold = force_bg_refresh
@@ -3890,6 +3891,7 @@ class OCRWorker(QObject):
             candidate_results = []
             regions = ocr_regions or [(0, 0, img.shape[1], img.shape[0])]
             orientations = orientation_candidates or [0]
+            preprocess_names = normalize_preprocess_candidates(preprocess_candidates)
 
             prepared_regions = []
             for region_x, region_y, region_w, region_h in regions:
@@ -3932,10 +3934,12 @@ class OCRWorker(QObject):
             def _run_one(task):
                 if deadline is not None and time.perf_counter() >= deadline:
                     return None
-                threshold, region_idx, prepared = task
-                _, binary = cv2.threshold(prepared["gray"], threshold, 255, cv2.THRESH_BINARY)
-                img_final = cv2.bitwise_not(binary)
-                img_for_ocr = cv2.cvtColor(img_final, cv2.COLOR_GRAY2BGR)
+                threshold, region_idx, prepared, preprocess = task
+                img_for_ocr = apply_ocr_preprocess(
+                    prepared["gray"],
+                    threshold=threshold,
+                    preprocess=preprocess,
+                )
                 try:
                     ocr_result = self._recognize_with_backends(img_for_ocr)
                 except Exception:
@@ -3958,10 +3962,11 @@ class OCRWorker(QObject):
                 return threshold, region_idx, prepared["orientation"], score, filtered_items
 
             tasks = [
-                (threshold, region_idx, prepared)
+                (threshold, region_idx, prepared, preprocess)
                 for threshold in threshold_values
                 for region_idx, prepared_orientations in enumerate(prepared_regions)
                 for prepared in prepared_orientations
+                for preprocess in preprocess_names
             ]
 
             # 收集並列結果： results_map[(threshold, region_idx)] = [(score, items), ...]
@@ -4574,6 +4579,30 @@ class OCRWorker(QObject):
                 and not is_region_vision_mode
             ):
                 self._emit_scan_status("框選區域沒有掃到文字，請框大一點或換個角度。")
+
+        if not filtered_items and not is_region_vision_mode:
+            try:
+                rescue_threshold = max(
+                    AUTO_THRESHOLD_MIN,
+                    min(AUTO_THRESHOLD_MAX, int(used_threshold or self.binary_threshold)),
+                )
+                self._emit_scan_status("🧪 OCR 救援前處理中...")
+                rescue_threshold, rescue_items = self.run_ocr_with_best_threshold(
+                    img,
+                    offset_x,
+                    offset_y,
+                    ocr_regions,
+                    [rescue_threshold],
+                    ocr_orientations,
+                    preprocess_candidates=BOUNDED_RESCUE_PREPROCESSES,
+                )
+                if rescue_items:
+                    used_threshold, filtered_items = rescue_threshold, rescue_items
+            except Exception as exc:
+                logger.warning(
+                    "[OCR hybrid rescue] failed type=%s",
+                    type(exc).__name__,
+                )
 
         if self._abort_stale_scan(ScanStage.OCR):
             return

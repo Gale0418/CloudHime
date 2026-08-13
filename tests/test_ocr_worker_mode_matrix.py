@@ -2111,3 +2111,63 @@ def test_region_vision_partial_response_falls_back_without_dropping_items(monkey
         assert translation_events[-1].fallback_reason == "translation_region_vision_failed"
     finally:
         worker.cleanup()
+
+def test_fast_path_hit_does_not_request_hybrid_rescue(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.run_ocr_with_best_threshold = Mock(return_value=(
+        100,
+        [{"text": "One", "x": 10, "y": 12, "w": 40, "h": 16}],
+    ))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert worker.run_ocr_with_best_threshold.call_count == 1
+        assert all(
+            "preprocess_candidates" not in call.kwargs
+            for call in worker.run_ocr_with_best_threshold.call_args_list
+        )
+    finally:
+        worker.cleanup()
+
+
+def test_no_text_uses_bounded_hybrid_rescue(monkeypatch, qtbot):
+    from ocr_preprocess import BOUNDED_RESCUE_PREPROCESSES
+
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    recovered_item = {"text": "Recovered", "x": 10, "y": 12, "w": 40, "h": 16}
+    worker.run_ocr_with_best_threshold = Mock(side_effect=[
+        (100, []),
+        (100, []),
+        (100, [recovered_item]),
+    ])
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert worker.run_ocr_with_best_threshold.call_count == 3
+        rescue_call = worker.run_ocr_with_best_threshold.call_args_list[-1]
+        assert rescue_call.kwargs["preprocess_candidates"] == BOUNDED_RESCUE_PREPROCESSES
+        assert len(BOUNDED_RESCUE_PREPROCESSES) == 2
+    finally:
+        worker.cleanup()
+
+
+def test_hybrid_rescue_preprocess_registry_is_strict_and_bounded():
+    from ocr_preprocess import (
+        BOUNDED_RESCUE_PREPROCESSES,
+        normalize_preprocess_candidates,
+    )
+
+    assert normalize_preprocess_candidates(BOUNDED_RESCUE_PREPROCESSES) == (
+        "adaptive_invert",
+        "clahe_otsu_invert",
+    )
+    with pytest.raises(ValueError, match="unknown OCR preprocess"):
+        normalize_preprocess_candidates(("not-a-real-preprocess",))

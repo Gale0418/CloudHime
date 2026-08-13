@@ -1973,3 +1973,36 @@ def test_refresh_conflicting_local_text_and_multimodal_uses_one_vision_profile()
     assert worker._local_runtime_profile == "vision"
     assert starts == ["start"]
     assert worker.translation_registry.get("gemma") is worker.local_multimodal_provider
+def test_run_ocr_applies_only_bounded_hybrid_preprocess_candidates():
+    from ocr_preprocess import BOUNDED_RESCUE_PREPROCESSES
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.binary_threshold = 100
+    worker.auto_threshold_enabled = False
+    worker.google_api_key = ""
+    worker.scan_mode = "region"
+    worker.last_auto_threshold_refresh_ms = 0.0
+    worker.exact_image_cache = ExactImageCache()
+    worker.threshold_suggested = SimpleNamespace(emit=lambda _value: None)
+    worker.rotate_crop_for_ocr = lambda crop, _orientation: crop
+    worker.get_ocr_scale_factor = lambda *_args: 1.0
+    worker.extract_raw_items = lambda result, *_args: []
+    worker.remap_items_from_orientation = lambda items, *_args: items
+    worker.score_ocr_items = lambda items: (0, list(items))
+    observed_shapes = []
+    worker._recognize_with_backends = lambda image: (
+        observed_shapes.append(tuple(image.shape)) or SimpleNamespace(lines=[])
+    )
+
+    threshold, items = worker.run_ocr_with_best_threshold(
+        np.zeros((20, 40, 3), dtype=np.uint8),
+        0,
+        0,
+        candidate_thresholds=[100],
+        orientation_candidates=[0],
+        preprocess_candidates=BOUNDED_RESCUE_PREPROCESSES,
+    )
+
+    assert threshold == 100
+    assert items == []
+    assert observed_shapes == [(20, 40, 3), (20, 40, 3)]
