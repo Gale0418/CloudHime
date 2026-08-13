@@ -664,3 +664,13 @@
 - TDD RED：新增 cache-hit assertion `1 failed, 41 deselected`；修正後 targeted `2 passed, 120 deselected in 0.92s`，affected provider/OCR suite `122 passed in 4.67s`；compileall exit 0；diff-check 無 error。
 - 修正以新 `TranslationResult` 複製 cached text/provider/model/raw/fallback provenance 並設定 `from_cache=True`，不改變 cache 內原物件。
 - 本輪 full CI `1004 passed, 2 skipped in 76.15s` 是 finding 修正前的 checkpoint；finding 修正後已跑 affected suite，未宣稱 post-fix full CI。CodeRabbit 初始 review 已有 1 finding，修正後未重新取得 second review receipt。
+## 2026-08-13：Corrupt AppData canonical repair gate
+
+- 唯讀審計發現：AppData 設定檔存在但 JSON 損毀、且沒有可用 legacy 檔時，`load_settings_data()` 回傳預設值與 `loaded_from=None`，舊 `should_migrate_to_appdata()` 卻因檔案存在而拒絕重建 canonical 檔。
+- 修正：`loaded_from_path is None` 視為需要建立／重建 AppData canonical settings；有效 AppData 仍優先於較新的 legacy 檔；使用既有 atomic `save_settings_data()` 寫回。
+- 驗證：新增 corrupt AppData test `1 passed, 33 deselected in 0.83s`；settings + UI affected `73 passed in 1.21s`；compileall exit 0；diff-check 無 error。合併 full CI 命令超過 300 秒且無 failure summary，未算通過；拆分五群組結果 core `396 passed`、OCR `232 passed`、runtime `147 passed, 2 skipped`、UI `52 passed`、benchmarks `178 passed`，合計 `1005 passed, 2 skipped`。
+- 這個新增案例是在實作後才執行，未捕捉 pre-fix RED，不能宣稱 TDD RED；本階段未做真實 GGUF／GPU／llama-server paired benchmark、clean Windows 或 Store certification。
+## 2026-08-13：CodeRabbit post-fix cooldown receipt
+
+- 修正 stream cache provenance 後嘗試以 base `7157e5f` 進行增量複審；CodeRabbit 實際回報 `rate_limit`，`waitTime=16 minutes`，沒有產生 post-fix review result。
+- 因此 `cda9254` 只宣稱 affected tests 通過與 initial finding 已修正，不宣稱複審 0 findings；待 cooldown 後可將後續累積變更一起送審。

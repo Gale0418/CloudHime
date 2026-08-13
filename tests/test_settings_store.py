@@ -8,6 +8,7 @@ from settings_store import (
     load_settings_data,
     normalize_settings_payload,
     save_settings_data,
+    should_migrate_to_appdata,
 )
 from translation_registry import build_translation_registry, TranslationProviderRegistryConfig
 
@@ -141,6 +142,26 @@ def test_normalize_settings_payload_sanitizes_local_gemma_parameters():
     assert high["local_gemma_temperature"] == 1.0
     assert high["local_gemma_repeat_penalty"] == 2.0
 
+
+def test_corrupt_appdata_settings_are_rebuilt_as_canonical(tmp_path):
+    install_dir = tmp_path / "install"
+    appdata_dir = tmp_path / "appdata"
+    install_dir.mkdir()
+    paths = create_settings_paths(str(install_dir), str(appdata_dir))
+    appdata_file = appdata_dir / "CloudHime" / "cloudhime_settings.json"
+    appdata_file.parent.mkdir(parents=True)
+    appdata_file.write_text("{not-json", encoding="utf-8")
+
+    payload, loaded_from = load_settings_data(paths)
+
+    assert payload == {}
+    assert loaded_from is None
+    assert should_migrate_to_appdata(paths, loaded_from) is True
+
+    save_settings_data(paths, {"schema_version": settings_store.SETTINGS_SCHEMA_VERSION})
+    assert json.loads(appdata_file.read_text(encoding="utf-8")) == {
+        "schema_version": settings_store.SETTINGS_SCHEMA_VERSION
+    }
 
 def test_load_settings_prefers_appdata_when_legacy_is_newer(tmp_path):
     install_dir = tmp_path / "install"

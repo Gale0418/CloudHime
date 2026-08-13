@@ -82,7 +82,8 @@ def save_settings_data(paths: SettingsPaths, payload: dict[str, Any]) -> None:
         raise
 
 def should_migrate_to_appdata(paths: SettingsPaths, loaded_from_path: str | None) -> bool:
-    return loaded_from_path == paths.legacy_file or not os.path.exists(paths.appdata_file)
+    # A present but unreadable AppData file is not a valid canonical source.
+    return loaded_from_path in {None, paths.legacy_file}
 
 
 def extract_backend_chain(settings: dict[str, Any]) -> Any:
