@@ -6,6 +6,7 @@ import argparse
 import base64
 import json
 import re
+import sys
 import subprocess
 import time
 from difflib import SequenceMatcher
@@ -491,6 +492,19 @@ def run_smoke(
     }
 
 
+def _configure_stdout_for_unicode() -> None:
+    """讓 Windows cp950 console 也能輸出日文 OCR／錯誤訊息。"""
+    stream = sys.stdout
+    reconfigure = getattr(stream, "reconfigure", None)
+    encoding = str(getattr(stream, "encoding", "") or "").lower().replace("-", "")
+    if not callable(reconfigure) or encoding in {"utf8", "utf8sig"}:
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="backslashreplace")
+    except (AttributeError, OSError, ValueError):
+        pass
+
+
 def _is_complete(result: dict[str, Any]) -> bool:
     return (
         int(result["successful_images"]) == int(result["image_count"])
@@ -533,6 +547,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ocr_hint=args.ocr_hint,
         japanese_rescue=args.japanese_rescue,
     )
+    _configure_stdout_for_unicode()
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if not args.require_complete or _is_complete(result) else 1

@@ -787,3 +787,20 @@
 - 初輪 committed review 實際完成：base `8660ef4`、reviewedFiles=11、回報 3 issues；2 個日期 major 經本機 clock／Git timestamp 查證為 false positive，1 個 smoke table placement minor 已修正。
 - 修正後第一次複審回報 `rate_limit`、`waitTime=3 seconds`；等待 5 秒重試時 WSL bridge 回 `E_ACCESSDENIED`，未取得 post-fix findings result。
 - 因此本輪不能宣稱 CodeRabbit post-fix 0 issues；production code 沒有初輪 finding，MissionCenter 文件 finding 已修正，待 bridge／免費額度恢復後再做最後複審。
+## 2026-08-14：Affected lifecycle／OCR／release suite rerun
+
+- 首次合併命令因錯誤設定 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 導致 `qtbot` fixture 缺失，結果 `99 passed, 83 errors`，判定為 test command configuration failure，不作產品結論。
+- 以提升權限、`QT_QPA_PLATFORM=offscreen`、保留 pytest-qt 與隔離 basetemp 重跑：`tests/test_local_vision_runtime.py`、`tests/test_local_multimodal_provider.py`、`tests/test_ocr_worker_mode_matrix.py`、`tests/test_release_packaging.py` 合計 `182 passed in 5.64s`。
+- 本結果只證明受影響自動化回歸與 release contract；未宣稱真實 GPU／GGUF latency、clean-machine、Store 或 WACK gate。
+## 2026-08-14：Release contract rerun after lifecycle hardening
+
+- 以提升權限、offscreen、隔離 basetemp 重跑 `tests/test_release_packaging.py`、`tests/test_msix_packaging.py`、`tests/test_ci_test_inventory.py`：`45 passed in 174.10s`。
+- 此為 packaging／MSIX／CI inventory contract evidence；不推導真實 Store submission、WACK XML、clean-machine 或 GPU onboarding 已通過。
+## 2026-08-14：Fresh frozen release、clean-machine 與 GPU vision smoke
+
+- 使用現有 runtime manifest 的可信 llama source commit `de9b028e08d5b52bf424ac88df7702f3e15c3d6e` 執行 `LLAMA_RUNTIME_COMMIT=... build_exe.bat`；完整 build exit 0，內建 release preflight 通過。
+- fresh `dist\\CloudHime` preflight：provenance verify ok、384 files、1,530,297,643 bytes、ModelFiles=0；runtime manifest version `9968 (1d1d9a9ed)`、backend=cuda、architecture=x64；未包含第二套 Python llama binding。
+- fresh packaged launch：`test_clean_machine.ps1 -LaunchWaitSeconds 5` PASS，PID=40204；結束後 CloudHime／llama-server 均不存在。
+- 真實 GPU local vision smoke：直接 Windows console 執行 `vision_smoke_benchmark.py --max-cases 1 --require-gpu --timeout 120 --startup-timeout 240 --json` PASS；runtime_mode=gpu、require_gpu=true、1/1 successful、line_match=1/1、match_score=1.0、startup=12229.9ms、average latency=1130.3ms；無 residual process。
+- 同一 smoke 首次因 cp950 無法輸出日文 JSON 暴露 CLI Unicode bug；新增 stdout UTF-8 reconfigure 與 regression，完整 benchmark tests `20 passed`，修正後不設定 PYTHONIOENCODING 的直接 GPU smoke 也 PASS。
+- 以上是 fresh artifact／單 case GPU smoke 證據；不推導完整 4-case／25-case accuracy、Store submission、WACK 或 clean-machine VM 已完成。
