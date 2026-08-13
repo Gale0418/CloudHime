@@ -821,3 +821,9 @@
 - 修正：新增完整 `candidate.text` 的 baseline／second similarity gate；第二結果必須改善 trusted similarity，且完整候選 similarity 不低於 baseline 才能採納。保留原有 `first_similarity`／`second_similarity` log 欄位，另加入 bounded candidate 分數。
 - TDD：RED 新 regression `1 failed, 5 passed`；GREEN rescue／integration `10 passed`；含 Japanese runtime 與 OCR mode matrix 的受影響集合 `99 passed in 4.85s`；compileall／git diff --check Pass。
 - CodeRabbit uncommitted review 實際回報 2 個文件日期 issues；依本機 2026-08-14 clock 與實際執行時間查證為 false positive，未改寫真實日期；本輪沒有 production code／test finding。未宣稱完整漫畫 holdout、GPU 或 Store 通過。
+## 2026-08-14：Translation E2E evaluator benchmark lock hardening
+
+- Root cause：`translation_e2e_benchmark.py` 定義 accuracy evaluator 的權重與空輸出規則，但 `benchmark_lock.py` 只要求 dataset 與 scheduling harness；評分器語意變更可能不改 lock ID 卻破壞歷史可比性。
+- 修正：新增 required artifact `translation_e2e_evaluator`，鎖定 `translation_e2e_benchmark.py` SHA-256 `19170a974e7d42222f9ada809b8e918d905a880c3d9aa46e5ffb2bca7da3936f`，並將 lock ID 升為 `cloudhime-accuracy-speed-temporal-v4`；補 missing-artifact 與 mutation regression。
+- TDD：提升環境 GREEN `33 passed in 1.55s`；`python benchmark_lock.py` 回傳 `ok=true`、4 datasets、2 artifacts；compileall／git diff --check Pass。
+- CodeRabbit 本輪 review 實際回報 2 個日期 issues，與本機 clock／實際執行時間不符，查證為 false positive；未改寫已完成證據，也未宣稱 CodeRabbit 0 issues。
