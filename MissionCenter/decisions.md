@@ -756,3 +756,10 @@
 - 修正：release build 只接受明確的 LLAMA_RUNTIME_COMMIT，或 runtime/llama-runtime-commit.txt；兩者皆缺少時 fail-closed，不再把專案 HEAD 冒充 runtime commit。packaging README 已同步說明。
 - TDD：新增 release contract regression 先 RED 1 failed, 17 deselected；修正後 1 passed, 17 deselected；compileall／diff-check Pass。實際 runtime/llama-server.exe --version 嘗試由外層 30 秒 timeout，未取得 version output，未宣稱 frozen build／manifest／GPU gate 通過。
 - 本輪未執行 CodeRabbit（rate limit 冷卻中）；未執行 clean-machine、Store 或 WACK。
+
+
+## 2026-08-14：Hybrid rescue assertion placement correction
+
+- Root cause：前一輪為了驗證 rescue consumption，新增的 Recovered assertion 被誤插到 exact-cache／FrameGate 測試；該測試的 OCR fixture 固定回傳 Hello，因此造成 85 passed, 1 failed，並非 FrameGate production regression。
+- 修正：移除 exact-cache 測試中的兩個錯誤 assertion；保留真正 no-text hybrid rescue 測試的 Recovered／last_results assertion。未修改 production code。
+- 驗證：完整 tests/test_ocr_worker_mode_matrix.py 86 passed in 4.84s；hybrid rescue subset 2 passed, 84 deselected in 0.95s；compileall／diff-check Pass。
