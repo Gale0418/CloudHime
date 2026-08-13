@@ -2265,6 +2265,8 @@ class OCRWorker(QObject):
                     raise ValueError("empty_gemma_screenshot_response")
                 try:
                     fallback, fallback_provider = self.translate_text_preferred_with_provider(source_text_hint)
+                except LocalRequestCancelled:
+                    raise
                 except Exception:
                     fallback, fallback_provider = "", ""
                 if self._is_usable_text_fallback(source_text_hint, fallback):
@@ -2377,6 +2379,8 @@ class OCRWorker(QObject):
             )
             try:
                 fallback = self.translate_text_google(source_text_hint)
+            except LocalRequestCancelled:
+                raise
             except Exception:
                 fallback = ""
             if self._is_usable_text_fallback(source_text_hint, fallback):
@@ -2391,6 +2395,8 @@ class OCRWorker(QObject):
                 )
             try:
                 fallback = self.translate_text_gemma(source_text_hint)
+            except LocalRequestCancelled:
+                raise
             except Exception:
                 fallback = ""
             if self._is_usable_text_fallback(source_text_hint, fallback):
@@ -2498,6 +2504,8 @@ class OCRWorker(QObject):
             batch_result = []
             try:
                 batch_result = self.translate_text_batch(batch)
+            except LocalRequestCancelled:
+                raise
             except Exception:
                 batch_result = []
             if len(batch_result) == len(batch):
@@ -2514,6 +2522,8 @@ class OCRWorker(QObject):
             batch_provider = ""
             try:
                 batch_result, batch_provider = self.translate_text_batch_with_provider(batch)
+            except LocalRequestCancelled:
+                raise
             except Exception:
                 batch_result = []
             if len(batch_result) == len(batch):
@@ -2534,6 +2544,8 @@ class OCRWorker(QObject):
                         raise ValueError("degenerate_multimodal_translation")
                     repaired, _providers = self._repair_suspicious_multimodal_segments(source_texts, parsed)
                     return repaired
+            except LocalRequestCancelled:
+                raise
             except Exception as exc:
                 logger.info(
                     f"[Multimodal translation] text fallback: {type(exc).__name__}"
@@ -2613,6 +2625,8 @@ class OCRWorker(QObject):
             )
             try:
                 fallback, fallback_provider = self.translate_text_preferred_with_provider(source_text)
+            except LocalRequestCancelled:
+                raise
             except Exception:
                 continue
             if self._is_usable_text_fallback(source_text, fallback):
@@ -2635,6 +2649,8 @@ class OCRWorker(QObject):
                     parsed,
                 ):
                     raise ValueError("degenerate_multimodal_translation")
+            except LocalRequestCancelled:
+                raise
             except Exception as exc:
                 logger.info(
                     f"[Multimodal translation] text fallback: {type(exc).__name__}"
@@ -2670,6 +2686,8 @@ class OCRWorker(QObject):
                         getattr(stream_result, "provider", None) or provider_name
                     )
                     return [accumulated], [actual_provider]
+                except LocalRequestCancelled:
+                    raise
                 except Exception as exc:
                     logger.error(f"Streaming translation failed: {type(exc).__name__}")
                     pass
@@ -2721,6 +2739,8 @@ class OCRWorker(QObject):
                     translated[index] = text
                     providers[index] = provider
                 written_indexes.update(item_indexes)
+            except LocalRequestCancelled:
+                raise
             except Exception as exc:
                 logger.info(f"[Manga crop translation] region fallback: {type(exc).__name__}")
         return translated, providers
@@ -4368,6 +4388,10 @@ class OCRWorker(QObject):
                 self._emit_scan_status("🖼 截圖模式改走文字翻譯...")
                 try:
                     translated_text, current_provider = self.translate_text_preferred_with_provider(screenshot_text_hint)
+                except LocalRequestCancelled:
+                    if self._abort_stale_scan(ScanStage.TRANSLATION):
+                        return
+                    raise
                 except Exception as exc:
                     self._record_scan_event(
                         ScanStage.TRANSLATION,
@@ -4390,12 +4414,20 @@ class OCRWorker(QObject):
                         getattr(self, "_last_screenshot_translation_provider", "")
                         or self.get_current_ai_provider()
                     )
+                except LocalRequestCancelled:
+                    if self._abort_stale_scan(ScanStage.TRANSLATION):
+                        return
+                    raise
                 except Exception as exc:
                     self.log_ai_debug(f"MULTIMODAL FAILED: {type(exc).__name__}")
                     if screenshot_text_hint:
                         self._emit_scan_status("🖼 截圖模式失敗，改走文字翻譯...")
                         try:
                             translated_text, current_provider = self.translate_text_preferred_with_provider(screenshot_text_hint)
+                        except LocalRequestCancelled:
+                            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                                return
+                            raise
                         except Exception as fallback_exc:
                             self._record_scan_event(
                                 ScanStage.TRANSLATION,
@@ -4973,6 +5005,8 @@ class OCRWorker(QObject):
                     _log("⑧ 開始 translate_items_with_ai_and_providers")
                     translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts, merged_items)
                 _log(f"⑨ 翻譯完成 (共 {len(translated_list)} 段)")
+            except LocalRequestCancelled:
+                raise
             except Exception as exc:
                 self.log_ai_debug(f"MULTIMODAL BATCH FAILED: {type(exc).__name__}")
                 translated_list = []
@@ -5013,6 +5047,8 @@ class OCRWorker(QObject):
                     self._emit_scan_status(f"{icon} {prefix} {i+1}/{len(merged_items)}")
                     try:
                         trans_text, provider = self.translate_text_preferred_with_provider(source_text)
+                    except LocalRequestCancelled:
+                        raise
                     except Exception as exc:
                         logger.warning(
                             "[Translation fallback] failed index=%d type=%s; retaining source",
@@ -5091,6 +5127,10 @@ class OCRWorker(QObject):
             self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
             self._emit_scan_finished(final_results)
 
+        except LocalRequestCancelled:
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return
+            raise
         except Exception as e:
             self._record_scan_event(
                 ScanStage.TRANSLATION,
