@@ -687,3 +687,21 @@
 - 修正：nested dict 轉換時偵測 string key collision，明確拋出 `TypeError("translation_history_not_serializable")`；不改既有 schema_version/list-of-records 格式。
 - 驗證：history targeted `6 passed, 34 deselected in 0.83s`；完整 `tests/test_cloudhime_ui_smoke.py` `40 passed in 1.01s`；compileall exit 0；diff-check 無 error。
 - 本階段未做真實 GGUF／GPU／llama-server paired benchmark、clean Windows 或 Store certification；CodeRabbit 仍在 rate limit 冷卻。
+
+## 2026-08-13：MissionCenter 0.3.1 工作區契約採用
+
+- 沿用並重新開啟 `CH-E10`，不建立重複的現代化 Epic；新增 `CH-T88`～`CH-T91` 承接 0.3.1 遷移、canonical 正規化、managed summaries 與 execution checkpoint 驗證。
+- 採用 bounded Resume、`working-set.md`、`critical-lessons.md` 與 `incidents/`；`focus.md` 降為相容檢視，只保留一個遷移週期。
+- 舊 `project.md`／`progress.md` 將以一次性 `--rewrite-summaries` 正式納入 managed summaries；往後不得手動維護衍生統計。
+- tasks 與 smoke 原始內容先封存，再轉成 0.3.1 嚴格表格。舊結果只有明確成功才映射為 `Pass`，其餘保守映射為 `Fail`；不以遷移名義捏造測試成功。
+- 不建立 `legacy-done-audit.json`：既有 Done 任務的 passing evidence 可由修復後的 canonical smoke table 重建，額外 waiver 沒有必要。
+- 既有 snapshot 以 legacy archive 保留，最終 checkpoint 只從 canonical tasks／project／Git 狀態重建；不沿用舊版 fact-like flags。
+- 此工作是本機、確定性的文件／狀態遷移，不涉及 UI 感知決策、外部 prior art、GPU 效能聲明或產品程式碼，因此不啟動 CACC、外部研究或 CodeRabbit。
+
+## 2026-08-14：OCR retry 與 fallback observability hardening gate
+
+- Gemini local loopback readonly review（cascade 2ce7881e-dfd0-44c9-956c-6fcbed3267d9，visibility=hub_visible、delivery_state=DELIVERED）指出 fullscreen manga tile retry 失敗會清空已成功的 baseline OCR items；同時指出 Google OCR prefetch 與逐筆翻譯 fallback 的 silent exception。
+- 修正：tile retry exception 保留 baseline items 並只記錄 exception type；Google OCR timeout／一般 exception 均 bounded logging；逐筆翻譯 fallback 記錄 index 與 exception type，不記錄 API key、prompt 或 OCR 原文。
+- 回歸測試：先重現 manga retry 1 failed, 80 deselected；修正後 targeted 4 passed, 78 deselected in 1.41s（涵蓋 manga retry、Google timeout、Google exception、translation fallback warning）；OCR mode matrix 82 passed in 5.40s；OCR CI group 234 passed in 6.20s；compileall exit 0、diff-check 無 error。
+- core／runtime／UI／benchmarks 五群組命令已實際執行，但部分測試在 pytest setup 或 session cleanup 遇到既有 Windows temp ACL WinError 5；未取得這四組的完整通過結果，故不宣稱全量 CI 通過。未做 GPU、真實 GGUF、clean Windows、Store 或 WACK 驗證。
+- CodeRabbit formal committed review：base b496e0f、reviewedFiles=2（cloudhime_workers.py、tests/test_ocr_worker_mode_matrix.py）、findings=0；CLI 0.7.2、帳號 Gale0418 authenticated。此 receipt 只涵蓋本輪兩個程式／測試檔，不涵蓋硬體、發行或 MissionCenter 文件。

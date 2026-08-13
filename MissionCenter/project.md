@@ -1,9 +1,10 @@
+<!-- mission-center-managed-summary v=1 -->
 # 專案
 
 - 專案: CloudHime
 - 目標: 準確度優先、local-first，先收斂 Region Vision 偶發 fallback，再完成發行供應鏈與 clean-machine gate
 - 週期: CH-E9 漸進式 Hardening：Region Vision reliability
-- 標籤: execution, verification, vision-first, reliability, release
+- 標籤: execution,verification,vision-first,reliability,release
 - 活動紀錄:
   - [2026-08-11] CH-E10 MissionCenter 工作區現代化完成：修復 canonical 表格、依 evidence 收束 lifecycle、重建 brief/focus/HUD、建立 snapshot/closeout，最新版 doctor 通過。
   - [2026-08-11] 舊 project、progress、CH-E1 closeout 與 legacy HUD 已移至 `MissionCenter/archive/`；canonical 任務真相維持 `tasks.md`。
