@@ -372,6 +372,39 @@ def test_japanese_rescue_without_trigger_does_not_add_provider_call(monkeypatch,
     assert result["rescue_shadow_candidate_fallbacks"] == 0
 
 
+def test_json_output_reconfigures_non_utf8_windows_console(monkeypatch) -> None:
+    class Cp950Console:
+        encoding = "cp950"
+
+        def __init__(self):
+            self.writes = []
+
+        def reconfigure(self, *, encoding, errors):
+            self.encoding = encoding
+
+        def write(self, value):
+            value.encode(self.encoding)
+            self.writes.append(value)
+            return len(value)
+
+        def flush(self):
+            pass
+
+    console = Cp950Console()
+    result = {
+        "image_count": 1,
+        "case_count": 1,
+        "successful_images": 1,
+        "successful_cases": 1,
+        "actual": "来",
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: result)
+    monkeypatch.setattr(benchmark.sys, "stdout", console)
+
+    assert benchmark.main(["--json"]) == 0
+    assert "来" in "".join(console.writes)
+
+
 def test_require_complete_returns_nonzero_for_incomplete_result(monkeypatch, capsys) -> None:
     incomplete = {
         "image_count": 2,
