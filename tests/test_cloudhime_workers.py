@@ -391,6 +391,58 @@ def test_local_multimodal_mode_changes_during_startup_are_coalesced():
     assert worker.local_multimodal_cpu_only is False
 
 
+def test_refresh_rejects_ready_state_without_owned_loopback_process():
+    from translation_providers import (
+        GemmaTranslationProvider,
+        GoogleTranslationProvider,
+        LocalMultimodalProvider,
+    )
+
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.active_gemma_model = worker.gemma_model
+    worker.gemma_prompt = ""
+    worker.screenshot_gemma_prompt = ""
+    worker.gemma_auto_switch_enabled = False
+    worker.translation_target_lang = "zh-TW"
+    worker.local_gemma_temperature = 0.2
+    worker.local_gemma_repeat_penalty = 1.15
+    worker.local_multimodal_enabled = True
+    worker.local_multimodal_base_url = "http://127.0.0.1:8080/v1"
+    worker.local_multimodal_model = "vision-local"
+    worker.local_multimodal_timeout_seconds = 20
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    worker.local_vision_runtime = SimpleNamespace(
+        profile_name="vision",
+        _state=SimpleNamespace(
+            name="ready",
+            base_url="http://127.0.0.1:49111/v1",
+        ),
+    )
+    worker.google_translation_provider = GoogleTranslationProvider(target_lang="zh-TW")
+    worker.gemma_translation_provider = GemmaTranslationProvider(
+        google_api_key="",
+        gemma_model="gemma-3-4b-it-local",
+        target_lang="zh-TW",
+    )
+    worker.local_multimodal_provider = LocalMultimodalProvider(
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="old-model",
+        target_lang="zh-TW",
+        enabled=False,
+    )
+    worker.request_local_vision_start = lambda: None
+
+    OCRWorker._refresh_translation_registry(worker)
+
+    provider = worker.translation_registry.get("gemma")
+    assert provider is worker.local_multimodal_provider
+    assert provider.available() is False
+    assert provider.base_url == ""
+    assert provider.model_name == ""
+
 def test_multimodal_routing_local_model():
     worker = make_worker_stub()
     worker.use_gemma_translation = True
@@ -399,6 +451,7 @@ def test_multimodal_routing_local_model():
     worker.google_api_key = "test_key"
     worker.local_multimodal_enabled = True
     worker.local_multimodal_model = "translategemma-4b-it-local"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: True)
 
     assert worker.has_local_multimodal_ai() is True
     assert worker.has_remote_multimodal_ai() is False
@@ -605,6 +658,7 @@ def test_translate_multimodal_gemma_prefers_local_provider_for_local_model():
     worker.active_gemma_model = worker.gemma_model
     worker.local_multimodal_enabled = True
     worker.local_multimodal_model = "translategemma-4b-it-local"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: True)
     worker.translation_target_lang = "zh-TW"
     worker.convert_to_trad = lambda text: text
     worker.normalize_gemma_model = lambda model: model or worker.gemma_model
@@ -697,9 +751,9 @@ def test_refresh_translation_registry_applies_local_multimodal_config():
     OCRWorker._refresh_translation_registry(worker)
 
     provider = worker.translation_registry.get("local_multimodal")
-    assert provider.available() is True
-    assert provider.base_url == "http://localhost:11434/v1"
-    assert provider.model_name == "vision-local"
+    assert provider.available() is False
+    assert provider.base_url == ""
+    assert provider.model_name == ""
     assert provider.timeout_seconds == 45
     assert worker.gemma_translation_provider.screenshot_gemma_prompt == "remote screenshot prompt"
 
@@ -757,9 +811,10 @@ def test_multimodal_routing_uses_enabled_local_endpoint_for_non_local_text_model
     worker.active_gemma_model = worker.gemma_model
     worker.local_multimodal_enabled = True
     worker.local_multimodal_model = "vision-local"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: False)
 
-    assert worker.has_local_multimodal_ai() is True
-    assert worker.resolve_multimodal_provider_name() == "local_multimodal"
+    assert worker.has_local_multimodal_ai() is False
+    assert worker.resolve_multimodal_provider_name() is None
 
 def test_request_local_vision_start_runs_runtime_in_single_executor():
     statuses = []
@@ -773,14 +828,25 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
             future.set_result(callback())
             return future
 
+    class FakeProcess:
+        pid = 4321
+
+        def poll(self):
+            return None
+
     class FakeRuntime:
-        def start(self):
-            return SimpleNamespace(
+        def __init__(self):
+            self._state = SimpleNamespace(name="stopped", detail="", base_url="", mode="")
+            self.owned_process = FakeProcess()
+
+        def start(self, **_kwargs):
+            self._state = SimpleNamespace(
                 name="ready",
                 detail="",
                 base_url="http://127.0.0.1:43123/v1",
                 mode="cpu",
             )
+            return self._state
 
     class FakeProvider:
         def __init__(self):

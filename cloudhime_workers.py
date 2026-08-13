@@ -656,6 +656,9 @@ class OCRWorker(QObject):
             embedded_runtime = getattr(self, "local_vision_runtime", None)
             runtime_state = getattr(embedded_runtime, "_state", None)
             has_embedded_runtime = embedded_runtime is not None
+            runtime_ready = OCRWorker._owned_local_runtime_ready(
+                self, embedded_runtime, runtime_state
+            )
             local_text_runtime_required = bool(config.gemma_enabled and selected_local_model)
             self._local_text_runtime_required = local_text_runtime_required
             desired_profile = (
@@ -681,7 +684,8 @@ class OCRWorker(QObject):
             if has_embedded_runtime:
                 runtime_profile = getattr(embedded_runtime, "profile_name", "vision")
                 if (
-                    runtime_state is not None
+                    runtime_ready
+                    and runtime_state is not None
                     and runtime_state.name == "ready"
                     and desired_profile == runtime_profile
                 ):
@@ -693,11 +697,8 @@ class OCRWorker(QObject):
                 else:
                     self.local_multimodal_provider.update_runtime("", "", ready=False)
             else:
-                self.local_multimodal_provider.update_runtime(
-                    config.local_multimodal_base_url,
-                    config.local_multimodal_model,
-                    ready=config.local_multimodal_enabled,
-                )
+                # A configured endpoint is not proof that this app owns a live server.
+                self.local_multimodal_provider.update_runtime("", "", ready=False)
 
             if selected_local_model:
                 active_gemma = self.local_multimodal_provider
@@ -1020,6 +1021,10 @@ class OCRWorker(QObject):
         state = getattr(runtime, "_state", None)
         current_profile = getattr(runtime, "profile_name", profile_name)
         if state is not None and state.name == "ready":
+            if not OCRWorker._owned_local_runtime_ready(self, runtime, state):
+                self.local_multimodal_provider.update_runtime("", "", ready=False)
+                OCRWorker._emit_local_vision_status(self, "failed", "runtime_ownership_invalid")
+                return
             if current_profile != profile_name:
                 OCRWorker._schedule_local_vision_reconfigure(self)
                 return
@@ -1091,7 +1096,12 @@ class OCRWorker(QObject):
                 f"{type(exc).__name__}: {exc}",
             )
         else:
-            ready = state.name == "ready"
+            ready = state.name == "ready" and OCRWorker._owned_local_runtime_ready(
+                self, getattr(self, "local_vision_runtime", None), state
+            )
+            detail = state.detail
+            if state.name == "ready" and not ready:
+                detail = "runtime_ownership_invalid"
             self.local_multimodal_provider.update_runtime(
                 state.base_url if ready else "",
                 getattr(self, "local_multimodal_model", "gemma-3-4b-it") if ready else "",
@@ -1099,7 +1109,7 @@ class OCRWorker(QObject):
             )
             if ready:
                 self._refresh_translation_registry()
-            OCRWorker._emit_local_vision_status(self, state.name, state.detail)
+            OCRWorker._emit_local_vision_status(self, state.name if ready else "failed", detail)
         finally:
             if getattr(self, "_local_vision_load_future", None) is future:
                 self._local_vision_load_future = None
@@ -1532,10 +1542,14 @@ class OCRWorker(QObject):
         )
 
     def has_local_multimodal_ai(self):
+        provider = getattr(self, "local_multimodal_provider", None)
+        available = getattr(provider, "available", None)
         return (
             self.use_gemma_translation
             and bool(getattr(self, "local_multimodal_enabled", False))
             and bool(getattr(self, "local_multimodal_model", ""))
+            and callable(available)
+            and bool(available())
         )
 
     def has_any_multimodal_ai(self):
