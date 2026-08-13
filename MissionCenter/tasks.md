@@ -104,6 +104,7 @@
 | CH-T90 | 採用 managed summaries 並重建新版 HUD | Task | CH-E10 | P1 | Done | Codex | CH-T89 | 讓 project、progress、brief、working-set、focus compatibility view 與 HUD 都由 canonical tasks 衍生 | sync 後 derived views fresh；第二次 sync changed=[]；focus 僅保留一個遷移週期 | YES | YES | 30m | governance, derived-view, hud, compatibility | 2026-08-14：一次性採用 managed summaries；HUD state 重建；maintenance 連續兩次 `changed=[]`；README 更新 bounded Resume 契約。 |
 | CH-T91 | 重建 execution checkpoint 並完成升級驗證 | Task | CH-E10 | P0 | Done | Codex / Terra | CH-T90 | 以 canonical state 重建 snapshot，完成 doctor、resume 與冪等驗證 | doctor OK；resume fresh；snapshot 無 legacy warning；重複 sync 無變更 | YES | YES | 30m | governance, doctor, snapshot, recovery | 2026-08-14：doctor OK；resume fresh、fallback=null、truncated=false；snapshot 為新版 active checkpoint；maintenance `changed=[]`。未建立多餘 legacy audit。 |
 
+| CH-T92 | Local translation cancellation propagation | Task | CH-E9 | P0 | Done | Codex | CH-T86 | 將一般 local multimodal／screenshot 翻譯路徑的 LocalRequestCancelled 與普通 provider error 分離；取消時不得走文字 fallback、逐項補翻或寫入結果，並保留既有正常 fallback | cancellation regression、OCR mode matrix、compileall 與 diff-check 通過；CodeRabbit rate limit 不得當作 review 通過 | YES | YES | 30m | vision-first, cancellation, fallback, lifecycle, regression | 2026-08-14：先以 RED 重現 LocalRequestCancelled 被吞掉並進入 text fallback；修正一般多模態、screenshot、stream、batch、manga crop 與掃描外層 cancellation 邊界；受影響四檔 101 passed；commit 91cefaf。CodeRabbit 本輪 rate_limit，未宣稱 review 通過；未做 GPU／GGUF／Store／WACK。 |
 ## 0.3.1 遷移註記
 
 - 原始完整內容保留於 `archive/tasks-pre-0.3.1-2026-08-13.md`。
