@@ -705,3 +705,16 @@
 - 回歸測試：先重現 manga retry 1 failed, 80 deselected；修正後 targeted 4 passed, 78 deselected in 1.41s（涵蓋 manga retry、Google timeout、Google exception、translation fallback warning）；OCR mode matrix 82 passed in 5.40s；OCR CI group 234 passed in 6.20s；compileall exit 0、diff-check 無 error。
 - core／runtime／UI／benchmarks 五群組命令已實際執行，但部分測試在 pytest setup 或 session cleanup 遇到既有 Windows temp ACL WinError 5；未取得這四組的完整通過結果，故不宣稱全量 CI 通過。未做 GPU、真實 GGUF、clean Windows、Store 或 WACK 驗證。
 - CodeRabbit formal committed review：base b496e0f、reviewedFiles=2（cloudhime_workers.py、tests/test_ocr_worker_mode_matrix.py）、findings=0；CLI 0.7.2、帳號 Gale0418 authenticated。此 receipt 只涵蓋本輪兩個程式／測試檔，不涵蓋硬體、發行或 MissionCenter 文件。
+## 2026-08-14：Bounded Hybrid OCR rescue 接線
+
+- Gemini local loopback readonly review（cascade 10acc8bd-2cfc-491f-84b3-4973a68b486d，visibility=hub_visible、delivery_state=DELIVERED）與本地盤點確認：hybrid_search_benchmark.py 原先只有離線 84 策略 benchmark，production OCR 仍是單一 binary-invert fast path。
+- 採用 accuracy-first 最小接法：fast path 命中不增加呼叫；只有 OCR 無文字時才進 bounded rescue；rescue 固定兩個 preprocess（adaptive_invert、clahe_otsu_invert），不把完整搜尋空間帶入每幀；新 registry 對未知策略與超過 budget fail-closed。benchmark 與 production 共用 ocr_preprocess.py。
+- TDD RED：新增 rescue contract 後先得到 2 failed（module 尚不存在）；接線初版再由既有 threshold tests 抓到 task tuple 舊解包造成的 silent fail-open，已修正。最終 targeted：worker threshold/rescue 3 passed, 78 deselected；mode matrix 3 passed, 82 deselected；Hybrid benchmark 5 passed；OCR group 238 passed in 5.76s；packaging/inventory/Hybrid 28 passed；benchmark_lock ok=true；compileall／diff-check Pass。
+- CodeRabbit：第一次 uncommitted review 回報 MissionCenter 遷移註記位置問題，已將註記移到 canonical smoke table 最後並拆開黏連的兩筆 evidence，文件 checkpoint ecbb17f；精準 committed review base 139ea56 覆蓋本輪 6 files、findings=1（rescue test 未驗證結果消費），已補 last_combined_text／last_results assertion，checkpoint 09589c5。本輪最後一次複審實際回報 rate_limit、waitTime=38 minutes，未宣稱 post-fix review 通過。
+- 未執行真實 GPU／GGUF／llama-server latency benchmark、clean Windows、Store 或 WACK；rescue 尚未以速度 promotion，只有在 no-text 路徑使用。
+## 2026-08-14：Coordinator stopped-runtime rejection hardening
+
+- Root cause：`LocalVisionRuntimeCoordinator.acquire()` 只檢查 asset/profile，未檢查既有 entry 的 `stopped` 狀態；唯一 lease 呼叫 stop 後，下一個 consumer 可能取得未重新啟動的 stale runtime。
+- 修正：entry 已 stopped 時 fail-closed 回報 `shared_runtime_stopped`；必須先 release 舊 lease，才會建立新的 runtime entry，維持單一 engine ownership。
+- TDD：先新增 regression 得到 `1 failed, 6 deselected`；修正後 coordinator suite `7 passed in 0.12s`，受影響 worker/runtime selection `30 passed, 58 deselected in 1.35s`；compileall 與 diff-check Pass。
+- 本輪沒有實機 llama-server、GPU、GGUF、clean-machine、Store/WACK 驗證；CodeRabbit 仍在上一輪 rate limit 冷卻，未送本輪 review。

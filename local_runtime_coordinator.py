@@ -82,6 +82,9 @@ class LocalVisionRuntimeCoordinator:
                 runtime = self._runtime_factory(assets, **kwargs)
                 entry = _RuntimeEntry(runtime=runtime, leases=0)
                 self._entries[key] = entry
+            elif entry.stopped:
+                # A stopped entry must not be handed to a new consumer as if it were ready.
+                raise RuntimeError("shared_runtime_stopped")
             elif getattr(entry.runtime, "profile_name", profile) != profile:
                 raise RuntimeError("shared_runtime_profile_conflict")
             entry.leases += 1
