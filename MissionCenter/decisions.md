@@ -888,3 +888,9 @@
 - 缺口：japanese_ocr_rescue.py 的 pure decision 已保護「不得用可信前綴改善換掉完整候選」，但 worker integration 原本沒有同型案例；未來接線改動可能繞過這個準確度護欄。
 - 修正：tests/test_japanese_ocr_worker_integration.py 新增 fake runtime full Meiki candidate 情境，讓 VLM 輸出更接近 trusted prefix、卻丟掉候選尾段；OCRWorker.rescue_japanese_text() 必須保留完整 baseline。
 - 驗證：worker integration 5 passed in 1.00s；Japanese rescue/runtime/OCR mode matrix 102 passed in 7.04s；未執行 GPU、完整漫畫 holdout、LGPL 授權審查、Store 或 WACK，因此 CH-T35 維持 In Progress。
+
+## 2026-08-14：CodeRabbit clean-machine probe review disposition
+
+- 初輪 review：base e946a4e，review_completed，3 findings。兩個 major 指稱 2026-08-14 證據像是未來日期；本機日期、命令執行與 commit 時間均為 2026-08-14，查證為 false positive，不改寫 decisions 或 smoke ledger。唯一有效 finding 是 tests/test_msix_packaging.py 未鎖定 SystemRoot／WINDIR／PATH rejection branches。
+- 修正：新增三個 exact guard assertions，commit dd32d77。targeted probe／YAML tests 2 passed；受影響 CI inventory／release／MSIX suite 45 passed in 57.81s。
+- 複審：以 1363397 為 base 的 CodeRabbit review_completed，僅剩 1 個同型日期 false positive；沒有新的 production 或 test finding。這不代表 GPU、Store、WACK 或真實 clean-machine onboarding 完成。
