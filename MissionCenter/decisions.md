@@ -729,3 +729,7 @@
 - 修正：close 對 provider instance 採 terminal semantics，先清除 enabled／runtime-ready，再關閉 scheduler 並清空本地狀態；不改正常 ready、HTTP payload、FIFO 或 fallback 行為。
 - TDD：新增 close readiness regression 先得到 `1 failed, 21 deselected`；修正後 provider suite `22 passed in 0.82s`，受影響 worker cleanup/runtime `28 passed, 53 deselected in 1.25s`；compileall／diff-check Pass。
 - Gemini bridge 本輪唯讀請求實際兩次均回報 `attempt to write a readonly database`，未宣稱 Gemini review 成功；本輪未執行 GPU／GGUF／clean-machine／Store/WACK 驗證。
+## 2026-08-14：Local multimodal close CodeRabbit receipt
+
+- CodeRabbit CLI 0.7.2 與 Gale0418 authentication 均確認成功；精準 committed scope 為 base `8660ef4` 到 `e45fb56`，預期只涵蓋本輪 4 個小檔案。
+- 實際 review service 回報 `rate_limit`、`waitTime=24 minutes`；因此本輪沒有 CodeRabbit findings result，也不宣稱 review 通過。等待冷卻期間先繼續本地驗證。
