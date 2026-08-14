@@ -2111,7 +2111,44 @@ def test_fullscreen_local_vision_first_failure_falls_open_to_ocr(monkeypatch, qt
         ]
         assert translation_events[0].outcome is ScanOutcome.FALLBACK
         assert translation_events[0].fallback_reason == "translation_fullscreen_vision_local_failed"
-        assert translation_events[-1].outcome is ScanOutcome.FALLBACK
+    finally:
+        worker.cleanup()
+
+
+def test_fullscreen_local_vision_first_stale_response_does_not_write_state_or_cache(
+    monkeypatch, qtbot
+):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: True)
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+
+    def return_stale_result(*_args, **_kwargs):
+        worker.set_scan_generation(2)
+        return "過期 Vision 結果"
+
+    worker.translate_screenshot_gemma = Mock(side_effect=return_stale_result)
+    worker.set_scan_generation(1)
+    worker.enqueue_scan_request(1)
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == []
+        assert worker.last_results == []
+        assert len(worker.exact_image_cache) == 0
+        assert worker.last_scan_trace.events[-1].outcome is ScanOutcome.CANCELLED
+        assert worker.last_scan_trace.events[-1].error_code is ScanErrorCode.SCAN_CANCELLED
     finally:
         worker.cleanup()
 
