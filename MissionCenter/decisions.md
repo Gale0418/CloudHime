@@ -902,3 +902,10 @@
 - 實際一次 Windows OCR baseline/grid paired run：`python manga_repeated_run_evaluator.py benchmarks\\manga_cover_cases.json --backend windows --repeats 1 --base-threshold 100 --output artifacts\\manga-cover-public-20260814.json`；兩條件皆 6/6 nonempty、0/6 anchor recall。baseline 平均 `2362.352 ms`、p95 `6594.127 ms`；grid 平均 `13768.007 ms`、p95 `57605.568 ms`，grid accepted `2/6`，但沒有 anchor 改善。
 - 判定：這個 checkpoint 只證明公開 holdout evaluator 可重跑且目前 OCR baseline 的真實表現可觀測；不代表漫畫辨識已達標。grid recovery 維持 opt-in，不能作為線上速度解法；CH-T43 仍在 Review，下一個真正的品質工作是以 owner-confirmed ground truth 做 vision/crop A/B，並同時守住 paired regression 與 latency budget。
 - 邊界：本次使用 Windows OCR、`multimodal_enabled=false`，未執行 GPU／GGUF／local vision、15-page private holdout、Store、WACK 或 clean-machine VM onboarding；沒有把這次結果宣稱為全域最佳。
+
+## 2026-08-14：Fullscreen Vision fallback closes the OCR-empty path
+
+- Root cause：`OCRWorker.run_scan_once()` 原本只讓 Region Vision 在 OCR backend 缺失或 OCR 失敗時接管；全螢幕多模態即使已啟用，只要 OCR 沒有任何 item 就會在 bounded rescue 後走 `handle_empty()`，整張畫面不會送進 Vision。這讓 OCR 的「找不到字」直接變成 Vision 不可用。
+- 修正：新增 `is_fullscreen_vision_fallback`。全螢幕多模態允許 OCR optional；沒有 backend 時跳過 OCR 與 rescue，OCR 結果為空時以既有 screenshot Vision provider 讀整張圖，成功後輸出單一整頁矩形並記錄 `translation_fullscreen_vision_completed`。OCR 有結果時仍保留原本 bbox hint／局部翻譯流程。
+- TDD：先加入無 OCR backend 的 fullscreen regression，現況 RED `1 failed`；修正後 targeted `1 passed in 1.22s`；`tests/test_cloudhime_workers.py` `81 passed in 1.33s`；OCR／local multimodal／scan pipeline／integration 集合 `127 passed, 1 skipped in 5.90s`；compileall／git diff --check Pass。
+- 邊界：這是可重現的 product-path correctness 修正，不等於 Vision 已在所有圖片上準確或快速。尚未以真實 GPU/GGUF 做此新 fallback 的 quality／latency promotion，也未宣稱 public manga anchor 或 Store/WACK gate 完成。
