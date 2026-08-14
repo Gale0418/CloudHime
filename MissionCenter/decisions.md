@@ -1111,3 +1111,9 @@
 - `tests/test_ocr_worker_mode_matrix.py -k "manga_ or local_manga or scan_worker_uses_local_manga or scan_worker_falls_back_to_full_page"`：`28 passed, 71 deselected in 2.14s`；compileall 與 diff-check Pass。
 - 合併 evaluator suite 仍會在既有 Windows pytest temp ACL cleanup 觸發 `WinError 5`，因此沒有把 evaluator 的 session 結果當成通過；這輪只採信明確的 28 項 focused regression。
 - 判定：CH-T43 的局部 mapping／bounded crop／fail-open／opt-in grid 護欄維持成立；不因測試綠燈宣稱漫畫語意準確度 promotion。CH-T43 仍待 CodeRabbit 批次 review 與更完整可信人工標註 holdout。
+
+## 2026-08-14：CH-T43 管理員 token ACL 重跑
+
+- 唯讀 ACL 盤點顯示失敗的 pytest basetemp 只有 `SYSTEM`／`Administrators`／`OWNER RIGHTS` ACE，普通測試 token 無法讀取；同一 affected selection 在管理員 token 下重跑，不修改既有資料夾、不終止其他 Python 程序。
+- 管理員命令使用全新 `artifacts\pytest-ch-t43-admin-20260814` basetemp，結果：`40 passed, 71 deselected in 2.54s`。
+- 判定：CH-T43 crop／manga focused regression 的測試本體通過；普通 token 的 WinError 5 仍是環境執行條件，後續測試 runner 應在明確可存取的 user-owned 或 elevated basetemp 執行。這不等於漫畫語意品質 promotion，也不改 production default。
