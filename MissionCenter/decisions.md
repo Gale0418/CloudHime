@@ -931,3 +931,9 @@
 - token 比較：768 上限 score `0.502273`，exact line 仍 `2/6`，平均 latency `3642.560 ms`，且同一案例仍 `truncated_local_multimodal_response`；收益不足以支持全域提高上限，也不支持把所有截斷都當成可由單純加 token 解決。
 - 決策：保留 `japanese_ocr` 作為可觀測 benchmark profile；不把 Windows OCR hint 或 768 token budget升為 production default。下一個最小品質工作應優先研究「hint confidence／品質閘門」與截斷案例的受控 retry，並以 exact anchor、average score、p95 latency、nonempty 與 zero-residual 同時 gate。
 - 邊界：本輪沒有修改 production code；未宣稱完整漫畫品質已達標，也未完成 Store、WACK、clean-machine VM 或所有主人標註案例。
+
+## 2026-08-14：OCR hint 品質分布診斷
+
+- 以同一 6 張公開漫畫封面、Windows OCR backend、既有 `build_screenshot_text_hint()` 做本機診斷；只記錄候選數／字元數／品質分數，不保存 OCR 原文。
+- 結果：候選品質分數跨越 `4`～`244`；部分案例最高分只有 `7`、`14`、`17`，部分案例達 `32`、`35`、`65`、`244`；這批輸出 confidence 全部不可用。可見「hint 非空」與「hint 可信」不是同一件事。
+- 決策：不採用單純字數或單一固定 score 閾值作為 production gate。下一步應加入跨 preprocessing 變體的文字一致性／投票判定，並用 owner-confirmed 圖片做 paired quality gate；在此之前維持 Vision 可獨立讀圖，OCR 只作可撤回的 hint。
