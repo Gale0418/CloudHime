@@ -2076,6 +2076,71 @@ def test_fullscreen_local_vision_first_success_skips_ocr(monkeypatch, qtbot):
         worker.cleanup()
 
 
+def test_fullscreen_local_vision_first_uses_vision_ocr_rescue_when_translation_is_empty(
+    monkeypatch, qtbot
+):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        available=lambda: True,
+        transcribe_screenshot=Mock(
+            return_value=TranslationResult(
+                text="守りに特化で",
+                provider="local_multimodal",
+                model="gemma-3-4b-it",
+            )
+        ),
+        translate=Mock(
+            return_value=TranslationResult(
+                text="專精於防守",
+                provider="local_multimodal",
+                model="gemma-3-4b-it",
+            )
+        ),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    worker.translate_screenshot_gemma = Mock(
+        side_effect=ValueError("empty_local_multimodal_screenshot_response")
+    )
+    worker.run_ocr_with_best_threshold = Mock(
+        side_effect=AssertionError("Vision OCR rescue must not use Windows OCR")
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[['專精於防守', 7, 11, 160, 80]]]
+        provider.transcribe_screenshot.assert_called_once_with(
+            [{"inline_data": {"data": "vision"}}]
+        )
+        provider.translate.assert_called_once_with(
+            "守りに特化で",
+            target_lang=worker.translation_target_lang,
+        )
+        worker.run_ocr_with_best_threshold.assert_not_called()
+        translation_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+        ]
+        assert translation_events[-1].detail == (
+            "translation_fullscreen_vision_ocr_rescue_completed"
+        )
+    finally:
+        worker.cleanup()
+
+
 def test_fullscreen_local_vision_first_failure_falls_open_to_ocr(monkeypatch, qtbot):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     worker = OCRWorker()

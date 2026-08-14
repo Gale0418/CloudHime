@@ -4220,11 +4220,49 @@ class OCRWorker(QObject):
             provider_name = self.resolve_multimodal_provider_name()
             if not provider_name:
                 raise ValueError("fullscreen_vision_provider_unavailable")
+            provider = (
+                self._get_translation_provider(provider_name)
+                if provider_name == "local_multimodal"
+                else None
+            )
             if provider_name == "local_multimodal":
                 ai_image_parts = self.build_local_vision_image_parts(img, [])
             else:
                 ai_image_parts = self.build_ai_image_parts(img)
-            translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
+            vision_detail = "translation_fullscreen_vision_completed"
+            try:
+                translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
+            except ValueError as exc:
+                if (
+                    provider_name != "local_multimodal"
+                    or str(exc) != "empty_local_multimodal_screenshot_response"
+                    or provider is None
+                ):
+                    raise
+                transcribe = getattr(provider, "transcribe_screenshot", None)
+                translate = getattr(provider, "translate", None)
+                if not callable(transcribe) or not callable(translate):
+                    raise
+                transcription = transcribe(ai_image_parts)
+                source_text = str(getattr(transcription, "text", "") or "").strip()
+                if not source_text:
+                    raise ValueError("empty_fullscreen_vision_ocr_response")
+                translated_result = translate(
+                    source_text,
+                    target_lang=self.translation_target_lang,
+                )
+                translated_text = self._remember_screenshot_translation_result(
+                    TranslationResult(
+                        text=getattr(translated_result, "text", ""),
+                        provider=getattr(translated_result, "provider", None)
+                        or provider_name,
+                        model=getattr(translated_result, "model", None),
+                        raw_text=getattr(translated_result, "raw_text", None),
+                        requested_provider=provider_name,
+                        fallback_reason="fullscreen_vision_ocr_rescue",
+                    )
+                ).strip()
+                vision_detail = "translation_fullscreen_vision_ocr_rescue_completed"
             if self._abort_stale_scan(ScanStage.TRANSLATION):
                 return True
             if not translated_text:
@@ -4256,7 +4294,7 @@ class OCRWorker(QObject):
                 ScanStage.TRANSLATION,
                 ScanOutcome.SUCCESS,
                 started_at=vision_started,
-                detail="translation_fullscreen_vision_completed",
+                detail=vision_detail,
                 provider=current_provider,
                 item_count=1,
             )

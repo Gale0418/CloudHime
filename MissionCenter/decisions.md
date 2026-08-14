@@ -1038,3 +1038,11 @@
 - 修正：在 `_run_fullscreen_vision_translation()` 的 response 與 state/cache 寫入之間加入 `_abort_stale_scan(ScanStage.TRANSLATION)`；新增 stale response regression，確認不發 finished、不寫 `last_results`、不寫 exact cache；移除脆弱的後續 outcome assertion。修正後 matrix `98 passed`、worker／pipeline／provider `120 passed`、compileall／diff-check Pass；commit `1c99ae9`。
 - 複審狀態：實際重跑 CodeRabbit CLI `0.7.2` authenticated，但回報 `rate_limit`、`waitTime=40 minutes`；沒有 post-fix review result，不能宣稱 0 issues。待冷卻後與本批舊變更一起複審。
 - 邊界：本輪未執行真實 Windows GPU fullscreen worker benchmark；existing owner-confirmed Vision smoke 仍只是 provider／Region evidence，不代表 Fullscreen 全漫畫品質或速度完成。未宣稱 Store／WACK／clean-machine。
+## 2026-08-14：Fullscreen Vision-first 空回應 rescue 與真 GPU smoke
+
+- 真 GPU fullscreen smoke 首次發現：llama-server／projector／GPU 均 ready，但 local multimodal 整頁翻譯在沒有 OCR hint 時回傳空字串 `empty_local_multimodal_screenshot_response`，原流程因此 fail-open 到傳統 OCR；這是可重現的 provider prompt contract 缺口，不是 D 槽模型或 GPU 啟動失敗。
+- 最小修正：local screenshot request 在沒有 hint 時加入明確 image-first 指令；fullscreen Vision 翻譯空回應時，改由同一個 local Vision provider 做 transcription，再由同一個 provider 翻譯。仍不啟用 Windows OCR，不改 remote Google／Gemma provider。
+- 新增 trace detail `translation_fullscreen_vision_ocr_rescue_completed` 與 provider attribution；一般直接成功仍維持 `translation_fullscreen_vision_completed`，stale generation guard 保持在任何 state/cache write 前。
+- 真 GPU 重跑 owner-confirmed case `owner-review-manga-2026-07-18`：完成、provider `local_multimodal`、runtime mode `gpu`、fullscreen Vision OCR rescue、約 `5384.62 ms`，owned llama-server `exited=true`。這是單 case correctness smoke，不是完整準確率 promotion。
+- 本輪程式／測試修改限制於 `cloudhime_workers.py`、`translation_providers.py` 與兩個 regression test；未改 remote 行為、UI、模型參數或 benchmark lock。
+- CodeRabbit fullscreen follow-up 仍受 40 分鐘 rate limit；本輪不宣稱 review completed。

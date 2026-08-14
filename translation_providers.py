@@ -1425,7 +1425,20 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             raise ValueError("missing_image_context")
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(source_text_hint or "", self._dictionary)
-        prompt = build_screenshot_prompt_with_override(source_text_hint, None, custom_prompt=dictionary_hint, target_lang=resolved_target)
+        custom_prompt = dictionary_hint
+        if not source_text_hint:
+            custom_prompt = (
+                "Use the attached image as the only source of truth. "
+                "Inspect it directly and translate every readable text line in the image. "
+                "Do not wait for an OCR hint, and do not describe the image. "
+                "Return only the translation."
+            )
+        prompt = build_screenshot_prompt_with_override(
+            source_text_hint,
+            None,
+            custom_prompt=custom_prompt,
+            target_lang=resolved_target,
+        )
         evidence = self._knowledge_evidence_for_texts((source_text_hint or "",), max_chars=1_800)
         prompt = self._prepend_knowledge_evidence(prompt, evidence)
         raw_text = self._request_chat_completion(
