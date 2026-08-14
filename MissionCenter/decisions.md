@@ -985,3 +985,9 @@
 - 結果：兩種順序皆 `promotion_gate=true`、`quality_passed=true`、`case_regressions=[]`、quality baseline `0.2394875813`／candidate `0.2712081049`。`baseline_then_candidate`：baseline total avg `892.554 ms`、candidate `5725.773 ms`、candidate `vision_prompt 1031.215 ms`、`vision_decode 4236.497 ms`；`candidate_then_baseline`：baseline total avg `891.003 ms`、candidate `5734.944 ms`、candidate `vision_prompt 1033.644 ms`、`vision_decode 4239.713 ms`。四案皆 nonempty／coverage `1.0`，無 residual。
 - 判定：移除 `--no-op-offload` 沒有改善 candidate latency，兩方向都約 `6.42x` 慢於 baseline；這個變因否決，不進 production，不新增設定開關。現有證據仍指向 Vision request 的 prompt/decode 路徑，而不是該 launch flag。
 - 邊界：這是 Windows 實機 GPU smoke，不是完整漫畫 ground truth，也不代表全域最佳；未執行 Store、WACK、clean-machine 或其他 GPU 硬體矩陣。兔子 review 尚未合併本輪新 evidence，待 cooldown 後與前一輪一起提交。
+
+## 2026-08-14：CodeRabbit no-op-offload evidence review disposition
+
+- 審查範圍：commit `bd27940` 相對 base `4ee8bd1`，`MissionCenter/decisions.md` 與 `MissionCenter/smoke-tests.md` 兩檔；前一輪 local OCR production code 已在先前 review 覆蓋。
+- 實際結果：CodeRabbit CLI `0.7.2` authenticated；`review_completed`、`findings=0`。因 repository 未連結可存取的 CodeRabbit organization，本次使用免費 CLI allowance；不宣稱 organization plan gate。
+- 判定：沒有新增 finding；否決的 `--no-op-offload` 實機結果已留下可追溯 evidence，未因此改動 production runtime。
