@@ -1023,3 +1023,10 @@
 - 正式 production GPU smoke：同一 owner-confirmed 12-case manifest、preferred managed assets、`gemma-3-4b-it`、GPU、`japanese_ocr`、`japanese_rescue=true`；`10/10` images、`12/12` cases、exact `5/12`、平均 match `0.695572`、平均 latency `4146.920 ms`、p95 `6203.128 ms`；7 張觸發、6 張採用、1 張安全 fallback。與上一輪 `0.70-0.75` 結果品質一致，未出現新的採用退化。
 - Gemini bridge `GEMINI_ASPECT_COVERAGE_REVIEW_20260814`／follow-up：建議此數值擴張作為最小 production change；主要風險是非漫畫直式圖的無效二次推理與延遲浪費，不是已觀察到的品質退化。此 rescue 仍由 opt-in 設定控制，候選需經 confidence／similarity verification，失敗回 baseline。
 - 邊界：尚未有新比例頁型的可信人工標註，因此沒有宣稱完整漫畫 holdout 或 false-adoption 已通過；下一步需建立 `0.60-0.80` 新頁型 owner-confirmed holdout。compileall／git diff --check Pass；未宣稱 Store／WACK／clean-machine 完成。
+## 2026-08-14：CodeRabbit portrait coverage review disposition
+
+- 審查範圍：commit `1337216` 相對 base `29efc38`，包含 `eb81e56` 的 `0.60-0.80` portrait gate、regression tests 與 MissionCenter evidence；reviewed files `4`。
+- 初審：CodeRabbit CLI `0.7.2` authenticated，提出 `2` 個 minor：非日文 gate assertion 混合了少量日文，及 CH-T35 smoke command 未明確使用 PowerShell `$env:QT_QPA_PLATFORM`。
+- 修正：改用純 ASCII `YouTube subtitle` 驗證非日文，新增低 kana 日文 `日本語 ABC` regression；MissionCenter command 改為 `$env:QT_QPA_PLATFORM='offscreen'`。targeted rescue／worker `17 passed in 0.90s`，compileall／diff-check Pass。
+- 複審：CodeRabbit `review_completed`、`findings=0`，覆蓋 `MissionCenter/decisions.md`、`MissionCenter/smoke-tests.md`、`japanese_ocr_rescue.py`、`tests/test_japanese_ocr_rescue.py`；使用免費 CLI allowance，未宣稱 organization plan gate。
+- 邊界：CodeRabbit 0 issues 不等於新比例頁型已有人工 ground truth，也不代表完整漫畫、Store、WACK 或 clean-machine gate 完成。
