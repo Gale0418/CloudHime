@@ -1104,3 +1104,10 @@
 - 失敗組：`temperature=0.20`／`repeat_penalty=1.15` 與 `temperature=0.20`／`repeat_penalty=1.20` 各自未完成，產品 trace 以 `scan trace rejected` fail-closed；本輪總 screen `complete_run=false`，不得用不完整組別做品質或速度比較。先前完整命令亦留下 bounded `translation_region_vision_provider_error` 證據；未推論這是穩定的參數因果，視為候選不可採用。
 - 判定：不改 production default、不加入自動調參、不升格任何新參數；維持 `0.00／1.15／4096` 的 locked benchmark contract。CH-T32 維持 Review，後續若要完成必須在同一條件下取得所有候選完整、零 residual、無 case regression 的 paired evidence。
 - Gemini 狀態：本輪 bridge RPC 回報 `attempt to write a readonly database`；agy fallback 因本機 proxy `127.0.0.1:9` refused，沒有可用 expert result，未宣稱 Gemini review。
+
+## 2026-08-14：CH-T43 region/crop focused revalidation
+
+- 以目前 production code 重新執行 crop／manga rescue focused regression；沒有開啟 `CLOUDHIME_MANGA_CROP_CONTEXT` 的全域預設，也沒有改 grid recovery、OCR 原文、bbox 或閱讀順序。
+- `tests/test_ocr_worker_mode_matrix.py -k "manga_ or local_manga or scan_worker_uses_local_manga or scan_worker_falls_back_to_full_page"`：`28 passed, 71 deselected in 2.14s`；compileall 與 diff-check Pass。
+- 合併 evaluator suite 仍會在既有 Windows pytest temp ACL cleanup 觸發 `WinError 5`，因此沒有把 evaluator 的 session 結果當成通過；這輪只採信明確的 28 項 focused regression。
+- 判定：CH-T43 的局部 mapping／bounded crop／fail-open／opt-in grid 護欄維持成立；不因測試綠燈宣稱漫畫語意準確度 promotion。CH-T43 仍待 CodeRabbit 批次 review 與更完整可信人工標註 holdout。
