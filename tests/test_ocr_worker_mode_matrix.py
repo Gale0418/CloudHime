@@ -2302,6 +2302,49 @@ def test_fullscreen_crop_vision_uses_grid_when_ocr_has_no_items(monkeypatch, qtb
         worker.cleanup()
 
 
+def test_fullscreen_grid_direct_translate_avoids_transcription_round_trip(monkeypatch, qtbot):
+    image = np.zeros((120, 240, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        transcribe_screenshot=Mock(),
+        translate=Mock(),
+        translate_screenshot=Mock(side_effect=[
+            SimpleNamespace(text=f"direct-{index}", provider="local_multimodal")
+            for index in range(4)
+        ]),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker._local_fullscreen_grid_direct_translate_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(0, []))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "tile"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert len(finished) == 1
+        assert [item[0] for item in finished[0]] == [
+            "direct-0", "direct-1", "direct-2", "direct-3"
+        ]
+        assert provider.translate_screenshot.call_count == 4
+        provider.transcribe_screenshot.assert_not_called()
+        provider.translate.assert_not_called()
+    finally:
+        worker.cleanup()
+
 def test_fullscreen_geometry_hint_vision_uses_ocr_only_for_locations(monkeypatch, qtbot):
     image = np.zeros((100, 200, 3), dtype=np.uint8)
     provider = SimpleNamespace(

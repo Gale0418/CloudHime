@@ -198,6 +198,7 @@ FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE = 4
 FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO = 0.15
 FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT = 64
 FULLSCREEN_GEOMETRY_CROP_MAX_SCALE = 3.0
+FULLSCREEN_GRID_DIRECT_TRANSLATE_ENV = "CLOUDHIME_FULLSCREEN_GRID_DIRECT_TRANSLATE"
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
 MANGA_GRID_RECOVERY_MAX_ITEMS = 6
 MANGA_GRID_RECOVERY_SCORE_MARGIN = 3
@@ -3142,6 +3143,15 @@ class OCRWorker(QObject):
             right - left <= image_width * 0.55
             and bottom - top <= image_height * 0.65
         )
+
+    def fullscreen_grid_direct_translate_mode_enabled(self):
+        override = getattr(self, "_local_fullscreen_grid_direct_translate_mode", None)
+        if override is not None:
+            return bool(override)
+        return os.environ.get(FULLSCREEN_GRID_DIRECT_TRANSLATE_ENV, "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+
     def fullscreen_crop_vision_mode_enabled(self):
         override = getattr(self, "_local_fullscreen_crop_vision_mode", None)
         if override is not None:
@@ -4545,6 +4555,37 @@ class OCRWorker(QObject):
             source_texts = []
             current_provider = self._canonical_cache_provider(provider_name)
             for crop_spec in crops:
+                if (
+                    self.fullscreen_grid_direct_translate_mode_enabled()
+                    and callable(translate_screenshot)
+                ):
+                    try:
+                        try:
+                            direct_result = translate_screenshot(
+                                crop_spec["image_parts"],
+                                target_lang=self.translation_target_lang,
+                            )
+                        finally:
+                            self._capture_local_vision_request_metrics(provider)
+                        direct_text = str(
+                            getattr(direct_result, "text", "") or ""
+                        ).strip()
+                        if direct_text:
+                            result_provider = (
+                                getattr(direct_result, "provider", None)
+                                or provider_name
+                            )
+                            current_provider = self._canonical_cache_provider(
+                                result_provider
+                            )
+                            final_results.append(
+                                (direct_text, *crop_spec["output_rect"])
+                            )
+                            continue
+                    except LocalRequestCancelled:
+                        raise
+                    except Exception:
+                        pass
                 source_text = ""
                 try:
                     try:
