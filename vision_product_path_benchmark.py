@@ -1,7 +1,6 @@
 """Locked, GPU-only local product-path Vision benchmark runner.
 
-This module deliberately exposes no context or sampling switches: paired runs
-must differ only by their route and runtime profile.
+This module deliberately fixes context and sampling; scan mode is an explicit paired experiment control.
 """
 from __future__ import annotations
 
@@ -144,7 +143,11 @@ def build_conditions(
     *,
     asset_hashes: Mapping[str, str] | None = None,
     vision_image_max_width: int | None = None,
+    scan_mode: str = "region",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    normalized_scan_mode = str(scan_mode).strip().lower()
+    if normalized_scan_mode not in {"region", "fullscreen"}:
+        raise ValueError("scan_mode must be region or fullscreen")
     hashes = dict(asset_hashes) if asset_hashes is not None else _verify_assets(assets)
     fixed = {
         "model_sha256": hashes["model_path"],
@@ -154,6 +157,7 @@ def build_conditions(
         "sampling": dict(_FIXED_SAMPLING),
         "context": dict(_FIXED_CONTEXT),
         "gpu_mode": "gpu",
+        "scan_mode": normalized_scan_mode,
     }
     if vision_image_max_width is not None:
         fixed["vision_image_max_width"] = vision_image_max_width
@@ -169,6 +173,7 @@ def preflight(
     *,
     lock_path: str | Path = DEFAULT_LOCK_PATH,
     vision_image_max_width: int | None = None,
+    scan_mode: str = "region",
 ) -> dict[str, Any]:
     """Verify only immutable inputs; never create an OCR worker or use the GPU."""
     lock = validate_benchmark_lock(PROJECT_ROOT, lock_path)
@@ -183,6 +188,7 @@ def preflight(
         assets,
         asset_hashes=asset_hashes,
         vision_image_max_width=vision_image_max_width,
+        scan_mode=scan_mode,
     )
     return {"ok": True, "manifest": manifest, "assets": assets, "baseline": baseline, "candidate": candidate}
 
@@ -215,6 +221,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional controlled local Vision width experiment; default keeps product policy",
     )
     parser.add_argument(
+        "--scan-mode",
+        choices=("region", "fullscreen"),
+        default="region",
+        help="locked product scan mode; fullscreen explicitly evaluates Vision-first",
+    )
+    parser.add_argument(
         "--execution-order",
         choices=sorted(EXECUTION_ORDERS),
         default="baseline_then_candidate",
@@ -232,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
         preflight_kwargs = {}
         if args.vision_max_width is not None:
             preflight_kwargs["vision_image_max_width"] = args.vision_max_width
+        if args.scan_mode != "region":
+            preflight_kwargs["scan_mode"] = args.scan_mode
         ready = preflight(args.manifest, **preflight_kwargs)
         if args.preflight:
             print(json.dumps({"ok": True, "preflight": True}, separators=(",", ":")))

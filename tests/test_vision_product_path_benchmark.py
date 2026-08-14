@@ -85,6 +85,34 @@ def test_conditions_are_identical_except_route_and_runtime_profile(monkeypatch, 
     assert baseline["context"] == {"n_ctx": 4096}
     assert baseline["sampling"] == {"temperature": 0, "repeat_penalty": 1.15}
     assert baseline["target"] == "zh-TW"
+    assert baseline["scan_mode"] == "region"
+    assert candidate["scan_mode"] == "region"
+
+
+def test_conditions_record_fullscreen_as_a_fixed_experiment_control(monkeypatch, tmp_path):
+    assets = _assets(tmp_path)
+    monkeypatch.setattr(benchmark, "resolve_preferred_vision_assets", lambda _: assets)
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64, "model_path": "b" * 64, "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+
+    baseline, candidate = benchmark.build_conditions(assets, scan_mode="fullscreen")
+
+    assert baseline["scan_mode"] == "fullscreen"
+    assert candidate["scan_mode"] == "fullscreen"
+    assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
+
+
+def test_conditions_reject_unknown_scan_mode(monkeypatch, tmp_path):
+    assets = _assets(tmp_path)
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64, "model_path": "b" * 64, "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+
+    with pytest.raises(ValueError, match="scan_mode"):
+        benchmark.build_conditions(assets, scan_mode="secret")
 
 
 def test_conditions_record_optional_vision_width_as_a_fixed_experiment_control(

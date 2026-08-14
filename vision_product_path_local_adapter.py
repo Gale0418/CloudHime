@@ -230,6 +230,9 @@ class ProductPathLocalSession:
                 "condition vision_image_max_width must be an integer "
                 "between 640 and 1536"
             )
+        scan_mode = str(condition.get("scan_mode", "region")).strip().lower()
+        if scan_mode not in {"region", "fullscreen"}:
+            raise ValueError("condition scan_mode must be region or fullscreen")
         return {
             "route": route,
             "runtime_profile": "text" if route == "baseline" else "vision",
@@ -239,6 +242,7 @@ class ProductPathLocalSession:
             "temperature": float(temperature),
             "repeat_penalty": float(repeat_penalty),
             "vision_image_max_width": vision_image_max_width,
+            "scan_mode": scan_mode,
         }
 
     @staticmethod
@@ -296,7 +300,7 @@ class ProductPathLocalSession:
             # a host Google key into the benchmark fallback chain.
             worker.google_api_key = ""
             worker.google_ocr_enabled = False
-            worker.scan_mode = "region"
+            worker.scan_mode = condition["scan_mode"]
             worker.region_render_mode = "bubble"
 
             chain = ["windows"] if condition["route"] == "baseline" else []

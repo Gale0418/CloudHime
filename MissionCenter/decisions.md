@@ -1046,3 +1046,12 @@
 - 真 GPU 重跑 owner-confirmed case `owner-review-manga-2026-07-18`：完成、provider `local_multimodal`、runtime mode `gpu`、fullscreen Vision OCR rescue、約 `5384.62 ms`，owned llama-server `exited=true`。這是單 case correctness smoke，不是完整準確率 promotion。
 - 本輪程式／測試修改限制於 `cloudhime_workers.py`、`translation_providers.py` 與兩個 regression test；未改 remote 行為、UI、模型參數或 benchmark lock。
 - CodeRabbit fullscreen follow-up 仍受 40 分鐘 rate limit；本輪不宣稱 review completed。
+## 2026-08-14：Fullscreen Vision-first paired gate 與 local model identity hardening
+
+- 先修 correctness：本地 llama-server 回報的 gemma-3-4b-it 不等於 CloudHime catalog ID gemma-3-4b-it-local；翻譯成功後若直接正規化 server model，active model 會漂移到遠端預設，後續 fullscreen trace 會出現 provider=gemma。新增 provider-aware active model 更新，local provider 的 server model 不得改變 local catalog identity；新增 screenshot regression。
+- Benchmark contract：scan_mode 現在是 condition-scoped、預設 region；只有明確 --scan-mode fullscreen 才跑 fullscreen paired experiment。vision_e2e_benchmark fingerprint 允許並驗證 region/fullscreen，既有 region 呼叫不變。
+- 實際命令：$env:QT_QPA_PLATFORM='offscreen'; $env:TEMP='D:\MyGame\CloudHime\artifacts'; $env:TMP='D:\MyGame\CloudHime\artifacts'; $env:TMPDIR='D:\MyGame\CloudHime\artifacts'; python -m pytest -q tests/test_cloudhime_workers.py tests/test_vision_product_path_benchmark.py tests/test_vision_product_path_local_adapter.py --basetemp D:\MyGame\CloudHime\artifacts\pytest-local-model-suite-20260814；結果 137 passed in 1.50s。compileall 同一命令前段 exit 0。
+- 真實 GPU paired 命令：python vision_product_path_benchmark.py --manifest records\private\.private_vision_owner_review_locked.json --scan-mode fullscreen --startup-timeout 60 --execution-order baseline_then_candidate；preflight {"ok":true,"preflight":true}；完整命令 exit 0，4 cases × 5 repeats，provider 全為 local、runtime mode 全為 gpu、coverage 1.0。
+- 結果：baseline quality 0.1957581248、nonempty 0.75；candidate quality 0.2064224374、nonempty 1.0；candidate 整體略升但 4 案中 3 案退步，promotion gate false，理由 quality_regression／stage_coverage_regression。單一 execution order 的 latency 欄位為 null，不能宣稱 balanced latency；觀察到 candidate translation 約 1.2s-5.5s，baseline OCR 約 1.0s-4.4s，僅作範圍觀察。
+- 判定：fullscreen Vision-first 已證明可在真 GPU 產品路徑穩定完成，但目前不能全面取代 baseline；保留 route、修正 model identity，暫不 promotion。下一步是針對 3 個退步 case 做 bounded prompt／page-crop／quality rescue 分析，不把未標註圖片當 ground truth。
+- 測試環境：pytest 直接使用使用者既有 C:\Users\USER\AppData\Local\Temp\pytest-of-David2019 會因 WinError 5 在 setup／cleanup 失敗；本輪以專案 artifacts temp 加管理員 Windows PowerShell 隔離執行，未刪除或修改受限 temp 目錄。CodeRabbit 本批尚未複審，rate limit 不視為通過。

@@ -1563,6 +1563,34 @@ def test_multimodal_segment_repair_rejects_invalid_text_fallback():
     assert repaired == ["Wine Club"]
     assert providers == ["local_multimodal"]
 
+def test_local_screenshot_server_model_cannot_switch_active_provider_to_remote():
+    worker = _make_segment_repair_worker()
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.active_gemma_model = worker.gemma_model
+    worker.scan_mode = "region"
+    worker.region_render_mode = "screenshot"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.normalize_gemma_model = OCRWorker.normalize_gemma_model.__get__(worker)
+    worker.sync_gemma_call_timestamps_from_provider = lambda _provider: None
+    worker.convert_to_trad = lambda text: text
+
+    provider = SimpleNamespace(
+        name="local_multimodal",
+        translate_screenshot=lambda _image_parts, **_kwargs: SimpleNamespace(
+            text="本地翻譯",
+            model="gemma-3-4b-it",
+            provider="local_multimodal",
+        ),
+    )
+    worker._get_translation_provider = lambda _name: provider
+
+    translated = OCRWorker.translate_screenshot_gemma(worker, [{"image": "x"}], "Hello")
+
+    assert translated == "本地翻譯"
+    assert worker.active_gemma_model == "gemma-3-4b-it-local"
+    assert worker._last_screenshot_translation_provider == "local_multimodal"
+
+
 def test_screenshot_provider_empty_result_fails_after_text_fallback_exhausted():
     worker = _make_segment_repair_worker()
     worker.gemma_model = "gemma-3-4b-it-local"
@@ -1693,6 +1721,34 @@ def test_preferred_result_attributes_expected_ai_failure_to_google_cache_hit():
     assert result.from_cache is True
     assert result.requested_provider == "local_multimodal"
     assert result.fallback_reason == "provider_error"
+
+def test_local_provider_server_model_does_not_switch_active_catalog_model():
+    from translation_contracts import TranslationResult
+
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.active_gemma_model = worker.gemma_model
+    worker.convert_to_trad = lambda text: text
+    worker.sync_gemma_call_timestamps_from_provider = lambda provider: None
+
+    class Provider:
+        name = "local_multimodal"
+
+        def translate(self, text):
+            return TranslationResult(
+                text="本地翻譯",
+                provider=self.name,
+                model="gemma-3-4b-it",
+            )
+
+    worker._get_translation_provider = lambda name: Provider() if name == "gemma" else None
+
+    result = OCRWorker._translate_text_gemma_result(worker, "source")
+
+    assert result.provider == "local_multimodal"
+    assert worker.active_gemma_model == "gemma-3-4b-it-local"
+
 
 def test_worker_reports_actual_provider_from_gemma_result():
     from translation_contracts import TranslationResult

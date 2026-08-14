@@ -2058,6 +2058,21 @@ class OCRWorker(QObject):
             return list(items)
         return merge_google_lines_into_items(google_lines, items)
 
+    def _update_active_gemma_model_from_provider_result(self, result, provider=None):
+        provider_name = str(getattr(provider, "name", "") or "").strip().lower()
+        result_provider = str(getattr(result, "provider", "") or "").strip().lower()
+        if provider_name == "local_multimodal" or result_provider == "local_multimodal":
+            selected_model = str(getattr(self, "gemma_model", "") or "").strip()
+            if selected_model in LOCAL_MODEL_IDS:
+                self.active_gemma_model = selected_model
+            return
+
+        reported_model = str(getattr(result, "model", None) or "").strip()
+        if reported_model in SUPPORTED_GEMMA_MODEL_NAMES:
+            self.active_gemma_model = reported_model
+        elif not self._is_local_model_active():
+            self.active_gemma_model = self.normalize_gemma_model(self.gemma_model)
+
     def _translate_text_gemma_result(self, text):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
@@ -2065,11 +2080,7 @@ class OCRWorker(QObject):
         provider = self._get_translation_provider("gemma")
         if provider is not None:
             result = provider.translate(normalized_text)
-            reported_model = str(getattr(result, "model", None) or "").strip()
-            if reported_model in SUPPORTED_GEMMA_MODEL_NAMES:
-                self.active_gemma_model = reported_model
-            elif not self._is_local_model_active():
-                self.active_gemma_model = self.normalize_gemma_model(self.gemma_model)
+            self._update_active_gemma_model_from_provider_result(result, provider)
             self.sync_gemma_call_timestamps_from_provider(provider)
             return TranslationResult(
                 text=self.convert_to_trad(result.text),
@@ -2136,8 +2147,7 @@ class OCRWorker(QObject):
                 target_lang=self.translation_target_lang,
             )
             if results:
-                provider_model = self.normalize_gemma_model(results[0].model or self.gemma_model)
-                self.active_gemma_model = provider_model
+                self._update_active_gemma_model_from_provider_result(results[0], provider)
                 self.sync_gemma_call_timestamps_from_provider(provider)
                 translated_text = {
                     "segments": [
@@ -2241,8 +2251,7 @@ class OCRWorker(QObject):
                 source_text_hint=source_text_hint,
                 debug_log=self.log_ai_debug,
             )
-            provider_model = self.normalize_gemma_model(result.model or self.gemma_model)
-            self.active_gemma_model = provider_model
+            self._update_active_gemma_model_from_provider_result(result, provider)
             self.sync_gemma_call_timestamps_from_provider(provider)
             translated = self.convert_to_trad(result.text)
             fallback_reason = translation_fallback_reason(
