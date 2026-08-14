@@ -923,3 +923,11 @@
 - 修正：integration smoke 改用 production 相同的 `resolve_preferred_vision_assets(PROJECT_ROOT)`；新增 resolver regression，確認 legacy size drift 時選 AppData managed assets。現有受管 model/projector 均符合 manifest size，沒有修改任何模型檔。
 - 修正後實機：preferred managed GPU integration `1 passed in 17.80s`，runtime startup `13.35s`、Vision request `3.32s`、停止清理成功；fresh `vision_smoke_benchmark.py --max-cases 1 --require-gpu` 為 `1/1` line match，startup `13.127s`、平均 request `1.489s`，GPU mode，無殘留程序。
 - 邊界：這證明 production asset selection 與單案例 GPU smoke 可用，不代表完整 OCR／漫畫 holdout 的準確度或速度 promotion；D 槽 legacy asset 仍保留，不做破壞性刪除。
+
+## 2026-08-14：Public manga GPU Vision prompt／hint／budget comparison
+
+- 條件固定：使用 production `resolve_preferred_vision_assets()`、GPU llama-server、同一 `gemma-3-4b-it`、同一 6-case `benchmarks/manga_cover_cases.json`、同一 context 與 request timeout；只改 prompt mode、是否送 Windows OCR hint，或在 inline harness 將 transcription `max_tokens` 由 384 改為 768。這是 holdout evidence，不是 ground-truth 擴充。
+- 結果：baseline exact line `2/6`、平均 score `0.430556`、平均 latency `2707.873 ms`；`japanese_ocr` exact line 仍 `2/6`、score `0.489286`、latency `2723.743 ms`；加 Windows OCR hint 反而 exact line `0/6`、score `0.219444`、latency `3837.501 ms`，表示低品質 OCR hint 可能污染 Vision 判讀，不能無條件注入。
+- token 比較：768 上限 score `0.502273`，exact line 仍 `2/6`，平均 latency `3642.560 ms`，且同一案例仍 `truncated_local_multimodal_response`；收益不足以支持全域提高上限，也不支持把所有截斷都當成可由單純加 token 解決。
+- 決策：保留 `japanese_ocr` 作為可觀測 benchmark profile；不把 Windows OCR hint 或 768 token budget升為 production default。下一個最小品質工作應優先研究「hint confidence／品質閘門」與截斷案例的受控 retry，並以 exact anchor、average score、p95 latency、nonempty 與 zero-residual 同時 gate。
+- 邊界：本輪沒有修改 production code；未宣稱完整漫畫品質已達標，也未完成 Store、WACK、clean-machine VM 或所有主人標註案例。
