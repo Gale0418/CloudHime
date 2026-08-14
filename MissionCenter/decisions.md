@@ -1096,3 +1096,11 @@
 - 修正：新增 `evaluate_rescue_quality_gate()`，統一計算 `complete` 與 `passed`；Japanese rescue gate 只有在「完整執行」且「零 final regression」時通過，未啟用 rescue 則維持既有通過語意。CLI 與 JSON report 共用同一結果。
 - TDD／驗證：新增 incomplete-with-zero-regression regression；targeted `3 passed in 0.83s`、compileall exit 0。受影響四檔 suite 的 assertion 執行仍遇既有 Windows pytest temp ACL cleanup `WinError 5`（4 errors），未把環境錯誤記為 code pass。
 - 真 GPU public rerun：同一 6 張封面、local GPU、Japanese rescue、require-complete／require-rescue-no-regression；exit `0`、6/6 images、6/6 cases、`complete=true`、improved=0／equal=6／regressed=0、gate=true。前一輪 5/6 truncation 的 fail-closed 證據仍有效；本輪不代表完整漫畫 holdout、速度 promotion、Store、WACK 或 clean-machine 通過。
+
+## 2026-08-14：CH-T32 local Vision generation parameter screen disposition
+
+- 受控條件：同一 owner-confirmed locked 4-case manifest、同一 `gemma-3-4b-it`／GGUF／mmproj、同一 local `llama-server.exe`、同一 prompt bundle／target／GPU／`n_ctx=4096`，每組 5 repeats；只改 local Vision sampling，結果只保存 bounded numeric summary，不保存 OCR 原文、翻譯、prompt 或 raw response。
+- 完整組：`temperature=0.00`、`repeat_penalty=1.15`、`n_ctx=4096`，20/20 records、GPU、nonempty=1.0、quality=`0.271208`、total avg=`5738.967ms`、p95=`9037.526ms`。這與目前 locked product-path 的固定 sampling 一致，不能因此宣稱全域最佳。
+- 失敗組：`temperature=0.20`／`repeat_penalty=1.15` 與 `temperature=0.20`／`repeat_penalty=1.20` 各自未完成，產品 trace 以 `scan trace rejected` fail-closed；本輪總 screen `complete_run=false`，不得用不完整組別做品質或速度比較。先前完整命令亦留下 bounded `translation_region_vision_provider_error` 證據；未推論這是穩定的參數因果，視為候選不可採用。
+- 判定：不改 production default、不加入自動調參、不升格任何新參數；維持 `0.00／1.15／4096` 的 locked benchmark contract。CH-T32 維持 Review，後續若要完成必須在同一條件下取得所有候選完整、零 residual、無 case regression 的 paired evidence。
+- Gemini 狀態：本輪 bridge RPC 回報 `attempt to write a readonly database`；agy fallback 因本機 proxy `127.0.0.1:9` refused，沒有可用 expert result，未宣稱 Gemini review。
