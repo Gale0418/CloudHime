@@ -84,3 +84,21 @@ def test_missioncenter_decisions_reject_c0_control_characters():
         if ord(character) < 32 and character not in {"\n", "\r", "\t"}
     ]
     assert not unexpected, "MissionCenter decisions contains C0 control characters"
+
+
+def test_windows_pytest_runner_uses_private_writable_basetemp():
+    runner = ROOT / "ci" / "run_pytest.ps1"
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert runner.is_file()
+    runner_content = runner.read_text(encoding="utf-8")
+    assert "RUNNER_TEMP" in runner_content
+    assert "GetTempPath" in runner_content
+    assert "basetemp" in runner_content
+    assert "WriteAllText" in runner_content
+    assert "Remove-Item -LiteralPath" in runner_content
+    assert "2>&1 | Out-Host" in runner_content
+    assert "$pytestExitCode = $LASTEXITCODE" in runner_content
+    assert "ci\\run_pytest.ps1" in workflow
+    assert "-TestFiles $testFiles" in workflow
+    assert "-IsolateUi" in workflow
