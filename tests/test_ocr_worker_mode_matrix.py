@@ -2077,6 +2077,43 @@ def test_fullscreen_vision_fallback_survives_missing_ocr(monkeypatch, qtbot):
     finally:
         worker.cleanup()
 
+def test_fullscreen_vision_fallback_survives_ocr_failure(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    worker.ocr_backends = [object()]
+    worker.google_ocr_enabled = False
+    worker.auto_threshold_enabled = False
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.region_render_mode = REGION_RENDER_BUBBLE
+    worker.capture_scan_area = lambda: (image, 7, 11)
+    worker.has_any_multimodal_ai = lambda: True
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "vision"}}])
+    worker.build_local_vision_image_parts = worker.build_ai_image_parts
+    worker.translate_screenshot_gemma = Mock(return_value="OCR 失敗後的 Vision 翻譯")
+    worker.run_ocr_with_best_threshold = Mock(
+        side_effect=RuntimeError("backend unavailable")
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[['OCR 失敗後的 Vision 翻譯', 7, 11, 160, 80]]]
+        assert worker.run_ocr_with_best_threshold.call_count == 2
+        assert worker.translate_screenshot_gemma.call_count == 1
+        ocr_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.OCR
+        ]
+        assert ocr_events[0].detail == "ocr_optional_failed"
+        assert worker.last_provider == "local_multimodal"
+    finally:
+        worker.cleanup()
+
 def test_region_vision_exception_falls_open_to_ocr_translation(monkeypatch, qtbot):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     provider = SimpleNamespace(interpret_regions=Mock(side_effect=RuntimeError("private output")))

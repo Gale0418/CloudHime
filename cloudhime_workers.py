@@ -4565,7 +4565,7 @@ class OCRWorker(QObject):
                     ScanOutcome.FAILURE,
                     started_at=ocr_started,
                     error_code=ScanErrorCode.OCR_FAILED,
-                    detail="ocr_optional_failed" if is_region_vision_mode else "ocr_failed",
+                    detail="ocr_optional_failed" if (is_region_vision_mode or is_fullscreen_vision_fallback) else "ocr_failed",
                     exception=exc,
                 )
                 if is_region_vision_mode or is_fullscreen_vision_fallback:

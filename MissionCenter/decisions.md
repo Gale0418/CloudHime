@@ -909,3 +909,10 @@
 - 修正：新增 `is_fullscreen_vision_fallback`。全螢幕多模態允許 OCR optional；沒有 backend 時跳過 OCR 與 rescue，OCR 結果為空時以既有 screenshot Vision provider 讀整張圖，成功後輸出單一整頁矩形並記錄 `translation_fullscreen_vision_completed`。OCR 有結果時仍保留原本 bbox hint／局部翻譯流程。
 - TDD：先加入無 OCR backend 的 fullscreen regression，現況 RED `1 failed`；修正後 targeted `1 passed in 1.22s`；`tests/test_cloudhime_workers.py` `81 passed in 1.33s`；OCR／local multimodal／scan pipeline／integration 集合 `127 passed, 1 skipped in 5.90s`；compileall／git diff --check Pass。
 - 邊界：這是可重現的 product-path correctness 修正，不等於 Vision 已在所有圖片上準確或快速。尚未以真實 GPU/GGUF 做此新 fallback 的 quality／latency promotion，也未宣稱 public manga anchor 或 Store/WACK gate 完成。
+
+## 2026-08-14：Fullscreen Vision fallback OCR exception observability
+
+- 補強：全螢幕多模態在 OCR backend 已存在但拋例外時，既有 bounded rescue 仍會嘗試一次；若仍失敗，流程交給整頁 Vision。新增 regression 保證輸出不被 `handle_empty()` 吞掉。
+- 可觀測性：OCR 例外在此模式記為 `ocr_optional_failed`，與真正沒有可用 OCR 而必須中止的 `ocr_failed` 分開；不記錄例外訊息中的使用者原文或 prompt。
+- 驗證：兩個 fullscreen fallback targeted `2 passed in 1.35s`；受影響 OCR／local multimodal／scan pipeline／worker 集合 `209 passed in 6.23s`；compileall／git diff --check Pass。
+- 邊界：這仍是 product-path correctness／observability hardening；沒有把整頁 fallback 宣稱為已通過真實 GPU 準確度或延遲 promotion。
