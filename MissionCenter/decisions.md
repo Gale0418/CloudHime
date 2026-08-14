@@ -977,3 +977,11 @@
 - 結果：兩種順序皆 `promotion_gate=true`、`quality_passed=true`、`case_regressions=[]`、provider 全為 local、GPU mode、coverage/nonempty `1.0`；baseline quality `0.2394875813`，candidate quality `0.2712081049`。baseline_then_candidate：baseline total `1012.892ms`、candidate `5715.957ms`；candidate_then_baseline：baseline `896.025ms`、candidate `5731.271ms`。
 - 判定：Vision-first 準確度候選在 locked owner cases 上維持成立；順序平衡後 candidate 約 6 倍慢，速度 gate 仍拒絕，瓶頸集中在 `vision_prompt`／`vision_decode`，不再調 OCR threshold 猜測速度解法。
 - 邊界：本輪只是 post-change verification，沒有把 4-case owner gate 擴充成完整漫畫 ground truth；Store／WACK／clean-machine 外部 gate 仍未完成。
+
+## 2026-08-14：Local Vision `--no-op-offload` speed-screen disposition
+
+- 動機：locked Region Vision paired verification 顯示 candidate 的主要延遲集中在 `vision_prompt`／`vision_decode`；本輪只在暫時 harness 移除 production 強制的 `--no-op-offload`，測試 llama-server 的預設 operator offload，未修改 runtime source、model、prompt、sampling、context 或 GPU mode。
+- 方法：同一 owner-confirmed 4-case manifest（SHA `c47129c369c4754b5b04dca03a5ca1c32bf0f1eae4fee72db1f8b6db114113d2`）、4 cases × 5 repeats、同一 preferred managed assets；baseline 保持 text profile，candidate 只移除 `--no-op-offload`。`baseline_then_candidate` 與 `candidate_then_baseline` 各完整執行一次，均要求 local provider、GPU、coverage/nonempty、zero residual 與 paired quality gate。
+- 結果：兩種順序皆 `promotion_gate=true`、`quality_passed=true`、`case_regressions=[]`、quality baseline `0.2394875813`／candidate `0.2712081049`。`baseline_then_candidate`：baseline total avg `892.554 ms`、candidate `5725.773 ms`、candidate `vision_prompt 1031.215 ms`、`vision_decode 4236.497 ms`；`candidate_then_baseline`：baseline total avg `891.003 ms`、candidate `5734.944 ms`、candidate `vision_prompt 1033.644 ms`、`vision_decode 4239.713 ms`。四案皆 nonempty／coverage `1.0`，無 residual。
+- 判定：移除 `--no-op-offload` 沒有改善 candidate latency，兩方向都約 `6.42x` 慢於 baseline；這個變因否決，不進 production，不新增設定開關。現有證據仍指向 Vision request 的 prompt/decode 路徑，而不是該 launch flag。
+- 邊界：這是 Windows 實機 GPU smoke，不是完整漫畫 ground truth，也不代表全域最佳；未執行 Store、WACK、clean-machine 或其他 GPU 硬體矩陣。兔子 review 尚未合併本輪新 evidence，待 cooldown 後與前一輪一起提交。
