@@ -991,3 +991,11 @@
 - 審查範圍：commit `bd27940` 相對 base `4ee8bd1`，`MissionCenter/decisions.md` 與 `MissionCenter/smoke-tests.md` 兩檔；前一輪 local OCR production code 已在先前 review 覆蓋。
 - 實際結果：CodeRabbit CLI `0.7.2` authenticated；`review_completed`、`findings=0`。因 repository 未連結可存取的 CodeRabbit organization，本次使用免費 CLI allowance；不宣稱 organization plan gate。
 - 判定：沒有新增 finding；否決的 `--no-op-offload` 實機結果已留下可追溯 evidence，未因此改動 production runtime。
+## 2026-08-14：Gemini decode 變因審查與 `-ub 1024` fail-closed screen
+
+- Gemini bridge：透過既有本機 Antigravity cascade 只讀檢查 runtime、provider、paired harness 與 MissionCenter，回傳唯一 marker `GEMINI_NEXT_SPEED_SCREEN_20260814`；提出尚未測過的 micro-batch `-ub`、Region Vision repeat penalty 微調、Knowledge evidence pruning 三個候選，未修改檔案。
+- 優先候選：先 screen llama-server 的 `-ub`，因目前 binary help 明確顯示 `--ubatch-size` 預設 `512`，production command 沒有顯式設定；這是單一 server launch 變因，不改模型、prompt、remote provider 或 worker 架構。
+- 實測：baseline 保持 production 設定，candidate 暫時追加 `-ub 1024`，使用 owner-confirmed locked 4-case product-path harness、baseline_then_candidate、GPU/local-only、5 repeats；candidate 在第一個案例的 Vision 回應觸發 `translation_region_vision_response_json_invalid`，collector 以 `scan trace rejected` fail closed，整次命令 exit `1`，沒有合法 paired quality／latency report。
+- 判定：依 accuracy-first 停止規則，`-ub 1024` 立即否決，不再測 `2048`，也不進 production。這不是速度結果，不能把失敗 request 當成加速；目前保留 `--ubatch-size` 預設 `512`。
+- 清理：直接程序名檢查沒有 `llama-server`／`CloudHime` 殘留；CIM 詳細查詢受 Windows access denied，未把它宣稱成完整 process inventory。既有 Python 程序未碰。
+- 邊界：Gemini 建議是只讀 expert input，非實測證據；本輪未修改 runtime／provider，未完成 repeat penalty 或 Knowledge evidence pruning A/B，也未宣稱完整漫畫品質、Store、WACK 或 clean-machine 完成。
