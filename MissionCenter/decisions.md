@@ -1082,3 +1082,10 @@
 - 真 GPU command：`vision_smoke_benchmark.py records/private/.private_japanese_subtitle_owner_confirmed_vision_manifest.json --max-cases 12 --timeout 120 --startup-timeout 240 --require-gpu --prompt-mode japanese_ocr --japanese-rescue --require-complete --require-rescue-no-regression --json`，exit `0`。
 - 結果：runtime=`gpu`、12/12 cases、final average `0.6455719475`、baseline average `0.3788959092`、improved `6`、equal `6`、regressed `0`、rescue triggered `7`、adopted `6`、平均 `4035.305ms`、p95 `6136.203ms`。這是此 locked 12-case subset 的現況證據，不是完整漫畫 holdout，也不是速度 promotion。
 - 邊界：CH-T35 仍維持 In Progress；下一步仍需完整漫畫／更多可信人工標註，且 rescue 二次請求讓速度明顯變慢，不能因 gate 綠燈就全域開啟。
+
+## 2026-08-14：Public manga rescue coverage negative-result screen
+
+- 使用 `benchmarks/manga_cover_cases.json` 6 張公開漫畫／插畫封面，以 local GPU、`japanese_ocr`、Japanese rescue、`--require-complete --require-rescue-no-regression` 執行。
+- Runtime 啟動與 GPU 路徑正常；5/6 image/case 完成，`manga_cover_pd_1923_shochan_no_boken.jpg` 發生 `truncated_local_multimodal_response`，因此 require-complete exit `1`，不能把這輪當成通過。
+- rescue geometry gate 6 張均未觸發（triggered=0、adopted=0），final 與 baseline quality improved=0／equal=6／regressed=0；這只證明目前 gate 沒有對這批封面造成退化，不證明它能處理封面文字。
+- 判定：不放寬 `0.60-0.80` portrait window、不新增全頁 retry，也不把 public cover screen 當 CH-T35 完整漫畫 holdout；下一步需要更適合的可信人工標註漫畫頁或 bounded region contract。
