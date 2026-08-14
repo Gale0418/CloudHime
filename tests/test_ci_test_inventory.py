@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,3 +107,36 @@ def test_windows_pytest_runner_uses_private_writable_basetemp():
     assert "ci\\run_pytest.ps1" in workflow
     assert "-TestFiles $testFiles" in workflow
     assert "-IsolateUi" in workflow
+
+def test_windows_pytest_runner_preserves_space_in_runner_temp(tmp_path):
+    if os.name != "nt":
+        pytest.skip("Windows runner contract")
+    pwsh = shutil.which("pwsh") or shutil.which("powershell")
+    if not pwsh:
+        pytest.skip("PowerShell is required")
+
+    runner = ROOT / "ci" / "run_pytest.ps1"
+    runner_temp = tmp_path / "runner temp"
+    env = os.environ.copy()
+    env["RUNNER_TEMP"] = str(runner_temp)
+    completed = subprocess.run(
+        [
+            pwsh,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            str(runner),
+            "-TestFiles",
+            "ci/pytest_runner_probe.py",
+            "-IsolateUi",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=45,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
