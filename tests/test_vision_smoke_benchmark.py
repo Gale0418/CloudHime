@@ -118,6 +118,11 @@ def test_parser_exposes_technical_coverage_gate() -> None:
     assert args.require_technical_coverage is True
 
 
+def test_parser_exposes_anchor_coverage_gate() -> None:
+    args = build_parser().parse_args(["--require-anchor-coverage"])
+
+    assert args.require_anchor_coverage is True
+
 def test_require_technical_coverage_accepts_empty_output_without_quality_claim(monkeypatch, capsys) -> None:
     result = {
         "evaluation_mode": "technical_coverage",
@@ -536,6 +541,39 @@ def test_require_complete_accepts_complete_result(monkeypatch, capsys) -> None:
     assert benchmark.main(["--json", "--require-complete"]) == 0
     assert json.loads(capsys.readouterr().out)["successful_cases"] == 3
 
+
+def test_require_anchor_coverage_rejects_fuzzy_only_result(monkeypatch, capsys) -> None:
+    fuzzy_only = {
+        "quality_basis": "ground_truth",
+        "ground_truth_complete": True,
+        "ground_truth_case_count": 1,
+        "image_count": 1,
+        "case_count": 1,
+        "successful_images": 1,
+        "successful_cases": 1,
+        "line_match_cases": 0.0,
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: fuzzy_only)
+
+    assert benchmark.main(["--json", "--require-anchor-coverage"]) == 1
+    assert json.loads(capsys.readouterr().out)["line_match_cases"] == 0.0
+
+
+def test_require_anchor_coverage_accepts_complete_exact_result(monkeypatch, capsys) -> None:
+    exact = {
+        "quality_basis": "ground_truth",
+        "ground_truth_complete": True,
+        "ground_truth_case_count": 2,
+        "image_count": 2,
+        "case_count": 2,
+        "successful_images": 2,
+        "successful_cases": 2,
+        "line_match_cases": 2.0,
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: exact)
+
+    assert benchmark.main(["--json", "--require-anchor-coverage"]) == 0
+    assert json.loads(capsys.readouterr().out)["line_match_cases"] == 2.0
 
 def test_require_gpu_rejects_cpu_controls() -> None:
     with pytest.raises(ValueError, match="force_cpu"):
