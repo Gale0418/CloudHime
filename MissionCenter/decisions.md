@@ -1055,3 +1055,11 @@
 - 結果：baseline quality 0.1957581248、nonempty 0.75；candidate quality 0.2064224374、nonempty 1.0；candidate 整體略升但 4 案中 3 案退步，promotion gate false，理由 quality_regression／stage_coverage_regression。單一 execution order 的 latency 欄位為 null，不能宣稱 balanced latency；觀察到 candidate translation 約 1.2s-5.5s，baseline OCR 約 1.0s-4.4s，僅作範圍觀察。
 - 判定：fullscreen Vision-first 已證明可在真 GPU 產品路徑穩定完成，但目前不能全面取代 baseline；保留 route、修正 model identity，暫不 promotion。下一步是針對 3 個退步 case 做 bounded prompt／page-crop／quality rescue 分析，不把未標註圖片當 ground truth。
 - 測試環境：pytest 直接使用使用者既有 C:\Users\USER\AppData\Local\Temp\pytest-of-David2019 會因 WinError 5 在 setup／cleanup 失敗；本輪以專案 artifacts temp 加管理員 Windows PowerShell 隔離執行，未刪除或修改受限 temp 目錄。CodeRabbit 本批尚未複審，rate limit 不視為通過。
+## 2026-08-14：Source-aware Vision-only quality basis correction
+
+- fullscreen direct Vision 沒有 OCR source 時，舊 evaluator 把固定字串 screenshot 當 detected source，導致 ocr_char_similarity=0 且 nonempty 錯誤依賴 OCR。
+- 新增 source_available 與 quality_basis：傳統 OCR／Vision OCR rescue 沿用 source+translation；direct Vision 使用 normalized translation_only，並在 report 明確標示。
+- 初次 source-aware GPU rerun 因 OCR 空結果仍暫時標記 source_available=true 而 exit 2；改為 scan 開始時未知 None，由 adapter 依實際 source 判斷，direct Vision=false、rescue=true。
+- compileall 與受影響 suite 為 219 passed in 5.50s；targeted source-aware 為 15 passed。
+- 真 GPU 4 cases × 5 repeats：baseline quality 0.1957581248、candidate 0.2414774680；nonempty 0.75 對 1.0；只有 owner-review-manga-2026-07-02 regression；promotion gate false。quality basis 為 source+translation／translation_only；單一順序 latency null，未宣稱速度 promotion。
+- 判定：source-aware metric 修正成立，但 candidate 仍不能 promotion；下一步只針對該 owner-confirmed case 做 prompt／translation rescue 分析，不用 evaluator 調整代替模型品質改善。
