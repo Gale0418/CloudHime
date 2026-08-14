@@ -1007,3 +1007,11 @@
 - 顯式 threads `-t 4 -tb 4`：兩順序皆 valid、quality gate true、4/4 無 regression、coverage/nonempty `1.0`、GPU/local、zero residual；baseline total `891.593`／`894.626 ms`，candidate `5729.706`／`5740.926 ms`，decode `4237.286`／`4240.247 ms`。平衡後 baseline `893.110 ms`、candidate `5735.316 ms`，無 3% latency 改善，否決。
 - 收斂判定：`-ub 1024` 與 Region Vision repeat penalty `1.20` 在第一個 case 就 fail-closed（分別為 JSON invalid／provider error）；mtmd、KV q8、threads 均未形成可採用的速度解法。production 維持原始 `-ub 512`、KV `f16`、auto threads、mtmd default `1024` 與 repeat penalty `1.15`，沒有新增 runtime flags。
 - 邊界：以上是同一 owner-confirmed 4-case manifest、5 repeats、雙順序的 Windows GPU evidence；未宣稱完整漫畫 ground truth、其他硬體、Store、WACK 或 clean-machine 完成。所有本輪 server process 均已清理；未碰既有 Python 程序或未追蹤資料夾。
+## 2026-08-14：Japanese Vision rescue portrait gate productization
+
+- 動機：owner-confirmed Japanese Vision baseline 以 10 張圖片／12 個片段、GPU `gemma-3-4b-it` 執行，無 rescue 時 exact line `2/12`、平均 match `0.406116`、平均 latency `2267.822 ms`；既有 rescue gate 的 aspect `>=3.0` 讓 1124x1600 直式漫畫頁全部 `geometry_rejected`。
+- TDD：先新增 portrait gate regression，RED 為 `1 failed, 5 passed`；最小修正後 `tests/test_japanese_ocr_rescue.py tests/test_japanese_ocr_worker_integration.py` 為 `11 passed in 0.88s`。gate 現在明確接受寬字幕條 `aspect >=3.0` 或漫畫直式 `0.70 <= aspect <=0.75`，仍拒絕方形／過窄圖與低 kana ratio；japanese rescue 仍是 opt-in，未開啟時速度不變。
+- 正式預設 GPU smoke：同一 owner-confirmed 12-case manifest、preferred managed assets、GPU、`japanese_ocr`、`japanese_rescue=true`；`12/12` cases、`10/10` images 完成，exact line `5/12`、平均 match `0.695572`、平均 latency `4051.245 ms`、p95 `6062.664 ms`；7 張觸發、6 張採用、1 張因 candidate／verification 不足安全回退 baseline，沒有硬採用退化候選。
+- 另一次同條件 portrait gate harness：exact `5/12`、平均 match `0.684431`、平均 latency `4041.203 ms`、7/7 adopted；兩次均顯示品質提升但 rescue 約增加 1.8 秒，故只作 opt-in quality path，不宣稱速度 promotion。
+- Gemini bridge 只讀 review：建議保留此最小變更；主要風險是 `0.70-0.75` 對其他頁型 under-coverage／overfitting，下一步應以新圖片做 `0.60-0.80` 比例 holdout，觀察 recall 與 false adoption。
+- 邊界：本輪沒有擴充 ground truth，也沒有把公開／未標註漫畫當答案；未完成完整漫畫 quality gate、其他硬體、Store、WACK、clean-machine。Vision benchmark test module 另有 16 passed、4 個既有 `tmp_path` ACL errors，非 assertion failure；compileall 與 diff-check 均 Pass。

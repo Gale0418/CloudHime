@@ -23,10 +23,15 @@ def japanese_candidate() -> MeikiCandidate:
     )
 
 
-def test_rescue_gate_only_accepts_wide_kana_rich_images() -> None:
+def test_rescue_gate_accepts_manga_portrait_but_rejects_non_japanese_or_too_narrow_images() -> None:
     assert rescue_gate("過ぎた街並は終りの愛と遠ぐ", image_width=617, image_height=95)
+    assert rescue_gate(
+        "マジックワールド最強と呼ばれるインチキクラス",
+        image_width=1124,
+        image_height=1600,
+    )
     assert not rescue_gate("合輯 - 空の境界 YouTube", image_width=617, image_height=95)
-    assert not rescue_gate("ツーポイントミュージアム", image_width=292, image_height=279)
+    assert not rescue_gate("ツーポイントミュージアム", image_width=292, image_height=800)
 
 
 def test_candidate_keeps_character_confidence_and_builds_hint() -> None:

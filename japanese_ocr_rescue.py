@@ -17,7 +17,9 @@ _LOW_CONFIDENCE = 0.5
 _MIN_MEAN_CONFIDENCE = 0.75
 _MAX_LOW_CONFIDENCE_RATIO = 0.25
 _MIN_KANA_RATIO = 0.25
-_MIN_ASPECT_RATIO = 3.0
+_MIN_WIDE_ASPECT_RATIO = 3.0
+_MIN_PORTRAIT_ASPECT_RATIO = 0.7
+_MAX_PORTRAIT_ASPECT_RATIO = 0.75
 
 
 class MeikiOCRUnavailable(RuntimeError):
@@ -103,15 +105,22 @@ def rescue_gate(
     image_width: int,
     image_height: int,
     min_kana_ratio: float = _MIN_KANA_RATIO,
-    min_aspect_ratio: float = _MIN_ASPECT_RATIO,
+    min_aspect_ratio: float = _MIN_PORTRAIT_ASPECT_RATIO,
 ) -> bool:
-    """Return whether the optional rescue is worth initializing."""
+    """Return whether the optional rescue is worth initializing.
+
+    Japanese manga pages are commonly portrait-oriented, while the original
+    rescue path targeted wide subtitle strips. Keep both shapes explicit so a
+    square or excessively narrow image does not incur a second model request.
+    """
 
     if image_width <= 0 or image_height <= 0:
         return False
-    return (
-        japanese_kana_ratio(first_text) >= float(min_kana_ratio)
-        and image_width / image_height >= float(min_aspect_ratio)
+    aspect_ratio = image_width / image_height
+    portrait_page = float(min_aspect_ratio) <= aspect_ratio <= _MAX_PORTRAIT_ASPECT_RATIO
+    wide_text_strip = aspect_ratio >= _MIN_WIDE_ASPECT_RATIO
+    return japanese_kana_ratio(first_text) >= float(min_kana_ratio) and (
+        portrait_page or wide_text_strip
     )
 
 
