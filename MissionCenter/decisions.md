@@ -970,3 +970,10 @@
 - 審查範圍：已提交的 `dc87aa5`（local OCR repeat penalty）與 `e887468`（strict local screenshot OCR prompt），base `8699f32`；共 4 個檔案：`MissionCenter/decisions.md`、`MissionCenter/smoke-tests.md`、`tests/test_local_multimodal_provider.py`、`translation_providers.py`。
 - 實際結果：CodeRabbit CLI `0.7.2` authenticated；`review_completed`、`findings=0`。本次使用免費 CLI allowance，因 repository 未連結可存取的 CodeRabbit organization；不影響 review 結果，但不宣稱 organization plan gate。
 - 判定：沒有新增 code review finding；品質／owner ground truth、完整 CI、Store、WACK 與 clean-machine gate 仍依各自 evidence 判定，不因 review 變成完成。
+## 2026-08-14：Post-OCR-tuning locked Region Vision paired verification
+
+- 目的：在 `dc87aa5`／`e887468` 後，使用主人已確認且 immutable 的 4-case manifest，確認 local screenshot OCR tuning 沒有破壞真正 Region Vision 主流程。
+- 條件：同一 manifest SHA `c47129c369c4754b5b04dca03a5ca1c32bf0f1eae4fee72db1f8b6db114113d2`、同一 model／prompt／sampling／context／GPU runtime，4 cases × 5 repeats，分別執行 baseline_then_candidate 與 candidate_then_baseline。
+- 結果：兩種順序皆 `promotion_gate=true`、`quality_passed=true`、`case_regressions=[]`、provider 全為 local、GPU mode、coverage/nonempty `1.0`；baseline quality `0.2394875813`，candidate quality `0.2712081049`。baseline_then_candidate：baseline total `1012.892ms`、candidate `5715.957ms`；candidate_then_baseline：baseline `896.025ms`、candidate `5731.271ms`。
+- 判定：Vision-first 準確度候選在 locked owner cases 上維持成立；順序平衡後 candidate 約 6 倍慢，速度 gate 仍拒絕，瓶頸集中在 `vision_prompt`／`vision_decode`，不再調 OCR threshold 猜測速度解法。
+- 邊界：本輪只是 post-change verification，沒有把 4-case owner gate 擴充成完整漫畫 ground truth；Store／WACK／clean-machine 外部 gate 仍未完成。
