@@ -590,3 +590,22 @@ def test_local_multimodal_operations_bound_output_tokens():
     provider.translate_screenshot(image_parts, source_text_hint="原文")
 
     assert [payload["max_tokens"] for payload in payloads] == [512, 1024, 1024, 1024, 1024, 1024, 384, 1024]
+
+
+def test_local_screenshot_without_ocr_hint_uses_image_first_instruction():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        return "整頁翻譯"
+
+    provider._request_chat_completion = fake_request
+    provider.translate_screenshot(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}]
+    )
+
+    prompt = payloads[0]["messages"][0]["content"][0]["text"]
+    assert "only source of truth" in prompt
+    assert "Do not wait for an OCR hint" in prompt
+    assert "do not describe the image" in prompt
