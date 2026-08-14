@@ -195,12 +195,23 @@ def test_registry_refreshes_once_with_local_provider_and_correct_profile(
     assert worker.local_multimodal_model == "gemma-3-4b-it"
     assert worker.use_gemma_translation is True
     assert worker.local_multimodal_enabled is (profile == "vision")
+    assert worker.scan_mode == "region"
     assert worker.translation_target_lang == "zh-Hant"
     assert worker.local_gemma_temperature == 0
     assert worker.local_gemma_repeat_penalty == 1.05
     assert worker.ocr_backend_chain == ocr_chain
     assert worker.ensure_calls == [9]
     assert worker.google_api_key == ""
+
+
+def test_fullscreen_scan_mode_is_explicitly_forwarded_to_worker():
+    worker = FakeWorker()
+    session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)
+
+    session.start_cold(_condition(scan_mode="fullscreen"))
+
+    assert worker.scan_mode == "fullscreen"
+    assert worker.local_multimodal_enabled is True
 
 
 def test_local_vision_width_experiment_is_applied_without_changing_default():
