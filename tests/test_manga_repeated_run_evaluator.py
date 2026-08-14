@@ -140,6 +140,25 @@ def test_empty_anchor_holdout_has_null_recall_and_latency_p95():
     assert summary["successful_nonempty_page_rate"] is None
 
 
+def test_public_manga_holdout_manifest_is_evaluator_ready(monkeypatch):
+    manifest = Path(__file__).resolve().parents[1] / "benchmarks" / "manga_cover_cases.json"
+    suite = evaluator.load_suite(manifest)
+
+    assert len(suite["cases"]) == 6
+    assert all(case["anchors"] for case in suite["cases"])
+
+    def fake_run(image_paths, **kwargs):
+        return {
+            "images": [_image_result("", elapsed_ms=1.0) for _ in image_paths],
+        }
+
+    monkeypatch.setattr(evaluator.fullscreen_benchmark, "run_benchmark", fake_run)
+    report = evaluator.run_repeated_benchmark(manifest, repeats=1)
+
+    assert report["suite"]["case_count"] == 6
+    assert report["comparison"]["page_regression"]["compared_pages"] == 6
+    assert all("joined_text" not in record for record in report["records"])
+
 def test_repeated_benchmark_pairs_conditions_and_keeps_raw_text_out(
     monkeypatch,
     tmp_path,

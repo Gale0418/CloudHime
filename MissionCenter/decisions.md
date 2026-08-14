@@ -894,3 +894,11 @@
 - 初輪 review：base e946a4e，review_completed，3 findings。兩個 major 指稱 2026-08-14 證據像是未來日期；本機日期、命令執行與 commit 時間均為 2026-08-14，查證為 false positive，不改寫 decisions 或 smoke ledger。唯一有效 finding 是 tests/test_msix_packaging.py 未鎖定 SystemRoot／WINDIR／PATH rejection branches。
 - 修正：新增三個 exact guard assertions，commit dd32d77。targeted probe／YAML tests 2 passed；受影響 CI inventory／release／MSIX suite 45 passed in 57.81s。
 - 複審：以 1363397 為 base 的 CodeRabbit review_completed，僅剩 1 個同型日期 false positive；沒有新的 production 或 test finding。這不代表 GPU、Store、WACK 或真實 clean-machine onboarding 完成。
+
+## 2026-08-14：Public manga holdout evaluator contract and fresh baseline
+
+- 修正前缺口：公開漫畫 manifest 雖已具備 6 張圖片與 visible text anchors，但 evaluator contract 沒有 regression 保證它仍能完整載入、逐頁配對比較，且 report 不應回傳 OCR 原文。
+- 修正：新增 `test_public_manga_holdout_manifest_is_evaluator_ready`，固定檢查 6 cases／anchors、6 頁 page regression comparison，以及 records 不含 `joined_text`；使用 fake benchmark 驗證 schema/privacy，不把 fake 結果當品質證據。
+- 實際一次 Windows OCR baseline/grid paired run：`python manga_repeated_run_evaluator.py benchmarks\\manga_cover_cases.json --backend windows --repeats 1 --base-threshold 100 --output artifacts\\manga-cover-public-20260814.json`；兩條件皆 6/6 nonempty、0/6 anchor recall。baseline 平均 `2362.352 ms`、p95 `6594.127 ms`；grid 平均 `13768.007 ms`、p95 `57605.568 ms`，grid accepted `2/6`，但沒有 anchor 改善。
+- 判定：這個 checkpoint 只證明公開 holdout evaluator 可重跑且目前 OCR baseline 的真實表現可觀測；不代表漫畫辨識已達標。grid recovery 維持 opt-in，不能作為線上速度解法；CH-T43 仍在 Review，下一個真正的品質工作是以 owner-confirmed ground truth 做 vision/crop A/B，並同時守住 paired regression 與 latency budget。
+- 邊界：本次使用 Windows OCR、`multimodal_enabled=false`，未執行 GPU／GGUF／local vision、15-page private holdout、Store、WACK 或 clean-machine VM onboarding；沒有把這次結果宣稱為全域最佳。
