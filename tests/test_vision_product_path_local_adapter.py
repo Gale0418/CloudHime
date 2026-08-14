@@ -245,6 +245,7 @@ def test_geometry_hint_candidate_keeps_ocr_backend_but_marks_hint_only_mode():
 
     assert worker.ocr_backend_chain == ["windows"]
     assert worker._local_fullscreen_geometry_hint_mode is True
+    assert worker._local_fullscreen_crop_vision_mode is True
     assert worker.local_multimodal_enabled is True
 
 def test_local_vision_width_experiment_is_applied_without_changing_default():

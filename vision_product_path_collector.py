@@ -207,9 +207,14 @@ def _require_geometry_hint_execution(
 ) -> None:
     if condition.get("route") != "candidate" or condition.get("geometry_hints") is not True:
         return
+    completed_details = {
+        "translation_fullscreen_geometry_vision_completed",
+        "translation_fullscreen_crop_vision_completed",
+        "translation_fullscreen_grid_crop_vision_completed",
+        "translation_fullscreen_crop_vision_skipped_reliable_ocr_completed",
+    }
     if not isinstance(events, (list, tuple)) or not any(
-        _value(event, "detail", "")
-        == "translation_fullscreen_geometry_vision_completed"
+        _value(event, "detail", "") in completed_details
         for event in events
     ):
         raise ValueError("geometry_hint_execution_gate_failed")

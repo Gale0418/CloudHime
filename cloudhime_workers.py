@@ -195,6 +195,9 @@ MANGA_ADAPTIVE_MAX_MS = 600
 MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
 FULLSCREEN_GEOMETRY_VISION_ENV = "CLOUDHIME_FULLSCREEN_GEOMETRY_VISION"
 FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE = 4
+FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO = 0.15
+FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT = 64
+FULLSCREEN_GEOMETRY_CROP_MAX_SCALE = 3.0
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
 MANGA_GRID_RECOVERY_MAX_ITEMS = 6
 MANGA_GRID_RECOVERY_SCORE_MARGIN = 3
@@ -3103,6 +3106,48 @@ class OCRWorker(QObject):
         value = os.environ.get(FULLSCREEN_GEOMETRY_VISION_ENV, "")
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
+    def should_skip_fullscreen_crop_vision_for_reliable_ocr(self, items, image_shape=None):
+        if not self.fullscreen_crop_vision_mode_enabled() or not items:
+            return False
+        texts = [str(item.get("text") or "").strip() for item in items]
+        if not any(texts):
+            return False
+        if self.is_unreliable_manga_ocr(items):
+            return False
+        if len(items) == 1:
+            return True
+        try:
+            centers = [float(item["y"]) + float(item["h"]) / 2 for item in items]
+            heights = [max(1.0, float(item["h"])) for item in items]
+            left = min(float(item["x"]) for item in items)
+            top = min(float(item["y"]) for item in items)
+            right = max(float(item["x"]) + float(item["w"]) for item in items)
+            bottom = max(float(item["y"]) + float(item["h"]) for item in items)
+        except (KeyError, TypeError, ValueError):
+            return False
+        vertical_spread = max(centers) - min(centers)
+        average_height = sum(heights) / len(heights)
+        compact_text = re.sub(r"\s+", "", "".join(texts))
+        if not 0 < len(compact_text) <= 48:
+            return False
+        same_line = vertical_spread <= average_height * 0.9
+        if same_line:
+            return True
+        if image_shape is None or len(image_shape) < 2:
+            return False
+        image_height, image_width = int(image_shape[0]), int(image_shape[1])
+        if image_height <= 0 or image_width <= 0:
+            return False
+        return (
+            right - left <= image_width * 0.55
+            and bottom - top <= image_height * 0.65
+        )
+    def fullscreen_crop_vision_mode_enabled(self):
+        override = getattr(self, "_local_fullscreen_crop_vision_mode", None)
+        if override is not None:
+            return bool(override)
+        return False
+
     @staticmethod
     def is_degenerate_manga_transcription(text):
         lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
@@ -4390,6 +4435,410 @@ class OCRWorker(QObject):
             )
             return False
 
+    def build_fullscreen_geometry_vision_crops(
+        self,
+        img,
+        items,
+        offset_x=0,
+        offset_y=0,
+    ):
+        """Build padded per-box images so Vision never has to ground page pixels."""
+        if img is None or not hasattr(img, "shape") or len(img.shape) < 2:
+            return []
+        img_h, img_w = int(img.shape[0]), int(img.shape[1])
+        crops = []
+        for item in items or []:
+            try:
+                x = int(item.get("x", 0)) - int(offset_x)
+                y = int(item.get("y", 0)) - int(offset_y)
+                width = int(item.get("w", 0))
+                height = int(item.get("h", 0))
+            except (TypeError, ValueError):
+                return []
+            if width <= 0 or height <= 0:
+                return []
+            raw = self.clip_region_rect(x, y, width, height, img_w, img_h)
+            if raw is None:
+                return []
+            pad_x = max(12, int(raw[2] * FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO))
+            pad_y = max(12, int(raw[3] * FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO))
+            expanded = self.expand_region_rect(
+                raw,
+                pad_x,
+                pad_y,
+                img_w,
+                img_h,
+            ) or raw
+            crop_x, crop_y, crop_w, crop_h = expanded
+            crop = img[crop_y : crop_y + crop_h, crop_x : crop_x + crop_w]
+            if crop.size == 0:
+                return []
+            scale = min(
+                FULLSCREEN_GEOMETRY_CROP_MAX_SCALE,
+                max(1.0, FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT / max(1, raw[3])),
+            )
+            if scale > 1.0:
+                crop = cv2.resize(
+                    crop,
+                    (max(1, int(round(crop.shape[1] * scale))), max(1, int(round(crop.shape[0] * scale)))),
+                    interpolation=cv2.INTER_CUBIC,
+                )
+            try:
+                image_parts = self.build_local_vision_image_parts(crop, [])
+            except Exception:
+                return []
+            if not isinstance(image_parts, (list, tuple)) or not image_parts:
+                return []
+            crops.append(
+                {
+                    "output_rect": (
+                        int(raw[0] + offset_x),
+                        int(raw[1] + offset_y),
+                        int(raw[2]),
+                        int(raw[3]),
+                    ),
+                    "crop": crop,
+                    "image_parts": list(image_parts),
+                }
+            )
+        return crops
+
+    def _run_fullscreen_grid_crop_vision_translation(
+        self,
+        img,
+        offset_x,
+        offset_y,
+    ):
+        """Use bounded overlapping tiles when OCR cannot provide any bbox."""
+        vision_started = time.perf_counter()
+        try:
+            provider_name = self.resolve_multimodal_provider_name()
+            if provider_name != "local_multimodal":
+                raise ValueError("fullscreen_grid_crop_vision_local_required")
+            provider = self._get_translation_provider(provider_name)
+            transcribe_screenshot = getattr(provider, "transcribe_screenshot", None)
+            translate_text = getattr(provider, "translate", None)
+            translate_screenshot = getattr(provider, "translate_screenshot", None)
+            if not callable(transcribe_screenshot) or not callable(translate_text):
+                raise ValueError("fullscreen_grid_crop_vision_unavailable")
+            img_h, img_w = int(img.shape[0]), int(img.shape[1])
+            tile_rects = self.split_region_into_tiles(
+                (0, 0, img_w, img_h),
+                cols=2,
+                rows=2,
+                overlap=0.12,
+            )
+            tile_items = [
+                {"x": x, "y": y, "w": width, "h": height}
+                for x, y, width, height in tile_rects
+            ]
+            crops = self.build_fullscreen_geometry_vision_crops(
+                img,
+                tile_items,
+                offset_x,
+                offset_y,
+            )
+            if not crops:
+                raise ValueError("fullscreen_grid_crop_vision_no_crops")
+
+            final_results = []
+            source_texts = []
+            current_provider = self._canonical_cache_provider(provider_name)
+            for crop_spec in crops:
+                source_text = ""
+                try:
+                    try:
+                        transcription = transcribe_screenshot(crop_spec["image_parts"])
+                    finally:
+                        self._capture_local_vision_request_metrics(provider)
+                    source_text = str(getattr(transcription, "text", "") or "").strip()
+                except ValueError:
+                    source_text = ""
+                translated_text = ""
+                result_provider = provider_name
+                if source_text:
+                    try:
+                        try:
+                            translated_result = translate_text(
+                                source_text,
+                                target_lang=self.translation_target_lang,
+                            )
+                        finally:
+                            self._capture_local_vision_request_metrics(provider)
+                        translated_text = str(
+                            getattr(translated_result, "text", "") or ""
+                        ).strip()
+                        result_provider = (
+                            getattr(translated_result, "provider", None)
+                            or provider_name
+                        )
+                    except ValueError:
+                        translated_text = ""
+                if not translated_text and callable(translate_screenshot):
+                    try:
+                        try:
+                            screenshot_result = translate_screenshot(
+                                crop_spec["image_parts"],
+                                target_lang=self.translation_target_lang,
+                            )
+                        finally:
+                            self._capture_local_vision_request_metrics(provider)
+                        translated_text = str(
+                            getattr(screenshot_result, "text", "") or ""
+                        ).strip()
+                        result_provider = (
+                            getattr(screenshot_result, "provider", None)
+                            or provider_name
+                        )
+                    except ValueError:
+                        translated_text = ""
+                if not translated_text:
+                    continue
+                current_provider = self._canonical_cache_provider(result_provider)
+                final_results.append((translated_text, *crop_spec["output_rect"]))
+                if source_text:
+                    source_texts.append(source_text)
+
+            if not final_results:
+                raise ValueError("empty_fullscreen_grid_crop_vision_response")
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            self.last_combined_text = "\n".join(source_texts) or "screenshot"
+            self._last_scan_source_available = bool(source_texts)
+            self.last_provider = current_provider
+            self.last_results = final_results
+            self.exact_image_cache.put(
+                img,
+                self._exact_image_cache_context(offset_x, offset_y),
+                final_results,
+                current_provider,
+                self.last_combined_text,
+            )
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.SUCCESS,
+                started_at=vision_started,
+                detail="translation_fullscreen_grid_crop_vision_completed",
+                provider=current_provider,
+                item_count=len(final_results),
+            )
+            self._emit_scan_status("✅ 全螢幕 Grid Vision 翻譯完成")
+            self._emit_scan_finished(final_results)
+            self.show_ui.emit()
+            return True
+        except LocalRequestCancelled:
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            raise
+        except Exception as exc:
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.FALLBACK,
+                started_at=vision_started,
+                error_code=ScanErrorCode.TRANSLATION_FAILED,
+                detail="translation_fullscreen_grid_crop_vision_failed",
+                fallback_reason=(
+                    "translation_fullscreen_grid_crop_vision_"
+                    + classify_region_vision_failure(exc)
+                ),
+                exception=exc,
+            )
+            return False
+    def _run_fullscreen_crop_vision_translation(
+        self,
+        img,
+        offset_x,
+        offset_y,
+        items,
+    ):
+        """Translate padded OCR boxes independently; OCR text never enters the prompt."""
+        vision_started = time.perf_counter()
+        try:
+            provider_name = self.resolve_multimodal_provider_name()
+            if provider_name != "local_multimodal":
+                raise ValueError("fullscreen_crop_vision_local_required")
+            provider = self._get_translation_provider(provider_name)
+            translate_screenshot = getattr(provider, "translate_screenshot", None)
+            if not callable(translate_screenshot):
+                raise ValueError("fullscreen_crop_vision_unavailable")
+            crops = self.build_fullscreen_geometry_vision_crops(
+                img,
+                items,
+                offset_x,
+                offset_y,
+            )
+            if not crops:
+                raise ValueError("fullscreen_crop_vision_no_crops")
+
+            interpret_regions = getattr(provider, "interpret_regions", None)
+            interpret_kwargs = {
+                "image_width": int(img.shape[1]),
+                "image_height": int(img.shape[0]),
+                "target_lang": self.translation_target_lang,
+            }
+            if isinstance(provider, LocalMultimodalProvider):
+                interpret_kwargs["cancel_predicate"] = (
+                    lambda: not self._active_scan_is_current()
+                )
+            final_results = []
+            current_provider = self._canonical_cache_provider(provider_name)
+            for crop_spec in crops:
+                direct_transcribe = getattr(provider, "transcribe_screenshot", None)
+                direct_translate = getattr(provider, "translate", None)
+                if callable(direct_transcribe) and callable(direct_translate):
+                    try:
+                        try:
+                            direct_result = direct_transcribe(crop_spec["image_parts"])
+                        finally:
+                            self._capture_local_vision_request_metrics(provider)
+                        direct_source = str(getattr(direct_result, "text", "") or "").strip()
+                        if not direct_source:
+                            raise ValueError("empty_fullscreen_crop_vision_transcription")
+                        try:
+                            direct_translation = direct_translate(
+                                direct_source,
+                                target_lang=self.translation_target_lang,
+                            )
+                        finally:
+                            self._capture_local_vision_request_metrics(provider)
+                        direct_text = str(
+                            getattr(direct_translation, "text", "") or ""
+                        ).strip()
+                        if not direct_text:
+                            raise ValueError("empty_fullscreen_crop_vision_response")
+                        current_provider = self._canonical_cache_provider(
+                            getattr(direct_translation, "provider", None)
+                            or provider_name
+                        )
+                        final_results.append((direct_text, *crop_spec["output_rect"]))
+                        continue
+                    except ValueError:
+                        pass
+                try:
+                    try:
+                        result = translate_screenshot(
+                            crop_spec["image_parts"],
+                            target_lang=self.translation_target_lang,
+                        )
+                    finally:
+                        self._capture_local_vision_request_metrics(provider)
+                    translated_text = str(getattr(result, "text", "") or "").strip()
+                    if not translated_text:
+                        raise ValueError("empty_fullscreen_crop_vision_response")
+                    result_provider = getattr(result, "provider", None) or provider_name
+                except ValueError:
+                    if not callable(interpret_regions):
+                        raise
+                    crop = crop_spec["crop"]
+                    crop_h, crop_w = int(crop.shape[0]), int(crop.shape[1])
+                    crop_hint = [{
+                        "id": 0,
+                        "x": 0,
+                        "y": 0,
+                        "w": crop_w,
+                        "h": crop_h,
+                        "text": "",
+                    }]
+                    try:
+                        try:
+                            crop_interpret_kwargs = dict(interpret_kwargs)
+                            crop_interpret_kwargs.update(
+                                image_width=crop_w,
+                                image_height=crop_h,
+                            )
+                            region_results = interpret_regions(
+                                crop_spec["image_parts"],
+                                crop_hint,
+                                **crop_interpret_kwargs,
+                            )
+                        finally:
+                            self._capture_local_vision_request_metrics(provider)
+                    except ValueError:
+                        region_results = []
+                    try:
+                        if not isinstance(region_results, (list, tuple)) or len(region_results) != 1:
+                            raise ValueError("incomplete_fullscreen_crop_vision_response")
+                        region_result = region_results[0]
+                        if int(getattr(region_result, "id", -1)) != 0:
+                            raise ValueError("incomplete_fullscreen_crop_vision_response")
+                        translated_text = str(
+                            getattr(region_result, "translation", "") or ""
+                        ).strip()
+                        if not translated_text:
+                            raise ValueError("empty_fullscreen_crop_vision_response")
+                        result_provider = getattr(region_result, "provider", None) or provider_name
+                    except ValueError:
+                        transcribe_screenshot = getattr(provider, "transcribe_screenshot", None)
+                        translate_text = getattr(provider, "translate", None)
+                        if not callable(transcribe_screenshot) or not callable(translate_text):
+                            raise
+                        transcription = transcribe_screenshot(crop_spec["image_parts"])
+                        source_text = str(getattr(transcription, "text", "") or "").strip()
+                        if not source_text:
+                            raise ValueError("empty_fullscreen_crop_vision_transcription")
+                        translated_result = translate_text(
+                            source_text,
+                            target_lang=self.translation_target_lang,
+                        )
+                        translated_text = str(
+                            getattr(translated_result, "text", "") or ""
+                        ).strip()
+                        if not translated_text:
+                            raise ValueError("empty_fullscreen_crop_vision_response")
+                        result_provider = (
+                            getattr(translated_result, "provider", None)
+                            or provider_name
+                        )
+                current_provider = self._canonical_cache_provider(result_provider)
+                final_results.append((translated_text, *crop_spec["output_rect"]))
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            if len(final_results) != len(crops):
+                raise ValueError("incomplete_fullscreen_crop_vision_response")
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+
+            self.last_combined_text = "screenshot"
+            self._last_scan_source_available = False
+            self.last_provider = current_provider
+            self.last_results = final_results
+            self.exact_image_cache.put(
+                img,
+                self._exact_image_cache_context(offset_x, offset_y),
+                final_results,
+                current_provider,
+                self.last_combined_text,
+            )
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.SUCCESS,
+                started_at=vision_started,
+                detail="translation_fullscreen_crop_vision_completed",
+                provider=current_provider,
+                item_count=len(final_results),
+            )
+            self._emit_scan_status("✅ 全螢幕 Crop Vision 翻譯完成")
+            self._emit_scan_finished(final_results)
+            self.show_ui.emit()
+            return True
+        except LocalRequestCancelled:
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            raise
+        except Exception as exc:
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.FALLBACK,
+                started_at=vision_started,
+                error_code=ScanErrorCode.TRANSLATION_FAILED,
+                detail="translation_fullscreen_crop_vision_failed",
+                fallback_reason=(
+                    "translation_fullscreen_crop_vision_"
+                    + classify_region_vision_failure(exc)
+                ),
+                exception=exc,
+            )
+            return False
     def _run_fullscreen_geometry_vision_translation(
         self,
         img,
@@ -4596,6 +5045,8 @@ class OCRWorker(QObject):
         ai_image_parts = None
         region_vision_failed = False
         ocr_trace_recorded = False
+        self._fullscreen_crop_vision_skipped_for_reliable_ocr = False
+        self._fullscreen_crop_vision_reliable_ocr_text_route = False
         if (not is_screenshot_mode and not is_region_vision_mode and not is_fullscreen_vision_fallback and not self.ocr_backends):
             self._record_scan_event(
                 ScanStage.OCR,
@@ -5051,13 +5502,34 @@ class OCRWorker(QObject):
             and self.fullscreen_geometry_hint_mode_enabled()
             and self.get_current_ai_provider() == "local_multimodal"
         ):
-            if self._run_fullscreen_geometry_vision_translation(
-                img,
-                offset_x,
-                offset_y,
-                filtered_items,
-            ):
-                return
+            if not ocr_trace_recorded:
+                self._record_scan_event(
+                    ScanStage.OCR,
+                    ScanOutcome.SUCCESS,
+                    started_at=ocr_started,
+                    detail="ocr_optional_geometry",
+                    item_count=len(filtered_items),
+                )
+                ocr_trace_recorded = True
+            if self.should_skip_fullscreen_crop_vision_for_reliable_ocr(filtered_items, img.shape):
+                self._fullscreen_crop_vision_skipped_for_reliable_ocr = True
+                self._fullscreen_crop_vision_reliable_ocr_text_route = True
+                logger.info(
+                    "[Fullscreen Vision] keeping reliable single OCR item on text route"
+                )
+            else:
+                vision_runner = (
+                    self._run_fullscreen_crop_vision_translation
+                    if self.fullscreen_crop_vision_mode_enabled()
+                    else self._run_fullscreen_geometry_vision_translation
+                )
+                if vision_runner(
+                    img,
+                    offset_x,
+                    offset_y,
+                    filtered_items,
+                ):
+                    return
         if (
             is_fullscreen_vision_fallback
             and not filtered_items
@@ -5070,6 +5542,15 @@ class OCRWorker(QObject):
                 detail="ocr_optional_unavailable",
             )
             ocr_trace_recorded = True
+            if (
+                self.fullscreen_crop_vision_mode_enabled()
+                and self._run_fullscreen_grid_crop_vision_translation(
+                    img,
+                    offset_x,
+                    offset_y,
+                )
+            ):
+                return
             if self._run_fullscreen_vision_translation(
                 img,
                 offset_x,
@@ -5397,7 +5878,13 @@ class OCRWorker(QObject):
             provider_list = []
             used_local_crop_batches = False
             try:
-                if ai_image_parts is None and self.scan_mode == SCAN_MODE_FULLSCREEN:
+                if (
+                    ai_image_parts is None
+                    and self.scan_mode == SCAN_MODE_FULLSCREEN
+                    and not getattr(
+                        self, "_fullscreen_crop_vision_reliable_ocr_text_route", False
+                    )
+                ):
                     try:
                         crop_batches = self.build_local_manga_crop_batches(
                             img,
@@ -5432,7 +5919,13 @@ class OCRWorker(QObject):
                                 f"{type(exc).__name__}"
                             )
                 if not used_local_crop_batches:
-                    if ai_image_parts is None and self.has_any_multimodal_ai():
+                    if (
+                        ai_image_parts is None
+                        and self.has_any_multimodal_ai()
+                        and not getattr(
+                            self, "_fullscreen_crop_vision_reliable_ocr_text_route", False
+                        )
+                    ):
                         _log("⑦-pre 開始 build_ai_image_parts (多模態翻譯)")
                         ai_image_parts = self.build_ai_image_parts(img)
                         _log("⑦ build_ai_image_parts 完成")
@@ -5551,7 +6044,11 @@ class OCRWorker(QObject):
                 ScanStage.TRANSLATION,
                 trace_outcome,
                 started_at=translation_started,
-                detail="translation_completed",
+                detail=(
+                    "translation_fullscreen_crop_vision_skipped_reliable_ocr_completed"
+                    if self._fullscreen_crop_vision_skipped_for_reliable_ocr
+                    else "translation_completed"
+                ),
                 provider=trace_provider,
                 fallback_reason=trace_reason,
                 item_count=len(final_results),
