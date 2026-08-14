@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "dataset": "tensei-heavy-knight-technical-coverage",
+  "evaluation_mode": "technical_coverage",
+  "ground_truth": "unavailable",
+  "description": "Technical full-episode coverage only. This manifest contains no OCR ground truth and must not be used for accuracy scoring.",
+  "cases": [
+    {
+      "sample_source": "example/転生重騎士/001.jpg",
+      "category": "technical_coverage",
+      "sha256": "0d0ba3fadfac216a2d2452fe6197e2765deea1b95383f4cbeb02591b6af05241"
+    },
+    {
+      "sample_source": "example/転生重騎士/002.jpg",
+      "category": "technical_coverage",
+      "sha256": "873c9a0ea31ef1f3dd96664d7be35bf50ead9c55d221d5952d069a8384e855d2"
+    },
+    {
+      "sample_source": "example/転生重騎士/003.jpg",
+      "category": "technical_coverage",
+      "sha256": "c2bf4664e3bd0e6a9104a5a765fe1d07c0f35d8312a4dcf1dde2b260407e25de"
+    },
+    {
+      "sample_source": "example/転生重騎士/004.jpg",
+      "category": "technical_coverage",
+      "sha256": "ff3f869ecbb645f7954f86c23dc96e78598341949e7587a9f6f0bfaea5fc6273"
+    },
+    {
+      "sample_source": "example/転生重騎士/005.jpg",
+      "category": "technical_coverage",
+      "sha256": "111ba219f87245172ab479f0a8f5ff56c141fdb4745a612e427d4e9b2da89f1b"
+    },
+    {
+      "sample_source": "example/転生重騎士/006.jpg",
+      "category": "technical_coverage",
+      "sha256": "347a3e01ea1baf9dc8b24ba665ad60d2a585f0bac6d825495f2bd8b036592b0c"
+    },
+    {
+      "sample_source": "example/転生重騎士/007.jpg",
+      "category": "technical_coverage",
+      "sha256": "e4c29d47057cf0d0f27efbfee982a8d307facd85603cd5a649375aa12d36109a"
+    },
+    {
+      "sample_source": "example/転生重騎士/008.jpg",
+      "category": "technical_coverage",
+      "sha256": "d33b8cf3a650951ec7cd5ea280f0f59342d68cb4f801a5d534a8060dbc2fd5c3"
+    },
+    {
+      "sample_source": "example/転生重騎士/009.jpg",
+      "category": "technical_coverage",
+      "sha256": "084d77f93ea4c66f162c48117843df4e8e038a9266b3e73d0e049d9bc6bbb318"
+    },
+    {
+      "sample_source": "example/転生重騎士/010.jpg",
+      "category": "technical_coverage",
+      "sha256": "62dbfebf82791c251a648410bbfa2dae5835525be60a9cc3ab09340932dcd5d7"
+    },
+    {
+      "sample_source": "example/転生重騎士/011.jpg",
+      "category": "technical_coverage",
+      "sha256": "b8aa51e6751d880434c19a58d824773e93dd14c65348ab62c999a73f4f886d6a"
+    },
+    {
+      "sample_source": "example/転生重騎士/012.jpg",
+      "category": "technical_coverage",
+      "sha256": "3e84cf25edf807479011484ac8e8f51d842376ac867d818d7527321918f6d20d"
+    },
+    {
+      "sample_source": "example/転生重騎士/013.jpg",
+      "category": "technical_coverage",
+      "sha256": "2691dacfdaf822004a254070947bdd47f2a57785be86359e654543aa28e4bb7a"
+    },
+    {
+      "sample_source": "example/転生重騎士/014.jpg",
+      "category": "technical_coverage",
+      "sha256": "05256f76322dbfd220656e48afd0ae358ec0d877f81870887f03f499df937a0b"
+    },
+    {
+      "sample_source": "example/転生重騎士/015.jpg",
+      "category": "technical_coverage",
+      "sha256": "82877866f52979083caa6eb1630128644c555506f15f1cdd0ce0a3647e5e22fb"
+    },
+    {
+      "sample_source": "example/転生重騎士/016.jpg",
+      "category": "technical_coverage",
+      "sha256": "4fc8a8a4c029dc13f6da39eb6b5e1099a1ac9b03362bb397a9b5bffa284ce41d"
+    },
+    {
+      "sample_source": "example/転生重騎士/017.jpg",
+      "category": "technical_coverage",
+      "sha256": "ed1f7266ba06e07335f51f564d489df69e5b15459f766ac4385c408e855a1280"
+    },
+    {
+      "sample_source": "example/転生重騎士/018.jpg",
+      "category": "technical_coverage",
+      "sha256": "7c1bcee1a72fa3afcbb8531866d5e1b708f6e48f72d1ebe3d89e4b1bb7d80172"
+    },
+    {
+      "sample_source": "example/転生重騎士/019.jpg",
+      "category": "technical_coverage",
+      "sha256": "e24f4d91855e7a24e97631e2beb61e617b5b13d207042530c6da73f34b88ec25"
+    },
+    {
+      "sample_source": "example/転生重騎士/020.jpg",
+      "category": "technical_coverage",
+      "sha256": "7baa3c325e9764aa71abf259dd47f1d5ba9090ac875372d9b696d17e1662869e"
+    },
+    {
+      "sample_source": "example/転生重騎士/021.jpg",
+      "category": "technical_coverage",
+      "sha256": "dc19fb3817e042121e47aae8d352886825791cd7e40dce8194b42f6d95201544"
+    },
+    {
+      "sample_source": "example/転生重騎士/022.jpg",
+      "category": "technical_coverage",
+      "sha256": "ffbe8cc466cd464b4ec968fa2c5349a216b4ea5520aa6aedc24e0a5229f41d22"
+    },
+    {
+      "sample_source": "example/転生重騎士/023.jpg",
+      "category": "technical_coverage",
+      "sha256": "44c034f3a7e1e0e18c9be4544df39c7031b736c41ad39c79d56fce5c11df9bf7"
+    },
+    {
+      "sample_source": "example/転生重騎士/024.jpg",
+      "category": "technical_coverage",
+      "sha256": "77fbc11af027a5e6584d33b71d471da8b63b3f90454ef2375ac9c1fde593a087"
+    },
+    {
+      "sample_source": "example/転生重騎士/025.jpg",
+      "category": "technical_coverage",
+      "sha256": "58f3a4d43ac336c673afe059cc144048c297c5aea0127b3d60618443a640773f"
+    },
+    {
+      "sample_source": "example/転生重騎士/026.jpg",
+      "category": "technical_coverage",
+      "sha256": "d1b029389d8034093eecb8623fcdf64b3083ce94b322e87b1ff72d9860836614"
+    },
+    {
+      "sample_source": "example/転生重騎士/027.jpg",
+      "category": "technical_coverage",
+      "sha256": "30f632231fa50ead7deaeb97cd63d486736bd580a1d9f0f429daaf3a4d0bc1cd"
+    },
+    {
+      "sample_source": "example/転生重騎士/028.jpg",
+      "category": "technical_coverage",
+      "sha256": "cb050d789739d83d11cd17c480e6b92dd2e31b34554cab500e0c3f25211dc94d"
+    },
+    {
+      "sample_source": "example/転生重騎士/029.jpg",
+      "category": "technical_coverage",
+      "sha256": "5fed5967ed554da1a913b3477eb3ef0b6a7ab0f02f5351d966fa4a336c07283b"
+    },
+    {
+      "sample_source": "example/転生重騎士/030.jpg",
+      "category": "technical_coverage",
+      "sha256": "7259992b6b1ceb388f2f88533fd38ff4bfae0093ca1389362c5b0ea50f504bd2"
+    },
+    {
+      "sample_source": "example/転生重騎士/031.jpg",
+      "category": "technical_coverage",
+      "sha256": "d29049f1c79a74443f4aabf59d18d917e1813ee5854aad198ab19e23cda5191f"
+    },
+    {
+      "sample_source": "example/転生重騎士/032.jpg",
+      "category": "technical_coverage",
+      "sha256": "991358ab12b7fe3edca48da0aad7737ed741c7dbb19a2377264d34aabb80f5be"
+    },
+    {
+      "sample_source": "example/転生重騎士/033.jpg",
+      "category": "technical_coverage",
+      "sha256": "d42422265924a2db427b0cc4aa46148a64efd405a997a5da273c91510962544d"
+    },
+    {
+      "sample_source": "example/転生重騎士/034.jpg",
+      "category": "technical_coverage",
+      "sha256": "ad930cb5f6e3f97d8dad823c86faa439607cc8f125f148a4c9b4e4ccee78c08c"
+    },
+    {
+      "sample_source": "example/転生重騎士/035.jpg",
+      "category": "technical_coverage",
+      "sha256": "16bb1520718a5ec11a0008c4ff82c5593a5e9f61370672e4667cbd52f499e0f9"
+    },
+    {
+      "sample_source": "example/転生重騎士/036.jpg",
+      "category": "technical_coverage",
+      "sha256": "add21075071e8081539f9d3872732afa205f611a588014c283855ca7fae1e9bc"
+    },
+    {
+      "sample_source": "example/転生重騎士/037.jpg",
+      "category": "technical_coverage",
+      "sha256": "f71663ea4915d3015659a3c71a69a1efb65925b0a35596633add8c9ccf68f5ed"
+    },
+    {
+      "sample_source": "example/転生重騎士/038.jpg",
+      "category": "technical_coverage",
+      "sha256": "a529e384ada21485bc5033dd61a4c837401167a56d1b535150669fd1d631160d"
+    }
+  ]
+}
