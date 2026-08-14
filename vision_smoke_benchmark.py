@@ -194,6 +194,20 @@ def summarize_rescue_quality(results: Sequence[Mapping[str, Any]]) -> dict[str, 
     }
 
 
+def evaluate_rescue_quality_gate(
+    results: Sequence[Mapping[str, Any]], *, complete: bool, enabled: bool
+) -> dict[str, Any]:
+    """Require both no regressions and a complete run when the gate is enabled."""
+
+    summary = summarize_rescue_quality(results)
+    summary["complete"] = bool(complete)
+    summary["passed"] = (
+        not enabled
+        or (bool(complete) and summary["regressed_cases"] == 0)
+    )
+    return summary
+
+
 def case_image_source(case: dict[str, Any]) -> str:
     return str(case.get("sample_source") or case.get("image") or "")
 
@@ -478,10 +492,16 @@ def run_smoke(
     )
     successful_images = [result for result in image_results if result["actual"] and not result["error"]]
     runtime_mode = "cpu" if force_cpu else state.mode
-    rescue_quality = summarize_rescue_quality(results)
-    rescue_quality_gate_passed = (
-        not japanese_rescue or rescue_quality["regressed_cases"] == 0
+    complete = (
+        len(successful_images) == len(image_results)
+        and len(successful_cases) == len(results)
     )
+    rescue_quality = evaluate_rescue_quality_gate(
+        results,
+        complete=complete,
+        enabled=japanese_rescue,
+    )
+    rescue_quality_gate_passed = bool(rescue_quality["passed"])
     return {
         "manifest": str(manifest_path),
         "model": model_name,
