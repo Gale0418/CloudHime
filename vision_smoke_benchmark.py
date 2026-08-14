@@ -12,7 +12,7 @@ import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from statistics import mean
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import cv2
 import numpy as np
@@ -160,6 +160,38 @@ def percentile(values: Sequence[float], quantile: float = 0.95) -> float:
         return 0.0
     index = max(0, min(len(ordered) - 1, int(np.ceil(len(ordered) * quantile)) - 1))
     return ordered[index]
+
+
+def summarize_rescue_quality(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Compare the final adopted output with the same-case baseline."""
+
+    improved_cases = 0
+    equal_cases = 0
+    regressions: list[dict[str, Any]] = []
+    for result in results:
+        baseline_score = float(result["baseline_match_score"])
+        final_score = float(result["match_score"])
+        delta = final_score - baseline_score
+        if delta > 0.0:
+            improved_cases += 1
+        elif delta < 0.0:
+            regressions.append(
+                {
+                    "sample_source": str(result.get("sample_source") or ""),
+                    "baseline_match_score": baseline_score,
+                    "match_score": final_score,
+                    "delta": delta,
+                }
+            )
+        else:
+            equal_cases += 1
+    return {
+        "compared_cases": len(results),
+        "improved_cases": improved_cases,
+        "equal_cases": equal_cases,
+        "regressed_cases": len(regressions),
+        "regressions": regressions,
+    }
 
 
 def case_image_source(case: dict[str, Any]) -> str:
@@ -446,6 +478,10 @@ def run_smoke(
     )
     successful_images = [result for result in image_results if result["actual"] and not result["error"]]
     runtime_mode = "cpu" if force_cpu else state.mode
+    rescue_quality = summarize_rescue_quality(results)
+    rescue_quality_gate_passed = (
+        not japanese_rescue or rescue_quality["regressed_cases"] == 0
+    )
     return {
         "manifest": str(manifest_path),
         "model": model_name,
@@ -487,6 +523,8 @@ def run_smoke(
             and not bool(result["rescue_adopted"])
             for result in image_results
         ),
+        "rescue_quality": rescue_quality,
+        "rescue_quality_gate_passed": rescue_quality_gate_passed,
         "image_results": image_results,
         "results": results,
     }
@@ -527,6 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ocr-hint", action="store_true")
     parser.add_argument("--japanese-rescue", action="store_true")
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--require-rescue-no-regression", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -550,7 +589,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     _configure_stdout_for_unicode()
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0 if not args.require_complete or _is_complete(result) else 1
+        complete_ok = not args.require_complete or _is_complete(result)
+        rescue_ok = (
+            not args.require_rescue_no_regression
+            or bool(result.get("rescue_quality_gate_passed"))
+        )
+        return 0 if complete_ok and rescue_ok else 1
 
     print(
         "Vision Smoke Summary: "
@@ -572,7 +616,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"line_match={item['line_match']:.0f} match={item['match_score']:.3f} "
             f"latency_ms={item['latency_ms']:.1f} actual={item['actual'] or item['error']}"
         )
-    return 0 if not args.require_complete or _is_complete(result) else 1
+    complete_ok = not args.require_complete or _is_complete(result)
+    rescue_ok = (
+        not args.require_rescue_no_regression
+        or bool(result.get("rescue_quality_gate_passed"))
+    )
+    return 0 if complete_ok and rescue_ok else 1
 
 
 if __name__ == "__main__":
