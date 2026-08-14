@@ -141,12 +141,24 @@ class ProductPathLocalSession:
         self._require_local_trace(events)
         stages = self._stages_ms(events)
         stages.update(self._local_vision_timing_stages())
+        source = self._source()
+        translation = self._translation()
+        source_available = getattr(
+            self._worker,
+            "_last_scan_source_available",
+            None,
+        )
+        if source_available is None:
+            source_available = bool(source.strip())
+        if not isinstance(source_available, bool):
+            raise ValueError("worker source availability must be boolean")
         return {
             "case_id": case_id,
             "pixels_sha256": self._pixels_hash(pixels),
             "provider": "local",
-            "source": self._source(),
-            "translation": self._translation(),
+            "source": source,
+            "translation": translation,
+            "source_available": source_available,
             "trace_events": events,
             "stages_ms": stages,
             "runtime_metrics": dict(

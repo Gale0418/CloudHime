@@ -280,12 +280,19 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
                 source, translation = observation.get("source"), observation.get("translation")
                 if not isinstance(source, str) or not isinstance(translation, str):
                     raise ValueError("observation source and translation must be strings")
+                source_available = observation.get(
+                    "source_available",
+                    bool(source.strip()),
+                )
+                if not isinstance(source_available, bool):
+                    raise ValueError("observation source_available must be boolean")
                 records.append({"case_id": case["id"], "repeat": repeat,
                                 "condition_fingerprint": fingerprint, "provider": provider,
                                 "fallback_reason": fallback, "runtime_mode": evidence["mode"],
                                 "residual_processes": 0, "runtime_profile": evidence["runtime_profile"], "stages_ms": stages,
                                 "runtime_metrics": observation.get("runtime_metrics", {}),
                                 "detected_source": source, "translation": translation,
+                                "source_available": source_available,
                                 "trace_events": trace_events})
     except Exception as exc:
         primary_error = exc
@@ -365,6 +372,15 @@ def collect_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, A
                 worker.run_scan_once()
                 trace_events, stages, provider, fallback = _events_from(worker)
                 source, translation = _quality_from(worker)
+                source_available = getattr(
+                    worker,
+                    "_last_scan_source_available",
+                    None,
+                )
+                if source_available is None:
+                    source_available = bool(source.strip())
+                if not isinstance(source_available, bool):
+                    raise ValueError("worker source_available must be boolean")
             except Exception as exc:
                 scan_error = exc
             finally:
@@ -384,6 +400,7 @@ def collect_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, A
                             "fallback_reason": fallback, "runtime_mode": runtime_mode,
                             "residual_processes": residual, "runtime_profile": condition["runtime_profile"], "stages_ms": stages,
                             "detected_source": source, "translation": translation,
+                            "source_available": source_available,
                             "trace_events": trace_events})
     return {"condition": dict(condition), "records": records}
 

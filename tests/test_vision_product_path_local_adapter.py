@@ -214,6 +214,25 @@ def test_fullscreen_scan_mode_is_explicitly_forwarded_to_worker():
     assert worker.local_multimodal_enabled is True
 
 
+def test_fullscreen_vision_observation_marks_ocr_source_unavailable():
+    class VisionWorker(FakeWorker):
+        def run_scan_once(self):
+            self.scan_calls += 1
+            self.capture_scan_area()
+            self.last_combined_text = "screenshot"
+            self.last_results = [("整頁翻譯", 0, 0, 1, 1)]
+            self._last_scan_source_available = False
+            self.last_scan_trace.events = [Event("translation", "success", "local")]
+
+    worker = VisionWorker()
+    session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)
+    session.start_cold(_condition(scan_mode="fullscreen"))
+
+    observation = session.run_repeat("case-a", Pixels())
+
+    assert observation["source_available"] is False
+
+
 def test_local_vision_width_experiment_is_applied_without_changing_default():
     worker = FakeWorker()
     session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)

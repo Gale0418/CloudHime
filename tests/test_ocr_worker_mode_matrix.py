@@ -2062,6 +2062,7 @@ def test_fullscreen_local_vision_first_success_skips_ocr(monkeypatch, qtbot):
         worker.run_scan_once()
 
         assert finished == [[['整頁 Vision 翻譯', 7, 11, 160, 80]]]
+        assert worker._last_scan_source_available is False
         worker.run_ocr_with_best_threshold.assert_not_called()
         worker.build_local_vision_image_parts.assert_called_once_with(image, [])
         worker.translate_screenshot_gemma.assert_called_once_with(
@@ -2137,6 +2138,7 @@ def test_fullscreen_local_vision_first_uses_vision_ocr_rescue_when_translation_i
         assert translation_events[-1].detail == (
             "translation_fullscreen_vision_ocr_rescue_completed"
         )
+        assert worker._last_scan_source_available is True
     finally:
         worker.cleanup()
 

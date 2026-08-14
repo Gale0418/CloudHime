@@ -4225,6 +4225,7 @@ class OCRWorker(QObject):
         fallback_allowed,
     ):
         vision_started = time.perf_counter()
+        vision_source_text = ""
         try:
             provider_name = self.resolve_multimodal_provider_name()
             if not provider_name:
@@ -4256,6 +4257,7 @@ class OCRWorker(QObject):
                 source_text = str(getattr(transcription, "text", "") or "").strip()
                 if not source_text:
                     raise ValueError("empty_fullscreen_vision_ocr_response")
+                vision_source_text = source_text
                 translated_result = translate(
                     source_text,
                     target_lang=self.translation_target_lang,
@@ -4289,7 +4291,12 @@ class OCRWorker(QObject):
                     int(img.shape[0]),
                 )
             ]
-            self.last_combined_text = "screenshot"
+            if vision_source_text:
+                self.last_combined_text = vision_source_text
+                self._last_scan_source_available = True
+            else:
+                self.last_combined_text = "screenshot"
+                self._last_scan_source_available = False
             self.last_provider = current_provider
             self.last_results = final_results
             self.exact_image_cache.put(
@@ -4332,6 +4339,7 @@ class OCRWorker(QObject):
             return False
     def run_scan_once(self):
         self._reset_scan_trace()
+        self._last_scan_source_available = None
         self._active_scan_request = self._take_scan_request()
         if self._abort_stale_scan(ScanStage.FRAME_CACHE):
             return

@@ -31,6 +31,8 @@ REPORT_RECORD_FIELDS = (
     "translation_char_score",
     "required_terms_recall",
     "nonempty",
+    "source_available",
+    "quality_basis",
     "image_sha256",
     "annotation_revision",
 )
@@ -445,6 +447,11 @@ def _score_records(
         output = record.get("translation")
         source_ok = isinstance(source, str) and bool(source.strip())
         output_ok = isinstance(output, str) and bool(output.strip())
+        source_available = record.get("source_available", source_ok)
+        if not isinstance(source_available, bool):
+            raise ValueError("record source_available must be boolean")
+        if source_available and not source_ok:
+            raise ValueError("record source_available requires detected_source")
         ocr_score = (
             translation.character_similarity(source, case["reference_source"])
             if source_ok
@@ -462,13 +469,30 @@ def _score_records(
             if output_ok
             else None
         )
+        quality_components = [
+            (
+                translation.QUALITY_WEIGHTS["translation_char_score"],
+                translation_score or 0.0,
+            ),
+            (
+                translation.QUALITY_WEIGHTS["required_terms_recall"],
+                terms_score or 0.0,
+            ),
+        ]
+        quality_basis = "translation_only"
+        if source_available:
+            quality_basis = "source+translation"
+            quality_components.append(
+                (
+                    translation.QUALITY_WEIGHTS["ocr_char_similarity"],
+                    ocr_score or 0.0,
+                )
+            )
+        available_weight = sum(weight for weight, _score in quality_components)
         quality = (
-            translation.QUALITY_WEIGHTS["translation_char_score"]
-            * (translation_score or 0.0)
-            + translation.QUALITY_WEIGHTS["required_terms_recall"]
-            * (terms_score or 0.0)
-            + translation.QUALITY_WEIGHTS["ocr_char_similarity"]
-            * (ocr_score or 0.0)
+            sum(weight * score for weight, score in quality_components) / available_weight
+            if output_ok and available_weight
+            else 0.0
         )
         scored.append({
             **record,
@@ -476,7 +500,9 @@ def _score_records(
             "ocr_char_similarity": ocr_score,
             "translation_char_score": translation_score,
             "required_terms_recall": terms_score,
-            "nonempty": source_ok and output_ok,
+            "nonempty": output_ok and (not source_available or source_ok),
+            "source_available": source_available,
+            "quality_basis": quality_basis,
             "image_sha256": case["image_sha256"],
             "annotation_revision": case["annotation_revision"],
         })

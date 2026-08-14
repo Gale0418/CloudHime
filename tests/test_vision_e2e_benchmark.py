@@ -48,7 +48,8 @@ def _condition(name, *, gpu_mode="gpu", route="route-a", model_sha="1" * 64, run
 
 
 def _record(case_id, repeat, *, translation="正確翻譯", source="原文", total=20,
-            residual=0, runtime_mode="gpu", runtime_profile="text", stages=None):
+            residual=0, runtime_mode="gpu", runtime_profile="text", stages=None,
+            source_available=None):
     return {
         "case_id": case_id,
         "repeat": repeat,
@@ -60,6 +61,7 @@ def _record(case_id, repeat, *, translation="正確翻譯", source="原文", tot
         "runtime_mode": runtime_mode,
         "runtime_profile": runtime_profile,
         "residual_processes": residual,
+        **({"source_available": source_available} if source_available is not None else {}),
     }
 
 
@@ -93,6 +95,29 @@ def test_happy_path_is_paired_redacted_and_quality_first():
     assert {record["condition"] for record in report["records"]} == {"baseline", "candidate"}
     assert "translation" not in report["records"][0]
     assert "detected_source" not in report["records"][0]
+
+
+def test_vision_only_quality_uses_translation_basis_without_ocr_source():
+    cases = [_case("a")]
+    report = evaluator.evaluate_paired(
+        _manifest(*cases),
+        _run(_condition("base"), cases),
+        _run(
+            _condition("candidate", route="route-b", runtime_profile="vision"),
+            cases,
+            source="",
+            source_available=False,
+        ),
+    )
+
+    candidate_records = [
+        record for record in report["records"] if record["condition"] == "candidate"
+    ]
+    assert report["promotion_gate"]["passed"] is True
+    assert all(record["quality_basis"] == "translation_only" for record in candidate_records)
+    assert all(record["source_available"] is False for record in candidate_records)
+    assert all(record["nonempty"] is True for record in candidate_records)
+    assert all(record["ocr_char_similarity"] is None for record in candidate_records)
 
 
 def test_manifest_rejects_source_family_and_image_hash_split_leakage():
