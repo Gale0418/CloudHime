@@ -3,7 +3,7 @@ import time
 import base64
 import pytest
 from pathlib import Path
-from local_vision_assets import resolve_vision_assets
+from local_vision_assets import resolve_preferred_vision_assets
 from local_vision_runtime import LocalVisionRuntime
 from translation_providers import LocalMultimodalProvider
 
@@ -12,8 +12,8 @@ VISION_MODEL_NAME = "gemma-3-4b-it"
 
 @pytest.mark.skipif(not os.environ.get("TEST_VISION_INTEGRATION"), reason="Need TEST_VISION_INTEGRATION=1 to run real local vision test")
 def test_local_vision_integration():
-    """啟動內嵌 llama-server，送出 example 圖片並驗證 GPU/CPU vision request。"""
-    assets = resolve_vision_assets(PROJECT_ROOT)
+    """以 production asset resolver 啟動 llama-server，送出 example 圖片並驗證 vision request。"""
+    assets = resolve_preferred_vision_assets(PROJECT_ROOT)
     assert assets.server_path.exists(), "Runtime binary missing"
     assert assets.model_path.exists(), "Text model missing"
     assert assets.projector_path.exists(), "Vision projector missing"

@@ -916,3 +916,10 @@
 - 可觀測性：OCR 例外在此模式記為 `ocr_optional_failed`，與真正沒有可用 OCR 而必須中止的 `ocr_failed` 分開；不記錄例外訊息中的使用者原文或 prompt。
 - 驗證：兩個 fullscreen fallback targeted `2 passed in 1.35s`；受影響 OCR／local multimodal／scan pipeline／worker 集合 `209 passed in 6.23s`；compileall／git diff --check Pass。
 - 邊界：這仍是 product-path correctness／observability hardening；沒有把整頁 fallback 宣稱為已通過真實 GPU 準確度或延遲 promotion。
+
+## 2026-08-14：Production asset resolver correction for local Vision integration
+
+- 事故：真實 `tests/test_local_vision_integration.py` 原本直接使用 `resolve_vision_assets(PROJECT_ROOT)`，會強制載入 D 槽 legacy GGUF。該檔案大小 `2,489,758,304` bytes，與目前 manifest `2,489,757,856` bytes 不一致；llama-server 在 health timeout 前留下 `control-looking token '</s>'` 與 `ffn up/down are swapped` 警告，整次 startup 約 242.37 秒後失敗。這不是 production asset selection 的可靠證據。
+- 修正：integration smoke 改用 production 相同的 `resolve_preferred_vision_assets(PROJECT_ROOT)`；新增 resolver regression，確認 legacy size drift 時選 AppData managed assets。現有受管 model/projector 均符合 manifest size，沒有修改任何模型檔。
+- 修正後實機：preferred managed GPU integration `1 passed in 17.80s`，runtime startup `13.35s`、Vision request `3.32s`、停止清理成功；fresh `vision_smoke_benchmark.py --max-cases 1 --require-gpu` 為 `1/1` line match，startup `13.127s`、平均 request `1.489s`，GPU mode，無殘留程序。
+- 邊界：這證明 production asset selection 與單案例 GPU smoke 可用，不代表完整 OCR／漫畫 holdout 的準確度或速度 promotion；D 槽 legacy asset 仍保留，不做破壞性刪除。
