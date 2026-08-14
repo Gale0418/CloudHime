@@ -144,10 +144,13 @@ def build_conditions(
     asset_hashes: Mapping[str, str] | None = None,
     vision_image_max_width: int | None = None,
     scan_mode: str = "region",
+    geometry_hints: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     normalized_scan_mode = str(scan_mode).strip().lower()
     if normalized_scan_mode not in {"region", "fullscreen"}:
         raise ValueError("scan_mode must be region or fullscreen")
+    if geometry_hints and normalized_scan_mode != "fullscreen":
+        raise ValueError("geometry_hints requires fullscreen scan mode")
     hashes = dict(asset_hashes) if asset_hashes is not None else _verify_assets(assets)
     fixed = {
         "model_sha256": hashes["model_path"],
@@ -158,6 +161,7 @@ def build_conditions(
         "context": dict(_FIXED_CONTEXT),
         "gpu_mode": "gpu",
         "scan_mode": normalized_scan_mode,
+        "geometry_hints": bool(geometry_hints),
     }
     if vision_image_max_width is not None:
         fixed["vision_image_max_width"] = vision_image_max_width
@@ -174,6 +178,7 @@ def preflight(
     lock_path: str | Path = DEFAULT_LOCK_PATH,
     vision_image_max_width: int | None = None,
     scan_mode: str = "region",
+    geometry_hints: bool = False,
 ) -> dict[str, Any]:
     """Verify only immutable inputs; never create an OCR worker or use the GPU."""
     lock = validate_benchmark_lock(PROJECT_ROOT, lock_path)
@@ -189,6 +194,7 @@ def preflight(
         asset_hashes=asset_hashes,
         vision_image_max_width=vision_image_max_width,
         scan_mode=scan_mode,
+        geometry_hints=geometry_hints,
     )
     return {"ok": True, "manifest": manifest, "assets": assets, "baseline": baseline, "candidate": candidate}
 
@@ -232,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="baseline_then_candidate",
         help="condition order for this paired run; execute both orders for balanced latency evidence",
     )
+    parser.add_argument("--geometry-hints", action="store_true", help="run fullscreen candidate with OCR boxes as text-free Vision hints")
     parser.add_argument("--preflight", action="store_true", help="validate immutable inputs without starting GPU runtime")
     return parser
 
@@ -245,6 +252,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.vision_max_width is not None:
             preflight_kwargs["vision_image_max_width"] = args.vision_max_width
         if args.scan_mode != "region":
+            preflight_kwargs["scan_mode"] = args.scan_mode
+        if args.geometry_hints:
+            preflight_kwargs["geometry_hints"] = True
             preflight_kwargs["scan_mode"] = args.scan_mode
         ready = preflight(args.manifest, **preflight_kwargs)
         if args.preflight:

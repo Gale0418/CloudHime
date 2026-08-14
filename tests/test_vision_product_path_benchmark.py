@@ -104,6 +104,24 @@ def test_conditions_record_fullscreen_as_a_fixed_experiment_control(monkeypatch,
     assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
 
 
+def test_conditions_record_geometry_hints_as_a_fixed_fullscreen_control(monkeypatch, tmp_path):
+    assets = _assets(tmp_path)
+    monkeypatch.setattr(benchmark, "resolve_preferred_vision_assets", lambda _: assets)
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64, "model_path": "b" * 64, "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+
+    baseline, candidate = benchmark.build_conditions(
+        assets,
+        scan_mode="fullscreen",
+        geometry_hints=True,
+    )
+
+    assert baseline["geometry_hints"] is True
+    assert candidate["geometry_hints"] is True
+    assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
+
 def test_conditions_reject_unknown_scan_mode(monkeypatch, tmp_path):
     assets = _assets(tmp_path)
     monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {

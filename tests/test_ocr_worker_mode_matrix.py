@@ -2038,6 +2038,167 @@ def test_region_vision_without_ocr_backend_uses_whole_region_hint(monkeypatch, q
         worker.cleanup()
 
 
+def test_fullscreen_geometry_hint_vision_uses_ocr_only_for_locations(monkeypatch, qtbot):
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        available=lambda: True,
+        interpret_regions=Mock(return_value=[
+            SimpleNamespace(id=0, source_text="真正原文一", translation="真正翻譯一"),
+            SimpleNamespace(id=1, source_text="真正原文二", translation="真正翻譯二"),
+        ]),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "錯誤 OCR 一", "x": 17, "y": 21, "w": 40, "h": 16},
+        {"text": "錯誤 OCR 二", "x": 117, "y": 61, "w": 50, "h": 18},
+    ]))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[
+            ["真正翻譯一", 17, 21, 40, 16],
+            ["真正翻譯二", 117, 61, 50, 18],
+        ]]
+        hints = provider.interpret_regions.call_args.args[1]
+        assert hints == [
+            {"id": 0, "x": 10, "y": 10, "w": 40, "h": 16, "text": ""},
+            {"id": 1, "x": 110, "y": 50, "w": 50, "h": 18, "text": ""},
+        ]
+        worker.build_local_vision_image_parts.assert_called_once_with(image, hints)
+        assert worker.last_combined_text == "真正原文一\n真正原文二"
+        assert any(
+            event.detail == "translation_fullscreen_geometry_vision_completed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
+
+def test_fullscreen_geometry_hint_vision_remaps_local_batch_ids(monkeypatch, qtbot):
+    image = np.zeros((120, 240, 3), dtype=np.uint8)
+
+    next_result = [0]
+
+    def interpret_regions(_image_parts, hints, **_kwargs):
+        results = []
+        for hint in hints:
+            result_index = next_result[0]
+            next_result[0] += 1
+            results.append(SimpleNamespace(
+                id=hint["id"],
+                source_text=f"source-{result_index}",
+                translation=f"translation-{result_index}",
+                confidence=0.9,
+            ))
+        return results
+
+    provider = SimpleNamespace(available=lambda: True, interpret_regions=Mock(side_effect=interpret_regions))
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(120, [
+        {"text": f"bad OCR {index}", "x": index * 40, "y": 10, "w": 30, "h": 14}
+        for index in range(5)
+    ]))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[
+            [f"translation-{index}", index * 40, 10, 30, 14]
+            for index in range(5)
+        ]]
+        assert provider.interpret_regions.call_count == 2
+        assert [hint["id"] for hint in provider.interpret_regions.call_args_list[0].args[1]] == [0, 1, 2, 3]
+        assert [hint["id"] for hint in provider.interpret_regions.call_args_list[1].args[1]] == [0]
+    finally:
+        worker.cleanup()
+
+def test_fullscreen_geometry_hint_vision_falls_back_to_single_regions_on_schema_failure(monkeypatch, qtbot):
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    single_result = [0]
+
+    def interpret_regions(_image_parts, hints, **_kwargs):
+        if len(hints) > 1:
+            raise ValueError("Response contains a duplicate region id.")
+        result_index = single_result[0]
+        single_result[0] += 1
+        return [SimpleNamespace(
+            id=0,
+            source_text=f"source-{result_index}",
+            translation=f"translation-{result_index}",
+            confidence=0.9,
+        )]
+
+    provider = SimpleNamespace(
+        available=lambda: True,
+        interpret_regions=Mock(side_effect=interpret_regions),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "bad OCR 0", "x": 10, "y": 10, "w": 40, "h": 16},
+        {"text": "bad OCR 1", "x": 110, "y": 50, "w": 50, "h": 18},
+    ]))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[
+            ["translation-0", 10, 10, 40, 16],
+            ["translation-1", 110, 50, 50, 18],
+        ]]
+        assert provider.interpret_regions.call_count == 3
+        assert any(
+            event.detail == "translation_fullscreen_geometry_vision_completed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
+
+
 def test_fullscreen_local_vision_first_success_skips_ocr(monkeypatch, qtbot):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     worker = OCRWorker()

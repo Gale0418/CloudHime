@@ -245,6 +245,11 @@ class ProductPathLocalSession:
         scan_mode = str(condition.get("scan_mode", "region")).strip().lower()
         if scan_mode not in {"region", "fullscreen"}:
             raise ValueError("condition scan_mode must be region or fullscreen")
+        geometry_hints = condition.get("geometry_hints", False)
+        if not isinstance(geometry_hints, bool):
+            raise ValueError("condition geometry_hints must be boolean")
+        if geometry_hints and scan_mode != "fullscreen":
+            raise ValueError("condition geometry_hints requires fullscreen scan mode")
         return {
             "route": route,
             "runtime_profile": "text" if route == "baseline" else "vision",
@@ -255,6 +260,7 @@ class ProductPathLocalSession:
             "repeat_penalty": float(repeat_penalty),
             "vision_image_max_width": vision_image_max_width,
             "scan_mode": scan_mode,
+            "geometry_hints": geometry_hints,
         }
 
     @staticmethod
@@ -315,7 +321,11 @@ class ProductPathLocalSession:
             worker.scan_mode = condition["scan_mode"]
             worker.region_render_mode = "bubble"
 
-            chain = ["windows"] if condition["route"] == "baseline" else []
+            worker._local_fullscreen_geometry_hint_mode = bool(condition.get("geometry_hints", False))
+            chain = ["windows"] if (
+                condition["route"] == "baseline"
+                or bool(condition.get("geometry_hints", False))
+            ) else []
             reload_backends = getattr(worker, "reload_ocr_backends", None)
             if callable(reload_backends):
                 reload_backends(chain, log=False)

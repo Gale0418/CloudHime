@@ -233,6 +233,20 @@ def test_fullscreen_vision_observation_marks_ocr_source_unavailable():
     assert observation["source_available"] is False
 
 
+def test_geometry_hint_candidate_keeps_ocr_backend_but_marks_hint_only_mode():
+    worker = FakeWorker()
+    session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)
+
+    session.start_cold(_condition(
+        route="candidate",
+        scan_mode="fullscreen",
+        geometry_hints=True,
+    ))
+
+    assert worker.ocr_backend_chain == ["windows"]
+    assert worker._local_fullscreen_geometry_hint_mode is True
+    assert worker.local_multimodal_enabled is True
+
 def test_local_vision_width_experiment_is_applied_without_changing_default():
     worker = FakeWorker()
     session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)

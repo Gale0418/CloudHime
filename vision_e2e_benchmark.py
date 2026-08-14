@@ -56,7 +56,7 @@ FIXED_CONDITION_FIELDS = (
 IDENTITY_FIELDS = frozenset({
     "condition_id", "condition", "name", "route", "route_id", "runtime_profile",
 })
-OPTIONAL_CONDITION_FIELDS = frozenset({"vision_image_max_width", "scan_mode"})
+OPTIONAL_CONDITION_FIELDS = frozenset({"vision_image_max_width", "scan_mode", "geometry_hints"})
 ALLOWED_CONDITION_FIELDS = (
     frozenset(FIXED_CONDITION_FIELDS)
     | IDENTITY_FIELDS
@@ -249,6 +249,12 @@ def condition_fingerprint(condition: Mapping[str, Any]) -> str:
                 "condition field 'vision_image_max_width' must be an integer "
                 "between 640 and 1536"
             )
+    if "geometry_hints" in clean:
+        value = clean["geometry_hints"]
+        if not isinstance(value, bool):
+            raise ValueError("condition field 'geometry_hints' must be boolean")
+        if value and str(clean.get("scan_mode", "")).strip().lower() != "fullscreen":
+            raise ValueError("condition field 'geometry_hints' requires fullscreen scan mode")
     if "scan_mode" in clean:
         value = clean["scan_mode"]
         if not isinstance(value, str) or value.strip().lower() not in {"region", "fullscreen"}:
