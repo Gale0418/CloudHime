@@ -20,6 +20,7 @@ from vision_smoke_benchmark import (
     percentile,
     score_match,
     expected_variants,
+    summarize_rescue_quality,
 )
 
 
@@ -455,3 +456,40 @@ def test_unicode_path_loader_uses_path_bytes_and_cv2_imdecode(monkeypatch):
 
     assert benchmark._load_color_image(FakePath()) == "pixels"
     assert received == {"payload": b"encoded-image", "flags": cv2.IMREAD_COLOR}
+
+
+def test_summarize_rescue_quality_compares_final_output_to_baseline() -> None:
+    summary = summarize_rescue_quality(
+        [
+            {"sample_source": "improved", "baseline_match_score": 0.4, "match_score": 0.8},
+            {"sample_source": "equal", "baseline_match_score": 0.7, "match_score": 0.7},
+            {"sample_source": "regressed", "baseline_match_score": 0.9, "match_score": 0.6},
+        ]
+    )
+
+    assert summary["compared_cases"] == 3
+    assert summary["improved_cases"] == 1
+    assert summary["equal_cases"] == 1
+    assert summary["regressed_cases"] == 1
+    assert summary["regressions"] == [
+        {
+            "sample_source": "regressed",
+            "baseline_match_score": 0.9,
+            "match_score": 0.6,
+            "delta": -0.30000000000000004,
+        }
+    ]
+
+
+def test_require_rescue_no_regression_is_a_fail_closed_cli_gate(monkeypatch, capsys) -> None:
+    result = {
+        "image_count": 1,
+        "case_count": 1,
+        "successful_images": 1,
+        "successful_cases": 1,
+        "rescue_quality_gate_passed": False,
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: result)
+
+    assert benchmark.main(["--json", "--japanese-rescue", "--require-rescue-no-regression"]) == 1
+    assert json.loads(capsys.readouterr().out)["rescue_quality_gate_passed"] is False

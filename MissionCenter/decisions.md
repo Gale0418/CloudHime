@@ -1073,3 +1073,12 @@
 - 判定：問題不是 source-aware evaluator 誤判，也不是單一 resize／prompt 可修復的 production correctness bug；目前 4B Vision 對此頁型仍是能力上限候選。不得把單案猜測轉成全域 heuristic；paired candidate regression 與 `promotion_gate=false` 保留。
 - 後續：取得更多可信人工標註後，優先評估更強本地多模態模型或 bounded region／reading-order pipeline；在此之前不新增每頁多次 Vision retry，以免把平均延遲直接推高。
 - 證據檔：`artifacts/baseline-20260702-diagnostic.json`、`artifacts/vision-20260702-preprocess-diagnostic.json`、`artifacts/transcribe-20260702-preprocess-diagnostic.json`、`artifacts/transcribe-translate-20260702-diagnostic.json`、`artifacts/transcribe-translate-20260702-prompt-diagnostic.json`、`artifacts/transcribe-20260702-contrast-diagnostic.json`。
+
+## 2026-08-14：Japanese rescue final-output per-case quality gate
+
+- 先前 12-case owner-confirmed GPU rescue 的平均分數有改善，但只看平均值不足以證明準確度不退化；`shadow` 候選與最終採用 `actual` 不是同一個東西，gate 必須比較 `baseline_match_score` 與最終 `match_score`。
+- TDD：新增 `summarize_rescue_quality()` regression，涵蓋 improved／equal／regressed 與詳細 delta；新增 `--require-rescue-no-regression` CLI fail-closed contract。初始 collection RED（helper 尚不存在），修正後 targeted `2 passed`。
+- 受影響 benchmark module 以 `QT_QPA_PLATFORM=offscreen`、專案隔離 basetemp 執行：`22 passed in 0.82s`；compileall exit `0`；`git diff --check` Pass。
+- 真 GPU command：`vision_smoke_benchmark.py records/private/.private_japanese_subtitle_owner_confirmed_vision_manifest.json --max-cases 12 --timeout 120 --startup-timeout 240 --require-gpu --prompt-mode japanese_ocr --japanese-rescue --require-complete --require-rescue-no-regression --json`，exit `0`。
+- 結果：runtime=`gpu`、12/12 cases、final average `0.6455719475`、baseline average `0.3788959092`、improved `6`、equal `6`、regressed `0`、rescue triggered `7`、adopted `6`、平均 `4035.305ms`、p95 `6136.203ms`。這是此 locked 12-case subset 的現況證據，不是完整漫畫 holdout，也不是速度 promotion。
+- 邊界：CH-T35 仍維持 In Progress；下一步仍需完整漫畫／更多可信人工標註，且 rescue 二次請求讓速度明顯變慢，不能因 gate 綠燈就全域開啟。
