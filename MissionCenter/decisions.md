@@ -1015,3 +1015,11 @@
 - 另一次同條件 portrait gate harness：exact `5/12`、平均 match `0.684431`、平均 latency `4041.203 ms`、7/7 adopted；兩次均顯示品質提升但 rescue 約增加 1.8 秒，故只作 opt-in quality path，不宣稱速度 promotion。
 - Gemini bridge 只讀 review：建議保留此最小變更；主要風險是 `0.70-0.75` 對其他頁型 under-coverage／overfitting，下一步應以新圖片做 `0.60-0.80` 比例 holdout，觀察 recall 與 false adoption。
 - 邊界：本輪沒有擴充 ground truth，也沒有把公開／未標註漫畫當答案；未完成完整漫畫 quality gate、其他硬體、Store、WACK、clean-machine。Vision benchmark test module 另有 16 passed、4 個既有 `tmp_path` ACL errors，非 assertion failure；compileall 與 diff-check 均 Pass。
+## 2026-08-14：Japanese rescue portrait coverage expansion
+
+- 覆蓋診斷：只讀盤點 `example` 內 113 張圖片的尺寸；目前 `0.70-0.75` portrait gate 覆蓋 47 張，另有 19 張落在 `0.60-0.80` 但被漏掉，另有 32 張 middle、9 張 wide、6 張過窄。這是幾何 coverage，不把未標註圖片當 ground truth。
+- 目視抽樣確認漏掉的頁型包含真正日文漫畫：`1168x1899` aspect `0.6151` 多格頁、`704x928` aspect `0.7586` 漫畫封面、`450x586` aspect `0.7679` 漫畫封面；因此原本 `0.70-0.75` 是 under-coverage，而非穩健的全漫畫比例。
+- TDD：先加入四種實際 example 比例測試，RED `3 failed, 7 passed`；將 portrait window 擴為 `0.60-0.80` 後，rescue／worker targeted `16 passed in 0.88s`，並新增 inclusive `0.60`／`0.80` 與 `<0.60`／`>0.80` boundary regression。寬字幕、方形、過窄、非日文拒絕仍保留。
+- 正式 production GPU smoke：同一 owner-confirmed 12-case manifest、preferred managed assets、`gemma-3-4b-it`、GPU、`japanese_ocr`、`japanese_rescue=true`；`10/10` images、`12/12` cases、exact `5/12`、平均 match `0.695572`、平均 latency `4146.920 ms`、p95 `6203.128 ms`；7 張觸發、6 張採用、1 張安全 fallback。與上一輪 `0.70-0.75` 結果品質一致，未出現新的採用退化。
+- Gemini bridge `GEMINI_ASPECT_COVERAGE_REVIEW_20260814`／follow-up：建議此數值擴張作為最小 production change；主要風險是非漫畫直式圖的無效二次推理與延遲浪費，不是已觀察到的品質退化。此 rescue 仍由 opt-in 設定控制，候選需經 confidence／similarity verification，失敗回 baseline。
+- 邊界：尚未有新比例頁型的可信人工標註，因此沒有宣稱完整漫畫 holdout 或 false-adoption 已通過；下一步需建立 `0.60-0.80` 新頁型 owner-confirmed holdout。compileall／git diff --check Pass；未宣稱 Store／WACK／clean-machine 完成。
