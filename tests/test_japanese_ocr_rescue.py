@@ -30,8 +30,12 @@ def test_rescue_gate_accepts_manga_portrait_but_rejects_non_japanese_or_too_narr
         image_width=1124,
         image_height=1600,
     )
-    assert not rescue_gate("合輯 - 空の境界 YouTube", image_width=617, image_height=95)
+    assert not rescue_gate("YouTube subtitle", image_width=617, image_height=95)
     assert not rescue_gate("ツーポイントミュージアム", image_width=292, image_height=800)
+
+
+def test_rescue_gate_rejects_low_kana_japanese_text() -> None:
+    assert not rescue_gate("日本語 ABC", image_width=617, image_height=95)
 
 
 @pytest.mark.parametrize(
