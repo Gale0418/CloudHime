@@ -954,3 +954,13 @@
 - TDD：先把既有 OCR sampling regression 改為期待 `1.15`，確認 RED：`1 failed in 1.03s`；再修改 `translation_providers.py` 常數，targeted provider suite `23 passed in 0.75s`。
 - 決策：將 `1.15` 作為 local multimodal OCR 的正式預設；translation sampling、remote provider、UI 與 OCR hint gate 不變。這是 bounded smoke evidence，不是完整漫畫 ground truth，也不宣稱全域最佳；後續仍需 owner-confirmed paired quality gate。
 - 邊界：本輪未執行完整 CI test groups、clean-machine、Store submission、WACK；GPU smoke 結束後未觀察到本輪新增的 server 殘留。
+
+## 2026-08-14：Local screenshot OCR strict prompt promotion
+
+- 動機：上一輪已將 local multimodal OCR repeat penalty 固定為 `1.15`；本輪在完整 25-case seed 上比較 screenshot transcription prompt，避免只對 6 張漫畫封面調參。
+- 受控比較：同一 preferred managed GGUF／mmproj、`gemma-3-4b-it`、llama-server GPU、context 4096、同一 25-case／7 unique images；baseline 與 strict 只改 OCR prompt。baseline 為 21/25 exact line、avg score `0.949209`、avg latency `1464.991 ms`；strict 同為 21/25、avg score `0.985070`、avg latency `1549.559 ms`，兩者均 25/25 successful。
+- TDD：新增 default prompt regression，先確認 RED：`1 failed`（舊 literal 沒有 strict directives）；修正後 provider suite `24 passed in 0.83s`，管理員權限受影響集合 `261 passed in 5.73s`。
+- 修正：`LocalMultimodalProvider.transcribe_screenshot()` 使用明確的 `LOCAL_MULTIMODAL_DEFAULT_OCR_PROMPT`；顯式 `ocr_prompt` override 保持不變。只改 local screenshot OCR，`interpret_regions()`、Google／remote Gemma provider、翻譯 prompt 與 UI 行為不變。
+- 改後 production default GPU smoke：`25/25` successful、`21/25` exact line、avg score `0.985070`、avg latency `1545.668 ms`、p95 `2921.919 ms`、7/7 images，無 error。這是 seed／bounded evidence，不是 owner-confirmed 漫畫品質 promotion，也不宣稱全域最佳。
+- Gemini bridge 只讀審查：確認 prompt scope 隔離、override 不受影響；其提出同步 remote prompt 的建議依既定「remote 行為不改」限制不採用。
+- 邊界：完整 CI groups、clean-machine、Store／WACK 與新 owner-confirmed ground truth 未於本輪重跑；GPU smoke 結束後未觀察到新增 server residual。

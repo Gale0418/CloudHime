@@ -62,6 +62,15 @@ TRANSLATION_CACHE_LIMIT = 512
 LOCAL_MULTIMODAL_BATCH_SIZE = 4
 LOCAL_MULTIMODAL_OCR_TEMPERATURE = 0.1
 LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY = 1.15
+LOCAL_MULTIMODAL_DEFAULT_OCR_PROMPT = (
+    "You are a meticulous OCR engine.\n"
+    "Transcribe every visible text line exactly as it appears in the image.\n"
+    "Do not translate, summarize, correct, complete, or infer text.\n"
+    "Preserve the original line order, line breaks, punctuation, capitalization, Latin letters, "
+    "and Japanese hiragana, katakana, and kanji.\n"
+    "Copy uncertain characters as seen instead of substituting a likely word.\n"
+    "Return plain OCR text only, with no explanation."
+)
 
 LOCAL_RUNTIME_METRIC_KEYS = frozenset({
     "prompt_tokens",
@@ -1390,7 +1399,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             raise ValueError("local_multimodal_unavailable")
         if not image_parts:
             raise ValueError("missing_image_context")
-        prompt = (ocr_prompt or "").strip() or "You are an OCR engine. Read every visible line exactly as it appears. Return plain text only."
+        prompt = (ocr_prompt or "").strip() or LOCAL_MULTIMODAL_DEFAULT_OCR_PROMPT
         if source_text_hint:
             prompt += (
                 "\n\nThe OCR hint below may contain recognition errors. "

@@ -395,6 +395,22 @@ def test_transcribe_screenshot_accepts_ocr_prompt_override() -> None:
     assert captured["prompt"] == "STRICT OCR"
 
 
+def test_transcribe_screenshot_default_prompt_is_strict_ocr():
+    provider = make_provider()
+    captured = {}
+
+    def fake_request(payload):
+        captured["prompt"] = payload["messages"][0]["content"][0]["text"]
+        return "OCR result"
+
+    provider._request_chat_completion = fake_request
+    provider.transcribe_screenshot(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}]
+    )
+
+    assert "Do not translate, summarize, correct, complete, or infer text." in captured["prompt"]
+    assert "Preserve the original line order, line breaks, punctuation" in captured["prompt"]
+
 def test_transcribe_screenshot_uses_ocr_sampling_profile():
     provider = make_provider()
     payloads = []
