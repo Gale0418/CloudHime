@@ -53,8 +53,36 @@ OCR_PROMPTS = {
 
 
 
-def load_cases(manifest_path: str | Path, *, max_cases: int | None = None) -> list[dict[str, Any]]:
+def load_manifest(manifest_path: str | Path) -> dict[str, Any]:
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("vision smoke manifest must be a JSON object")
+    evaluation_mode = str(manifest.get("evaluation_mode") or "quality")
+    if evaluation_mode == "technical_coverage":
+        for index, case in enumerate(manifest.get("cases", [])):
+            if not isinstance(case, dict):
+                raise ValueError(f"technical coverage case {index} must be an object")
+            if "expected" in case or "visible_text_anchors" in case:
+                raise ValueError(
+                    "technical coverage manifests must not contain expected text or visible_text_anchors"
+                )
+    return manifest
+
+
+def quality_basis_for_results(results: Sequence[Mapping[str, Any]]) -> str:
+    scored_count = sum(bool(result.get("quality_scored", True)) for result in results)
+    if scored_count == 0:
+        return "coverage_only"
+    if scored_count == len(results):
+        return "ground_truth"
+    return "mixed"
+
+
+def optional_mean(values: Sequence[float]) -> float | None:
+    return mean(values) if values else None
+
+def load_cases(manifest_path: str | Path, *, max_cases: int | None = None) -> list[dict[str, Any]]:
+    manifest = load_manifest(manifest_path)
     cases = [
         case
         for case in manifest.get("cases", [])
@@ -163,12 +191,13 @@ def percentile(values: Sequence[float], quantile: float = 0.95) -> float:
 
 
 def summarize_rescue_quality(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Compare the final adopted output with the same-case baseline."""
+    """Compare final output only for cases with human ground truth."""
 
+    scored_results = [result for result in results if bool(result.get("quality_scored", True))]
     improved_cases = 0
     equal_cases = 0
     regressions: list[dict[str, Any]] = []
-    for result in results:
+    for result in scored_results:
         baseline_score = float(result["baseline_match_score"])
         final_score = float(result["match_score"])
         delta = final_score - baseline_score
@@ -186,7 +215,9 @@ def summarize_rescue_quality(results: Sequence[Mapping[str, Any]]) -> dict[str, 
         else:
             equal_cases += 1
     return {
-        "compared_cases": len(results),
+        "compared_cases": len(scored_results),
+        "quality_scored_cases": len(scored_results),
+        "quality_basis": quality_basis_for_results(results),
         "improved_cases": improved_cases,
         "equal_cases": equal_cases,
         "regressed_cases": len(regressions),
@@ -195,18 +226,26 @@ def summarize_rescue_quality(results: Sequence[Mapping[str, Any]]) -> dict[str, 
 
 
 def evaluate_rescue_quality_gate(
-    results: Sequence[Mapping[str, Any]], *, complete: bool, enabled: bool
+    results: Sequence[Mapping[str, Any]],
+    *,
+    complete: bool,
+    enabled: bool,
+    ground_truth_complete: bool = True,
 ) -> dict[str, Any]:
-    """Require both no regressions and a complete run when the gate is enabled."""
+    """Require complete, fully labelled results before a rescue quality pass."""
 
     summary = summarize_rescue_quality(results)
     summary["complete"] = bool(complete)
+    summary["ground_truth_complete"] = bool(ground_truth_complete)
     summary["passed"] = (
         not enabled
-        or (bool(complete) and summary["regressed_cases"] == 0)
+        or (
+            bool(complete)
+            and bool(ground_truth_complete)
+            and summary["regressed_cases"] == 0
+        )
     )
     return summary
-
 
 def case_image_source(case: dict[str, Any]) -> str:
     return str(case.get("sample_source") or case.get("image") or "")
@@ -243,6 +282,8 @@ def run_smoke(
     if require_gpu and effective_gpu_layers <= 0:
         raise ValueError("require_gpu needs gpu_layers > 0")
 
+    manifest = load_manifest(manifest_path)
+    evaluation_mode = str(manifest.get("evaluation_mode") or "quality")
     cases = load_cases(manifest_path, max_cases=max_cases)
     if not cases:
         raise ValueError("vision smoke benchmark needs at least one sample_source case")
@@ -441,18 +482,22 @@ def run_smoke(
                 }
             )
             for case in image_cases:
+                expected = expected_variants(case)
+                quality_scored = bool(expected)
                 results.append(
                     {
                         "category": case.get("category", ""),
                         "sample_source": sample_source,
-                        "expected": expected_variants(case),
+                        "expected": expected,
+                        "quality_scored": quality_scored,
+                        "quality_basis": "ground_truth" if quality_scored else "coverage_only",
                         "baseline_actual": rescue_baseline,
-                        "baseline_match_score": score_match(rescue_baseline, case),
+                        "baseline_match_score": score_match(rescue_baseline, case) if quality_scored else None,
                         "shadow_actual": rescue_shadow_actual,
-                        "shadow_match_score": score_match(rescue_shadow_actual, case),
+                        "shadow_match_score": score_match(rescue_shadow_actual, case) if quality_scored else None,
                         "actual": actual,
-                        "line_match": line_match(actual, case),
-                        "match_score": score_match(actual, case),
+                        "line_match": line_match(actual, case) if quality_scored else None,
+                        "match_score": score_match(actual, case) if quality_scored else None,
                         "latency_ms": latency_ms,
                         "error": error,
                         "rescue_error": rescue_error,
@@ -476,8 +521,12 @@ def run_smoke(
     meiki_latencies = [float(result["meiki_ms"]) for result in image_results]
     rescue_latencies = [float(result["rescue_request_ms"]) for result in image_results]
     successful_cases = [result for result in results if result["actual"] and not result["error"]]
-    baseline_match_scores = [float(result["baseline_match_score"]) for result in results]
-    shadow_match_scores = [float(result["shadow_match_score"]) for result in results]
+    successful_images = [result for result in image_results if result["actual"] and not result["error"]]
+    request_success_cases = [result for result in results if not result["error"]]
+    request_success_images = [result for result in image_results if not result["error"]]
+    quality_scored_results = [result for result in results if bool(result.get("quality_scored", True))]
+    baseline_match_scores = [float(result["baseline_match_score"]) for result in quality_scored_results]
+    shadow_match_scores = [float(result["shadow_match_score"]) for result in quality_scored_results]
     shadow_improved_cases = sum(
         shadow > baseline
         for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
@@ -490,20 +539,29 @@ def run_smoke(
         shadow < baseline
         for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
     )
-    successful_images = [result for result in image_results if result["actual"] and not result["error"]]
     runtime_mode = "cpu" if force_cpu else state.mode
     complete = (
         len(successful_images) == len(image_results)
         and len(successful_cases) == len(results)
     )
+    ground_truth_complete = (
+        len(quality_scored_results) == len(results)
+        and bool(results)
+    )
+    quality_basis = quality_basis_for_results(results)
     rescue_quality = evaluate_rescue_quality_gate(
         results,
         complete=complete,
         enabled=japanese_rescue,
+        ground_truth_complete=ground_truth_complete,
     )
     rescue_quality_gate_passed = bool(rescue_quality["passed"])
     return {
         "manifest": str(manifest_path),
+        "evaluation_mode": evaluation_mode,
+        "quality_basis": quality_basis,
+        "ground_truth_case_count": len(quality_scored_results),
+        "ground_truth_complete": ground_truth_complete,
         "model": model_name,
         "runtime_mode": runtime_mode,
         "gpu_layers": effective_gpu_layers,
@@ -518,11 +576,15 @@ def run_smoke(
         "case_count": len(results),
         "successful_images": len(successful_images),
         "successful_cases": len(successful_cases),
-        "line_match_cases": sum(float(result["line_match"]) for result in results),
-        "average_line_match": mean(float(result["line_match"]) for result in results),
-        "average_match_score": mean(float(result["match_score"]) for result in results),
-        "baseline_average_match_score": mean(baseline_match_scores),
-        "shadow_average_match_score": mean(shadow_match_scores),
+        "request_success_images": len(request_success_images),
+        "request_success_cases": len(request_success_cases),
+        "nonempty_images": len(successful_images),
+        "nonempty_cases": len(successful_cases),
+        "line_match_cases": sum(float(result["line_match"]) for result in quality_scored_results),
+        "average_line_match": optional_mean([float(result["line_match"]) for result in quality_scored_results]),
+        "average_match_score": optional_mean([float(result["match_score"]) for result in quality_scored_results]),
+        "baseline_average_match_score": optional_mean(baseline_match_scores),
+        "shadow_average_match_score": optional_mean(shadow_match_scores),
         "shadow_improved_cases": shadow_improved_cases,
         "shadow_equal_cases": shadow_equal_cases,
         "shadow_regressed_cases": shadow_regressed_cases,
@@ -570,6 +632,19 @@ def _is_complete(result: dict[str, Any]) -> bool:
     )
 
 
+def _is_technical_coverage_complete(result: Mapping[str, Any]) -> bool:
+    return (
+        str(result.get("evaluation_mode") or "") == "technical_coverage"
+        and int(result.get("request_success_images", 0)) == int(result.get("image_count", 0))
+        and int(result.get("request_success_cases", 0)) == int(result.get("case_count", 0))
+    )
+
+
+def _format_optional_score(value: Any, *, digits: int = 3) -> str:
+    if value is None:
+        return "n/a"
+    return f"{float(value):.{digits}f}"
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CloudHime local Gemma 3 image OCR smoke benchmark")
     parser.add_argument("manifest", nargs="?", default=str(DEFAULT_MANIFEST))
@@ -585,6 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ocr-hint", action="store_true")
     parser.add_argument("--japanese-rescue", action="store_true")
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--require-technical-coverage", action="store_true")
     parser.add_argument("--require-rescue-no-regression", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
@@ -607,23 +683,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         japanese_rescue=args.japanese_rescue,
     )
     _configure_stdout_for_unicode()
+    complete_ok = not args.require_complete or _is_complete(result)
+    technical_ok = (
+        not args.require_technical_coverage
+        or _is_technical_coverage_complete(result)
+    )
+    rescue_ok = (
+        not args.require_rescue_no_regression
+        or bool(result.get("rescue_quality_gate_passed"))
+    )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        complete_ok = not args.require_complete or _is_complete(result)
-        rescue_ok = (
-            not args.require_rescue_no_regression
-            or bool(result.get("rescue_quality_gate_passed"))
-        )
-        return 0 if complete_ok and rescue_ok else 1
+        return 0 if complete_ok and technical_ok and rescue_ok else 1
 
+    quality_case_count = int(result["ground_truth_case_count"])
+    quality_line_match = (
+        "n/a"
+        if quality_case_count == 0
+        else f"{result['line_match_cases']:.0f}/{quality_case_count}"
+    )
     print(
         "Vision Smoke Summary: "
         f"mode={result['runtime_mode']} images={result['image_count']} cases={result['case_count']} "
-        f"success={result['successful_cases']} startup_ms={result['startup_ms']:.1f} "
-        f"line_match={result['line_match_cases']:.0f}/{result['case_count']} "
+        f"success={result['successful_cases']} request_success={result['request_success_cases']} "
+        f"quality={result['quality_basis']} line_match={quality_line_match} "
+        f"startup_ms={result['startup_ms']:.1f} "
         f"scale={result['small_image_scale']:.1f} "
         f"prompt={result['prompt_mode']} "
-        f"avg_match={result['average_match_score']:.3f} "
+        f"avg_match={_format_optional_score(result['average_match_score'])} "
         f"avg_latency_ms={result['average_latency_ms']:.1f} p95_latency_ms={result['p95_latency_ms']:.1f} "
         f"stages_ms=hint:{result['average_hint_ms']:.1f},encode:{result['average_image_encode_ms']:.1f},"
         f"model:{result['average_model_request_ms']:.1f},post:{result['average_postprocess_ms']:.1f},"
@@ -631,18 +718,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"rescued={result['rescue_adopted_images']}/{result['image_count']}"
     )
     for item in result["results"]:
+        item_line_match = _format_optional_score(item["line_match"], digits=0)
+        item_match_score = _format_optional_score(item["match_score"])
         print(
             f"- category={item['category']} source={item['sample_source']} "
-            f"line_match={item['line_match']:.0f} match={item['match_score']:.3f} "
+            f"line_match={item_line_match} match={item_match_score} "
             f"latency_ms={item['latency_ms']:.1f} actual={item['actual'] or item['error']}"
         )
-    complete_ok = not args.require_complete or _is_complete(result)
-    rescue_ok = (
-        not args.require_rescue_no_regression
-        or bool(result.get("rescue_quality_gate_passed"))
-    )
-    return 0 if complete_ok and rescue_ok else 1
-
+    return 0 if complete_ok and technical_ok and rescue_ok else 1
 
 if __name__ == "__main__":
     raise SystemExit(main())

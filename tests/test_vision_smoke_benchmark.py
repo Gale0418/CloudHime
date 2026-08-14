@@ -111,10 +111,114 @@ def test_parser_exposes_optional_japanese_rescue() -> None:
     assert args.require_complete is False
 
 
+
+def test_parser_exposes_technical_coverage_gate() -> None:
+    args = build_parser().parse_args(["--require-technical-coverage"])
+
+    assert args.require_technical_coverage is True
+
+
+def test_require_technical_coverage_accepts_empty_output_without_quality_claim(monkeypatch, capsys) -> None:
+    result = {
+        "evaluation_mode": "technical_coverage",
+        "image_count": 1,
+        "case_count": 1,
+        "successful_images": 0,
+        "successful_cases": 0,
+        "request_success_images": 1,
+        "request_success_cases": 1,
+        "quality_basis": "coverage_only",
+    }
+    monkeypatch.setattr(benchmark, "run_smoke", lambda *args, **kwargs: result)
+
+    assert benchmark.main(["--json", "--require-technical-coverage"]) == 0
+    assert json.loads(capsys.readouterr().out)["quality_basis"] == "coverage_only"
+
 def test_parser_exposes_require_complete() -> None:
     args = build_parser().parse_args(["--require-complete"])
 
     assert args.require_complete is True
+
+
+def test_heavy_knight_coverage_manifest_has_no_quality_targets() -> None:
+    manifest = benchmark.load_manifest(
+        PROJECT_ROOT / "benchmarks" / "tensei_heavy_knight_coverage_smoke.json"
+    )
+
+    assert manifest["evaluation_mode"] == "technical_coverage"
+    assert len(manifest["cases"]) == 38
+    assert all("expected" not in case for case in manifest["cases"])
+    assert all("visible_text_anchors" not in case for case in manifest["cases"])
+    assert all(case["sha256"] for case in manifest["cases"])
+
+def test_technical_manifest_rejects_embedded_ground_truth(tmp_path) -> None:
+    manifest_path = tmp_path / "technical.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "evaluation_mode": "technical_coverage",
+                "cases": [{"sample_source": "sample.png", "expected": "不要猜"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must not contain expected text"):
+        benchmark.load_manifest(manifest_path)
+
+def test_run_smoke_marks_path_only_cases_as_coverage_not_accuracy(monkeypatch, tmp_path) -> None:
+    image_path = tmp_path / "sample.png"
+    assert cv2.imwrite(str(image_path), np.zeros((95, 617, 3), dtype=np.uint8))
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"cases": [{"sample_source": "sample.png", "category": "coverage_only"}]}),
+        encoding="utf-8",
+    )
+
+    class FakeVisionRuntime:
+        def __init__(self, *args, **kwargs):
+            self.state = SimpleNamespace(name="ready", detail="", mode="cpu", base_url="http://vision")
+
+        def start(self):
+            return self.state
+
+        def stop(self):
+            pass
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            pass
+
+        def transcribe_screenshot(self, parts, **kwargs):
+            return SimpleNamespace(text="讀到的內容")
+
+    monkeypatch.setattr(benchmark, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(benchmark, "LocalVisionRuntime", FakeVisionRuntime)
+    monkeypatch.setattr(benchmark, "LocalMultimodalProvider", FakeProvider)
+
+    result = benchmark.run_smoke(manifest_path, max_cases=1)
+
+    assert result["image_count"] == 1
+    assert result["successful_images"] == 1
+    assert result["quality_basis"] == "coverage_only"
+    assert result["ground_truth_case_count"] == 0
+    assert result["ground_truth_complete"] is False
+    assert result["average_match_score"] is None
+    assert result["results"][0]["quality_scored"] is False
+    assert result["results"][0]["match_score"] is None
+
+
+def test_rescue_quality_gate_rejects_unscored_coverage() -> None:
+    summary = evaluate_rescue_quality_gate(
+        [{"sample_source": "coverage", "quality_scored": False}],
+        complete=True,
+        enabled=True,
+        ground_truth_complete=False,
+    )
+
+    assert summary["quality_basis"] == "coverage_only"
+    assert summary["quality_scored_cases"] == 0
+    assert summary["passed"] is False
 
 
 def test_japanese_rescue_uses_runtime_lifecycle_without_network(monkeypatch, tmp_path) -> None:
