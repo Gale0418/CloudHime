@@ -183,3 +183,11 @@
 - Final worktree GPU rerun completed with the existing locked 4-case manifest: baseline quality `0.1957581248`, candidate quality `0.3057910587`, baseline nonempty `0.75`, candidate nonempty `1.0`, per-case regressions `0`, promotion gate `true`.
 - Per-case final deltas: contract `+0.0912110974`, game stream `+0.2923057764`, vertical short manga `0`, Marchen Crown `+0.0566148619`.
 - Final speed evidence: baseline total average `2790.92 ms`, candidate `10978.13 ms`; accuracy is promoted for this locked corpus, speed is explicitly not promoted. Final evidence file: `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-crop-grid-final-after-unreliable-guard.json`.
+## 2026-08-14 - No-OCR grid direct translation speed slice
+
+- Scope: CH-E9 performance follow-up after the accuracy gate. Only the no-OCR 2x2 grid may try direct `translate_screenshot`; an empty/error response falls back to the existing transcription -> text translation route. OCR-backed crop Vision is unchanged.
+- Regression coverage: `test_fullscreen_grid_direct_translate_avoids_transcription_round_trip` proves direct mode uses one request per tile and preserves the old route when the flag is off; candidate adapter explicitly controls the mode.
+- GPU game single-case experiment: candidate quality `0.2973055252`, nonempty `1.0`, promotion gate `true`, candidate total average `11123.48 ms`; prior grid route was about `19096.75 ms`. This is an accuracy-preserving speed improvement for the no-OCR game case.
+- Final locked 4-case GPU paired run with candidate condition enabled and no environment override: baseline quality `0.1957581248`, candidate `0.3023028235`, baseline nonempty `0.75`, candidate `1.0`, regressions `0`, promotion gate `true`. Per-case delta: contract `+0.0889230222`, game `+0.2982899386`, vertical short manga `0`, Marchen Crown `+0.0389658339`.
+- Final speed comparison: baseline total average `2781.17 ms`, candidate `8886.87 ms`, candidate translation `7077.14 ms`; approximately 19% faster than the previous candidate route, but still not a speed promotion against baseline.
+- Evidence: `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-grid-game-direct-translate-experiment.json`, `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-crop-grid-final-direct-grid-condition.json`. No Store/WACK/clean-machine claim is made.

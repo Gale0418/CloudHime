@@ -323,6 +323,7 @@ class ProductPathLocalSession:
 
             worker._local_fullscreen_geometry_hint_mode = bool(condition.get("geometry_hints", False))
             worker._local_fullscreen_crop_vision_mode = bool(condition.get("geometry_hints", False))
+            worker._local_fullscreen_grid_direct_translate_mode = bool(condition.get("geometry_hints", False))
             chain = ["windows"] if (
                 condition["route"] == "baseline"
                 or bool(condition.get("geometry_hints", False))
