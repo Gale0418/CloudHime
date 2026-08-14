@@ -195,6 +195,17 @@ def test_preferred_assets_keep_complete_legacy_install(tmp_path, monkeypatch):
     assert selected.managed is False
 
 
+def test_preferred_assets_fall_back_to_managed_when_legacy_size_drifts(
+    tmp_path, monkeypatch
+):
+    app = tmp_path / "app"
+    monkeypatch.setattr(vision_assets_module, "_has_exact_size", lambda *_args: False)
+
+    selected = resolve_preferred_vision_assets(app, tmp_path / "local")
+
+    assert selected.managed is True
+    assert selected.model_path.parent == selected.projector_path.parent
+
 def test_ensure_legacy_assets_rejects_hash_mismatch(tmp_path, monkeypatch):
     assets = resolve_vision_assets(tmp_path / "app")
     monkeypatch.setattr(
