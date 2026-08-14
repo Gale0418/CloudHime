@@ -191,3 +191,10 @@
 - Final locked 4-case GPU paired run with candidate condition enabled and no environment override: baseline quality `0.1957581248`, candidate `0.3023028235`, baseline nonempty `0.75`, candidate `1.0`, regressions `0`, promotion gate `true`. Per-case delta: contract `+0.0889230222`, game `+0.2982899386`, vertical short manga `0`, Marchen Crown `+0.0389658339`.
 - Final speed comparison: baseline total average `2781.17 ms`, candidate `8886.87 ms`, candidate translation `7077.14 ms`; approximately 19% faster than the previous candidate route, but still not a speed promotion against baseline.
 - Evidence: `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-grid-game-direct-translate-experiment.json`, `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-crop-grid-final-direct-grid-condition.json`. No Store/WACK/clean-machine claim is made.
+
+## 2026-08-14 - Shared runtime blocked-start cleanup regression
+
+- Scope: single `llama-server.exe` lifecycle hardening. Added assertions to `test_coordinator_release_during_blocked_start_removes_entry` so coordinator release must leave the spawned process terminated and `LocalVisionRuntime.owned_process` cleared, not merely remove the lease table entry.
+- Regression result: targeted admin-isolated pytest `1 passed in 0.17s`; full `tests/test_local_vision_runtime.py` `58 passed in 0.66s` with `QT_QPA_PLATFORM=offscreen`, `-p no:cacheprovider`, and workspace basetemp.
+- Environment evidence: ordinary-token pytest first produced `7 passed, 51 errors` because pytest-qt could not access `C:\Users\USER\AppData\Local\Temp\pytest-of-David2019` (`WinError 5`); this is retained as an environment/ACL limitation, not counted as a code pass or failure of the runtime assertions.
+- No real model, GPU, Store, WACK, or clean-machine lifecycle claim is made by this unit-test slice.
