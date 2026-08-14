@@ -999,3 +999,11 @@
 - 判定：依 accuracy-first 停止規則，`-ub 1024` 立即否決，不再測 `2048`，也不進 production。這不是速度結果，不能把失敗 request 當成加速；目前保留 `--ubatch-size` 預設 `512`。
 - 清理：直接程序名檢查沒有 `llama-server`／`CloudHime` 殘留；CIM 詳細查詢受 Windows access denied，未把它宣稱成完整 process inventory。既有 Python 程序未碰。
 - 邊界：Gemini 建議是只讀 expert input，非實測證據；本輪未修改 runtime／provider，未完成 repeat penalty 或 Knowledge evidence pruning A/B，也未宣稱完整漫畫品質、Store、WACK 或 clean-machine 完成。
+## 2026-08-14：Region Vision server decode flag screens 收斂
+
+- Gemini bridge expert input：在已否決 `-ub 1024`、repeat penalty、mtmd batch 後，推薦 KV cache `-ctk q8_0 -ctv q8_0`，fallback 為 `-t 4 -tb 4`；唯一驗證 marker 為 `GEMINI_AFTER_MTMD_20260814`。本機 binary help 確認四個旗標／型別可用；沒有修改檔案。
+- `--mtmd-batch-max-tokens 2048`：兩順序皆 20 records、quality gate true、4/4 無 case regression、coverage/nonempty `1.0`、GPU/local、zero residual；baseline total `887.211`／`892.489 ms`，candidate `5725.184`／`5740.978 ms`，candidate decode `4239.973`／`4245.991 ms`。平衡後 baseline `889.850 ms`、candidate `5733.081 ms`，約 `6.44x`，無速度收益，否決。
+- KV cache `q8_0`：兩順序皆 valid、quality gate true、4/4 相對 text baseline 無 regression、coverage/nonempty `1.0`、GPU/local、zero residual；baseline total `893.735`／`890.528 ms`，candidate `5938.461`／`5923.461 ms`，decode `4420.479`／`4420.525 ms`。相對 production f16 Vision candidate，`owner-review-manga-2026-07-18` `0.279655 → 0.252190`，即使 aggregate `0.273438` 略高於 `0.271208` 仍屬 case regression，否決。
+- 顯式 threads `-t 4 -tb 4`：兩順序皆 valid、quality gate true、4/4 無 regression、coverage/nonempty `1.0`、GPU/local、zero residual；baseline total `891.593`／`894.626 ms`，candidate `5729.706`／`5740.926 ms`，decode `4237.286`／`4240.247 ms`。平衡後 baseline `893.110 ms`、candidate `5735.316 ms`，無 3% latency 改善，否決。
+- 收斂判定：`-ub 1024` 與 Region Vision repeat penalty `1.20` 在第一個 case 就 fail-closed（分別為 JSON invalid／provider error）；mtmd、KV q8、threads 均未形成可採用的速度解法。production 維持原始 `-ub 512`、KV `f16`、auto threads、mtmd default `1024` 與 repeat penalty `1.15`，沒有新增 runtime flags。
+- 邊界：以上是同一 owner-confirmed 4-case manifest、5 repeats、雙順序的 Windows GPU evidence；未宣稱完整漫畫 ground truth、其他硬體、Store、WACK 或 clean-machine 完成。所有本輪 server process 均已清理；未碰既有 Python 程序或未追蹤資料夾。
