@@ -111,3 +111,5 @@
 
 - 原始完整內容保留於 `archive/tasks-pre-0.3.1-2026-08-13.md`。
 - 舊版插入於表格中的非 task 註記已移出 canonical table；任務 ID、順序、生命週期、優先級、依賴與內容未改。
+
+| CH-T95 | Owner-confirmed Vision preprocess negative-result diagnosis | Task | CH-E9 | P0 | Done | Codex | CH-T94 | 在同一個本地 GPU llama-server、同一模型與參數下，診斷唯一 fullscreen paired regression；比較 baseline OCR、Vision-first、整圖放大、泡泡裁切放大、上下文裁切、OCR、直排 prompt、對比度與二值化 | 必須區分 evaluator 問題、輸入前處理問題與模型能力上限；沒有穩定改善不得改 production 或 promotion gate | YES | YES | 45m | vision-first, fullscreen, manga, gpu, negative-result, evidence | 2026-08-14：baseline source=`せトっナ、し・\nません`、translation=`сё多拿，食了。\n不 要 了。`；Vision-first 原圖=`聽說好啦！\n難得對面`。泡泡裁切轉錄最接近但翻譯為`絕對不行`，仍非主人確認的`絕對不會放手`；整圖／裁切／放大／對比度／二值化／直排閱讀 prompt 均無穩定正確結果。未改 production；保留 candidate case regression 與 promotion=false；待更強模型或可信人工標註 holdout，不宣稱速度、Store、WACK、clean-machine。 |

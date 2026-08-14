@@ -1063,3 +1063,13 @@
 - compileall 與受影響 suite 為 219 passed in 5.50s；targeted source-aware 為 15 passed。
 - 真 GPU 4 cases × 5 repeats：baseline quality 0.1957581248、candidate 0.2414774680；nonempty 0.75 對 1.0；只有 owner-review-manga-2026-07-02 regression；promotion gate false。quality basis 為 source+translation／translation_only；單一順序 latency null，未宣稱速度 promotion。
 - 判定：source-aware metric 修正成立，但 candidate 仍不能 promotion；下一步只針對該 owner-confirmed case 做 prompt／translation rescue 分析，不用 evaluator 調整代替模型品質改善。
+## 2026-08-14：Owner-confirmed fullscreen regression bounded preprocess diagnosis
+
+- 對象：`owner-review-manga-2026-07-02`，原圖 `513x895`；人工確認文字為「絶対に離しません」。
+- 同一個本地 GPU `llama-server.exe`、同一 `gemma-3-4b-it`、同一 sampling／context 下完成 baseline 與 candidate 單案診斷；owned process cleanup 正常，未改 production。
+- baseline Windows OCR：`せトっナ、し・\\nません`，後續 local translation：`сё多拿，食了。\\n不 要 了。`。
+- Vision-first 原圖：`聽說好啦！\\n難得對面`；同一 runtime 的 OCR rescue transcription：`難松 絶 対 に\\nしましょう`，翻譯：`難鬆，絕對地\\nきましょう`。
+- 受控前處理沒有形成穩定收益：整圖 2x、泡泡裁切 3x、含上下文裁切、autocontrast、threshold 160／200、日文直排閱讀順序 prompt 均漏字或改成錯誤語意；泡泡裁切 transcription 最接近但翻譯為`絕對不行`。
+- 判定：問題不是 source-aware evaluator 誤判，也不是單一 resize／prompt 可修復的 production correctness bug；目前 4B Vision 對此頁型仍是能力上限候選。不得把單案猜測轉成全域 heuristic；paired candidate regression 與 `promotion_gate=false` 保留。
+- 後續：取得更多可信人工標註後，優先評估更強本地多模態模型或 bounded region／reading-order pipeline；在此之前不新增每頁多次 Vision retry，以免把平均延遲直接推高。
+- 證據檔：`artifacts/baseline-20260702-diagnostic.json`、`artifacts/vision-20260702-preprocess-diagnostic.json`、`artifacts/transcribe-20260702-preprocess-diagnostic.json`、`artifacts/transcribe-translate-20260702-diagnostic.json`、`artifacts/transcribe-translate-20260702-prompt-diagnostic.json`、`artifacts/transcribe-20260702-contrast-diagnostic.json`。
