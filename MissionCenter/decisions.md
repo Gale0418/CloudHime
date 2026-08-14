@@ -964,3 +964,9 @@
 - 改後 production default GPU smoke：`25/25` successful、`21/25` exact line、avg score `0.985070`、avg latency `1545.668 ms`、p95 `2921.919 ms`、7/7 images，無 error。這是 seed／bounded evidence，不是 owner-confirmed 漫畫品質 promotion，也不宣稱全域最佳。
 - Gemini bridge 只讀審查：確認 prompt scope 隔離、override 不受影響；其提出同步 remote prompt 的建議依既定「remote 行為不改」限制不採用。
 - 邊界：完整 CI groups、clean-machine、Store／WACK 與新 owner-confirmed ground truth 未於本輪重跑；GPU smoke 結束後未觀察到新增 server residual。
+
+## 2026-08-14：CodeRabbit strict local OCR review disposition
+
+- 審查範圍：已提交的 `dc87aa5`（local OCR repeat penalty）與 `e887468`（strict local screenshot OCR prompt），base `8699f32`；共 4 個檔案：`MissionCenter/decisions.md`、`MissionCenter/smoke-tests.md`、`tests/test_local_multimodal_provider.py`、`translation_providers.py`。
+- 實際結果：CodeRabbit CLI `0.7.2` authenticated；`review_completed`、`findings=0`。本次使用免費 CLI allowance，因 repository 未連結可存取的 CodeRabbit organization；不影響 review 結果，但不宣稱 organization plan gate。
+- 判定：沒有新增 code review finding；品質／owner ground truth、完整 CI、Store、WACK 與 clean-machine gate 仍依各自 evidence 判定，不因 review 變成完成。
