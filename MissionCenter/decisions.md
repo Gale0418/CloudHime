@@ -1126,3 +1126,10 @@
 - Evidence: RED targeted runner contract `1 failed` because the runner was absent; GREEN `tests/test_ci_test_inventory.py tests/test_msix_packaging.py::test_msix_builder_requires_windows_sdk_and_expands_manifest` = `8 passed in 0.18s`; missing-test probe returned exit `4`; elevated Windows runner `tests/test_msix_packaging.py` = `21 passed in 61.35s`.
 - Environment note: an earlier normal-token combined run had `25 passed`, one temporary assertion failure fixed in the same turn, and two setup `WinError 5` errors from the pre-existing Temp ACL; it is not counted as a passing full run. The elevated run is the authoritative affected-set result.
 - Not verified here: GitHub-hosted clean-machine CI, WACK, Microsoft Store submission, and real GPU/local-model behavior.
+
+## 2026-08-14: CodeRabbit Start-Process basetemp quoting follow-up
+
+- Initial committed review: CodeRabbit CLI `0.7.2`, base `458e2c9`, reviewed 6 files, 1 minor issue in `ci/run_pytest.ps1`.
+- Finding verified: `Start-Process -ArgumentList` joins arguments; a basetemp under a path containing spaces was split in the UI isolation branch and pytest returned exit `4`.
+- TDD evidence: RED admin regression failed with `file or directory not found: temp\cloudhime-pytest-*`; GREEN after quoting the isolated basetemp argument passed `1 passed, 7 deselected`; affected inventory plus MSIX contract passed `29 passed in 54.07s`; compileall and PowerShell parse passed.
+- Scope: only the Start-Process argument boundary changed; direct Python invocation, timeout, cleanup, and production behavior remain unchanged. CodeRabbit follow-up review is required before treating the fix checkpoint as fully reviewed.

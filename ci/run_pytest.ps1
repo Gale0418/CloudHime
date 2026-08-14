@@ -44,7 +44,8 @@ function Invoke-PytestFiles {
     try {
         $pytestArgs = @("-m", "pytest", "-q", "--basetemp", $baseTemp) + $Files
         if ($IsolateUi) {
-            $process = Start-Process -FilePath "python" -ArgumentList $pytestArgs -PassThru -NoNewWindow
+            $isolatedPytestArgs = @("-m", "pytest", "-q", "--basetemp", ('"{0}"' -f $baseTemp)) + $Files
+            $process = Start-Process -FilePath "python" -ArgumentList $isolatedPytestArgs -PassThru -NoNewWindow
             $completed = $process.WaitForExit($TimeoutSeconds * 1000)
             if (-not $completed) {
                 Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
