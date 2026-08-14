@@ -4225,6 +4225,8 @@ class OCRWorker(QObject):
             else:
                 ai_image_parts = self.build_ai_image_parts(img)
             translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
             if not translated_text:
                 raise ValueError("empty_fullscreen_vision_response")
             current_provider = self._canonical_cache_provider(
