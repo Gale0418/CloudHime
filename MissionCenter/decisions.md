@@ -1030,3 +1030,11 @@
 - 修正：改用純 ASCII `YouTube subtitle` 驗證非日文，新增低 kana 日文 `日本語 ABC` regression；MissionCenter command 改為 `$env:QT_QPA_PLATFORM='offscreen'`。targeted rescue／worker `17 passed in 0.90s`，compileall／diff-check Pass。
 - 複審：CodeRabbit `review_completed`、`findings=0`，覆蓋 `MissionCenter/decisions.md`、`MissionCenter/smoke-tests.md`、`japanese_ocr_rescue.py`、`tests/test_japanese_ocr_rescue.py`；使用免費 CLI allowance，未宣稱 organization plan gate。
 - 邊界：CodeRabbit 0 issues 不等於新比例頁型已有人工 ground truth，也不代表完整漫畫、Store、WACK 或 clean-machine gate 完成。
+## 2026-08-14：Fullscreen local Vision-first implementation and review disposition
+
+- 產品修正：當 `SCAN_MODE_FULLSCREEN`、active provider 是 `local_multimodal` 且 provider ready 時，先用整張圖片呼叫 local Vision；成功輸出單一整頁 bbox，保留 provider attribution／exact image cache／translation trace。Vision 失敗才回既有 OCR、漫畫 rescue 與文字翻譯；remote Google／Gemma 維持 OCR-first。
+- TDD：先加入 local success、local failure fallback、remote unchanged 三項測試，RED `2 failed, 1 passed`；修正後 targeted `3 passed`、既有 fullscreen fallback 合計 `5 passed`；完整 `tests/test_ocr_worker_mode_matrix.py` `97 passed`，受影響 worker／scan pipeline／local multimodal `120 passed`。
+- CodeRabbit 初審：commit `cea44ad` 相對 base `2a5c08d`，reviewed `2` files；提出 major：Vision response 回來後未再次檢查 scan generation，可能污染 state/cache；minor：fallback test 綁定後續事件 outcome。
+- 修正：在 `_run_fullscreen_vision_translation()` 的 response 與 state/cache 寫入之間加入 `_abort_stale_scan(ScanStage.TRANSLATION)`；新增 stale response regression，確認不發 finished、不寫 `last_results`、不寫 exact cache；移除脆弱的後續 outcome assertion。修正後 matrix `98 passed`、worker／pipeline／provider `120 passed`、compileall／diff-check Pass；commit `1c99ae9`。
+- 複審狀態：實際重跑 CodeRabbit CLI `0.7.2` authenticated，但回報 `rate_limit`、`waitTime=40 minutes`；沒有 post-fix review result，不能宣稱 0 issues。待冷卻後與本批舊變更一起複審。
+- 邊界：本輪未執行真實 Windows GPU fullscreen worker benchmark；existing owner-confirmed Vision smoke 仍只是 provider／Region evidence，不代表 Fullscreen 全漫畫品質或速度完成。未宣稱 Store／WACK／clean-machine。
