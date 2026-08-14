@@ -193,6 +193,8 @@ MANGA_ADAPTIVE_MIN_TEXT_AGREEMENT = 0.20
 MANGA_ADAPTIVE_MIN_COVERAGE = 0.80
 MANGA_ADAPTIVE_MAX_MS = 600
 MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
+FULLSCREEN_GEOMETRY_VISION_ENV = "CLOUDHIME_FULLSCREEN_GEOMETRY_VISION"
+FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE = 4
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
 MANGA_GRID_RECOVERY_MAX_ITEMS = 6
 MANGA_GRID_RECOVERY_SCORE_MARGIN = 3
@@ -3071,6 +3073,37 @@ class OCRWorker(QObject):
         )
 
     @staticmethod
+    def build_fullscreen_geometry_vision_hints(items, offset_x=0, offset_y=0):
+        """Convert OCR boxes into Vision hints without carrying OCR text forward."""
+        hints = []
+        for item in items or []:
+            try:
+                x = int(item.get("x", 0)) - int(offset_x)
+                y = int(item.get("y", 0)) - int(offset_y)
+                width = int(item.get("w", 0))
+                height = int(item.get("h", 0))
+            except (TypeError, ValueError):
+                continue
+            if width <= 0 or height <= 0:
+                continue
+            hints.append({
+                "id": len(hints),
+                "x": x,
+                "y": y,
+                "w": width,
+                "h": height,
+                "text": "",
+            })
+        return hints
+
+    def fullscreen_geometry_hint_mode_enabled(self):
+        override = getattr(self, "_local_fullscreen_geometry_hint_mode", None)
+        if override is not None:
+            return bool(override)
+        value = os.environ.get(FULLSCREEN_GEOMETRY_VISION_ENV, "")
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
     def is_degenerate_manga_transcription(text):
         lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
         if len(lines) >= 8:
@@ -4356,6 +4389,188 @@ class OCRWorker(QObject):
                 exception=exc,
             )
             return False
+
+    def _run_fullscreen_geometry_vision_translation(
+        self,
+        img,
+        offset_x,
+        offset_y,
+        items,
+    ):
+        """Use OCR only for geometry; local Vision owns source text and translation."""
+        vision_started = time.perf_counter()
+        try:
+            provider_name = self.resolve_multimodal_provider_name()
+            if provider_name != "local_multimodal":
+                raise ValueError("fullscreen_geometry_vision_local_required")
+            provider = self._get_translation_provider(provider_name)
+            interpret_regions = getattr(provider, "interpret_regions", None)
+            if not callable(interpret_regions):
+                raise ValueError("fullscreen_geometry_vision_unavailable")
+            hints = self.build_fullscreen_geometry_vision_hints(
+                items,
+                offset_x,
+                offset_y,
+            )
+            if not hints:
+                raise ValueError("fullscreen_geometry_vision_no_geometry")
+            image_parts = self.build_local_vision_image_parts(img, hints)
+            interpret_kwargs = {
+                "image_width": int(img.shape[1]),
+                "image_height": int(img.shape[0]),
+                "target_lang": self.translation_target_lang,
+            }
+            if isinstance(provider, LocalMultimodalProvider):
+                interpret_kwargs["cancel_predicate"] = (
+                    lambda: not self._active_scan_is_current()
+                )
+            def call_region_batch(hint_batch):
+                try:
+                    batch_results = interpret_regions(
+                        image_parts,
+                        hint_batch,
+                        **interpret_kwargs,
+                    )
+                finally:
+                    self._capture_local_vision_request_metrics(provider)
+                batch_results = list(batch_results or [])
+                if len(batch_results) != len(hint_batch):
+                    raise ValueError("incomplete_fullscreen_geometry_vision_batch")
+                return batch_results
+
+            vision_results = []
+            for start in range(0, len(hints), FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE):
+                hint_batch = [
+                    {**hint, "id": local_id}
+                    for local_id, hint in enumerate(
+                        hints[start : start + FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE]
+                    )
+                ]
+                try:
+                    batch_results = call_region_batch(hint_batch)
+                except LocalRequestCancelled:
+                    raise
+                except Exception as exc:
+                    retryable_failure = classify_region_vision_failure(exc) in {
+                        "response_region_mismatch",
+                        "response_json_invalid",
+                        "response_schema_invalid",
+                        "response_empty",
+                    }
+                    if not retryable_failure or len(hint_batch) <= 1:
+                        raise
+                    batch_results = []
+                    for local_id, hint in enumerate(hint_batch):
+                        single_hint = {**hint, "id": 0}
+                        single_results = call_region_batch([single_hint])
+                        if len(single_results) != 1:
+                            raise ValueError("incomplete_fullscreen_geometry_vision_single")
+                        result = single_results[0]
+                        batch_results.append(
+                            type(result)(
+                                id=local_id,
+                                source_text=result.source_text,
+                                translation=result.translation,
+                                confidence=getattr(result, "confidence", 0.0),
+                            )
+                        )
+                for result in batch_results:
+                    vision_results.append(
+                        type(result)(
+                            id=start + int(result.id),
+                            source_text=result.source_text,
+                            translation=result.translation,
+                            confidence=getattr(result, "confidence", 0.0),
+                        )
+                    )
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            by_id = {result.id: result for result in vision_results}
+            expected_ids = {hint["id"] for hint in hints}
+            if set(by_id) != expected_ids:
+                raise ValueError("incomplete_fullscreen_geometry_vision_response")
+
+            final_results = []
+            source_texts = []
+            current_provider = self._canonical_cache_provider(provider_name)
+            for hint in hints:
+                result = by_id.get(hint["id"])
+                source_text = str(getattr(result, "source_text", "") or "").strip()
+                translated_text = str(getattr(result, "translation", "") or "").strip()
+                if not source_text or not translated_text:
+                    continue
+                output_rect = (
+                    int(hint["x"] + offset_x),
+                    int(hint["y"] + offset_y),
+                    int(hint["w"]),
+                    int(hint["h"]),
+                )
+                cache_key = (
+                    self.detect_source_language(source_text),
+                    normalize_ocr_text(source_text),
+                )
+                self.remember_translation(cache_key, translated_text)
+                self.remember_preferred_text(
+                    source_text,
+                    translated_text,
+                    current_provider,
+                )
+                self.remember_hud_observation(
+                    source_text,
+                    output_rect,
+                    translated_text,
+                    current_provider,
+                )
+                source_texts.append(source_text)
+                final_results.append((translated_text, *output_rect))
+            if len(final_results) != len(hints):
+                raise ValueError("incomplete_fullscreen_geometry_vision_text")
+            if not final_results:
+                raise ValueError("empty_fullscreen_geometry_vision_response")
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+
+            self.last_combined_text = "\n".join(source_texts)
+            self._last_scan_source_available = True
+            self.last_provider = current_provider
+            self.last_results = final_results
+            self.exact_image_cache.put(
+                img,
+                self._exact_image_cache_context(offset_x, offset_y),
+                final_results,
+                current_provider,
+                self.last_combined_text,
+            )
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.SUCCESS,
+                started_at=vision_started,
+                detail="translation_fullscreen_geometry_vision_completed",
+                provider=current_provider,
+                item_count=len(final_results),
+            )
+            self._emit_scan_status("✅ 全螢幕區域 Vision 翻譯完成")
+            self._emit_scan_finished(final_results)
+            self.show_ui.emit()
+            return True
+        except LocalRequestCancelled:
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            raise
+        except Exception as exc:
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.FALLBACK,
+                started_at=vision_started,
+                error_code=ScanErrorCode.TRANSLATION_FAILED,
+                detail="translation_fullscreen_geometry_vision_failed",
+                fallback_reason=(
+                    "translation_fullscreen_geometry_vision_"
+                    + classify_region_vision_failure(exc)
+                ),
+                exception=exc,
+            )
+            return False
+
     def run_scan_once(self):
         self._reset_scan_trace()
         self._last_scan_source_available = None
@@ -4519,7 +4734,10 @@ class OCRWorker(QObject):
                 _shutdown_google_ocr_executor(wait=False)
                 _google_ocr_future = None
 
-        if self.should_use_fullscreen_local_vision_first():
+        if (
+            self.should_use_fullscreen_local_vision_first()
+            and not self.fullscreen_geometry_hint_mode_enabled()
+        ):
             fullscreen_vision_first_attempted = True
             self._emit_scan_status("🧠 全螢幕 Vision-first 翻譯中...")
             if self._run_fullscreen_vision_translation(
@@ -4827,6 +5045,19 @@ class OCRWorker(QObject):
         if self._abort_stale_scan(ScanStage.OCR):
             return
 
+        if (
+            is_fullscreen_vision_fallback
+            and filtered_items
+            and self.fullscreen_geometry_hint_mode_enabled()
+            and self.get_current_ai_provider() == "local_multimodal"
+        ):
+            if self._run_fullscreen_geometry_vision_translation(
+                img,
+                offset_x,
+                offset_y,
+                filtered_items,
+            ):
+                return
         if (
             is_fullscreen_vision_fallback
             and not filtered_items

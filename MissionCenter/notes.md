@@ -160,3 +160,11 @@
 - `Controller` 以 `KnowledgeBuildWorker` 接 service，progress／finished／error／cancelled 用 Qt signals 回 UI；Research 按鈕視為主人明確確認，promote 只寫 non-active pack，Save 才套用 active。
 - Settings Cancel／關閉會取消研究並還原 title draft；CloudHime close_app 會取消並最多等待 2 秒，避免離開後留下活躍 Knowledge thread。
 - CodeRabbit：第一輪 3 findings 已修正；修正版第二輪遭免費 CLI rate limit，保留 Review。Gemini RPC 120 秒逾時，沒有可採用回覆。
+
+## 2026-08-14 - Fullscreen geometry Vision experiment
+
+- Scope: CH-E9 hardening slice. OCR is used only for bounding boxes; local Vision is required to provide source text and translation. OCR text is blanked before the Vision request.
+- Controls: locked owner-confirmed fullscreen manifest, same local GPU runtime, same model and product path, geometry_hints candidate, fail-closed execution marker.
+- Results: three real GPU runs (batched, local-batch-ID remap, and per-region fallback) all stopped with bounded `response_region_mismatch` before promotion. No quality or speed promotion is claimed.
+- Interpretation: the Heavy Knight Reincarnation episode is sufficient as a smoke corpus to expose the contract failure, but not sufficient as a generalization benchmark. The current local region-JSON contract remains unproven on real manga images.
+- Decision: keep strict parsing and the execution gate; do not weaken validation or promote geometry mode. Preserve this as negative evidence for the next region-response contract investigation.

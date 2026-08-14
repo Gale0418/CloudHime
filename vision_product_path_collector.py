@@ -201,6 +201,20 @@ def _warm_runtime_evidence(evidence: Any, condition: Mapping[str, Any]) -> dict[
             "server_executable_identity": identity, "cache_hit": False}
 
 
+def _require_geometry_hint_execution(
+    condition: Mapping[str, Any],
+    events: Any,
+) -> None:
+    if condition.get("route") != "candidate" or condition.get("geometry_hints") is not True:
+        return
+    if not isinstance(events, (list, tuple)) or not any(
+        _value(event, "detail", "")
+        == "translation_fullscreen_geometry_vision_completed"
+        for event in events
+    ):
+        raise ValueError("geometry_hint_execution_gate_failed")
+
+
 def _warm_events_from_observation(observation: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[str, float], str, str]:
     raw_events = observation.get("trace_events", ())
     if not isinstance(raw_events, (list, tuple)):
@@ -265,6 +279,7 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
                 observation = session.run_repeat(case["id"], pixels)
                 if not isinstance(observation, Mapping):
                     raise ValueError("session run_repeat must return an observation mapping")
+                _require_geometry_hint_execution(condition, observation.get("trace_events", ()))
                 trace_events, trace_stages, provider, fallback = _warm_events_from_observation(observation)
                 stages = observation.get("stages_ms")
                 if not isinstance(stages, Mapping):
@@ -370,6 +385,7 @@ def collect_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, A
                 configure_worker(worker, condition)
                 worker.capture_scan_area = lambda: (copy_pixels(), 0, 0)
                 worker.run_scan_once()
+                _require_geometry_hint_execution(condition, getattr(getattr(worker, "last_scan_trace", None), "events", ()))
                 trace_events, stages, provider, fallback = _events_from(worker)
                 source, translation = _quality_from(worker)
                 source_available = getattr(

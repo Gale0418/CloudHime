@@ -98,6 +98,15 @@ def test_trace_tokens_reject_non_string_values_before_truthiness(field, value):
         _collect(worker_factory=lambda: InvalidTokenWorker(0))
 
 
+def test_geometry_hint_candidate_requires_execution_marker():
+    condition = {
+        **_condition("candidate", "candidate"),
+        "scan_mode": "fullscreen",
+        "geometry_hints": True,
+    }
+    with pytest.raises(ValueError, match="geometry_hint_execution_gate_failed"):
+        _collect(condition=condition)
+
 def test_candidate_fallback_token_and_final_report_excludes_quality_text():
     image_bytes, made = b"fixed-image", []
     factory = lambda: made.append(FakeWorker(len(made), fallback_reason="remote_timeout")) or made[-1]
