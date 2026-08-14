@@ -1089,3 +1089,10 @@
 - Runtime 啟動與 GPU 路徑正常；5/6 image/case 完成，`manga_cover_pd_1923_shochan_no_boken.jpg` 發生 `truncated_local_multimodal_response`，因此 require-complete exit `1`，不能把這輪當成通過。
 - rescue geometry gate 6 張均未觸發（triggered=0、adopted=0），final 與 baseline quality improved=0／equal=6／regressed=0；這只證明目前 gate 沒有對這批封面造成退化，不證明它能處理封面文字。
 - 判定：不放寬 `0.60-0.80` portrait window、不新增全頁 retry，也不把 public cover screen 當 CH-T35 完整漫畫 holdout；下一步需要更適合的可信人工標註漫畫頁或 bounded region contract。
+
+## 2026-08-14：Rescue quality gate completeness contract
+
+- Root cause：`rescue_quality_gate_passed` 原先只檢查 final per-case regression；當公開漫畫 screen 出現 `truncated_local_multimodal_response` 時，報告欄位仍可能顯示 true，只有外層 `--require-complete` exit code 顯示失敗，造成 machine-readable report 與 CLI gate 語意分裂。
+- 修正：新增 `evaluate_rescue_quality_gate()`，統一計算 `complete` 與 `passed`；Japanese rescue gate 只有在「完整執行」且「零 final regression」時通過，未啟用 rescue 則維持既有通過語意。CLI 與 JSON report 共用同一結果。
+- TDD／驗證：新增 incomplete-with-zero-regression regression；targeted `3 passed in 0.83s`、compileall exit 0。受影響四檔 suite 的 assertion 執行仍遇既有 Windows pytest temp ACL cleanup `WinError 5`（4 errors），未把環境錯誤記為 code pass。
+- 真 GPU public rerun：同一 6 張封面、local GPU、Japanese rescue、require-complete／require-rescue-no-regression；exit `0`、6/6 images、6/6 cases、`complete=true`、improved=0／equal=6／regressed=0、gate=true。前一輪 5/6 truncation 的 fail-closed 證據仍有效；本輪不代表完整漫畫 holdout、速度 promotion、Store、WACK 或 clean-machine 通過。

@@ -21,6 +21,7 @@ from vision_smoke_benchmark import (
     score_match,
     expected_variants,
     summarize_rescue_quality,
+    evaluate_rescue_quality_gate,
 )
 
 
@@ -493,3 +494,17 @@ def test_require_rescue_no_regression_is_a_fail_closed_cli_gate(monkeypatch, cap
 
     assert benchmark.main(["--json", "--japanese-rescue", "--require-rescue-no-regression"]) == 1
     assert json.loads(capsys.readouterr().out)["rescue_quality_gate_passed"] is False
+
+
+def test_rescue_quality_gate_requires_complete_results() -> None:
+    summary = evaluate_rescue_quality_gate(
+        [
+            {"sample_source": "complete", "baseline_match_score": 0.5, "match_score": 0.5},
+        ],
+        complete=False,
+        enabled=True,
+    )
+
+    assert summary["regressed_cases"] == 0
+    assert summary["complete"] is False
+    assert summary["passed"] is False
