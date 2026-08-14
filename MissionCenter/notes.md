@@ -198,3 +198,10 @@
 - Regression result: targeted admin-isolated pytest `1 passed in 0.17s`; full `tests/test_local_vision_runtime.py` `58 passed in 0.66s` with `QT_QPA_PLATFORM=offscreen`, `-p no:cacheprovider`, and workspace basetemp.
 - Environment evidence: ordinary-token pytest first produced `7 passed, 51 errors` because pytest-qt could not access `C:\Users\USER\AppData\Local\Temp\pytest-of-David2019` (`WinError 5`); this is retained as an environment/ACL limitation, not counted as a code pass or failure of the runtime assertions.
 - No real model, GPU, Store, WACK, or clean-machine lifecycle claim is made by this unit-test slice.
+## 2026-08-14 - In-flight runtime release cleanup hardening
+
+- Root cause: when the final lease was released while llama-server.exe startup was still in flight, the coordinator could mark the entry stopped and later skip cleanup if startup returned ready.
+- TDD RED: the new coordinator regression produced 1 failed, 8 passed; the failure showed a runtime returning ready after the last lease had been released, with the runtime still not stopped.
+- GREEN: $env:QT_QPA_PLATFORM='offscreen'; python -m pytest tests\test_local_runtime_coordinator.py tests\test_local_vision_runtime.py -q -p no:cacheprovider --basetemp=.codex-runtime-lifecycle-final-admin-20260814 -> 67 passed in 0.94s.
+- python -m compileall -q local_runtime_coordinator.py tests\test_local_runtime_coordinator.py and git diff --check -- local_runtime_coordinator.py tests\test_local_runtime_coordinator.py both exited 0.
+- No real model, GPU, Store, WACK, or clean-machine claim is made by this unit-test slice.

@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -156,3 +157,53 @@ def test_shared_coordinator_release_is_idempotent_and_removes_last_asset():
 
     assert first.runtime.stop_calls == 1
     assert coordinator.active_lease_count == 0
+
+
+class BlockingReadyRuntime(FakeRuntime):
+    def __init__(self, assets, *, profile='vision', **kwargs):
+        super().__init__(assets, profile=profile, **kwargs)
+        self.start_entered = threading.Event()
+        self.allow_start = threading.Event()
+
+    def start(self):
+        self.start_entered.set()
+        if not self.allow_start.wait(timeout=2):
+            raise TimeoutError("test_start_timeout")
+        self.state = SimpleNamespace(name='ready')
+        return self.state
+
+
+def test_stop_then_release_during_inflight_start_stops_runtime_after_it_becomes_ready():
+    created = []
+
+    def factory(assets, **kwargs):
+        runtime = BlockingReadyRuntime(assets, **kwargs)
+        created.append(runtime)
+        return runtime
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=factory)
+    lease = coordinator.acquire(_assets(), profile='vision')
+    result = {}
+
+    thread = threading.Thread(
+        target=lambda: result.setdefault('state', lease.start()),
+        daemon=True,
+    )
+    thread.start()
+    assert created[0].start_entered.wait(timeout=1)
+
+    lease.stop()
+    lease.release()
+    assert coordinator.active_lease_count == 0
+
+    created[0].allow_start.set()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert result['state'].name == 'ready'
+    assert created[0].state.name == 'stopped'
+    assert created[0].stop_calls == 2
+
+    replacement = coordinator.acquire(_assets(), profile='vision')
+    assert replacement.runtime is not created[0]
+    replacement.release()

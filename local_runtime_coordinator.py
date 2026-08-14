@@ -22,6 +22,7 @@ class _RuntimeEntry:
     leases: int = 0
     stopped: bool = False
     starting: int = 0
+    cleanup_after_start: bool = False
 
 
 class LocalVisionRuntimeLease:
@@ -153,7 +154,14 @@ class LocalVisionRuntimeCoordinator:
             if getattr(state, "name", "") not in ("ready", "starting"):
                 entry.stopped = True
             if entry.leases == 0 and entry.starting == 0:
-                if not entry.stopped:
+                needs_cleanup = (
+                    not entry.stopped
+                    or (
+                        entry.cleanup_after_start
+                        and getattr(state, 'name', '') in ('ready', 'starting')
+                    )
+                )
+                if needs_cleanup:
                     cleanup_runtime = entry.runtime
                 entry.stopped = True
                 remove_entry = True
@@ -189,6 +197,8 @@ class LocalVisionRuntimeCoordinator:
                 return
             was_stopped = entry.stopped
             entry.stopped = True
+            if entry.starting:
+                entry.cleanup_after_start = True
             if not was_stopped:
                 cleanup_runtime = entry.runtime
             if not entry.starting:
