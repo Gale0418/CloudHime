@@ -34,6 +34,31 @@ def test_rescue_gate_accepts_manga_portrait_but_rejects_non_japanese_or_too_narr
     assert not rescue_gate("ツーポイントミュージアム", image_width=292, image_height=800)
 
 
+@pytest.mark.parametrize(
+    ("image_width", "image_height"),
+    [
+        (1168, 1899),  # 0.6151: multi-panel manga page
+        (1124, 1600),  # 0.7025: owner-confirmed page
+        (704, 928),    # 0.7586: manga cover
+        (450, 586),    # 0.7679: manga cover
+    ],
+)
+def test_rescue_gate_accepts_common_manga_portrait_aspects(image_width, image_height) -> None:
+    assert rescue_gate(
+        "楽しいだろ魔術は！",
+        image_width=image_width,
+        image_height=image_height,
+    )
+
+
+def test_rescue_gate_portrait_window_has_explicit_boundaries() -> None:
+    text = "楽しいだろ魔術は！"
+    assert rescue_gate(text, image_width=3, image_height=5)  # 0.60
+    assert rescue_gate(text, image_width=4, image_height=5)  # 0.80
+    assert not rescue_gate(text, image_width=59, image_height=100)
+    assert not rescue_gate(text, image_width=81, image_height=100)
+
+
 def test_candidate_keeps_character_confidence_and_builds_hint() -> None:
     candidate = candidate_from_meiki_results(
         [{"text": "遠くた", "chars": [
