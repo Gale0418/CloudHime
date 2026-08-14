@@ -1569,6 +1569,8 @@ def test_coordinator_release_during_blocked_start_removes_entry(tmp_path):
     assert not release_thread.is_alive()
     assert start_result["state"].name == "stopped"
     assert coordinator.active_lease_count == 0
+    assert process.terminate_calls == 1
+    assert created[0].owned_process is None
 
     replacement = coordinator.acquire(assets, profile="text")
     assert len(created) == 2
