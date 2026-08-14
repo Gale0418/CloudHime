@@ -2038,6 +2038,116 @@ def test_region_vision_without_ocr_backend_uses_whole_region_hint(monkeypatch, q
         worker.cleanup()
 
 
+def test_fullscreen_local_vision_first_success_skips_ocr(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: True)
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    worker.translate_screenshot_gemma = Mock(return_value="整頁 Vision 翻譯")
+    worker.run_ocr_with_best_threshold = Mock(
+        side_effect=AssertionError("local fullscreen Vision-first must bypass OCR")
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[['整頁 Vision 翻譯', 7, 11, 160, 80]]]
+        worker.run_ocr_with_best_threshold.assert_not_called()
+        worker.build_local_vision_image_parts.assert_called_once_with(image, [])
+        worker.translate_screenshot_gemma.assert_called_once_with(
+            [{"inline_data": {"data": "vision"}}], ""
+        )
+        translation_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+        ]
+        assert translation_events[-1].detail == "translation_fullscreen_vision_completed"
+    finally:
+        worker.cleanup()
+
+
+def test_fullscreen_local_vision_first_failure_falls_open_to_ocr(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: True)
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    worker.translate_screenshot_gemma = Mock(side_effect=RuntimeError("vision failed"))
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(100, [{"text": "OCR text", "x": 10, "y": 12, "w": 40, "h": 16}])
+    )
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["OCR fallback"], ["local_multimodal"])
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[['OCR fallback', 10, 12, 40, 16]]]
+        assert worker.translate_screenshot_gemma.call_count == 1
+        assert worker.run_ocr_with_best_threshold.call_count == 1
+        translation_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.TRANSLATION
+        ]
+        assert translation_events[0].outcome is ScanOutcome.FALLBACK
+        assert translation_events[0].fallback_reason == "translation_fullscreen_vision_local_failed"
+        assert translation_events[-1].outcome is ScanOutcome.FALLBACK
+    finally:
+        worker.cleanup()
+
+
+def test_fullscreen_remote_provider_keeps_ocr_first(monkeypatch, qtbot):
+    image = np.zeros((80, 160, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.get_current_ai_provider = lambda: "gemma"
+    worker.resolve_multimodal_provider_name = lambda: "gemma"
+    worker.local_multimodal_provider = SimpleNamespace(available=lambda: True)
+    worker.translate_screenshot_gemma = Mock(
+        side_effect=AssertionError("remote fullscreen provider must remain OCR-first")
+    )
+    worker.run_ocr_with_best_threshold = Mock(
+        return_value=(100, [{"text": "OCR text", "x": 10, "y": 12, "w": 40, "h": 16}])
+    )
+    worker.translate_items_with_ai_and_providers = Mock(
+        return_value=(["OCR translation"], ["gemma"])
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[['OCR translation', 10, 12, 40, 16]]]
+        worker.translate_screenshot_gemma.assert_not_called()
+        worker.run_ocr_with_best_threshold.assert_called_once()
+    finally:
+        worker.cleanup()
+
+
 def test_fullscreen_vision_fallback_survives_missing_ocr(monkeypatch, qtbot):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     worker = OCRWorker()

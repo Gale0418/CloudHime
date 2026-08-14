@@ -4198,6 +4198,89 @@ class OCRWorker(QObject):
             logger.warning(f"[Japanese rescue] fallback to baseline: {type(exc).__name__}: {exc}")
             return first_text
 
+    def should_use_fullscreen_local_vision_first(self):
+        if self.scan_mode != SCAN_MODE_FULLSCREEN:
+            return False
+        if not self.has_any_multimodal_ai() or self.get_current_ai_provider() != "local_multimodal":
+            return False
+        provider = getattr(self, "local_multimodal_provider", None)
+        available = getattr(provider, "available", None)
+        return callable(available) and bool(available())
+
+    def _run_fullscreen_vision_translation(
+        self,
+        img,
+        offset_x,
+        offset_y,
+        *,
+        fallback_allowed,
+    ):
+        vision_started = time.perf_counter()
+        try:
+            provider_name = self.resolve_multimodal_provider_name()
+            if not provider_name:
+                raise ValueError("fullscreen_vision_provider_unavailable")
+            if provider_name == "local_multimodal":
+                ai_image_parts = self.build_local_vision_image_parts(img, [])
+            else:
+                ai_image_parts = self.build_ai_image_parts(img)
+            translated_text = self.translate_screenshot_gemma(ai_image_parts, "").strip()
+            if not translated_text:
+                raise ValueError("empty_fullscreen_vision_response")
+            current_provider = self._canonical_cache_provider(
+                getattr(self, "_last_screenshot_translation_provider", "")
+                or provider_name
+            )
+            final_results = [
+                (
+                    translated_text,
+                    int(offset_x),
+                    int(offset_y),
+                    int(img.shape[1]),
+                    int(img.shape[0]),
+                )
+            ]
+            self.last_combined_text = "screenshot"
+            self.last_provider = current_provider
+            self.last_results = final_results
+            self.exact_image_cache.put(
+                img,
+                self._exact_image_cache_context(offset_x, offset_y),
+                final_results,
+                current_provider,
+                self.last_combined_text,
+            )
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.SUCCESS,
+                started_at=vision_started,
+                detail="translation_fullscreen_vision_completed",
+                provider=current_provider,
+                item_count=1,
+            )
+            self._emit_scan_status("✅ 全螢幕 Vision 翻譯完成")
+            self._emit_scan_finished(final_results)
+            self.show_ui.emit()
+            return True
+        except LocalRequestCancelled:
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            raise
+        except Exception as exc:
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.FALLBACK if fallback_allowed else ScanOutcome.FAILURE,
+                started_at=vision_started,
+                error_code=ScanErrorCode.TRANSLATION_FAILED,
+                detail="translation_fullscreen_vision_failed",
+                fallback_reason=(
+                    "translation_fullscreen_vision_local_failed"
+                    if fallback_allowed
+                    else "translation_fullscreen_vision_" + classify_region_vision_failure(exc)
+                ),
+                exception=exc,
+            )
+            return False
     def run_scan_once(self):
         self._reset_scan_trace()
         self._active_scan_request = self._take_scan_request()
@@ -4334,6 +4417,7 @@ class OCRWorker(QObject):
             except Exception:
                 pass
 
+        fullscreen_vision_first_attempted = False
         _prefetch_image_parts = None
         _use_google_ocr_refine = self.google_ocr_enabled and self.google_api_key and not self.has_any_multimodal_ai()
         if _use_google_ocr_refine and self.scan_mode == SCAN_MODE_REGION:
@@ -4359,6 +4443,17 @@ class OCRWorker(QObject):
                 _shutdown_google_ocr_executor(wait=False)
                 _google_ocr_future = None
 
+        if self.should_use_fullscreen_local_vision_first():
+            fullscreen_vision_first_attempted = True
+            self._emit_scan_status("🧠 全螢幕 Vision-first 翻譯中...")
+            if self._run_fullscreen_vision_translation(
+                img,
+                offset_x,
+                offset_y,
+                fallback_allowed=True,
+            ):
+                return
+            self._emit_scan_status("🔍 Vision-first 失敗，改用 OCR fallback...")
         if is_screenshot_mode:
             translation_started = time.perf_counter()
             requested_screenshot_provider = self._canonical_cache_provider(
@@ -4656,7 +4751,11 @@ class OCRWorker(QObject):
         if self._abort_stale_scan(ScanStage.OCR):
             return
 
-        if is_fullscreen_vision_fallback and not filtered_items:
+        if (
+            is_fullscreen_vision_fallback
+            and not filtered_items
+            and not fullscreen_vision_first_attempted
+        ):
             self._record_scan_event(
                 ScanStage.OCR,
                 ScanOutcome.NO_TEXT,
@@ -4664,74 +4763,13 @@ class OCRWorker(QObject):
                 detail="ocr_optional_unavailable",
             )
             ocr_trace_recorded = True
-            vision_started = time.perf_counter()
-            try:
-                provider_name = self.resolve_multimodal_provider_name()
-                if not provider_name:
-                    raise ValueError("fullscreen_vision_provider_unavailable")
-                if provider_name == "local_multimodal":
-                    ai_image_parts = self.build_local_vision_image_parts(img, [])
-                else:
-                    ai_image_parts = self.build_ai_image_parts(img)
-                translated_text = self.translate_screenshot_gemma(
-                    ai_image_parts,
-                    "",
-                ).strip()
-                if not translated_text:
-                    raise ValueError("empty_fullscreen_vision_response")
-                current_provider = self._canonical_cache_provider(
-                    getattr(self, "_last_screenshot_translation_provider", "")
-                    or provider_name
-                )
-                final_results = [
-                    (
-                        translated_text,
-                        int(offset_x),
-                        int(offset_y),
-                        int(img.shape[1]),
-                        int(img.shape[0]),
-                    )
-                ]
-                self.last_combined_text = "screenshot"
-                self.last_provider = current_provider
-                self.last_results = final_results
-                self.exact_image_cache.put(
-                    img,
-                    self._exact_image_cache_context(offset_x, offset_y),
-                    final_results,
-                    current_provider,
-                    self.last_combined_text,
-                )
-                self._record_scan_event(
-                    ScanStage.TRANSLATION,
-                    ScanOutcome.SUCCESS,
-                    started_at=vision_started,
-                    detail="translation_fullscreen_vision_completed",
-                    provider=current_provider,
-                    item_count=1,
-                )
-                self._emit_scan_status("✅ 全螢幕 Vision 翻譯完成")
-                self._emit_scan_finished(final_results)
-                self.show_ui.emit()
+            if self._run_fullscreen_vision_translation(
+                img,
+                offset_x,
+                offset_y,
+                fallback_allowed=False,
+            ):
                 return
-            except LocalRequestCancelled:
-                if self._abort_stale_scan(ScanStage.TRANSLATION):
-                    return
-                raise
-            except Exception as exc:
-                self._record_scan_event(
-                    ScanStage.TRANSLATION,
-                    ScanOutcome.FAILURE,
-                    started_at=vision_started,
-                    error_code=ScanErrorCode.TRANSLATION_FAILED,
-                    detail="translation_fullscreen_vision_failed",
-                    fallback_reason=(
-                        "translation_fullscreen_vision_"
-                        + classify_region_vision_failure(exc)
-                    ),
-                    exception=exc,
-                )
-
         if is_region_vision_mode:
             self._record_scan_event(
                 ScanStage.OCR,
