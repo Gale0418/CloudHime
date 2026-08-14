@@ -945,3 +945,12 @@
 - 修正決策：local multimodal screenshot path 改為 Vision-first；成功時完全跳過 OCR hint 建立與 prompt 注入，只有 local Vision request 拋出 exception 時才延遲建立 gated OCR hint，供既有文字 fallback 使用。Remote Google／Gemma provider 維持原本 hint 行為。
 - TDD：新增 divergent candidate 撤回、短日文共識、破壞性變體不得單獨通過、兩變體實際評估，以及 local success／exception／empty response 的 lazy fallback regression；Codex 重跑 worker+provider `117 passed`、worker matrix `94 passed`、compileall／diff-check Pass。
 - 邊界：GPU smoke 使用目前 6 張公開封面與 `gemma-3-4b-it`，沒有 owner-confirmed 完整 ground truth；未宣稱漫畫品質已達標，也未完成 Store／WACK／clean-machine VM gate。下一步應用主人確認標註的圖片做 Vision crop／prompt A/B，不再把 OCR threshold 當主解法。
+
+## 2026-08-14：Local Vision OCR repeat penalty bounded A/B
+
+- 動機：預設 `LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY=1.0` 在公開 6-case GPU smoke 中出現截斷／空結果；先前把 `max_tokens` 384 提到 768 仍無法救回同一案例，且增加延遲，因此不採用 token retry。
+- 受控條件：同一 `benchmarks/manga_cover_cases.json` 6 cases、`gemma-3-4b-it`、preferred managed GGUF／mmproj、llama-server GPU、context 4096、`japanese_ocr` prompt、GPU layers 999；只改 OCR repeat penalty。
+- 結果：預設 `1.0` 本次為 4/6 successful、exact line 1/6、平均 score `0.335606`、平均 latency `3012.813 ms`、p95 `5575.009 ms`；`1.15` 連續兩次皆為 6/6 successful、exact line 2/6、平均 score `0.461111`、平均 latency 分別 `1727.720 ms`／`1713.190 ms`、p95 `2512.223 ms`。
+- TDD：先把既有 OCR sampling regression 改為期待 `1.15`，確認 RED：`1 failed in 1.03s`；再修改 `translation_providers.py` 常數，targeted provider suite `23 passed in 0.75s`。
+- 決策：將 `1.15` 作為 local multimodal OCR 的正式預設；translation sampling、remote provider、UI 與 OCR hint gate 不變。這是 bounded smoke evidence，不是完整漫畫 ground truth，也不宣稱全域最佳；後續仍需 owner-confirmed paired quality gate。
+- 邊界：本輪未執行完整 CI test groups、clean-machine、Store submission、WACK；GPU smoke 結束後未觀察到本輪新增的 server 殘留。
