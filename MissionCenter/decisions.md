@@ -1133,3 +1133,8 @@
 - Finding verified: `Start-Process -ArgumentList` joins arguments; a basetemp under a path containing spaces was split in the UI isolation branch and pytest returned exit `4`.
 - TDD evidence: RED admin regression failed with `file or directory not found: temp\cloudhime-pytest-*`; GREEN after quoting the isolated basetemp argument passed `1 passed, 7 deselected`; affected inventory plus MSIX contract passed `29 passed in 54.07s`; compileall and PowerShell parse passed.
 - Scope: only the Start-Process argument boundary changed; direct Python invocation, timeout, cleanup, and production behavior remain unchanged. CodeRabbit follow-up review is required before treating the fix checkpoint as fully reviewed.
+## 2026-08-14: CodeRabbit basetemp quoting follow-up receipt
+
+- Follow-up command: `wsl -d Ubuntu -- bash -lc '/root/.local/bin/coderabbit review --agent -t committed --base-commit 0c0a401 -c AGENTS.md'`.
+- Receipt: CodeRabbit CLI `0.7.2`, `review_completed`, `reviewedFiles=5`, `findings=0`; free CLI allowance was used because the repository is not connected to an accessible CodeRabbit organization.
+- The quoting fix and its regression probe therefore have an actual post-fix review receipt; no manual review result is substituted.
