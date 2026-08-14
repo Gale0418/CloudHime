@@ -409,7 +409,7 @@ def test_transcribe_screenshot_uses_ocr_sampling_profile():
     )
 
     assert payloads[0]["temperature"] == pytest.approx(0.1)
-    assert payloads[0]["repeat_penalty"] == pytest.approx(1.0)
+    assert payloads[0]["repeat_penalty"] == pytest.approx(1.15)
 
 
 def test_translate_keeps_translation_sampling_profile():
