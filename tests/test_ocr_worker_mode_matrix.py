@@ -2038,6 +2038,270 @@ def test_region_vision_without_ocr_backend_uses_whole_region_hint(monkeypatch, q
         worker.cleanup()
 
 
+def test_fullscreen_geometry_hint_vision_uses_padded_crops(monkeypatch, qtbot):
+    image = np.zeros((120, 240, 3), dtype=np.uint8)
+    crop_calls = []
+    translation_call = [0]
+
+    def build_parts(crop, hints):
+        crop_calls.append((tuple(crop.shape[:2]), list(hints)))
+        return [{"inline_data": {"data": "crop"}}]
+
+    def translate_screenshot(_parts, **_kwargs):
+        translation_call[0] += 1
+        return SimpleNamespace(
+            text=f"crop-{translation_call[0]}",
+            provider="local_multimodal",
+        )
+
+    provider = SimpleNamespace(
+        available=lambda: True,
+        translate_screenshot=Mock(side_effect=translate_screenshot),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "", "x": 17, "y": 21, "w": 20, "h": 10},
+        {"text": "", "x": 117, "y": 61, "w": 20, "h": 10},
+    ]))
+    worker.build_local_vision_image_parts = Mock(side_effect=build_parts)
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[
+            ["crop-1", 17, 21, 20, 10],
+            ["crop-2", 117, 61, 20, 10],
+        ]]
+        assert provider.translate_screenshot.call_count == 2
+        assert len(crop_calls) == 2
+        assert all(hints == [] for _shape, hints in crop_calls)
+        assert all(shape[0] > 10 and shape[1] > 20 for shape, _hints in crop_calls)
+        assert any(
+            event.detail == "translation_fullscreen_crop_vision_completed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
+
+
+def test_fullscreen_crop_vision_skips_reliable_single_ocr_item(monkeypatch, qtbot):
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "絶対に離しません", "x": 17, "y": 21, "w": 60, "h": 16},
+    ]))
+    worker.build_local_manga_crop_batches = Mock(return_value=None)
+    worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "page"}}])
+    worker.translate_items_with_ai_and_providers = Mock(return_value=(
+        ["text-route translation"],
+        ["local_multimodal"],
+    ))
+    worker._run_fullscreen_crop_vision_translation = Mock(return_value=True)
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[
+            ["text-route translation", 17, 21, 60, 16],
+        ]]
+        worker._run_fullscreen_crop_vision_translation.assert_not_called()
+        worker.build_local_manga_crop_batches.assert_not_called()
+        worker.build_ai_image_parts.assert_not_called()
+        worker.translate_items_with_ai_and_providers.assert_called_once()
+        assert any(
+            event.detail == (
+                "translation_fullscreen_crop_vision_skipped_reliable_ocr_completed"
+            )
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
+
+def test_fullscreen_crop_vision_skips_short_same_line_ocr_items(qtbot):
+    worker = OCRWorker()
+    worker._local_fullscreen_crop_vision_mode = True
+    try:
+        assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "絶対に", "x": 10, "y": 20, "w": 40, "h": 12},
+            {"text": "離しません", "x": 55, "y": 21, "w": 60, "h": 12},
+        ])
+        assert not worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "line one", "x": 10, "y": 20, "w": 40, "h": 12},
+            {"text": "line two", "x": 10, "y": 60, "w": 40, "h": 12},
+        ])
+        assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "絶対に", "x": 70, "y": 50, "w": 30, "h": 80},
+            {"text": "離しません", "x": 110, "y": 55, "w": 30, "h": 110},
+        ], (400, 300, 3))
+    finally:
+        worker.cleanup()
+
+def test_fullscreen_crop_vision_uses_single_region_after_empty_screenshot(monkeypatch, qtbot):
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        available=lambda: True,
+        translate_screenshot=Mock(side_effect=ValueError("empty_local_multimodal_screenshot_response")),
+        interpret_regions=Mock(return_value=[SimpleNamespace(
+            id=0,
+            source_text="source",
+            translation="region-translation",
+        )]),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "", "x": 17, "y": 21, "w": 20, "h": 10},
+    ]))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "crop"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[["region-translation", 17, 21, 20, 10]]]
+        provider.translate_screenshot.assert_called_once()
+        provider.interpret_regions.assert_called_once()
+        region_hints = provider.interpret_regions.call_args.args[1]
+        assert region_hints == [{
+            "id": 0, "x": 0, "y": 0, "w": 132, "h": 102, "text": ""
+        }]
+    finally:
+        worker.cleanup()
+
+
+def test_fullscreen_crop_vision_uses_vision_transcription_as_last_fallback(monkeypatch, qtbot):
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        available=lambda: True,
+        translate_screenshot=Mock(side_effect=ValueError("empty_local_multimodal_screenshot_response")),
+        interpret_regions=Mock(side_effect=ValueError("Response contains a duplicate region id.")),
+        transcribe_screenshot=Mock(side_effect=[
+            ValueError("empty_fullscreen_crop_vision_transcription"),
+            SimpleNamespace(text="vision source"),
+        ]),
+        translate=Mock(return_value=SimpleNamespace(
+            text="vision translation",
+            provider="local_multimodal",
+        )),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "", "x": 17, "y": 21, "w": 20, "h": 10},
+    ]))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "crop"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[["vision translation", 17, 21, 20, 10]]]
+        assert provider.transcribe_screenshot.call_count == 2
+        provider.translate.assert_called_once_with(
+            "vision source", target_lang=worker.translation_target_lang
+        )
+    finally:
+        worker.cleanup()
+
+
+def test_fullscreen_crop_vision_uses_grid_when_ocr_has_no_items(monkeypatch, qtbot):
+    image = np.zeros((120, 240, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        available=lambda: True,
+        transcribe_screenshot=Mock(return_value=SimpleNamespace(text="tile source")),
+        translate=Mock(return_value=SimpleNamespace(
+            text="tile translation",
+            provider="local_multimodal",
+        )),
+        translate_screenshot=Mock(return_value=SimpleNamespace(
+            text="tile screenshot",
+            provider="local_multimodal",
+        )),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(0, []))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "tile"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert len(finished) == 1
+        assert len(finished[0]) == 4
+        assert all(item[0] == "tile translation" for item in finished[0])
+        assert provider.transcribe_screenshot.call_count == 4
+        assert provider.translate.call_count == 4
+        assert any(
+            event.detail == "translation_fullscreen_grid_crop_vision_completed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
+
+
 def test_fullscreen_geometry_hint_vision_uses_ocr_only_for_locations(monkeypatch, qtbot):
     image = np.zeros((100, 200, 3), dtype=np.uint8)
     provider = SimpleNamespace(
@@ -2173,8 +2437,8 @@ def test_fullscreen_geometry_hint_vision_falls_back_to_single_regions_on_schema_
     worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
     worker._local_fullscreen_geometry_hint_mode = True
     worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
-        {"text": "bad OCR 0", "x": 10, "y": 10, "w": 40, "h": 16},
-        {"text": "bad OCR 1", "x": 110, "y": 50, "w": 50, "h": 18},
+        {"text": "", "x": 10, "y": 10, "w": 40, "h": 16},
+        {"text": "", "x": 110, "y": 50, "w": 50, "h": 18},
     ]))
     worker.build_local_vision_image_parts = Mock(
         return_value=[{"inline_data": {"data": "vision"}}]

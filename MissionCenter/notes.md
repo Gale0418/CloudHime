@@ -168,3 +168,18 @@
 - Results: three real GPU runs (batched, local-batch-ID remap, and per-region fallback) all stopped with bounded `response_region_mismatch` before promotion. No quality or speed promotion is claimed.
 - Interpretation: the Heavy Knight Reincarnation episode is sufficient as a smoke corpus to expose the contract failure, but not sufficient as a generalization benchmark. The current local region-JSON contract remains unproven on real manga images.
 - Decision: keep strict parsing and the execution gate; do not weaken validation or promote geometry mode. Preserve this as negative evidence for the next region-response contract investigation.
+
+## 2026-08-14 - Fullscreen Vision crop/grid hybrid route gate
+
+- Scope: CH-E9 accuracy-first fullscreen Vision hardening. OCR remains a location hint only for crop/grid routes; OCR text is not sent into the Vision prompt. A reliable short OCR cluster, including vertical Japanese bubble text, is deliberately kept on the local text route.
+- Regression coverage: added padded/upscaled OCR-box crops, no-OCR 2x2 overlapping grid, transcription-to-text fallback, bounded observability codes, adapter/collector completion marker, and reliable OCR route tests. Existing unreliable OCR rescue remains protected by `is_unreliable_manga_ocr()`.
+- Single-case GPU paired benchmark, locked owner case `owner-review-manga-2026-07-02`, 5 repeats: baseline quality `0.3141666667`, candidate `0.3141666667`, delta `0`, promotion gate `true`; baseline total average `1030.97 ms`, candidate `1016.63 ms`; candidate Vision prompt/decode coverage `0`, proving the reliable OCR text route.
+- Full 4-case GPU paired rerun, same model/runtime/sampling/context and `--scan-mode fullscreen --geometry-hints --execution-order baseline_then_candidate`: baseline quality `0.1957581248`, candidate `0.3038367158`, baseline nonempty `0.75`, candidate nonempty `1.0`, all four case regressions `0`, promotion gate `true`. Per-case delta: contract `+0.0901478590`, game stream `+0.2897820717`, vertical short manga `0`, Marchen Crown `+0.0523844332`.
+- Speed remains an explicit tradeoff: full-corpus baseline total average `2783.73 ms`, candidate `11181.79 ms`; candidate translation average `9357.65 ms`. Accuracy gate passed; speed is not promoted.
+- First full-corpus rerun stopped fail-closed at exit 2 on `translation_fullscreen_crop_vision_request_http_500`; it is retained as negative runtime-stability evidence. A second rerun completed successfully at exit 0. No HTTP 500 is hidden or counted as a pass.
+- Evidence: `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-crop-grid-final-hybrid-rerun.json`, `.codex-heavy-knight-coverage-20260814/crop-single-manga-case.json`. The full run was not a balanced latency-order experiment; no Store, WACK, clean-machine, or broad public holdout claim is made.
+## 2026-08-14 - Final after unreliable-OCR guard
+
+- Final worktree GPU rerun completed with the existing locked 4-case manifest: baseline quality `0.1957581248`, candidate quality `0.3057910587`, baseline nonempty `0.75`, candidate nonempty `1.0`, per-case regressions `0`, promotion gate `true`.
+- Per-case final deltas: contract `+0.0912110974`, game stream `+0.2923057764`, vertical short manga `0`, Marchen Crown `+0.0566148619`.
+- Final speed evidence: baseline total average `2790.92 ms`, candidate `10978.13 ms`; accuracy is promoted for this locked corpus, speed is explicitly not promoted. Final evidence file: `.codex-heavy-knight-coverage-20260814/product-path-fullscreen-crop-grid-final-after-unreliable-guard.json`.
