@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import re
 from typing import Any
 
@@ -235,3 +236,102 @@ def summarize_threshold_candidate(items: list[dict[str, Any]], max_items: int = 
             break
     summary = "\n".join(snippets).strip()
     return summary[:max_chars].strip()
+
+
+def are_ocr_texts_consistent(text1: str, text2: str) -> bool:
+    """Check whether two OCR text candidates are consistent.
+
+    Short strings (< 4 chars) require exact match or substring inclusion
+    where the length difference is small (len ratio >= 0.4).
+    Longer strings (>= 4 chars) allow inclusion or fuzzy ratio >= 0.6.
+    """
+    t1 = normalize_ocr_text(text1)
+    t2 = normalize_ocr_text(text2)
+    if not t1 or not t2:
+        return False
+    if t1 == t2:
+        return True
+
+    len1 = len(t1)
+    len2 = len(t2)
+    min_len = min(len1, len2)
+    max_len = max(len1, len2)
+
+    if min_len / max_len < 0.4:
+        return False
+
+    if min_len < 4:
+        return t1 in t2 or t2 in t1
+
+    if t1 in t2 or t2 in t1:
+        return True
+
+    return difflib.SequenceMatcher(None, t1, t2).ratio() >= 0.6
+
+
+def evaluate_ocr_hint_consensus(
+    variant_outputs: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Evaluate consensus among OCR preprocessing variant outputs.
+
+    variant_outputs format:
+    [
+        {
+            "name": "color_scaled",
+            "is_primary": True,
+            "score": score_int,
+            "items": filtered_items_list,
+            "summary": summary_str,
+        },
+        ...
+    ]
+
+    Returns (hint_text, winning_items).
+    Returns ("", []) if consensus fails or inputs are invalid.
+    """
+    valid_variants = [
+        v
+        for v in variant_outputs
+        if v
+        and v.get("summary")
+        and is_valid_content(v.get("summary"))
+        and v.get("items")
+    ]
+    if len(valid_variants) < 2:
+        return "", []
+
+    n = len(valid_variants)
+    consensus_indices = set()
+    for i in range(n):
+        for j in range(i + 1, n):
+            v1 = valid_variants[i]
+            v2 = valid_variants[j]
+            if are_ocr_texts_consistent(v1["summary"], v2["summary"]):
+                if v1.get("is_primary") or v2.get("is_primary"):
+                    consensus_indices.add(i)
+                    consensus_indices.add(j)
+
+    if not consensus_indices:
+        return "", []
+
+    matching_variants = [valid_variants[i] for i in sorted(consensus_indices)]
+
+    primary_matches = [v for v in matching_variants if v.get("is_primary")]
+    candidates_to_pick = primary_matches if primary_matches else matching_variants
+
+    winning_variant = max(
+        candidates_to_pick,
+        key=lambda v: (v.get("score", 0), len(v.get("summary", ""))),
+    )
+    items = winning_variant.get("items", [])
+    hint = summarize_threshold_candidate(items, max_items=6, max_chars=180).strip()
+
+    if not is_valid_content(hint):
+        return "", []
+
+    if len(hint) < 4 and not (
+        HAS_CJK_PATTERN.search(hint) or hint.isdigit()
+    ):
+        return "", []
+
+    return hint[:400], items

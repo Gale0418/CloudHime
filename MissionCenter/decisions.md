@@ -937,3 +937,11 @@
 - 以同一 6 張公開漫畫封面、Windows OCR backend、既有 `build_screenshot_text_hint()` 做本機診斷；只記錄候選數／字元數／品質分數，不保存 OCR 原文。
 - 結果：候選品質分數跨越 `4`～`244`；部分案例最高分只有 `7`、`14`、`17`，部分案例達 `32`、`35`、`65`、`244`；這批輸出 confidence 全部不可用。可見「hint 非空」與「hint 可信」不是同一件事。
 - 決策：不採用單純字數或單一固定 score 閾值作為 production gate。下一步應加入跨 preprocessing 變體的文字一致性／投票判定，並用 owner-confirmed 圖片做 paired quality gate；在此之前維持 Vision 可獨立讀圖，OCR 只作可撤回的 hint。
+
+## 2026-08-14：Local Vision-first lazy OCR hint gate
+
+- Gemini bridge 的設計審查確認既有 `build_screenshot_text_hint()` 會因第一個變體達到分數就 early-exit，容易讓二值化噪聲搶先成為 hint。實作新增 `are_ocr_texts_consistent()`／`evaluate_ocr_hint_consensus()`，短字串採 exact／包含關係，分歧時撤回 hint；Windows OCR 只評估兩個快速、非破壞性視圖，避免再跑昂貴的二值化變體。
+- 重要實機結果：直接送 gated hint 的兩變體比較為 5/6 successful、anchor `1/6`、avg score `0.275`、avg latency `5727.335 ms`；本次純 Vision GPU baseline 為 4/6 successful、anchor `1/6`、avg score `0.3800505`、avg latency `3030.697 ms`。兩者受 sampling 波動影響，不能宣稱品質 promotion，但已明確顯示 OCR hint 不應阻塞或污染 local Vision 首次請求。
+- 修正決策：local multimodal screenshot path 改為 Vision-first；成功時完全跳過 OCR hint 建立與 prompt 注入，只有 local Vision request 拋出 exception 時才延遲建立 gated OCR hint，供既有文字 fallback 使用。Remote Google／Gemma provider 維持原本 hint 行為。
+- TDD：新增 divergent candidate 撤回、短日文共識、破壞性變體不得單獨通過、兩變體實際評估，以及 local success／exception／empty response 的 lazy fallback regression；Codex 重跑 worker+provider `117 passed`、worker matrix `94 passed`、compileall／diff-check Pass。
+- 邊界：GPU smoke 使用目前 6 張公開封面與 `gemma-3-4b-it`，沒有 owner-confirmed 完整 ground truth；未宣稱漫畫品質已達標，也未完成 Store／WACK／clean-machine VM gate。下一步應用主人確認標註的圖片做 Vision crop／prompt A/B，不再把 OCR threshold 當主解法。

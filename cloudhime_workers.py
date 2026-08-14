@@ -69,6 +69,7 @@ from themes import (
 )
 from ocr_backends import discover_backends
 from ocr_quality import (
+    evaluate_ocr_hint_consensus,
     score_ocr_items as quality_score_ocr_items,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
@@ -1986,31 +1987,17 @@ class OCRWorker(QObject):
             h, w = img_np.shape[:2]
             img_scaled = cv2.resize(img_np, (int(w * 2.0), int(h * 2.0)), interpolation=cv2.INTER_CUBIC)
             gray = cv2.cvtColor(img_scaled, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
-            _, binary = cv2.threshold(gray, self.binary_threshold, 255, cv2.THRESH_BINARY)
-            _, clahe_binary = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            adaptive = cv2.adaptiveThreshold(
-                gray,
-                255,
-                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY,
-                31,
-                11,
-            )
+            # Vision-first hint 僅使用兩個快速、非破壞性的視圖。若兩者
+            # 不一致，就撤回 hint，讓 Vision 單獨讀取原始畫面。
             variants = [
-                ("color_scaled", img_scaled),
-                ("gray_scaled", cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)),
-                ("binary_invert", cv2.cvtColor(cv2.bitwise_not(binary), cv2.COLOR_GRAY2BGR)),
-                ("clahe_gray", cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR)),
-                ("clahe_otsu_invert", cv2.cvtColor(cv2.bitwise_not(clahe_binary), cv2.COLOR_GRAY2BGR)),
-                ("adaptive_invert", cv2.cvtColor(cv2.bitwise_not(adaptive), cv2.COLOR_GRAY2BGR)),
+                ("color_scaled", img_scaled, True),
+                ("gray_scaled", cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR), True),
             ]
         except Exception:
             return ""
 
-        best_items = []
-        best_score = -1
-        for _, variant_img in variants:
+        variant_outputs = []
+        for name, variant_img, is_primary in variants:
             try:
                 ocr_result = self._recognize_with_backends(variant_img)
             except Exception:
@@ -2021,18 +2008,24 @@ class OCRWorker(QObject):
             if not raw_items:
                 continue
             score, filtered_items = quality_score_ocr_items(raw_items)
-            if score > best_score:
-                best_score = score
-                best_items = filtered_items
-            if score >= 16 and filtered_items:
-                best_items = filtered_items
-                break
-        if not best_items:
+            if not filtered_items:
+                continue
+            summary = quality_summarize_threshold_candidate(filtered_items, max_items=6, max_chars=180).strip()
+            if not summary:
+                continue
+            variant_outputs.append({
+                "name": name,
+                "is_primary": is_primary,
+                "score": score,
+                "items": filtered_items,
+                "summary": summary,
+            })
+
+        if not variant_outputs:
             return ""
-        hint = quality_summarize_threshold_candidate(best_items, max_items=6, max_chars=180).strip()
-        if len(hint) < 4:
-            return ""
-        return hint[:400]
+
+        hint, _winning_items = evaluate_ocr_hint_consensus(variant_outputs)
+        return hint
 
 
 
@@ -4373,8 +4366,18 @@ class OCRWorker(QObject):
                 if self.has_any_multimodal_ai() or self.has_ai_text_provider()
                 else "google"
             )
-            screenshot_text_hint = self.build_screenshot_text_hint(img)
-            if self.has_any_multimodal_ai():
+            local_vision_first = bool(
+                self.has_any_multimodal_ai()
+                and self.get_current_ai_provider() == "local_multimodal"
+            )
+            # Local Vision 是主要真相；只有 local Vision 失敗後才延遲建立 OCR hint，
+            # remote provider 行為維持不變。
+            screenshot_text_hint = (
+                ""
+                if local_vision_first
+                else self.build_screenshot_text_hint(img)
+            )
+            if self.has_any_multimodal_ai() and screenshot_text_hint:
                 screenshot_text_hint = self.rescue_japanese_text(
                     img,
                     screenshot_text_hint,
@@ -4428,6 +4431,8 @@ class OCRWorker(QObject):
                     raise
                 except Exception as exc:
                     self.log_ai_debug(f"MULTIMODAL FAILED: {type(exc).__name__}")
+                    if local_vision_first and not screenshot_text_hint:
+                        screenshot_text_hint = self.build_screenshot_text_hint(img)
                     if screenshot_text_hint:
                         self._emit_scan_status("🖼 截圖模式失敗，改走文字翻譯...")
                         try:

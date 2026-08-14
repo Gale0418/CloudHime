@@ -293,8 +293,7 @@ def test_screenshot_exact_hit_bypasses_hint_parts_and_translation(monkeypatch, q
         worker.build_ai_image_parts.side_effect = AssertionError("cache hit must bypass parts")
         worker.translate_screenshot_gemma.side_effect = AssertionError("cache hit must bypass translation")
         worker.run_scan_once()
-
-        assert worker.build_screenshot_text_hint.call_count == 1
+        assert worker.build_screenshot_text_hint.call_count == 0
         assert worker.build_ai_image_parts.call_count == 1
         assert worker.translate_screenshot_gemma.call_count == 1
         assert finished[0] == [["Screenshot", 7, 11, 160, 80]]
@@ -303,7 +302,7 @@ def test_screenshot_exact_hit_bypasses_hint_parts_and_translation(monkeypatch, q
         worker.cleanup()
 
 
-def test_screenshot_cache_uses_threshold_after_hint_processing(monkeypatch, qtbot):
+def test_screenshot_cache_skips_ocr_hint_after_local_vision_success(monkeypatch, qtbot):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     worker = OCRWorker()
     worker.ocr_backends = []
@@ -331,8 +330,8 @@ def test_screenshot_cache_uses_threshold_after_hint_processing(monkeypatch, qtbo
         worker.run_scan_once()
         worker.run_scan_once()
 
-        assert worker.binary_threshold == 120
-        assert worker.build_screenshot_text_hint.call_count == 1
+        assert worker.binary_threshold == 100
+        assert worker.build_screenshot_text_hint.call_count == 0
         assert worker.translate_screenshot_gemma.call_count == 1
         assert finished[1] == finished[0]
     finally:
@@ -365,6 +364,8 @@ def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, fa
     try:
         worker.run_scan_once()
         assert len(worker.exact_image_cache) == 0
+        expected_hint_calls = 1 if failure == "exception" else 0
+        assert worker.build_screenshot_text_hint.call_count == expected_hint_calls
         worker.run_scan_once()
 
         assert worker.translate_screenshot_gemma.call_count == 2
@@ -2320,3 +2321,77 @@ def test_hybrid_rescue_preprocess_registry_is_strict_and_bounded():
     )
     with pytest.raises(ValueError, match="unknown OCR preprocess"):
         normalize_preprocess_candidates(("not-a-real-preprocess",))
+
+
+def test_ocr_hint_consensus_divergent_candidates_revoked():
+    from ocr_quality import evaluate_ocr_hint_consensus
+
+    variant_outputs = [
+        {"name": "color_scaled", "is_primary": True, "score": 20, "items": [{"text": "鬼滅の刃", "confidence": 0.9}], "summary": "鬼滅の刃"},
+        {"name": "gray_scaled", "is_primary": True, "score": 20, "items": [{"text": "海賊王", "confidence": 0.9}], "summary": "海賊王"},
+        {"name": "clahe_gray", "is_primary": True, "score": 20, "items": [{"text": "七龍珠", "confidence": 0.9}], "summary": "七龍珠"},
+    ]
+    hint, items = evaluate_ocr_hint_consensus(variant_outputs)
+    assert hint == ""
+    assert items == []
+
+
+def test_ocr_hint_consensus_short_japanese_passes():
+    from ocr_quality import evaluate_ocr_hint_consensus
+
+    variant_outputs = [
+        {"name": "color_scaled", "is_primary": True, "score": 15, "items": [{"text": "なに", "confidence": 0.9}], "summary": "なに"},
+        {"name": "gray_scaled", "is_primary": True, "score": 15, "items": [{"text": "なに", "confidence": 0.9}], "summary": "なに"},
+        {"name": "binary_invert", "is_primary": False, "score": 10, "items": [{"text": "噪訊", "confidence": 0.5}], "summary": "噪訊"},
+    ]
+    hint, items = evaluate_ocr_hint_consensus(variant_outputs)
+    assert hint == "なに"
+    assert len(items) == 1
+    assert items[0]["text"] == "なに"
+
+
+def test_ocr_hint_consensus_destructive_variant_noise_cannot_pass_alone():
+    from ocr_quality import evaluate_ocr_hint_consensus
+
+    variant_outputs = [
+        {"name": "color_scaled", "is_primary": True, "score": 5, "items": [{"text": "文", "confidence": 0.9}], "summary": "文"},
+        {"name": "binary_invert", "is_primary": False, "score": 30, "items": [{"text": "噪訊邊緣文字ABC", "confidence": 0.9}], "summary": "噪訊邊緣文字ABC"},
+        {"name": "adaptive_invert", "is_primary": False, "score": 30, "items": [{"text": "噪訊邊緣文字ABC", "confidence": 0.9}], "summary": "噪訊邊緣文字ABC"},
+    ]
+    hint, items = evaluate_ocr_hint_consensus(variant_outputs)
+    assert hint == ""
+    assert items == []
+
+
+def test_build_screenshot_text_hint_uses_two_fast_consensus_variants():
+    from cloudhime_workers import OCRWorker
+    import numpy as np
+
+    worker = OCRWorker()
+    worker.ocr_backends = [object()]
+
+    recognized_count = 0
+    def mock_recognize(variant_img):
+        nonlocal recognized_count
+        recognized_count += 1
+        if recognized_count in (1, 2):
+            line = SimpleNamespace(
+                text="共通文字標籤",
+                confidence=0.9,
+                box=SimpleNamespace(x=10, y=10, w=50, h=20),
+            )
+            return SimpleNamespace(lines=[line])
+        line = SimpleNamespace(
+            text="獨立文字",
+            confidence=0.5,
+            box=SimpleNamespace(x=10, y=10, w=50, h=20),
+        )
+        return SimpleNamespace(lines=[line])
+
+    worker._recognize_with_backends = mock_recognize
+
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    hint = worker.build_screenshot_text_hint(img)
+
+    assert recognized_count == 2
+    assert hint == "共通文字標籤"
