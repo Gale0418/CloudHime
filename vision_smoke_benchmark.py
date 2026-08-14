@@ -247,6 +247,20 @@ def evaluate_rescue_quality_gate(
     )
     return summary
 
+def summarize_anchor_coverage(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Report exact expected-anchor hits separately from fuzzy similarity."""
+
+    scored_results = [result for result in results if bool(result.get("quality_scored", True))]
+    matched_cases = sum(float(result.get("line_match", 0.0)) >= 1.0 for result in scored_results)
+    return {
+        "quality_scored_cases": len(scored_results),
+        "anchor_match_cases": int(matched_cases),
+        "anchor_coverage": optional_mean(
+            [float(result.get("line_match", 0.0)) for result in scored_results]
+        ),
+    }
+
+
 def case_image_source(case: dict[str, Any]) -> str:
     return str(case.get("sample_source") or case.get("image") or "")
 
@@ -556,6 +570,7 @@ def run_smoke(
         ground_truth_complete=ground_truth_complete,
     )
     rescue_quality_gate_passed = bool(rescue_quality["passed"])
+    anchor_coverage = summarize_anchor_coverage(results)
     return {
         "manifest": str(manifest_path),
         "evaluation_mode": evaluation_mode,
@@ -582,6 +597,8 @@ def run_smoke(
         "nonempty_cases": len(successful_cases),
         "line_match_cases": sum(float(result["line_match"]) for result in quality_scored_results),
         "average_line_match": optional_mean([float(result["line_match"]) for result in quality_scored_results]),
+        "anchor_match_cases": anchor_coverage["anchor_match_cases"],
+        "anchor_coverage": anchor_coverage["anchor_coverage"],
         "average_match_score": optional_mean([float(result["match_score"]) for result in quality_scored_results]),
         "baseline_average_match_score": optional_mean(baseline_match_scores),
         "shadow_average_match_score": optional_mean(shadow_match_scores),
@@ -640,6 +657,17 @@ def _is_technical_coverage_complete(result: Mapping[str, Any]) -> bool:
     )
 
 
+def _is_exact_anchor_coverage_complete(result: Mapping[str, Any]) -> bool:
+    quality_case_count = int(result.get("ground_truth_case_count", 0) or 0)
+    return (
+        str(result.get("quality_basis") or "") == "ground_truth"
+        and bool(result.get("ground_truth_complete"))
+        and quality_case_count > 0
+        and float(result.get("anchor_match_cases", result.get("line_match_cases", 0.0)) or 0.0)
+        >= quality_case_count
+    )
+
+
 def _format_optional_score(value: Any, *, digits: int = 3) -> str:
     if value is None:
         return "n/a"
@@ -662,6 +690,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--require-technical-coverage", action="store_true")
     parser.add_argument("--require-rescue-no-regression", action="store_true")
+    parser.add_argument(
+        "--require-anchor-coverage",
+        action="store_true",
+        help="require every owner-confirmed quality case to hit an exact text anchor",
+    )
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -692,9 +725,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         not args.require_rescue_no_regression
         or bool(result.get("rescue_quality_gate_passed"))
     )
+    anchor_coverage_ok = (
+        not args.require_anchor_coverage
+        or (
+            _is_complete(result) and _is_exact_anchor_coverage_complete(result)
+        )
+    )
+    result["anchor_coverage_gate_required"] = bool(args.require_anchor_coverage)
+    result["anchor_coverage_gate_passed"] = bool(anchor_coverage_ok)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0 if complete_ok and technical_ok and rescue_ok else 1
+        return 0 if complete_ok and technical_ok and rescue_ok and anchor_coverage_ok else 1
 
     quality_case_count = int(result["ground_truth_case_count"])
     quality_line_match = (
@@ -711,6 +752,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"scale={result['small_image_scale']:.1f} "
         f"prompt={result['prompt_mode']} "
         f"avg_match={_format_optional_score(result['average_match_score'])} "
+        f"anchor_match={result.get('anchor_match_cases', 0)}/{quality_case_count} "
         f"avg_latency_ms={result['average_latency_ms']:.1f} p95_latency_ms={result['p95_latency_ms']:.1f} "
         f"stages_ms=hint:{result['average_hint_ms']:.1f},encode:{result['average_image_encode_ms']:.1f},"
         f"model:{result['average_model_request_ms']:.1f},post:{result['average_postprocess_ms']:.1f},"
@@ -725,7 +767,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"line_match={item_line_match} match={item_match_score} "
             f"latency_ms={item['latency_ms']:.1f} actual={item['actual'] or item['error']}"
         )
-    return 0 if complete_ok and technical_ok and rescue_ok else 1
+    return 0 if complete_ok and technical_ok and rescue_ok and anchor_coverage_ok else 1
 
 if __name__ == "__main__":
     raise SystemExit(main())
