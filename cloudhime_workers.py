@@ -4253,7 +4253,26 @@ class OCRWorker(QObject):
                 translate = getattr(provider, "translate", None)
                 if not callable(transcribe) or not callable(translate):
                     raise
-                transcription = transcribe(ai_image_parts)
+                try:
+                    transcription = transcribe(ai_image_parts)
+                except ValueError as transcription_error:
+                    retryable_errors = {
+                        "empty_local_multimodal_ocr_response",
+                        "degenerate_local_multimodal_ocr_response",
+                    }
+                    if str(transcription_error) not in retryable_errors:
+                        raise
+                    hint = self.build_screenshot_text_hint(img)
+                    if not hint:
+                        raise
+                    self.log_ai_debug(
+                        "FULLSCREEN VISION OCR retry with bounded OCR hint: "
+                        f"reason={type(transcription_error).__name__}"
+                    )
+                    transcription = transcribe(
+                        ai_image_parts,
+                        source_text_hint=hint,
+                    )
                 source_text = str(getattr(transcription, "text", "") or "").strip()
                 if not source_text:
                     raise ValueError("empty_fullscreen_vision_ocr_response")
