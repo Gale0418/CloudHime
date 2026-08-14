@@ -74,21 +74,11 @@ jobs:
         run: |
           $testFiles = '${{ matrix.paths }}' -split '\s+' | Where-Object { $_ }
           if ('${{ matrix.name }}' -eq 'ui') {
-            foreach ($testFile in $testFiles) {
-              Write-Host "Running isolated UI test file: $testFile"
-              $pytestProcess = Start-Process -FilePath "python" -ArgumentList @("-m", "pytest", "-q", $testFile) -PassThru -NoNewWindow
-              $completed = $pytestProcess.WaitForExit(120000)
-              if (-not $completed) {
-                Stop-Process -Id $pytestProcess.Id -Force
-                throw "UI test file timed out after 120 seconds: $testFile"
-              }
-              if ($pytestProcess.ExitCode -ne 0) { exit $pytestProcess.ExitCode }
-            }
+            & .\ci\run_pytest.ps1 -TestFiles $testFiles -IsolateUi
           } else {
-            python -m pytest -q @testFiles
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\ci\run_pytest.ps1 -TestFiles $testFiles
           }
-
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   dependency-contract:
     runs-on: windows-latest
     timeout-minutes: 30

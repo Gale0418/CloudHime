@@ -114,15 +114,16 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     ui_step_end = ci.index("  msix-contract:", ui_step_start)
     ui_step = ci[ui_step_start:ui_step_end]
     assert "if (\'" + "$" + "{{ matrix.name }}\' -eq \'ui\')" in ui_step
-    assert "foreach ($testFile in $testFiles)" in ui_step
+    assert "-TestFiles $testFiles" in ui_step
+    assert "-IsolateUi" in ui_step
     assert r"-split '\s+'" in ui_step
     assert "shell: pwsh" in ui_step
-    assert "Running isolated UI test file" in ui_step
-    assert "$pytestProcess.WaitForExit(120000)" in ui_step
-    assert "if (-not $completed)" in ui_step
-    assert "Stop-Process -Id $pytestProcess.Id -Force" in ui_step
-    assert 'throw "UI test file timed out after 120 seconds: $testFile"' in ui_step
-    assert ui_step.count("if ($pytestProcess.ExitCode -ne 0) { exit $pytestProcess.ExitCode }") == 1
+    runner = (root / "ci" / "run_pytest.ps1").read_text(encoding="utf-8")
+    assert "Running isolated UI test file" in runner
+    assert "WaitForExit($TimeoutSeconds * 1000)" in runner
+    assert "Stop-Process -Id $process.Id -Force" in runner
+    assert 'throw "UI test file timed out after $TimeoutSeconds seconds' in runner
+    assert "--basetemp" in runner
     msix_job = ci[ci.index("  msix-contract:"):]
     assert "uses: actions/setup-python@v5" in msix_job
     assert "python-version: '3.10'" in msix_job

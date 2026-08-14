@@ -1117,3 +1117,12 @@
 - 唯讀 ACL 盤點顯示失敗的 pytest basetemp 只有 `SYSTEM`／`Administrators`／`OWNER RIGHTS` ACE，普通測試 token 無法讀取；同一 affected selection 在管理員 token 下重跑，不修改既有資料夾、不終止其他 Python 程序。
 - 管理員命令使用全新 `artifacts\pytest-ch-t43-admin-20260814` basetemp，結果：`40 passed, 71 deselected in 2.54s`。
 - 判定：CH-T43 crop／manga focused regression 的測試本體通過；普通 token 的 WinError 5 仍是環境執行條件，後續測試 runner 應在明確可存取的 user-owned 或 elevated basetemp 執行。這不等於漫畫語意品質 promotion，也不改 production default。
+
+## 2026-08-14: Windows pytest private basetemp runner checkpoint
+
+- Scope: CH-E9 / CI verification hardening only; no product inference or Vision behavior changed.
+- Root cause: CI invoked pytest directly, while local elevated and non-elevated runs could inherit stale Windows Temp ACLs. PowerShell also allowed native pytest output to become a function return value, which could mask a non-zero pytest exit code.
+- Change: added `ci/run_pytest.ps1`; each invocation creates a new GUID-named basetemp, verifies a write probe, passes `--basetemp`, preserves the UI 120-second timeout, streams native output through `Out-Host`, returns the native exit code, and cleans only its own path. `.github/workflows/ci.yml` now routes both UI and non-UI inventory groups through it. Added CI/MSIX contract regressions.
+- Evidence: RED targeted runner contract `1 failed` because the runner was absent; GREEN `tests/test_ci_test_inventory.py tests/test_msix_packaging.py::test_msix_builder_requires_windows_sdk_and_expands_manifest` = `8 passed in 0.18s`; missing-test probe returned exit `4`; elevated Windows runner `tests/test_msix_packaging.py` = `21 passed in 61.35s`.
+- Environment note: an earlier normal-token combined run had `25 passed`, one temporary assertion failure fixed in the same turn, and two setup `WinError 5` errors from the pre-existing Temp ACL; it is not counted as a passing full run. The elevated run is the authoritative affected-set result.
+- Not verified here: GitHub-hosted clean-machine CI, WACK, Microsoft Store submission, and real GPU/local-model behavior.
