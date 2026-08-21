@@ -3149,6 +3149,7 @@ def test_nonempty_low_confidence_ocr_uses_bounded_hybrid_rescue(monkeypatch, qtb
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     worker = OCRWorker()
     _configure_region_cache_worker(worker, image)
+    worker._low_confidence_hybrid_rescue_enabled = True
     baseline = {
         "text": "誤認文字",
         "confidence": 0.25,
@@ -3178,5 +3179,28 @@ def test_nonempty_low_confidence_ocr_uses_bounded_hybrid_rescue(monkeypatch, qtb
         assert worker.run_ocr_with_best_threshold.call_count == 2
         rescue_call = worker.run_ocr_with_best_threshold.call_args_list[-1]
         assert rescue_call.kwargs["preprocess_candidates"] == BOUNDED_RESCUE_PREPROCESSES
+    finally:
+        worker.cleanup()
+
+def test_nonempty_low_confidence_hybrid_rescue_is_disabled_by_default(monkeypatch, qtbot):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    baseline = {
+        "text": "低信頼文字",
+        "confidence": 0.25,
+        "x": 10,
+        "y": 12,
+        "w": 40,
+        "h": 16,
+    }
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [baseline]))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert worker.last_combined_text == "低信頼文字"
+        assert worker.run_ocr_with_best_threshold.call_count == 1
     finally:
         worker.cleanup()
