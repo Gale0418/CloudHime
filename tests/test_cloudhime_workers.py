@@ -2237,3 +2237,110 @@ def test_background_threshold_refresh_discards_result_after_scan_mode_changes():
     assert worker.emitted_thresholds == []
     assert worker.last_auto_threshold_refresh_ms == 0.0
     assert worker._bg_threshold_running is False
+
+def test_extract_and_remap_ocr_items_preserve_normalized_confidence():
+    line = SimpleNamespace(
+        text="候補文字",
+        confidence=25,
+        words=[],
+        bounding_rect=SimpleNamespace(x=20, y=40, width=80, height=30),
+    )
+    worker = OCRWorker.__new__(OCRWorker)
+
+    items = OCRWorker.extract_raw_items(
+        worker,
+        SimpleNamespace(lines=[line]),
+        2.0,
+        7,
+        11,
+    )
+    remapped = OCRWorker.remap_items_from_orientation(
+        worker,
+        items,
+        90,
+        100,
+        80,
+        7,
+        11,
+    )
+
+    assert items == [{
+        "text": "候補文字",
+        "x": 17,
+        "y": 31,
+        "w": 40,
+        "h": 15,
+        "confidence": 0.25,
+    }]
+    assert remapped[0]["confidence"] == 0.25
+
+
+def test_threshold_search_prefers_equal_length_higher_confidence_text():
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.binary_threshold = 100
+    worker.auto_threshold_enabled = False
+    worker.google_api_key = ""
+    worker.scan_mode = "region"
+    worker.last_auto_threshold_refresh_ms = 0.0
+    worker.exact_image_cache = ExactImageCache()
+    worker.threshold_suggested = SimpleNamespace(emit=lambda _value: None)
+    worker.rotate_crop_for_ocr = lambda crop, _orientation: crop
+    worker.get_ocr_scale_factor = lambda *_args: 1.0
+    results = iter([
+        SimpleNamespace(lines=[SimpleNamespace(
+            text="誤認文字",
+            confidence=0.2,
+            words=[],
+            bounding_rect=SimpleNamespace(x=0, y=0, width=40, height=12),
+        )]),
+        SimpleNamespace(lines=[SimpleNamespace(
+            text="正解文字",
+            confidence=0.9,
+            words=[],
+            bounding_rect=SimpleNamespace(x=0, y=0, width=40, height=12),
+        )]),
+    ])
+    worker._recognize_with_backends = lambda _image: next(results)
+
+    threshold, items = OCRWorker.run_ocr_with_best_threshold(
+        worker,
+        np.full((20, 40, 3), 128, dtype=np.uint8),
+        0,
+        0,
+        candidate_thresholds=[100, 200],
+        orientation_candidates=[0],
+        force_bg_refresh=True,
+        commit_threshold=False,
+    )
+
+    assert threshold == 200
+    assert [item["text"] for item in items] == ["正解文字"]
+    assert items[0]["confidence"] == 0.9
+
+
+def test_bounded_rescue_quality_gate_requires_observed_low_confidence():
+    from ocr_quality import should_try_bounded_ocr_rescue
+
+    assert should_try_bounded_ocr_rescue([]) is True
+    assert should_try_bounded_ocr_rescue([
+        {"text": "低信頼", "confidence": 0.3},
+    ]) is True
+    assert should_try_bounded_ocr_rescue([
+        {"text": "高信頼", "confidence": 0.85},
+    ]) is False
+    assert should_try_bounded_ocr_rescue([
+        {"text": "信頼度なし"},
+    ]) is False
+
+
+def test_bounded_rescue_replacement_requires_score_and_confidence_gain():
+    from ocr_quality import select_bounded_ocr_rescue_items
+
+    baseline = [{"text": "誤認文字", "confidence": 0.3, "x": 0, "y": 0, "w": 40, "h": 12}]
+    stronger = [{"text": "正解文字", "confidence": 0.9, "x": 0, "y": 0, "w": 40, "h": 12}]
+    low_confidence = [{"text": "長い候補文字列", "confidence": 0.5, "x": 0, "y": 0, "w": 40, "h": 12}]
+    no_confidence = [{"text": "さらに長い候補文字列", "x": 0, "y": 0, "w": 40, "h": 12}]
+
+    assert select_bounded_ocr_rescue_items(baseline, stronger) == stronger
+    assert select_bounded_ocr_rescue_items(baseline, low_confidence) == baseline
+    assert select_bounded_ocr_rescue_items(baseline, no_confidence) == baseline

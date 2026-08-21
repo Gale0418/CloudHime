@@ -23,6 +23,26 @@ def _normalize_confidence(value: Any) -> float | None:
     return max(0.0, min(confidence, 1.0))
 
 
+def normalize_ocr_confidence(value: Any) -> float | None:
+    """Normalize backend confidence values to the inclusive 0..1 range."""
+    return _normalize_confidence(value)
+
+
+def weighted_ocr_confidence(items: list[dict[str, Any]]) -> float | None:
+    weighted_total = 0.0
+    total_weight = 0
+    for item in items or []:
+        confidence = _normalize_confidence(item.get("confidence"))
+        if confidence is None:
+            continue
+        weight = max(1, len(normalize_ocr_text(item.get("text", ""))))
+        weighted_total += confidence * weight
+        total_weight += weight
+    if total_weight == 0:
+        return None
+    return weighted_total / total_weight
+
+
 def _score_text_fragment(text: str, confidence: Any) -> int:
     normalized_text = normalize_ocr_text(text)
     if not normalized_text:
@@ -219,6 +239,49 @@ def score_ocr_items(
         for item in filtered_items
     )
     return score, filtered_items
+
+
+def should_try_bounded_ocr_rescue(
+    items: list[dict[str, Any]],
+    *,
+    low_confidence_threshold: float = 0.45,
+) -> bool:
+    """Request the bounded rescue only for empty or explicitly low-confidence OCR."""
+    if not items:
+        return True
+    confidence = weighted_ocr_confidence(items)
+    return confidence is not None and confidence < low_confidence_threshold
+
+
+def select_bounded_ocr_rescue_items(
+    baseline_items: list[dict[str, Any]],
+    candidate_items: list[dict[str, Any]],
+    *,
+    minimum_candidate_confidence: float = 0.60,
+    minimum_confidence_gain: float = 0.15,
+) -> list[dict[str, Any]]:
+    """Adopt a nonempty rescue only when confidence and local score both improve."""
+    baseline = list(baseline_items or [])
+    candidate = list(candidate_items or [])
+    if not candidate:
+        return baseline
+    if not baseline:
+        return candidate
+
+    baseline_confidence = weighted_ocr_confidence(baseline)
+    candidate_confidence = weighted_ocr_confidence(candidate)
+    if baseline_confidence is None or candidate_confidence is None:
+        return baseline
+    if candidate_confidence < minimum_candidate_confidence:
+        return baseline
+    if candidate_confidence < baseline_confidence + minimum_confidence_gain:
+        return baseline
+
+    baseline_score, _ = score_ocr_items(baseline, allow_relaxed=True)
+    candidate_score, filtered_candidate = score_ocr_items(candidate, allow_relaxed=True)
+    if not filtered_candidate or candidate_score <= baseline_score:
+        return baseline
+    return filtered_candidate
 
 
 def summarize_threshold_candidate(items: list[dict[str, Any]], max_items: int = 8, max_chars: int = 240) -> str:

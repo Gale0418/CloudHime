@@ -3142,3 +3142,41 @@ def test_build_screenshot_text_hint_uses_two_fast_consensus_variants():
 
     assert recognized_count == 2
     assert hint == "共通文字標籤"
+
+def test_nonempty_low_confidence_ocr_uses_bounded_hybrid_rescue(monkeypatch, qtbot):
+    from ocr_preprocess import BOUNDED_RESCUE_PREPROCESSES
+
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    baseline = {
+        "text": "誤認文字",
+        "confidence": 0.25,
+        "x": 10,
+        "y": 12,
+        "w": 40,
+        "h": 16,
+    }
+    recovered = {
+        "text": "正解文字",
+        "confidence": 0.9,
+        "x": 10,
+        "y": 12,
+        "w": 40,
+        "h": 16,
+    }
+    worker.run_ocr_with_best_threshold = Mock(side_effect=[
+        (100, [baseline]),
+        (100, [recovered]),
+    ])
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert worker.last_combined_text == "正解文字"
+        assert worker.run_ocr_with_best_threshold.call_count == 2
+        rescue_call = worker.run_ocr_with_best_threshold.call_args_list[-1]
+        assert rescue_call.kwargs["preprocess_candidates"] == BOUNDED_RESCUE_PREPROCESSES
+    finally:
+        worker.cleanup()

@@ -70,7 +70,10 @@ from themes import (
 from ocr_backends import discover_backends
 from ocr_quality import (
     evaluate_ocr_hint_consensus,
+    normalize_ocr_confidence,
     score_ocr_items as quality_score_ocr_items,
+    select_bounded_ocr_rescue_items,
+    should_try_bounded_ocr_rescue,
     summarize_threshold_candidate as quality_summarize_threshold_candidate,
 )
 from ocr_backend_installer import detect_backend_state
@@ -3907,21 +3910,26 @@ class OCRWorker(QObject):
             w = int(item['w'])
             h = int(item['h'])
             if orientation == 90:
-                remapped.append({
+                remapped_item = {
                     'text': item['text'],
                     'x': offset_x + y,
                     'y': offset_y + max(0, crop_h - (x + w)),
                     'w': h,
                     'h': w,
-                })
+                }
             elif orientation == 270:
-                remapped.append({
+                remapped_item = {
                     'text': item['text'],
                     'x': offset_x + max(0, crop_w - (y + h)),
                     'y': offset_y + x,
                     'w': h,
                     'h': w,
-                })
+                }
+            else:
+                continue
+            if 'confidence' in item:
+                remapped_item['confidence'] = item['confidence']
+            remapped.append(remapped_item)
         return remapped
 
     def extract_raw_items(self, ocr_result, scale_factor, offset_x, offset_y):
@@ -3940,6 +3948,31 @@ class OCRWorker(QObject):
             w = int(getattr(rect, "width", getattr(rect, "w", 1)))
             h = int(getattr(rect, "height", getattr(rect, "h", 1)))
             return x, y, max(1, w), max(1, h)
+
+        def get_confidence(line, words):
+            line_confidence = normalize_ocr_confidence(
+                getattr(line, "confidence", None)
+            )
+            if line_confidence is not None:
+                return line_confidence
+
+            weighted_total = 0.0
+            total_weight = 0
+            for word in words:
+                confidence = normalize_ocr_confidence(
+                    getattr(word, "confidence", None)
+                )
+                if confidence is None:
+                    continue
+                weight = max(
+                    1,
+                    len(normalize_ocr_text(getattr(word, "text", "") or "")),
+                )
+                weighted_total += confidence * weight
+                total_weight += weight
+            if total_weight == 0:
+                return None
+            return weighted_total / total_weight
 
         for line in getattr(ocr_result, "lines", []):
             line_text = normalize_ocr_text(getattr(line, "text", "") or "")
@@ -3962,15 +3995,18 @@ class OCRWorker(QObject):
                 x_min, y_min, w, h = line_rect
                 x_max = x_min + w
                 y_max = y_min + h
-            raw_items.append({
+            item = {
                 'text': line_text,
                 'x': int(x_min / scale_factor) + offset_x,
                 'y': int(y_min / scale_factor) + offset_y,
                 'w': int((x_max - x_min) / scale_factor),
                 'h': int((y_max - y_min) / scale_factor),
-            })
+            }
+            confidence = get_confidence(line, words)
+            if confidence is not None:
+                item['confidence'] = confidence
+            raw_items.append(item)
         return raw_items
-
     def score_ocr_items(self, raw_items):
         return quality_score_ocr_items(raw_items, allow_relaxed=True)
 
@@ -5599,8 +5635,13 @@ class OCRWorker(QObject):
             ):
                 self._emit_scan_status("框選區域沒有掃到文字，請框大一點或換個角度。")
 
-        if not filtered_items and not is_region_vision_mode and self.ocr_backends:
+        if (
+            not is_region_vision_mode
+            and self.ocr_backends
+            and should_try_bounded_ocr_rescue(filtered_items)
+        ):
             try:
+                baseline_items = list(filtered_items or [])
                 rescue_threshold = max(
                     AUTO_THRESHOLD_MIN,
                     min(AUTO_THRESHOLD_MAX, int(used_threshold or self.binary_threshold)),
@@ -5615,8 +5656,13 @@ class OCRWorker(QObject):
                     ocr_orientations,
                     preprocess_candidates=BOUNDED_RESCUE_PREPROCESSES,
                 )
-                if rescue_items:
-                    used_threshold, filtered_items = rescue_threshold, rescue_items
+                selected_items = select_bounded_ocr_rescue_items(
+                    baseline_items,
+                    rescue_items,
+                )
+                if selected_items != baseline_items:
+                    used_threshold = rescue_threshold
+                filtered_items = selected_items
             except Exception as exc:
                 logger.warning(
                     "[OCR hybrid rescue] failed type=%s",
