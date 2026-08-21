@@ -2108,7 +2108,7 @@ def test_fullscreen_crop_vision_skips_reliable_single_ocr_item(monkeypatch, qtbo
     worker._local_fullscreen_geometry_hint_mode = True
     worker._local_fullscreen_crop_vision_mode = True
     worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
-        {"text": "絶対に離しません", "x": 17, "y": 21, "w": 60, "h": 16},
+        {"text": "絶対に離しません", "x": 17, "y": 21, "w": 60, "h": 16, "confidence": 0.95},
     ]))
     worker.build_local_manga_crop_batches = Mock(return_value=None)
     worker.build_ai_image_parts = Mock(return_value=[{"inline_data": {"data": "page"}}])
@@ -2145,16 +2145,35 @@ def test_fullscreen_crop_vision_skips_short_same_line_ocr_items(qtbot):
     worker._local_fullscreen_crop_vision_mode = True
     try:
         assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
-            {"text": "絶対に", "x": 10, "y": 20, "w": 40, "h": 12},
+            {"text": "絶対に", "x": 10, "y": 20, "w": 40, "h": 12, "confidence": 0.92},
+            {"text": "離しません", "x": 55, "y": 21, "w": 60, "h": 12, "confidence": 0.88},
+        ])
+        assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "絶対に離しません", "x": 10, "y": 20, "w": 90, "h": 12},
+        ])
+        assert not worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "絶対に離しません", "x": 10, "y": 20, "w": 90, "h": 12, "confidence": 0.59},
+        ])
+        assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "", "x": 0, "y": 0, "w": 1, "h": 1},
+            {"text": "絶対に離しません", "x": 10, "y": 20, "w": 90, "h": 12, "confidence": 0.95},
+        ])
+        assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "", "x": 0, "y": 0, "w": 1, "h": 1},
+            {"text": "絶対に", "x": 10, "y": 20, "w": 40, "h": 12, "confidence": 0.92},
+            {"text": "離しません", "x": 55, "y": 21, "w": 60, "h": 12, "confidence": 0.88},
+        ])
+        assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
+            {"text": "絶対に", "x": 10, "y": 20, "w": 40, "h": 12, "confidence": 0.95},
             {"text": "離しません", "x": 55, "y": 21, "w": 60, "h": 12},
         ])
         assert not worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
-            {"text": "line one", "x": 10, "y": 20, "w": 40, "h": 12},
-            {"text": "line two", "x": 10, "y": 60, "w": 40, "h": 12},
+            {"text": "line one", "x": 10, "y": 20, "w": 40, "h": 12, "confidence": 0.95},
+            {"text": "line two", "x": 10, "y": 60, "w": 40, "h": 12, "confidence": 0.95},
         ])
         assert worker.should_skip_fullscreen_crop_vision_for_reliable_ocr([
-            {"text": "絶対に", "x": 70, "y": 50, "w": 30, "h": 80},
-            {"text": "離しません", "x": 110, "y": 55, "w": 30, "h": 110},
+            {"text": "絶対に", "x": 70, "y": 50, "w": 30, "h": 80, "confidence": 0.91},
+            {"text": "離しません", "x": 110, "y": 55, "w": 30, "h": 110, "confidence": 0.89},
         ], (400, 300, 3))
     finally:
         worker.cleanup()
