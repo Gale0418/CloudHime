@@ -2322,9 +2322,12 @@ def test_bounded_rescue_quality_gate_requires_observed_low_confidence():
     from ocr_quality import should_try_bounded_ocr_rescue
 
     assert should_try_bounded_ocr_rescue([]) is True
-    assert should_try_bounded_ocr_rescue([
-        {"text": "低信頼", "confidence": 0.3},
-    ]) is True
+    low_confidence = [{"text": "低信頼", "confidence": 0.3}]
+    assert should_try_bounded_ocr_rescue(low_confidence) is False
+    assert should_try_bounded_ocr_rescue(
+        low_confidence,
+        allow_nonempty=True,
+    ) is True
     assert should_try_bounded_ocr_rescue([
         {"text": "高信頼", "confidence": 0.85},
     ]) is False

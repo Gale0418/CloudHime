@@ -181,3 +181,129 @@ def test_unicode_path_loader_uses_path_bytes_and_cv2_imdecode(monkeypatch):
 
     assert _load_image(FakePath()) == "pixels"
     assert received == {"payload": b"encoded-image", "flags": cv2.IMREAD_COLOR}
+
+def _runtime_policy_strategy(preprocess):
+    return SearchStrategy(preprocess=preprocess, threshold=100, scale=2.0)
+
+
+class _RuntimePolicyBackend:
+    def __init__(self, outputs, calls):
+        self.outputs = outputs
+        self.calls = calls
+
+    def recognize(self, prepared):
+        source, preprocess = prepared
+        self.calls.append((source, preprocess))
+        text, confidence = self.outputs[preprocess]
+        return SimpleNamespace(lines=[SimpleNamespace(
+            text=text,
+            confidence=confidence,
+            box=SimpleNamespace(x=0, y=0, w=80, h=20),
+        )])
+
+
+def _evaluate_fake_runtime_policy(monkeypatch, outputs, expected):
+    from hybrid_search_benchmark import evaluate_runtime_policy
+
+    calls = []
+    monkeypatch.setattr(
+        "hybrid_search_benchmark._load_image",
+        lambda image_path: image_path.name,
+    )
+    monkeypatch.setattr(
+        "hybrid_search_benchmark._prepare_image",
+        lambda image, strategy: (image, strategy.preprocess),
+    )
+    result = evaluate_runtime_policy(
+        [{"sample_source": "sample.png", "expected": expected}],
+        backends=[_RuntimePolicyBackend(outputs, calls)],
+        baseline_strategy=_runtime_policy_strategy("binary_invert"),
+        rescue_strategies=[
+            _runtime_policy_strategy("adaptive_invert"),
+            _runtime_policy_strategy("clahe_otsu_invert"),
+        ],
+    )
+    return result, calls
+
+
+def test_runtime_policy_evaluator_counts_adoption_and_ground_truth_improvement(monkeypatch):
+    result, calls = _evaluate_fake_runtime_policy(
+        monkeypatch,
+        {
+            "binary_invert": ("誤認文字", 0.2),
+            "adaptive_invert": ("正解文字", 0.9),
+            "clahe_otsu_invert": ("別候補文", 0.7),
+        },
+        "正解文字",
+    )
+
+    assert calls == [
+        ("sample.png", "binary_invert"),
+        ("sample.png", "adaptive_invert"),
+        ("sample.png", "clahe_otsu_invert"),
+    ]
+    assert result.baseline_hits == 0
+    assert result.selected_hits == 1
+    assert result.adoptions == 1
+    assert result.improvements == 1
+    assert result.regressions == 0
+    assert result.complete is True
+    assert result.promotion_safe is True
+    assert result.accuracy_promoted is True
+
+
+def test_runtime_policy_evaluator_keeps_high_confidence_fast_path(monkeypatch):
+    result, calls = _evaluate_fake_runtime_policy(
+        monkeypatch,
+        {
+            "binary_invert": ("正解文字", 0.9),
+            "adaptive_invert": ("不應執行", 0.9),
+            "clahe_otsu_invert": ("不應執行", 0.9),
+        },
+        "正解文字",
+    )
+
+    assert calls == [("sample.png", "binary_invert")]
+    assert result.baseline_hits == result.selected_hits == 1
+    assert result.adoptions == 0
+    assert result.improvements == result.regressions == 0
+    assert result.promotion_safe is True
+    assert result.accuracy_promoted is False
+
+
+def test_runtime_policy_evaluator_reports_regression_fail_closed(monkeypatch):
+    result, _calls = _evaluate_fake_runtime_policy(
+        monkeypatch,
+        {
+            "binary_invert": ("正解文字", 0.2),
+            "adaptive_invert": ("錯誤文字", 0.9),
+            "clahe_otsu_invert": ("另一錯字", 0.8),
+        },
+        "正解文字",
+    )
+
+    assert result.baseline_hits == 1
+    assert result.selected_hits == 0
+    assert result.adoptions == 1
+    assert result.improvements == 0
+    assert result.regressions == 1
+    assert result.promotion_safe is False
+    assert result.accuracy_promoted is False
+
+
+def test_runtime_policy_evaluator_rejects_partial_missing_source(monkeypatch):
+    from hybrid_search_benchmark import evaluate_runtime_policy
+
+    monkeypatch.setattr("hybrid_search_benchmark._load_image", lambda _path: None)
+    result = evaluate_runtime_policy(
+        [{"sample_source": "missing.png", "expected": "文字"}],
+        backends=[_RuntimePolicyBackend({}, [])],
+        baseline_strategy=_runtime_policy_strategy("binary_invert"),
+        rescue_strategies=[_runtime_policy_strategy("adaptive_invert")],
+    )
+
+    assert result.cases == 1
+    assert result.evaluated_cases == 0
+    assert result.complete is False
+    assert result.promotion_safe is False
+    assert result.accuracy_promoted is False

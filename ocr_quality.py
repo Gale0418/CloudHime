@@ -244,11 +244,14 @@ def score_ocr_items(
 def should_try_bounded_ocr_rescue(
     items: list[dict[str, Any]],
     *,
+    allow_nonempty: bool = False,
     low_confidence_threshold: float = 0.45,
 ) -> bool:
-    """Request the bounded rescue only for empty or explicitly low-confidence OCR."""
+    """Request empty rescue by default; nonempty low-confidence rescue is opt-in."""
     if not items:
         return True
+    if not allow_nonempty:
+        return False
     confidence = weighted_ocr_confidence(items)
     return confidence is not None and confidence < low_confidence_threshold
 

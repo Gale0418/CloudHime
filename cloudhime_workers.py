@@ -203,6 +203,7 @@ FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT = 64
 FULLSCREEN_GEOMETRY_CROP_MAX_SCALE = 3.0
 FULLSCREEN_GRID_DIRECT_TRANSLATE_ENV = "CLOUDHIME_FULLSCREEN_GRID_DIRECT_TRANSLATE"
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
+LOW_CONFIDENCE_HYBRID_RESCUE_ENV = "CLOUDHIME_LOW_CONFIDENCE_HYBRID_RESCUE"
 MANGA_GRID_RECOVERY_MAX_ITEMS = 6
 MANGA_GRID_RECOVERY_SCORE_MARGIN = 3
 FULLSCREEN_OCR_DOWNSCALE_TRIGGER = 2400
@@ -3230,6 +3231,15 @@ class OCRWorker(QObject):
             "1", "true", "yes", "on"
         }
 
+    def low_confidence_hybrid_rescue_enabled(self):
+        override = getattr(self, "_low_confidence_hybrid_rescue_enabled", None)
+        if override is not None:
+            return bool(override)
+        return os.environ.get(
+            LOW_CONFIDENCE_HYBRID_RESCUE_ENV,
+            "",
+        ).strip().lower() in {"1", "true", "yes", "on"}
+
     def fullscreen_crop_vision_mode_enabled(self):
         override = getattr(self, "_local_fullscreen_crop_vision_mode", None)
         if override is not None:
@@ -5638,7 +5648,10 @@ class OCRWorker(QObject):
         if (
             not is_region_vision_mode
             and self.ocr_backends
-            and should_try_bounded_ocr_rescue(filtered_items)
+            and should_try_bounded_ocr_rescue(
+                filtered_items,
+                allow_nonempty=self.low_confidence_hybrid_rescue_enabled(),
+            )
         ):
             try:
                 baseline_items = list(filtered_items or [])
