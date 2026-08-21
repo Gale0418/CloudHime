@@ -205,3 +205,12 @@
 - GREEN: $env:QT_QPA_PLATFORM='offscreen'; python -m pytest tests\test_local_runtime_coordinator.py tests\test_local_vision_runtime.py -q -p no:cacheprovider --basetemp=.codex-runtime-lifecycle-final-admin-20260814 -> 67 passed in 0.94s.
 - python -m compileall -q local_runtime_coordinator.py tests\test_local_runtime_coordinator.py and git diff --check -- local_runtime_coordinator.py tests\test_local_runtime_coordinator.py both exited 0.
 - No real model, GPU, Store, WACK, or clean-machine claim is made by this unit-test slice.
+## 2026-08-21 - Background Hybrid Search exact-frame commit gate
+
+- Root cause: background threshold calibration computed against a copied frame and could commit its result after auto mode was disabled, the user changed the threshold, the scan mode changed, or a newer captured frame replaced the calibration source.
+- Implementation: threshold search can now run without committing; the background path adopts a result only while auto mode remains enabled, the base threshold and scan mode are unchanged, and shape/dtype/offset plus np.array_equal still match the latest captured frame. Threshold state and capture snapshot writes share a narrow RLock; OCR work remains outside the lock.
+- Same-frame rescans remain eligible, while different frames fail closed. No new OCR candidate, dependency, network request, GPU work, or Ollama dependency was added.
+- TDD evidence: the commit contract first failed with 3 failed, 83 passed; the newer-frame contract separately failed with 1 failed, 3 passed, 83 deselected; the scan-mode contract failed with 1 failed, 88 deselected, then passed with 1 passed, 88 deselected. Final affected suite: 243 passed in 12.73s.
+- compileall and diff-check both exited 0.
+- CodeRabbit review was not executed: the external payload gate rejected this uncommitted two-file diff because prior authorization covered a different isolated five-file review payload. No CodeRabbit pass is claimed.
+- No real OCR accuracy benchmark, GPU, Store, WACK, clean-machine, or latency promotion claim is made by this correctness slice.
