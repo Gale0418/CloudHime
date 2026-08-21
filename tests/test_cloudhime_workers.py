@@ -2062,3 +2062,178 @@ def test_run_ocr_applies_only_bounded_hybrid_preprocess_candidates():
     assert threshold == 100
     assert items == []
     assert observed_shapes == [(20, 40, 3), (20, 40, 3)]
+
+
+def _make_background_threshold_worker(search_callback):
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.auto_threshold_enabled = True
+    worker.binary_threshold = 100
+    worker.last_auto_threshold_refresh_ms = 0.0
+    worker._bg_threshold_running = True
+    worker.emitted_thresholds = []
+    worker.threshold_suggested = SimpleNamespace(emit=worker.emitted_thresholds.append)
+    worker.exact_image_cache = ExactImageCache()
+    worker.last_scanned_img = np.zeros((8, 8, 3), dtype=np.uint8)
+    worker.last_scanned_offset = (0, 0)
+    worker.run_ocr_with_best_threshold = search_callback
+    return worker
+
+
+def test_background_threshold_refresh_commits_fresh_result():
+    observed = {}
+
+    def search(*_args, **kwargs):
+        observed.update(kwargs)
+        return 150, [{"text": "fresh"}]
+
+    worker = _make_background_threshold_worker(search)
+
+    OCRWorker._run_background_threshold(
+        worker,
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        0,
+        0,
+        "region",
+    )
+
+    assert observed["commit_threshold"] is False
+    assert worker.binary_threshold == 150
+    assert worker.emitted_thresholds == [150]
+    assert worker.last_auto_threshold_refresh_ms > 0
+    assert worker._bg_threshold_running is False
+
+
+def test_background_threshold_refresh_discards_result_after_auto_mode_is_disabled():
+    observed = {}
+    worker = None
+
+    def search(*_args, **kwargs):
+        observed.update(kwargs)
+        worker.auto_threshold_enabled = False
+        return 170, [{"text": "stale"}]
+
+    worker = _make_background_threshold_worker(search)
+
+    OCRWorker._run_background_threshold(
+        worker,
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        0,
+        0,
+        "region",
+    )
+
+    assert observed["commit_threshold"] is False
+    assert worker.binary_threshold == 100
+    assert worker.emitted_thresholds == []
+    assert worker.last_auto_threshold_refresh_ms == 0.0
+    assert worker._bg_threshold_running is False
+
+
+def test_background_threshold_refresh_preserves_manual_threshold_change():
+    observed = {}
+    worker = None
+
+    def search(*_args, **kwargs):
+        observed.update(kwargs)
+        worker.set_binary_threshold(120)
+        return 190, [{"text": "stale"}]
+
+    worker = _make_background_threshold_worker(search)
+
+    OCRWorker._run_background_threshold(
+        worker,
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        0,
+        0,
+        "region",
+    )
+
+    assert observed["commit_threshold"] is False
+    assert worker.binary_threshold == 120
+    assert worker.emitted_thresholds == []
+    assert worker.last_auto_threshold_refresh_ms == 0.0
+    assert worker._bg_threshold_running is False
+
+
+def test_background_threshold_refresh_discards_result_for_newer_frame():
+    observed = {}
+
+    def search(*_args, **kwargs):
+        observed.update(kwargs)
+        return 210, [{"text": "old frame"}]
+
+    worker = _make_background_threshold_worker(search)
+    worker.last_scanned_img = np.ones((8, 8, 3), dtype=np.uint8)
+
+    OCRWorker._run_background_threshold(
+        worker,
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        0,
+        0,
+        "region",
+    )
+
+    assert observed["commit_threshold"] is False
+    assert worker.binary_threshold == 100
+    assert worker.emitted_thresholds == []
+    assert worker.last_auto_threshold_refresh_ms == 0.0
+    assert worker._bg_threshold_running is False
+
+def test_new_scan_invalidates_queued_background_threshold_result():
+    observed = {}
+    jobs = []
+
+    def search(*_args, **kwargs):
+        observed.update(kwargs)
+        return 230, [{"text": "queued old frame"}]
+
+    worker = _make_background_threshold_worker(search)
+    worker._bg_threshold_running = False
+    worker.auto_threshold_refresh_interval_ms = 60_000
+    worker._bg_threshold_executor = SimpleNamespace(
+        submit=lambda callback, *args: jobs.append((callback, args))
+    )
+    first_frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    worker.last_scanned_img = first_frame.copy()
+
+    worker.trigger_background_threshold_refresh(first_frame, 0, 0, "region")
+    assert len(jobs) == 1
+
+    second_frame = np.ones((8, 8, 3), dtype=np.uint8)
+    worker.last_scanned_img = second_frame.copy()
+    worker.trigger_background_threshold_refresh(second_frame, 0, 0, "region")
+    assert len(jobs) == 1
+
+    callback, args = jobs[0]
+    callback(*args)
+
+    assert observed["commit_threshold"] is False
+    assert worker.binary_threshold == 100
+    assert worker.emitted_thresholds == []
+    assert worker.last_auto_threshold_refresh_ms == 0.0
+    assert worker._bg_threshold_running is False
+
+
+def test_background_threshold_refresh_discards_result_after_scan_mode_changes():
+    observed = {}
+
+    def search(*_args, **kwargs):
+        observed.update(kwargs)
+        return 240, [{"text": "old mode"}]
+
+    worker = _make_background_threshold_worker(search)
+    worker.scan_mode = "fullscreen"
+
+    OCRWorker._run_background_threshold(
+        worker,
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        0,
+        0,
+        "region",
+    )
+
+    assert observed["commit_threshold"] is False
+    assert worker.binary_threshold == 100
+    assert worker.emitted_thresholds == []
+    assert worker.last_auto_threshold_refresh_ms == 0.0
+    assert worker._bg_threshold_running is False

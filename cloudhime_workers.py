@@ -341,6 +341,7 @@ class OCRWorker(QObject):
         # 狀態標記
         
         self.binary_threshold = 100 
+        self._threshold_state_lock = threading.RLock()
         self.last_scanned_img = None
         self.last_scanned_offset = (0, 0)
         self._bg_threshold_running = False  # 防止重複提交背景任務
@@ -558,30 +559,82 @@ class OCRWorker(QObject):
 
     def trigger_background_threshold_refresh(self, img, offset_x, offset_y, mode):
         # 這是掃描結束後呼叫的觸發器
-        if not self.auto_threshold_enabled or self._bg_threshold_running:
-            return
-        
-        now_ms = time.monotonic() * 1000.0
-        if self.last_auto_threshold_refresh_ms > 0 and (now_ms - self.last_auto_threshold_refresh_ms) < self.auto_threshold_refresh_interval_ms:
-            return
+        threshold_lock = self._get_threshold_state_lock()
+        with threshold_lock:
+            if not self.auto_threshold_enabled or self._bg_threshold_running:
+                return
 
-        self._bg_threshold_running = True
+            now_ms = time.monotonic() * 1000.0
+            if (
+                self.last_auto_threshold_refresh_ms > 0
+                and (now_ms - self.last_auto_threshold_refresh_ms)
+                < self.auto_threshold_refresh_interval_ms
+            ):
+                return
+            self._bg_threshold_running = True
+
         candidates_count = len(AUTO_THRESHOLD_CANDIDATES)
         logger.info(f"[BG閥值] 🔍 觸發背景自動校正，測試 {candidates_count} 個候選閥值...")
-        self._bg_threshold_executor.submit(self._run_background_threshold, img.copy(), offset_x, offset_y, mode)
+        self._bg_threshold_executor.submit(
+            self._run_background_threshold,
+            img.copy(),
+            offset_x,
+            offset_y,
+            mode,
+        )
 
     def _run_background_threshold(self, img, offset_x, offset_y, mode):
         t0 = time.perf_counter()
+        threshold_lock = self._get_threshold_state_lock()
+        with threshold_lock:
+            base_threshold = int(self.binary_threshold)
         try:
-            best_threshold, best_items = self.run_ocr_with_best_threshold(img, offset_x, offset_y, silent=True, force_bg_refresh=True)
+            best_threshold, best_items = self.run_ocr_with_best_threshold(
+                img,
+                offset_x,
+                offset_y,
+                silent=True,
+                force_bg_refresh=True,
+                commit_threshold=False,
+            )
             elapsed_ms = (time.perf_counter() - t0) * 1000
-            logger.info(f"[BG閥值] ✅ 校正完成！最佳閥值={best_threshold}，找到 {len(best_items)} 段文字，耗時 {elapsed_ms:.0f}ms")
+            emitted_threshold = None
+            with threshold_lock:
+                if (
+                    not self.auto_threshold_enabled
+                    or int(self.binary_threshold) != base_threshold
+                    or getattr(self, "scan_mode", mode) != mode
+                    or not self._is_threshold_refresh_frame_current(
+                        img,
+                        offset_x,
+                        offset_y,
+                    )
+                ):
+                    logger.info(
+                        "[BG閥值] 校正結果已過期，略過套用，耗時 %.0fms",
+                        elapsed_ms,
+                    )
+                    return
+
+                if best_threshold != self.binary_threshold:
+                    self.set_binary_threshold(best_threshold)
+                    emitted_threshold = best_threshold
+                self.last_auto_threshold_refresh_ms = time.monotonic() * 1000.0
+            if emitted_threshold is not None:
+                self.threshold_suggested.emit(emitted_threshold)
+            logger.info(
+                "[BG閥值] ✅ 校正完成！最佳閥值=%s，找到 %s 段文字，耗時 %.0fms",
+                best_threshold,
+                len(best_items),
+                elapsed_ms,
+            )
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             logger.error(f"[BG閥值] ❌ 校正失敗：{type(exc).__name__}: {exc}，耗時 {elapsed_ms:.0f}ms")
         finally:
             # 無論成功或失敗，一定要清掉 flag，否則背景永遠不會再觸發
-            self._bg_threshold_running = False
+            with threshold_lock:
+                self._bg_threshold_running = False
 
     def normalize_ocr_backend_chain(self, chain):
         if chain is None:
@@ -1539,21 +1592,43 @@ class OCRWorker(QObject):
     def set_scan_region(self, rect):
         self.scan_region = rect if rect and rect[2] > 0 and rect[3] > 0 else None
 
+    def _get_threshold_state_lock(self):
+        lock = getattr(self, "_threshold_state_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._threshold_state_lock = lock
+        return lock
+
+    def _is_threshold_refresh_frame_current(self, image, offset_x, offset_y):
+        current = getattr(self, "last_scanned_img", None)
+        if current is None:
+            return False
+        if getattr(self, "last_scanned_offset", None) != (offset_x, offset_y):
+            return False
+        return (
+            current.shape == image.shape
+            and current.dtype == image.dtype
+            and np.array_equal(current, image)
+        )
+
     def set_binary_threshold(self, threshold):
         normalized = max(AUTO_THRESHOLD_MIN, min(AUTO_THRESHOLD_MAX, int(threshold)))
-        if normalized == getattr(self, "binary_threshold", normalized):
+        with self._get_threshold_state_lock():
+            if normalized == getattr(self, "binary_threshold", normalized):
+                self.binary_threshold = normalized
+                return normalized
             self.binary_threshold = normalized
+            cache = getattr(self, "exact_image_cache", None)
+            if hasattr(cache, "clear"):
+                cache.clear()
             return normalized
-        self.binary_threshold = normalized
-        cache = getattr(self, "exact_image_cache", None)
-        if hasattr(cache, "clear"):
-            cache.clear()
-        return normalized
 
     def set_auto_threshold_enabled(self, enabled):
-        self.auto_threshold_enabled = bool(enabled)
-        if not self.auto_threshold_enabled:
-            self.last_auto_threshold_refresh_ms = 0.0
+        with self._get_threshold_state_lock():
+            normalized = bool(enabled)
+            self.auto_threshold_enabled = normalized
+            if not self.auto_threshold_enabled:
+                self.last_auto_threshold_refresh_ms = 0.0
 
     def set_auto_threshold_refresh_interval_minutes(self, minutes):
         minutes = max(
@@ -3992,7 +4067,20 @@ class OCRWorker(QObject):
         self.remember_translation(cache_key, best_threshold)
         return best_threshold
 
-    def run_ocr_with_best_threshold(self, img, offset_x, offset_y, ocr_regions=None, candidate_thresholds=None, orientation_candidates=None, silent=False, force_bg_refresh=False, deadline=None, preprocess_candidates=None):
+    def run_ocr_with_best_threshold(
+        self,
+        img,
+        offset_x,
+        offset_y,
+        ocr_regions=None,
+        candidate_thresholds=None,
+        orientation_candidates=None,
+        silent=False,
+        force_bg_refresh=False,
+        deadline=None,
+        preprocess_candidates=None,
+        commit_threshold=True,
+    ):
         base_threshold = int(self.binary_threshold)
         now_ms = time.monotonic() * 1000.0
         should_refresh_auto_threshold = force_bg_refresh
@@ -4233,10 +4321,10 @@ class OCRWorker(QObject):
                         best_score = candidate["score"]
                         break
 
-        if best_threshold != self.binary_threshold:
+        if commit_threshold and best_threshold != self.binary_threshold:
             self.set_binary_threshold(best_threshold)
             self.threshold_suggested.emit(best_threshold)
-        if should_refresh_auto_threshold:
+        if commit_threshold and should_refresh_auto_threshold:
             self.last_auto_threshold_refresh_ms = now_ms
         return best_threshold, best_items
 
@@ -5107,8 +5195,9 @@ class OCRWorker(QObject):
         capture_started = time.perf_counter()
         try:
             img, offset_x, offset_y = self.capture_scan_area()
-            self.last_scanned_img = img.copy()
-            self.last_scanned_offset = (offset_x, offset_y)
+            with self._get_threshold_state_lock():
+                self.last_scanned_img = img.copy()
+                self.last_scanned_offset = (offset_x, offset_y)
             self._record_scan_event(
                 ScanStage.CAPTURE,
                 ScanOutcome.SUCCESS,
