@@ -307,3 +307,193 @@ def test_runtime_policy_evaluator_rejects_partial_missing_source(monkeypatch):
     assert result.complete is False
     assert result.promotion_safe is False
     assert result.accuracy_promoted is False
+
+class _NamedWaterfallBackend:
+    def __init__(self, name, output, calls):
+        self.name = name
+        self.output = output
+        self.calls = calls
+
+    def recognize(self, prepared):
+        source, preprocess = prepared
+        self.calls.append((self.name, source, preprocess))
+        if isinstance(self.output, Exception):
+            raise self.output
+        if hasattr(self.output, "lines"):
+            return self.output
+        text, confidence = self.output
+        lines = [] if not text else [SimpleNamespace(
+            text=text,
+            confidence=confidence,
+            box=SimpleNamespace(x=0, y=0, w=80, h=20),
+        )]
+        return SimpleNamespace(lines=lines)
+
+
+def _evaluate_fake_backend_waterfall(monkeypatch, primary_output, secondary_output, expected):
+    from hybrid_search_benchmark import evaluate_backend_waterfall
+
+    calls = []
+    monkeypatch.setattr(
+        "hybrid_search_benchmark._load_image",
+        lambda image_path: image_path.name,
+    )
+    monkeypatch.setattr(
+        "hybrid_search_benchmark._prepare_image",
+        lambda image, strategy: (image, strategy.preprocess),
+    )
+    result = evaluate_backend_waterfall(
+        [{"sample_source": "sample.png", "expected": expected}],
+        backends=[
+            _NamedWaterfallBackend("windows", primary_output, calls),
+            _NamedWaterfallBackend("rapidocr", secondary_output, calls),
+        ],
+        strategy=_runtime_policy_strategy("binary_invert"),
+    )
+    return result, calls
+
+
+def test_backend_waterfall_stops_after_nonempty_primary_without_accuracy_loss(monkeypatch):
+    result, calls = _evaluate_fake_backend_waterfall(
+        monkeypatch,
+        ("正解文字", None),
+        ("正解文字", 0.9),
+        "正解文字",
+    )
+
+    assert calls == [
+        ("windows", "sample.png", "binary_invert"),
+        ("rapidocr", "sample.png", "binary_invert"),
+        ("windows", "sample.png", "binary_invert"),
+    ]
+    assert result.baseline_hits == result.candidate_hits == 1
+    assert result.improvements == result.regressions == 0
+    assert result.candidate_secondary_attempts == 0
+    assert result.complete is True
+    assert result.accuracy_preserved is True
+
+
+def test_backend_waterfall_reports_primary_wrong_secondary_correct_regression(monkeypatch):
+    result, _calls = _evaluate_fake_backend_waterfall(
+        monkeypatch,
+        ("誤認文字", None),
+        ("正解文字", 0.9),
+        "正解文字",
+    )
+
+    assert result.baseline_hits == 1
+    assert result.candidate_hits == 0
+    assert result.improvements == 0
+    assert result.regressions == 1
+    assert result.regression_sources == ("sample.png",)
+    assert result.improvement_sources == ()
+    assert result.accuracy_preserved is False
+    assert result.promotion_ready is False
+
+
+def test_backend_waterfall_uses_secondary_after_empty_primary(monkeypatch):
+    result, calls = _evaluate_fake_backend_waterfall(
+        monkeypatch,
+        ("", None),
+        ("正解文字", 0.9),
+        "正解文字",
+    )
+
+    assert calls[-2:] == [
+        ("windows", "sample.png", "binary_invert"),
+        ("rapidocr", "sample.png", "binary_invert"),
+    ]
+    assert result.baseline_hits == result.candidate_hits == 1
+    assert result.candidate_secondary_attempts == 1
+    assert result.regressions == 0
+
+
+def test_backend_waterfall_backend_error_fails_completeness(monkeypatch):
+    result, _calls = _evaluate_fake_backend_waterfall(
+        monkeypatch,
+        ("正解文字", None),
+        RuntimeError("secondary failed"),
+        "正解文字",
+    )
+
+    assert result.complete is False
+    assert result.failed_backend_calls >= 1
+    assert result.accuracy_preserved is False
+    assert result.promotion_ready is False
+
+
+def test_backend_waterfall_error_result_fails_completeness(monkeypatch):
+    error_result = SimpleNamespace(lines=[], error="engine unavailable")
+    result, calls = _evaluate_fake_backend_waterfall(
+        monkeypatch,
+        error_result,
+        ("正解文字", 0.9),
+        "正解文字",
+    )
+
+    assert calls[-2:] == [
+        ("windows", "sample.png", "binary_invert"),
+        ("rapidocr", "sample.png", "binary_invert"),
+    ]
+    assert result.failed_backend_calls >= 1
+    assert result.complete is False
+    assert result.promotion_ready is False
+
+
+def test_backend_waterfall_baseline_tie_preserves_backend_order(monkeypatch):
+    result, calls = _evaluate_fake_backend_waterfall(
+        monkeypatch,
+        ("第一候選", 0.9),
+        ("第二候選", 0.9),
+        "第一候選",
+    )
+
+    assert calls[:2] == [
+        ("windows", "sample.png", "binary_invert"),
+        ("rapidocr", "sample.png", "binary_invert"),
+    ]
+    assert result.baseline_hits == result.candidate_hits == 1
+    assert result.regressions == 0
+
+def test_backend_waterfall_promotion_requires_accuracy_and_speed():
+    from hybrid_search_benchmark import BackendWaterfallResult
+
+    promoted = BackendWaterfallResult(
+        cases=10,
+        evaluated_cases=10,
+        evaluated_sources=5,
+        baseline_hits=8,
+        candidate_hits=8,
+        improvements=0,
+        regressions=0,
+        candidate_secondary_attempts=1,
+        failed_backend_calls=0,
+        baseline_avg_latency_ms=100.0,
+        candidate_avg_latency_ms=40.0,
+        baseline_p95_latency_ms=120.0,
+        candidate_p95_latency_ms=50.0,
+        improvement_sources=(),
+        regression_sources=(),
+        complete=True,
+    )
+    not_faster = BackendWaterfallResult(
+        **{
+            **promoted.__dict__,
+            "candidate_avg_latency_ms": 100.0,
+        }
+    )
+    p95_not_faster = BackendWaterfallResult(
+        **{
+            **promoted.__dict__,
+            "candidate_p95_latency_ms": 120.0,
+        }
+    )
+
+    assert promoted.accuracy_preserved is True
+    assert promoted.speed_improved is True
+    assert promoted.p95_speed_improved is True
+    assert promoted.promotion_ready is True
+    assert not_faster.speed_improved is False
+    assert not_faster.promotion_ready is False
+    assert p95_not_faster.p95_speed_improved is False
+    assert p95_not_faster.promotion_ready is False

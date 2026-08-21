@@ -84,6 +84,71 @@ class RuntimePolicyResult:
         )
 
 
+@dataclass(frozen=True)
+class BackendRecognitionResult:
+    items: list[dict[str, Any]]
+    score: int
+    latency_ms: float
+    attempted_backends: int
+    failed_backends: int
+
+
+@dataclass(frozen=True)
+class BackendWaterfallResult:
+    cases: int
+    evaluated_cases: int
+    evaluated_sources: int
+    baseline_hits: int
+    candidate_hits: int
+    improvements: int
+    regressions: int
+    candidate_secondary_attempts: int
+    failed_backend_calls: int
+    baseline_avg_latency_ms: float
+    candidate_avg_latency_ms: float
+    baseline_p95_latency_ms: float
+    candidate_p95_latency_ms: float
+    improvement_sources: tuple[str, ...]
+    regression_sources: tuple[str, ...]
+    complete: bool
+
+    @property
+    def accuracy_preserved(self) -> bool:
+        return (
+            self.complete
+            and self.regressions == 0
+            and self.candidate_hits >= self.baseline_hits
+        )
+
+    @property
+    def speed_improved(self) -> bool:
+        return (
+            self.complete
+            and self.candidate_avg_latency_ms < self.baseline_avg_latency_ms
+        )
+
+    @property
+    def p95_speed_improved(self) -> bool:
+        return (
+            self.complete
+            and self.candidate_p95_latency_ms < self.baseline_p95_latency_ms
+        )
+
+    @property
+    def speedup_ratio(self) -> float:
+        if self.candidate_avg_latency_ms <= 0:
+            return 0.0
+        return self.baseline_avg_latency_ms / self.candidate_avg_latency_ms
+
+    @property
+    def promotion_ready(self) -> bool:
+        return (
+            self.accuracy_preserved
+            and self.speed_improved
+            and self.p95_speed_improved
+        )
+
+
 def choose_best_result(results: Sequence[TrialResult]) -> TrialResult | None:
     complete_results = [result for result in results if result.complete]
     if not complete_results:
@@ -321,19 +386,28 @@ def evaluate_strategy(
     )
 
 
-def _recognize_strategy_with_backends(
+def _recognize_strategy_with_backend_policy(
     image: np.ndarray,
     strategy: SearchStrategy,
     backends: Sequence[OCRBackend],
-) -> tuple[list[dict[str, Any]], int, float]:
+    *,
+    stop_after_nonempty: bool,
+) -> BackendRecognitionResult:
     started = time.perf_counter()
     prepared = _prepare_image(image, strategy)
     best_items: list[dict[str, Any]] = []
     best_score = -1
+    attempted_backends = 0
+    failed_backends = 0
     for backend in backends:
+        attempted_backends += 1
         try:
             result = backend.recognize(prepared)
         except Exception:
+            failed_backends += 1
+            continue
+        if getattr(result, "error", None):
+            failed_backends += 1
             continue
         raw_items = [
             _line_to_item(line, strategy.scale)
@@ -343,9 +417,141 @@ def _recognize_strategy_with_backends(
         if filtered_items and (not best_items or score > best_score):
             best_items = filtered_items
             best_score = score
-    latency_ms = (time.perf_counter() - started) * 1000.0
-    return best_items, best_score, latency_ms
+        if stop_after_nonempty and filtered_items:
+            break
+    return BackendRecognitionResult(
+        items=best_items,
+        score=best_score,
+        latency_ms=(time.perf_counter() - started) * 1000.0,
+        attempted_backends=attempted_backends,
+        failed_backends=failed_backends,
+    )
 
+
+def _recognize_strategy_with_backends(
+    image: np.ndarray,
+    strategy: SearchStrategy,
+    backends: Sequence[OCRBackend],
+) -> tuple[list[dict[str, Any]], int, float]:
+    result = _recognize_strategy_with_backend_policy(
+        image,
+        strategy,
+        backends,
+        stop_after_nonempty=False,
+    )
+    return result.items, result.score, result.latency_ms
+
+
+def evaluate_backend_waterfall(
+    cases: Sequence[dict[str, Any]],
+    *,
+    backends: Sequence[OCRBackend],
+    strategy: SearchStrategy,
+    root: str | Path = ".",
+) -> BackendWaterfallResult:
+    """Compare all-backend arbitration with first-nonempty ordered fallback."""
+    if len(backends) < 2:
+        raise ValueError("backend waterfall needs at least two OCR backends")
+
+    cases_by_source: dict[str, list[dict[str, Any]]] = {}
+    for case in cases:
+        source = str(case.get("sample_source", ""))
+        cases_by_source.setdefault(source, []).append(case)
+
+    baseline_hits = 0
+    candidate_hits = 0
+    improvements = 0
+    regressions = 0
+    candidate_secondary_attempts = 0
+    failed_backend_calls = 0
+    evaluated_cases = 0
+    evaluated_sources = 0
+    baseline_latencies: list[float] = []
+    candidate_latencies: list[float] = []
+    improvement_sources: list[str] = []
+    regression_sources: list[str] = []
+    root_path = Path(root)
+
+    for source, source_cases in cases_by_source.items():
+        image = _load_image(root_path / source)
+        if image is None:
+            continue
+
+        baseline = _recognize_strategy_with_backend_policy(
+            image,
+            strategy,
+            backends,
+            stop_after_nonempty=False,
+        )
+        candidate = _recognize_strategy_with_backend_policy(
+            image,
+            strategy,
+            backends,
+            stop_after_nonempty=True,
+        )
+        failed_backend_calls += baseline.failed_backends + candidate.failed_backends
+        candidate_secondary_attempts += max(0, candidate.attempted_backends - 1)
+
+        source_baseline_hits = sum(
+            _expected_matches_items(case.get("expected"), baseline.items)
+            for case in source_cases
+        )
+        source_candidate_hits = sum(
+            _expected_matches_items(case.get("expected"), candidate.items)
+            for case in source_cases
+        )
+        baseline_hits += source_baseline_hits
+        candidate_hits += source_candidate_hits
+        if source_candidate_hits > source_baseline_hits:
+            improvements += 1
+            improvement_sources.append(source)
+        elif source_candidate_hits < source_baseline_hits:
+            regressions += 1
+            regression_sources.append(source)
+
+        evaluated_cases += len(source_cases)
+        evaluated_sources += 1
+        baseline_latencies.append(baseline.latency_ms)
+        candidate_latencies.append(candidate.latency_ms)
+
+    complete = (
+        evaluated_cases == len(cases)
+        and failed_backend_calls == 0
+    )
+    return BackendWaterfallResult(
+        cases=len(cases),
+        evaluated_cases=evaluated_cases,
+        evaluated_sources=evaluated_sources,
+        baseline_hits=baseline_hits,
+        candidate_hits=candidate_hits,
+        improvements=improvements,
+        regressions=regressions,
+        candidate_secondary_attempts=candidate_secondary_attempts,
+        failed_backend_calls=failed_backend_calls,
+        baseline_avg_latency_ms=(
+            sum(baseline_latencies) / len(baseline_latencies)
+            if baseline_latencies
+            else 0.0
+        ),
+        candidate_avg_latency_ms=(
+            sum(candidate_latencies) / len(candidate_latencies)
+            if candidate_latencies
+            else 0.0
+        ),
+        baseline_p95_latency_ms=(
+            float(np.percentile(baseline_latencies, 95))
+            if baseline_latencies
+            else 0.0
+        ),
+        candidate_p95_latency_ms=(
+            float(np.percentile(candidate_latencies, 95))
+            if candidate_latencies
+            else 0.0
+        ),
+        improvement_sources=tuple(improvement_sources),
+        regression_sources=tuple(regression_sources),
+        complete=complete,
+    )
 
 def evaluate_runtime_policy(
     cases: Sequence[dict[str, Any]],
@@ -520,6 +726,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Evaluate a fixed-profile confidence-aware bounded rescue candidate.",
     )
+    parser.add_argument(
+        "--backend-waterfall",
+        action="store_true",
+        help="Compare all-backend arbitration with first-nonempty ordered fallback.",
+    )
     parser.add_argument("--runtime-threshold", type=int, default=100)
     parser.add_argument("--runtime-scale", type=float, default=2.0)
     parser.add_argument("--max-cases", type=int, default=5)
@@ -550,6 +761,61 @@ def main(argv: list[str] | None = None) -> int:
     missing_names = [name for name in backend_names if name not in discovered_names]
     if missing_names:
         raise ValueError(f"ocr backend unavailable: {','.join(missing_names)}")
+
+    if args.runtime_policy and args.backend_waterfall:
+        raise ValueError("choose only one runtime policy benchmark mode")
+
+    if args.backend_waterfall:
+        threshold = int(args.runtime_threshold)
+        scale = float(args.runtime_scale)
+        strategy = SearchStrategy("binary_invert", threshold, scale)
+        result = evaluate_backend_waterfall(
+            cases,
+            backends=backends,
+            strategy=strategy,
+        )
+        payload = {
+            "profile": "fixed_strategy_backend_waterfall_candidate",
+            "backends": discovered_names,
+            "strategy": strategy.name,
+            "cases": result.cases,
+            "evaluated_cases": result.evaluated_cases,
+            "evaluated_sources": result.evaluated_sources,
+            "baseline_hits": result.baseline_hits,
+            "candidate_hits": result.candidate_hits,
+            "improvements": result.improvements,
+            "regressions": result.regressions,
+            "candidate_secondary_attempts": result.candidate_secondary_attempts,
+            "failed_backend_calls": result.failed_backend_calls,
+            "baseline_avg_latency_ms": result.baseline_avg_latency_ms,
+            "candidate_avg_latency_ms": result.candidate_avg_latency_ms,
+            "baseline_p95_latency_ms": result.baseline_p95_latency_ms,
+            "candidate_p95_latency_ms": result.candidate_p95_latency_ms,
+            "improvement_sources": list(result.improvement_sources),
+            "regression_sources": list(result.regression_sources),
+            "speedup_ratio": result.speedup_ratio,
+            "complete": result.complete,
+            "accuracy_preserved": result.accuracy_preserved,
+            "speed_improved": result.speed_improved,
+            "p95_speed_improved": result.p95_speed_improved,
+            "promotion_ready": result.promotion_ready,
+        }
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(
+                "Backend Waterfall Summary: "
+                f"hits={result.baseline_hits}->{result.candidate_hits}/{result.cases} "
+                f"improvements={result.improvements} "
+                f"regressions={result.regressions} "
+                f"latency_ms={result.baseline_avg_latency_ms:.2f}"
+                f"->{result.candidate_avg_latency_ms:.2f} "
+                f"p95_ms={result.baseline_p95_latency_ms:.2f}"
+                f"->{result.candidate_p95_latency_ms:.2f} "
+                f"speedup={result.speedup_ratio:.2f}x "
+                f"promotion_ready={str(result.promotion_ready).lower()}"
+            )
+        return 0 if result.promotion_ready else 2
 
     if args.runtime_policy:
         threshold = int(args.runtime_threshold)
