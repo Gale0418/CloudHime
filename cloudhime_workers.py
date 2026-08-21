@@ -71,6 +71,7 @@ from ocr_backends import discover_backends
 from ocr_quality import (
     evaluate_ocr_hint_consensus,
     normalize_ocr_confidence,
+    weighted_ocr_confidence,
     score_ocr_items as quality_score_ocr_items,
     select_bounded_ocr_rescue_items,
     should_try_bounded_ocr_rescue,
@@ -198,6 +199,7 @@ MANGA_ADAPTIVE_MAX_MS = 600
 MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
 FULLSCREEN_GEOMETRY_VISION_ENV = "CLOUDHIME_FULLSCREEN_GEOMETRY_VISION"
 FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE = 4
+FULLSCREEN_RELIABLE_OCR_MIN_CONFIDENCE = 0.60
 FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO = 0.15
 FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT = 64
 FULLSCREEN_GEOMETRY_CROP_MAX_SCALE = 3.0
@@ -3190,19 +3192,47 @@ class OCRWorker(QObject):
         if not self.fullscreen_crop_vision_mode_enabled() or not items:
             return False
         texts = [str(item.get("text") or "").strip() for item in items]
-        if not any(texts):
+        nonempty_items = [
+            item
+            for item, text in zip(items, texts)
+            if text
+        ]
+        if not nonempty_items:
             return False
-        if self.is_unreliable_manga_ocr(items):
+        confidences = [
+            normalize_ocr_confidence(item.get("confidence"))
+            for item in nonempty_items
+        ]
+        if all(confidence is not None for confidence in confidences):
+            confidence = weighted_ocr_confidence(nonempty_items)
+            if (
+                confidence is not None
+                and confidence < FULLSCREEN_RELIABLE_OCR_MIN_CONFIDENCE
+            ):
+                return False
+        if self.is_unreliable_manga_ocr(nonempty_items):
             return False
-        if len(items) == 1:
+        if len(nonempty_items) == 1:
             return True
         try:
-            centers = [float(item["y"]) + float(item["h"]) / 2 for item in items]
-            heights = [max(1.0, float(item["h"])) for item in items]
-            left = min(float(item["x"]) for item in items)
-            top = min(float(item["y"]) for item in items)
-            right = max(float(item["x"]) + float(item["w"]) for item in items)
-            bottom = max(float(item["y"]) + float(item["h"]) for item in items)
+            centers = [
+                float(item["y"]) + float(item["h"]) / 2
+                for item in nonempty_items
+            ]
+            heights = [
+                max(1.0, float(item["h"]))
+                for item in nonempty_items
+            ]
+            left = min(float(item["x"]) for item in nonempty_items)
+            top = min(float(item["y"]) for item in nonempty_items)
+            right = max(
+                float(item["x"]) + float(item["w"])
+                for item in nonempty_items
+            )
+            bottom = max(
+                float(item["y"]) + float(item["h"])
+                for item in nonempty_items
+            )
         except (KeyError, TypeError, ValueError):
             return False
         vertical_spread = max(centers) - min(centers)
