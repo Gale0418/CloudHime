@@ -201,8 +201,17 @@ class LocalVisionRuntimeCoordinator:
                 entry.cleanup_after_start = True
             if not was_stopped:
                 cleanup_runtime = entry.runtime
-            if not entry.starting:
+            # Keep a stopped entry visible while cleanup is still in progress.
+            # A concurrent acquire must fail closed instead of spawning a second server.
+            if cleanup_runtime is None and not entry.starting:
                 self._entries.pop(lease._key, None)
 
         if cleanup_runtime is not None:
             cleanup_runtime.stop()
+            with self._lock:
+                if (
+                    self._entries.get(lease._key) is entry
+                    and entry.leases == 0
+                    and not entry.starting
+                ):
+                    self._entries.pop(lease._key, None)
