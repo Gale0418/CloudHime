@@ -78,7 +78,7 @@ After building the frozen release directory, run the optional launch gate with a
 
     pwsh -File packaging/test_clean_machine.ps1 -ExecutablePath .\dist\CloudHime\CloudHime.exe -LaunchWaitSeconds 20
 
-The gate keeps only required Windows and user AppData variables, removes inherited developer PATH entries, verifies GUI liveness, and cleans up the exact child PID. This is environment-isolated packaged evidence, not proof from a clean Windows VM or Store certification.
+The gate creates a unique `cloudhime-clean-machine-*` sandbox for TEMP/TMP/APPDATA/LOCALAPPDATA, keeps only required Windows variables, removes inherited developer PATH entries, verifies GUI liveness, and cleans up the exact packaged PID plus its owned descendant tree. This is environment-isolated packaged evidence, not proof from a clean Windows VM or Store certification.
 
 ## Release smoke orchestrator
 

@@ -316,3 +316,22 @@ def test_production_translation_provider_has_no_inprocess_llama_path():
     assert "from llama_cpp import Llama" not in production_source
     assert "class LocalGemmaProvider" in dev_source
     assert "from llama_cpp import Llama" in dev_source
+
+
+def test_clean_machine_uses_unique_user_sandbox_and_owned_descendant_cleanup():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "packaging" / "test_clean_machine.ps1").read_text(encoding="utf-8")
+
+    assert "cloudhime-clean-machine-" in script
+    assert "$sandboxRoot" in script
+    assert "LOCALAPPDATA = $localAppData" in script
+    assert "APPDATA = $appData" in script
+    assert "TEMP = $tempRoot" in script
+    assert "TMP = $tempRoot" in script
+    assert "Get-CimInstance Win32_Process" in script
+    assert "CreateToolhelp32Snapshot" in script
+    assert "GetParentMap" in script
+    assert "Stop-OwnedDescendants" in script
+    assert "ParentProcessId" in script
+    assert "Stop-Process -Id $descendantId" in script
+    assert "Remove-Item -LiteralPath $sandboxRoot" in script
