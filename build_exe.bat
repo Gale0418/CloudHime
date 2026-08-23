@@ -84,6 +84,13 @@ for %%F in (runtime\ggml-cpu-*.dll) do (
   )
 )
 
+if exist "runtime\runtime-source.json" (
+  copy /y "runtime\runtime-source.json" "%RUNTIME_STAGE%\" >nul
+  if errorlevel 1 (
+    goto :failure
+  )
+)
+
 if not defined LLAMA_RUNTIME_COMMIT if exist "runtime\llama-runtime-commit.txt" set /p LLAMA_RUNTIME_COMMIT=<"runtime\llama-runtime-commit.txt"
 if not defined LLAMA_RUNTIME_COMMIT (
   echo Missing explicit llama runtime commit provenance.

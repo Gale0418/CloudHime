@@ -71,7 +71,7 @@ production lock and this build lock into the same Python 3.10 x64 environment:
     py -3.10-64 -m pip install --require-hashes -r requirements-lock-win-amd64-py310.txt
     py -3.10-64 -m pip install --require-hashes -r requirements-build-win-amd64-py310.txt
 
-CI's opt-in real release job follows the same separation. The lock is target-specific
+CI's opt-in real release job follows the same separation. When the pinned runtime fetch produced `runtime-source.json`, `build_exe.bat` carries it into the staged runtime so the final runtime manifest retains the archive SHA-256 evidence. The lock is target-specific
 and must be regenerated when the Python, Windows architecture, or PyInstaller version
 changes.
 ## Release artifact dependency provenance

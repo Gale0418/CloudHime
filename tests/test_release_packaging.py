@@ -408,6 +408,7 @@ def test_release_build_requires_explicit_llama_runtime_provenance():
 
     assert "LLAMA_RUNTIME_COMMIT" in script
     assert "runtime\\llama-runtime-commit.txt" in normalized
+    assert "runtime\\runtime-source.json" in normalized
     assert "Missing explicit llama runtime commit provenance." in script
     assert "git rev-parse HEAD" not in script
 
