@@ -1040,6 +1040,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         target_lang: str = "zh-TW",
         enabled: bool = False,
         timeout_seconds: int = 20,
+        api_key: str = "",
         temperature: float = 0.2,
         repeat_penalty: float = 1.15,
     ):
@@ -1051,7 +1052,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         self.temperature = float(temperature)
         self.repeat_penalty = float(repeat_penalty)
         self._runtime_ready = bool(self.base_url and self.model_name)
-        self._runtime_api_key = ""
+        self._runtime_api_key = str(api_key or "").strip()
         self._closed = False
         self._dictionary = load_translation_dictionary()
         self._translation_cache: OrderedDict[Any, TranslationResult] = OrderedDict()
