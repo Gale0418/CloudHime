@@ -70,3 +70,4 @@ temp_pytest_runtime/
 # Local private research archive and generated MissionCenter HUD output.
 records/private/
 output/
+packaging/store-identity.local.json

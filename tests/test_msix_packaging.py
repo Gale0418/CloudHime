@@ -908,3 +908,104 @@ def test_wack_readme_sets_optional_deprecated_partner_center_boundary():
     assert "appcert.exe reset" in readme
     assert "appcert.exe test -appxpackagepath" in readme
     assert "appcert.exe test -packagefullname" in readme
+
+
+def test_store_identity_config_is_local_only_and_documented():
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "packaging" / "README.md").read_text(encoding="utf-8")
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+    assert "packaging/store-identity.local.json" in gitignore
+    assert "-StoreIdentityConfigPath" in readme
+    assert "Partner Center" in readme
+    assert "StoreRelease" in readme
+
+def test_store_release_requires_a_controlled_identity_config():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "packaging" / "build_msix.ps1").read_text(encoding="utf-8")
+
+    for marker in (
+        "[switch]$StoreRelease",
+        "[string]$StoreIdentityConfigPath",
+        "StoreRelease requires -StoreIdentityConfigPath",
+        "package_family_name",
+        "[\\s._-]",
+    ):
+        assert marker in script
+
+
+def test_store_release_rejects_missing_identity_config_before_preflight():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the Store identity guard test")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "build_msix.ps1"
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            str(script),
+            "-StoreRelease",
+            "-PreflightOnly",
+            "-DistDir",
+            str(root / "missing-store-release-dist"),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "StoreRelease requires -StoreIdentityConfigPath" in combined
+
+def test_store_release_rejects_placeholder_publisher_before_preflight():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the Store identity guard test")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "build_msix.ps1"
+    config_path = root / f".tmp-store-identity-{uuid.uuid4().hex}.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "identity_name": "CloudHime",
+                "publisher": "CN=CloudHime Development",
+                "publisher_display_name": "CloudHime",
+                "package_family_name": "CloudHime_1234567890123",
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        result = subprocess.run(
+            [
+                powershell,
+                "-NoLogo",
+                "-NoProfile",
+                "-File",
+                str(script),
+                "-StoreRelease",
+                "-StoreIdentityConfigPath",
+                str(config_path),
+                "-PreflightOnly",
+                "-DistDir",
+                str(root / "missing-store-release-dist"),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    finally:
+        config_path.unlink(missing_ok=True)
+
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "StoreRelease rejects development" in combined
