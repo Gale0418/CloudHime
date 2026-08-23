@@ -232,7 +232,11 @@ $requiredNoticeMarkers = @(
     "httpx",
     "fake-useragent",
     "certifi",
-    "Jina Reader"
+    "Jina Reader",
+    "## meikiocr",
+    "Apache License 2.0",
+    "## Meiki OCR model weights",
+    "GNU Lesser General Public License v3.0"
 )
 foreach ($marker in $requiredNoticeMarkers) {
     if ($noticeText.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {

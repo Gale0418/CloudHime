@@ -857,7 +857,10 @@ class OCRWorker(QObject):
         if ready:
             OCRWorker._emit_japanese_rescue_status(self, "ready", "")
         elif runtime.state is JapaneseOCRRuntimeState.disabled:
-            OCRWorker._emit_japanese_rescue_status(self, "disabled", "")
+            if bool(getattr(self, "japanese_rescue_enabled", False)):
+                self.request_japanese_rescue_start()
+            else:
+                OCRWorker._emit_japanese_rescue_status(self, "disabled", "")
         else:
             OCRWorker._emit_japanese_rescue_status(self, "failed", runtime.last_error)
 
@@ -1769,6 +1772,7 @@ class OCRWorker(QObject):
         if hasattr(self, '_bg_threshold_executor'):
             self._bg_threshold_executor.shutdown(wait=True)
         if hasattr(self, 'japanese_rescue_runtime'):
+            self.japanese_rescue_enabled = False
             self.japanese_rescue_runtime.disable()
         if hasattr(self, '_japanese_rescue_executor'):
             self._japanese_rescue_executor.shutdown(wait=True)

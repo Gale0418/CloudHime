@@ -45,10 +45,21 @@ class JapaneseOCRRuntime:
         self.last_error = ""
         self._ocr = None
         self._lock = threading.Lock()
+        self._generation = 0
         self._cancel = threading.Event()
 
-    def _report(self, phase: str, progress: int) -> None:
-        if self._cancel.is_set():
+    def _report(
+        self,
+        phase: str,
+        progress: int,
+        *,
+        cancel_event: threading.Event | None = None,
+        generation: int | None = None,
+    ) -> None:
+        token = cancel_event or self._cancel
+        if token.is_set() or (
+            generation is not None and generation != self._generation
+        ):
             raise JapaneseOCRAssetError("japanese OCR setup cancelled")
         if self.progress_callback:
             self.progress_callback(phase, progress)
@@ -59,17 +70,28 @@ class JapaneseOCRRuntime:
                 return True
             if self.state is JapaneseOCRRuntimeState.starting:
                 return False
-            self._cancel.clear()
+            self._generation += 1
+            generation = self._generation
+            cancel_event = threading.Event()
+            self._cancel = cancel_event
             self.state = JapaneseOCRRuntimeState.starting
             self.last_error = ""
+
+        def report(phase: str, progress: int) -> None:
+            self._report(
+                phase,
+                progress,
+                cancel_event=cancel_event,
+                generation=generation,
+            )
 
         try:
             ensure_japanese_ocr_assets(
                 self.assets,
-                progress_callback=self._report,
-                cancel_event=self._cancel,
+                progress_callback=report,
+                cancel_event=cancel_event,
             )
-            self._report("warming_up", 85)
+            report("warming_up", 85)
             ocr = _create_meiki_ocr(self.assets)
 
             import numpy as np
@@ -77,28 +99,26 @@ class JapaneseOCRRuntime:
             ocr.run_ocr(np.zeros((64, 256, 3), dtype=np.uint8))
             ocr.run_recognition([np.zeros((32, 256, 3), dtype=np.uint8)])
             ocr.run_recognition([np.zeros((256, 32, 3), dtype=np.uint8)])
-            self._report("ready", 100)
+            report("ready", 100)
             with self._lock:
-                if self._cancel.is_set():
-                    self.state = JapaneseOCRRuntimeState.disabled
+                if cancel_event.is_set() or generation != self._generation:
                     return False
                 self._ocr = ocr
                 self.state = JapaneseOCRRuntimeState.ready
             return True
         except Exception as exc:
             with self._lock:
+                if cancel_event.is_set() or generation != self._generation:
+                    return False
                 self._ocr = None
-                if self._cancel.is_set():
-                    self.state = JapaneseOCRRuntimeState.disabled
-                    self.last_error = ""
-                else:
-                    self.last_error = f"{type(exc).__name__}: {exc}"
-                    self.state = JapaneseOCRRuntimeState.failed
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                self.state = JapaneseOCRRuntimeState.failed
             return False
 
     def disable(self) -> None:
-        self._cancel.set()
         with self._lock:
+            self._generation += 1
+            self._cancel.set()
             self._ocr = None
             self.state = JapaneseOCRRuntimeState.disabled
             self.last_error = ""
