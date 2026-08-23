@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import pytest
 
@@ -93,6 +94,37 @@ def test_production_requirements_are_exactly_version_pinned():
         ]
         assert entries
         assert all("==" in entry for entry in entries), filename
+
+def test_release_build_uses_a_separate_hash_pinned_tool_lock():
+    root = Path(__file__).resolve().parents[1]
+    build_lock_path = root / "requirements-build-win-amd64-py310.txt"
+    build_lock = build_lock_path.read_text(encoding="utf-8")
+    entries = [
+        line.strip()
+        for line in build_lock.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    names = {line.split("==", 1)[0].lower().replace("_", "-") for line in entries}
+
+    assert entries
+    assert names == {
+        "altgraph",
+        "packaging",
+        "pefile",
+        "pyinstaller",
+        "pyinstaller-hooks-contrib",
+        "pywin32-ctypes",
+        "setuptools",
+    }
+    assert all("==" in line for line in entries)
+    assert all(re.search(r"--hash=sha256:[0-9a-f]{64}$", line) for line in entries)
+
+    production = (root / "requirements.txt").read_text(encoding="utf-8").lower()
+    assert "pyinstaller" not in production
+    build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
+    assert 'set "BUILD_REQUIREMENTS=requirements-build-win-amd64-py310.txt"' in build_script
+    assert "%BUILD_REQUIREMENTS%" in build_script
+    assert "--require-hashes" in build_script
 
 def test_production_release_excludes_in_process_llama_binding():
     root = Path(__file__).resolve().parents[1]

@@ -72,6 +72,8 @@ def test_ci_exposes_an_opt_in_real_frozen_release_smoke_gate():
     assert "CLOUDHIME_RELEASE_IMAGE_PATH" in real_job
     assert r"packaging\test_release_smoke.ps1" in real_job
     assert "-RequireGpu" in real_job
+    assert "requirements-build-win-amd64-py310.txt" in real_job
+    assert "Release build tooling installation failed." in real_job
     assert "The real release gate refuses the dummy MSIX fixture." in real_job
     assert "packaging/release_functional_smoke.py" not in ci
 def test_ci_msix_signing_prefers_x64_signtool():
