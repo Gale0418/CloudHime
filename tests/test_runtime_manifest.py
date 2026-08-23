@@ -125,6 +125,22 @@ def test_runtime_manifest_rejects_missing_metadata(tmp_path):
         validate_manifest(runtime, manifest)
 
 
+def test_runtime_manifest_rejects_unsupported_architecture(tmp_path):
+    runtime = tmp_path / "runtime"
+    _write_runtime(runtime)
+    manifest = build_manifest(
+        runtime,
+        server_version="fixture",
+        source_commit="fixture",
+        backend="cuda",
+        architecture="x64",
+    )
+    manifest["build"]["architecture"] = "arm64"
+
+    with pytest.raises(ValueError, match="architecture"):
+        validate_manifest(runtime, manifest)
+
+
 def test_runtime_manifest_is_json_safe(tmp_path):
     runtime = tmp_path / "runtime"
     _write_runtime(runtime)

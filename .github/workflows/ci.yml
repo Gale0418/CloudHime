@@ -346,7 +346,8 @@ jobs:
           $runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
           if ($runtimeManifest.schema_version -ne 1 -or
               $runtimeManifest.runtime -ne "llama-server" -or
-              [string]::IsNullOrWhiteSpace([string]$runtimeManifest.server.version)) {
+              [string]::IsNullOrWhiteSpace([string]$runtimeManifest.server.version) -or
+              [string]$runtimeManifest.build.architecture -ine "x64") {
             throw "MSIX contained an invalid runtime manifest"
           }
           $provenancePath = Join-Path $unpackDir "_internal\provenance\release-provenance.json"
