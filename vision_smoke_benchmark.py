@@ -25,7 +25,7 @@ from japanese_ocr_rescue import (
     rescue_gate,
 )
 from japanese_ocr_runtime import JapaneseOCRRuntime
-from local_vision_assets import resolve_preferred_vision_assets
+from local_vision_assets import VisionAssets, resolve_preferred_vision_assets
 from local_vision_runtime import LocalVisionRuntime
 from translation_providers import LocalMultimodalProvider
 
@@ -289,6 +289,8 @@ def run_smoke(
     ocr_hint: bool = False,
     japanese_rescue: bool = False,
     model_name: str = DEFAULT_MODEL,
+    assets: VisionAssets | None = None,
+    image_root: str | Path | None = None,
 ) -> dict[str, Any]:
     effective_gpu_layers = 0 if force_cpu else max(0, int(gpu_layers))
     if require_gpu and force_cpu:
@@ -316,8 +318,12 @@ def run_smoke(
 
         popen_factory = popen_cpu
 
+    resolved_assets = assets or resolve_preferred_vision_assets(PROJECT_ROOT)
+    resolved_image_root = (
+        Path(image_root).resolve() if image_root is not None else PROJECT_ROOT
+    )
     runtime = LocalVisionRuntime(
-        resolve_preferred_vision_assets(PROJECT_ROOT),
+        resolved_assets,
         popen_factory=popen_factory,
         health_retries=max(1, int(startup_timeout_seconds * 2)),
         context_size=max(512, int(context_size)),
@@ -357,7 +363,7 @@ def run_smoke(
             ocr_hint_worker = OCRWorker()
             ocr_hint_worker.reload_ocr_backends(["windows"], log=False)
         for sample_source, image_cases in group_cases_by_image(cases).items():
-            image_path = PROJECT_ROOT / sample_source
+            image_path = resolved_image_root / sample_source
             request_started = time.perf_counter()
             error = ""
             actual = ""
@@ -677,6 +683,10 @@ def _format_optional_score(value: Any, *, digits: int = 3) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CloudHime local Gemma 3 image OCR smoke benchmark")
     parser.add_argument("manifest", nargs="?", default=str(DEFAULT_MANIFEST))
+    parser.add_argument("--runtime-dir", type=Path)
+    parser.add_argument("--model", "--model-path", dest="model_path", type=Path)
+    parser.add_argument("--projector", "--projector-path", dest="projector_path", type=Path)
+    parser.add_argument("--image-root", type=Path)
     parser.add_argument("--max-cases", type=int, default=5)
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--startup-timeout", type=int, default=90)
@@ -702,6 +712,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    explicit_asset_args = (args.runtime_dir, args.model_path, args.projector_path)
+    if any(value is not None for value in explicit_asset_args) and not all(
+        value is not None for value in explicit_asset_args
+    ):
+        raise SystemExit(
+            "--runtime-dir, --model, and --projector must be provided together"
+        )
+    explicit_assets = None
+    if all(value is not None for value in explicit_asset_args):
+        explicit_assets = VisionAssets(
+            server_path=args.runtime_dir / "llama-server.exe",
+            model_path=args.model_path,
+            projector_path=args.projector_path,
+        )
     result = run_smoke(
         args.manifest,
         max_cases=args.max_cases,
@@ -715,6 +739,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         prompt_mode=args.prompt_mode,
         ocr_hint=args.ocr_hint,
         japanese_rescue=args.japanese_rescue,
+        assets=explicit_assets,
+        image_root=args.image_root,
     )
     _configure_stdout_for_unicode()
     complete_ok = not args.require_complete or _is_complete(result)
