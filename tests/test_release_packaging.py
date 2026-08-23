@@ -1,5 +1,10 @@
+import hashlib
+import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import zipfile
 
 import pytest
 
@@ -125,6 +130,125 @@ def test_release_build_uses_a_separate_hash_pinned_tool_lock():
     assert 'set "BUILD_REQUIREMENTS=requirements-build-win-amd64-py310.txt"' in build_script
     assert "%BUILD_REQUIREMENTS%" in build_script
     assert "--require-hashes" in build_script
+
+def _powershell_executable():
+    return shutil.which("pwsh") or shutil.which("powershell")
+
+
+def test_runtime_fetch_gate_stages_a_hash_verified_local_archive(tmp_path):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for runtime fetch integration coverage")
+
+    root = Path(__file__).resolve().parents[1]
+    archive = tmp_path / "llama-runtime.zip"
+    output = tmp_path / "runtime"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("llama-runtime/llama-server.exe", b"server-binary")
+        bundle.writestr("llama-runtime/llama.dll", b"runtime-binary")
+    expected_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            str(root / "packaging" / "fetch_runtime_assets.ps1"),
+            "-ArchivePath",
+            str(archive),
+            "-ExpectedSha256",
+            expected_sha256,
+            "-SourceCommit",
+            "a" * 40,
+            "-OutputRuntimeDir",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (output / "llama-server.exe").read_bytes() == b"server-binary"
+    assert (output / "llama-runtime-commit.txt").read_text(encoding="utf-8").strip() == "a" * 40
+    metadata = json.loads((output / "runtime-source.json").read_text(encoding="utf-8"))
+    assert metadata == {
+        "schema_version": 1,
+        "source_commit": "a" * 40,
+        "archive_sha256": expected_sha256,
+        "backend": "cuda",
+        "architecture": "x64",
+    }
+
+
+def test_runtime_fetch_gate_rejects_bad_hash_and_zip_traversal(tmp_path):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for runtime fetch integration coverage")
+
+    root = Path(__file__).resolve().parents[1]
+    script = str(root / "packaging" / "fetch_runtime_assets.ps1")
+    archive = tmp_path / "unsafe-runtime.zip"
+    output = tmp_path / "runtime"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("../escaped.txt", b"must-not-extract")
+        bundle.writestr("llama-runtime/llama-server.exe", b"server-binary")
+    expected_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    bad_hash = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            script,
+            "-ArchivePath",
+            str(archive),
+            "-ExpectedSha256",
+            "0" * 64,
+            "-SourceCommit",
+            "b" * 40,
+            "-OutputRuntimeDir",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert bad_hash.returncode != 0
+    assert "sha-256 mismatch" in (bad_hash.stdout + bad_hash.stderr).lower()
+    assert not output.exists()
+
+    traversal = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            script,
+            "-ArchivePath",
+            str(archive),
+            "-ExpectedSha256",
+            expected_sha256,
+            "-SourceCommit",
+            "b" * 40,
+            "-OutputRuntimeDir",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert traversal.returncode != 0
+    assert "path traversal" in (traversal.stdout + traversal.stderr).lower()
+    assert not output.exists()
 
 def test_production_release_excludes_in_process_llama_binding():
     root = Path(__file__).resolve().parents[1]

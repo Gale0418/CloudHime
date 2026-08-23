@@ -76,6 +76,24 @@ def test_ci_exposes_an_opt_in_real_frozen_release_smoke_gate():
     assert "Release build tooling installation failed." in real_job
     assert "The real release gate refuses the dummy MSIX fixture." in real_job
     assert "packaging/release_functional_smoke.py" not in ci
+def test_ci_exposes_opt_in_reproducible_real_release_build_gate():
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "run_real_release_build:" in ci
+    assert "real-release-build:" in ci
+    build_job = ci[ci.index("  real-release-build:"):ci.index("  real-release-smoke:")]
+    assert "self-hosted" in build_job
+    assert "cloudhime-release" in build_job
+    assert "CLOUDHIME_RELEASE_RUNTIME_URL" in build_job
+    assert "CLOUDHIME_RELEASE_RUNTIME_SHA256" in build_job
+    assert "CLOUDHIME_RELEASE_RUNTIME_COMMIT" in build_job
+    assert r"packaging\fetch_runtime_assets.ps1" in build_job
+    assert "-ExpectedSha256" in build_job
+    assert "-SourceCommit" in build_job
+    assert "build_exe.bat" in build_job
+    assert "actions/upload-artifact@v4" in build_job
+
 def test_ci_msix_signing_prefers_x64_signtool():
     root = Path(__file__).resolve().parents[1]
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
