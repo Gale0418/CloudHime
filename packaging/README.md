@@ -36,6 +36,7 @@ the runtime. The manifest records the explicitly supplied llama runtime commit (
 server version, and the size/SHA-256 of every staged runtime file.
 verify_release_dist.ps1 fails closed when the manifest is missing or the
 runtime file set, size, or digest differs.
+The release verifier computes every manifest SHA-256 with a 1 MiB sequential stream, so it keeps full integrity coverage without loading runtime binaries into memory. The local real-dist preflight test has a bounded 600-second default timeout for slow disks; a timeout is an incomplete verification, never a pass.
 
 ## Local MSIX install smoke
 
