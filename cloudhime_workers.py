@@ -134,6 +134,7 @@ from japanese_ocr_rescue import (
     rescue_gate,
 )
 from settings_store import (
+    appdata_companion_path,
     create_settings_paths,
     extract_backend_chain,
     load_settings_data,
@@ -145,6 +146,10 @@ from settings_store import (
     should_migrate_to_appdata,
 )
 from ocr_backend_panel import OcrBackendSettingsPanel
+from persistent_translation_cache import (
+    PersistentTranslationCache,
+    build_translation_cache_key,
+)
 from translation_settings_panel import TranslationSettingsPanel
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
@@ -153,6 +158,7 @@ os.environ["QT_SCALE_FACTOR"] = "1"
 STARTUP_T0 = time.perf_counter()
 
 TRANSLATION_CACHE_LIMIT = 512
+PERSISTENT_TRANSLATION_CACHE_FILENAME = "translation_cache.json"
 HUD_MEMORY_LIMIT = 160
 HUD_OBSERVATION_LIMIT = 6
 PREFERRED_TEXT_MEMORY_LIMIT = 256
@@ -284,6 +290,13 @@ class OCRWorker(QObject):
         self.last_results = []
         self.last_provider = ""
         self.translation_cache = OrderedDict()
+        self.translation_dictionary_revision = build_translation_cache_key(
+            {"dictionary": translation_tools.load_translation_dictionary()}
+        )
+        self.persistent_translation_cache = PersistentTranslationCache(
+            appdata_companion_path(SETTINGS_PATHS, PERSISTENT_TRANSLATION_CACHE_FILENAME),
+            max_entries=TRANSLATION_CACHE_LIMIT,
+        )
         self.hud_memory = OrderedDict()
         self.preferred_text_memory = OrderedDict()
         self.exact_image_cache = ExactImageCache(max_entries=4, max_bytes=32 * 1024 * 1024)
@@ -1772,6 +1785,61 @@ class OCRWorker(QObject):
     def remember_translation(self, cache_key, translated_text):
         translation_tools.remember_translation(self.translation_cache, cache_key, translated_text, TRANSLATION_CACHE_LIMIT)
 
+    def _build_persistent_translation_cache_key(self, text, requested_provider, *, batch=False):
+        provider = str(requested_provider or "").strip().lower()
+        context = {
+            "source_text": normalize_ocr_text(text),
+            "requested_provider": provider,
+            "target_lang": getattr(self, "translation_target_lang", "zh-TW"),
+            "knowledge_revision": getattr(self, "knowledge_revision_token", "knowledge-pack:none"),
+            "dictionary_revision": getattr(self, "translation_dictionary_revision", "dictionary-v1"),
+            "batch": bool(batch),
+        }
+        if provider == "local_multimodal":
+            context["provider_config"] = {
+                "model": getattr(self, "local_multimodal_model", ""),
+                "temperature": float(getattr(self, "local_gemma_temperature", 0.2)),
+                "repeat_penalty": float(getattr(self, "local_gemma_repeat_penalty", 1.15)),
+            }
+        elif provider == "gemma":
+            context["provider_config"] = {
+                "model": getattr(self, "gemma_model", ""),
+                "active_model": getattr(self, "active_gemma_model", ""),
+                "prompt": getattr(self, "gemma_prompt", ""),
+                "auto_switch": bool(getattr(self, "gemma_auto_switch_enabled", False)),
+            }
+        else:
+            context["provider_config"] = {"dictionary_revision": "dictionary-v1"}
+        return build_translation_cache_key(context)
+
+    def _get_persistent_translation_result(self, cache_key):
+        store = getattr(self, "persistent_translation_cache", None)
+        getter = getattr(store, "get", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter(cache_key)
+        except Exception:
+            return None
+
+    def _remember_persistent_translation_result(self, cache_key, result, requested_provider):
+        if (
+            result is None
+            or not getattr(result, "text", "")
+            or str(getattr(result, "provider", "")).strip().lower()
+            != str(requested_provider or "").strip().lower()
+            or getattr(result, "fallback_reason", None)
+        ):
+            return
+        store = getattr(self, "persistent_translation_cache", None)
+        remember = getattr(store, "remember", None)
+        if not callable(remember):
+            return
+        try:
+            remember(cache_key, result, requested_provider=requested_provider)
+        except Exception:
+            # Persistent cache is an optimization; translation must remain fail-open.
+            return
 
     def invalidate_scan_requests(self):
         """Invalidate active and queued scans before provider/runtime teardown."""
@@ -2544,10 +2612,30 @@ class OCRWorker(QObject):
         normalized_text = normalize_ocr_text(text)
         if not normalized_text:
             return TranslationResult(text="", provider="")
-        if not self.has_ai_text_provider():
-            return self._translate_text_google_result(normalized_text)
 
-        requested_provider = self.get_current_ai_provider()
+        has_ai_provider = self.has_ai_text_provider()
+        requested_provider = (
+            self.get_current_ai_provider()
+            if has_ai_provider
+            else "google"
+        )
+        persistent_key = self._build_persistent_translation_cache_key(
+            normalized_text,
+            requested_provider,
+        )
+        cached = self._get_persistent_translation_result(persistent_key)
+        if cached is not None:
+            return cached
+
+        if not has_ai_provider:
+            result = self._translate_text_google_result(normalized_text)
+            self._remember_persistent_translation_result(
+                persistent_key,
+                result,
+                requested_provider,
+            )
+            return result
+
         instance_overrides = getattr(self, "__dict__", {})
         ai_override = instance_overrides.get("translate_text_gemma")
         google_override = instance_overrides.get("translate_text_google")
@@ -2571,7 +2659,7 @@ class OCRWorker(QObject):
         orchestrator = TranslationOrchestrator(
             fallback_exceptions=(error.URLError, error.HTTPError, TimeoutError, ValueError)
         )
-        return orchestrator.execute(
+        result = orchestrator.execute(
             requested_provider=requested_provider,
             primary=primary,
             fallback_provider="google",
@@ -2579,6 +2667,12 @@ class OCRWorker(QObject):
             fallback_reason="provider_error",
             cancelled=self._translation_route_cancelled,
         )
+        self._remember_persistent_translation_result(
+            persistent_key,
+            result,
+            requested_provider,
+        )
+        return result
 
     def translate_text_preferred(self, text):
         return self._translate_text_preferred_result(text).text
@@ -2595,20 +2689,59 @@ class OCRWorker(QObject):
         normalized_texts = [normalize_ocr_text(text) for text in source_texts]
         if not normalized_texts or any(not text for text in normalized_texts):
             return [], ""
-        if self.has_ai_text_provider():
-            combined_source = "\n".join(normalized_texts)
+
+        has_ai_provider = self.has_ai_text_provider()
+        requested_provider = (
+            self.get_current_ai_provider()
+            if has_ai_provider
+            else "google"
+        )
+        combined_source = "\n".join(normalized_texts)
+        persistent_key = self._build_persistent_translation_cache_key(
+            combined_source,
+            requested_provider,
+            batch=True,
+        )
+        cached = self._get_persistent_translation_result(persistent_key)
+        if cached is not None:
+            batch_result = self.split_translated_lines(
+                cached.text,
+                len(normalized_texts),
+            )
+            if len(batch_result) == len(normalized_texts):
+                return batch_result, cached.provider
+
+        if has_ai_provider:
             try:
                 translated, provider = self.translate_text_gemma_with_provider(combined_source)
                 batch_result = self.split_translated_lines(translated, len(normalized_texts))
                 if len(batch_result) == len(normalized_texts):
+                    self._remember_persistent_translation_result(
+                        persistent_key,
+                        TranslationResult(
+                            text="\n".join(batch_result),
+                            provider=provider,
+                        ),
+                        requested_provider,
+                    )
                     return batch_result, provider
+            except LocalRequestCancelled:
+                raise
             except (error.URLError, error.HTTPError, TimeoutError, ValueError):
                 pass
+
         batch_result = self.translate_text_google_batch(normalized_texts)
         if len(batch_result) == len(normalized_texts):
+            self._remember_persistent_translation_result(
+                persistent_key,
+                TranslationResult(
+                    text="\n".join(batch_result),
+                    provider="google",
+                ),
+                requested_provider,
+            )
             return batch_result, "google"
         return [], ""
-
     def translate_items_in_batches(self, source_texts, batch_size=8):
         translated = [None] * len(source_texts)
         for start in range(0, len(source_texts), batch_size):
