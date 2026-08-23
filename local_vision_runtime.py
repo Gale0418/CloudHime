@@ -363,6 +363,7 @@ class LocalVisionRuntime:
             str(assets.server_path),
             "--host", "127.0.0.1",
             "--port", str(port),
+            "--no-webui",
             "-m", str(assets.model_path),
         ]
         if self._profile.requires_projector:
