@@ -159,6 +159,42 @@ def test_shared_coordinator_release_is_idempotent_and_removes_last_asset():
     assert coordinator.active_lease_count == 0
 
 
+def test_release_keeps_cleanup_entry_until_stop_finishes():
+    created = []
+    stop_entered = threading.Event()
+    allow_stop = threading.Event()
+
+    class BlockingStopRuntime(FakeRuntime):
+        def stop(self):
+            self.stop_calls += 1
+            stop_entered.set()
+            assert allow_stop.wait(timeout=1)
+            self.state = SimpleNamespace(name="stopped")
+            return self.state
+
+    def factory(assets, **kwargs):
+        runtime = BlockingStopRuntime(assets, **kwargs)
+        created.append(runtime)
+        return runtime
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=factory)
+    lease = coordinator.acquire(_assets(), profile="vision")
+    release_thread = threading.Thread(target=lease.release, daemon=True)
+    release_thread.start()
+    assert stop_entered.wait(timeout=1)
+
+    with pytest.raises(RuntimeError, match="shared_runtime_stopped"):
+        coordinator.acquire(_assets(), profile="vision")
+    assert len(created) == 1
+
+    allow_stop.set()
+    release_thread.join(timeout=1)
+    assert not release_thread.is_alive()
+
+    replacement = coordinator.acquire(_assets(), profile="vision")
+    assert replacement.runtime is not created[0]
+    replacement.release()
+
 class BlockingReadyRuntime(FakeRuntime):
     def __init__(self, assets, *, profile='vision', **kwargs):
         super().__init__(assets, profile=profile, **kwargs)
