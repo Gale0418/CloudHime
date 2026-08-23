@@ -18,6 +18,7 @@ from typing import Any
 MANIFEST_NAME = "runtime-manifest.json"
 SCHEMA_VERSION = 1
 SERVER_PATH = "llama-server.exe"
+SUPPORTED_ARCHITECTURE = "x64"
 
 
 def _sha256(path: Path) -> str:
@@ -58,6 +59,10 @@ def build_manifest(
     }
     if not all(metadata.values()):
         raise ValueError("runtime manifest metadata must not be empty")
+    if metadata["architecture"].casefold() != SUPPORTED_ARCHITECTURE:
+        raise ValueError(
+            f"unsupported runtime architecture: {metadata['architecture']!r}"
+        )
 
     files = []
     for path in _runtime_files(root):
@@ -104,6 +109,9 @@ def validate_manifest(runtime_dir: str | Path, manifest: dict[str, Any]) -> None
         for key in ("source_commit", "backend", "architecture")
     ):
         raise ValueError("runtime manifest build metadata is incomplete")
+    architecture = str(build["architecture"]).strip()
+    if architecture.casefold() != SUPPORTED_ARCHITECTURE:
+        raise ValueError(f"unsupported runtime architecture: {architecture!r}")
     if not isinstance(entries, list) or not entries:
         raise ValueError("runtime manifest files must be a non-empty list")
 

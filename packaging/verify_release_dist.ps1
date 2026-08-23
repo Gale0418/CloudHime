@@ -293,6 +293,11 @@ foreach ($metadataName in @("source_commit", "backend", "architecture")) {
         throw "Release dist runtime manifest is missing build metadata: $metadataName"
     }
 }
+$runtimeArchitecture = [string]$runtimeManifest.build.architecture
+if ($runtimeArchitecture -ine "x64") {
+    throw "Release dist runtime manifest has unsupported architecture '$runtimeArchitecture'. Expected 'x64'."
+}
+
 if ([string]::IsNullOrWhiteSpace([string]$runtimeManifest.server.version)) {
     throw "Release dist runtime manifest is missing llama-server version"
 }

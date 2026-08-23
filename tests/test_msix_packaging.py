@@ -131,6 +131,7 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Inspect and sign MSIX package" in ci
     assert "Install and uninstall MSIX package" in ci
     assert "runtime-manifest.json" in ci
+    assert "runtimeManifest.build.architecture" in ci
     assert "ConvertTo-Json" in ci
     assert "Get-FileHash" in ci
     assert "source_commit" in ci
@@ -425,6 +426,19 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "ready" in result.stdout.lower()
+        manifest_path = fixture / "_internal" / "runtime" / "runtime-manifest.json"
+        valid_manifest = manifest_path.read_text(encoding="utf-8")
+        manifest_path.write_text(valid_manifest.replace('"architecture": "x64"', '"architecture": "arm64"'), encoding="utf-8")
+        rejected_architecture = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert rejected_architecture.returncode != 0
+        assert "architecture" in (rejected_architecture.stdout + rejected_architecture.stderr).lower()
+        manifest_path.write_text(valid_manifest, encoding="utf-8")
 
         logo_path = fixture / "_internal" / "assets" / "cloudhime_logo_44.png"
         valid_logo = logo_path.read_bytes()
