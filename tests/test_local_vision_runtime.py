@@ -312,6 +312,7 @@ def test_start_uses_loopback_dynamic_port_and_mmproj(fake_assets):
     args = popen.calls[0]
     assert args[:4] == [str(fake_assets.server_path), "--host", "127.0.0.1", "--port"]
     assert args[4] == "43123"
+    assert "--no-webui" in args
     assert "--mmproj" in args
     idx = args.index("--mmproj")
     assert args[idx + 1] == str(fake_assets.projector_path)
