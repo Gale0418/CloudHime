@@ -17,6 +17,11 @@ on:
         required: true
         default: false
         type: boolean
+      run_real_release_build:
+        description: "Build a real frozen release from a pinned llama-server archive"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -434,6 +439,79 @@ jobs:
               throw "Failed to remove CI signing certificate $thumbprint from $store."
             }
           }
+  real-release-build:
+    name: Build real frozen release from pinned runtime
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_release_build }}
+    runs-on: [self-hosted, windows, x64, cloudhime-release]
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install locked release and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --require-hashes -r requirements-lock-win-amd64-py310.txt
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release dependency installation failed."
+          }
+          python -m pip install --require-hashes -r requirements-build-win-amd64-py310.txt
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release build tooling installation failed."
+          }
+
+      - name: Validate pinned runtime configuration
+        shell: pwsh
+        env:
+          RUNTIME_URL: ${{ vars.CLOUDHIME_RELEASE_RUNTIME_URL }}
+          RUNTIME_SHA256: ${{ vars.CLOUDHIME_RELEASE_RUNTIME_SHA256 }}
+          RUNTIME_COMMIT: ${{ vars.CLOUDHIME_RELEASE_RUNTIME_COMMIT }}
+        run: |
+          foreach ($name in @("RUNTIME_URL", "RUNTIME_SHA256", "RUNTIME_COMMIT")) {
+            if ([string]::IsNullOrWhiteSpace([string](Get-Item "Env:$name").Value)) {
+              throw "Missing repository variable CLOUDHIME_RELEASE_$name."
+            }
+          }
+          if ($env:RUNTIME_URL -notmatch '^https://') {
+            throw "CLOUDHIME_RELEASE_RUNTIME_URL must be HTTPS."
+          }
+          if ($env:RUNTIME_SHA256 -notmatch '^[0-9A-Fa-f]{64}$') {
+            throw "CLOUDHIME_RELEASE_RUNTIME_SHA256 must be a 64-character SHA-256."
+          }
+          if ($env:RUNTIME_COMMIT -notmatch '^[0-9A-Fa-f]{7,64}$') {
+            throw "CLOUDHIME_RELEASE_RUNTIME_COMMIT must be a commit id."
+          }
+          Write-Host "Pinned runtime configuration validated without printing the URL or token-bearing values."
+
+      - name: Fetch pinned llama-server runtime
+        shell: pwsh
+        env:
+          RUNTIME_URL: ${{ vars.CLOUDHIME_RELEASE_RUNTIME_URL }}
+          RUNTIME_SHA256: ${{ vars.CLOUDHIME_RELEASE_RUNTIME_SHA256 }}
+          RUNTIME_COMMIT: ${{ vars.CLOUDHIME_RELEASE_RUNTIME_COMMIT }}
+        run: |
+          pwsh -NoLogo -NoProfile -File packaging\fetch_runtime_assets.ps1 -ArchiveUrl $env:RUNTIME_URL -ExpectedSha256 $env:RUNTIME_SHA256 -SourceCommit $env:RUNTIME_COMMIT -Backend cuda -Architecture x64 -OutputRuntimeDir runtime
+
+      - name: Build frozen release
+        shell: cmd
+        run: build_exe.bat
+
+      - name: Verify frozen release dist
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File packaging\verify_release_dist.ps1 -DistDir dist\CloudHime
+
+      - name: Upload real frozen release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudhime-real-frozen-release
+          path: dist/CloudHime.zip
+          if-no-files-found: error
   real-release-smoke:
     name: Real frozen release Vision smoke
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_release }}

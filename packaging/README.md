@@ -115,6 +115,14 @@ The gate creates a unique `cloudhime-clean-machine-*` sandbox for TEMP/TMP/APPDA
 
 這些路徑必須指向真實 frozen dist、Gemma GGUF、mmproj 與 smoke image；job 會拒絕 cloudhime-dummy-dist，並要求 _internal/runtime/runtime-manifest.json。它只執行 packaging/test_release_smoke.ps1 的 real GPU gate，不會把 CPU 或 dummy 結果冒充 GPU；Partner Center、WACK 與 clean Windows VM 仍是獨立 gate。
 
+另有獨立的 `run_real_release_build` workflow_dispatch gate，使用標籤為 self-hosted/windows/x64/cloudhime-release 的 runner。啟用前需設定：
+
+- CLOUDHIME_RELEASE_RUNTIME_URL（HTTPS）
+- CLOUDHIME_RELEASE_RUNTIME_SHA256
+- CLOUDHIME_RELEASE_RUNTIME_COMMIT
+
+它會先以 `packaging/fetch_runtime_assets.ps1` 驗證 archive hash、zip path safety、唯一 `llama-server.exe` 與 commit，再呼叫 `build_exe.bat`。這個 job 目前只是可重現建置入口；沒有配置 runner／repository variables 時不會執行，也不代表 Store、WACK、clean VM 或 GPU accuracy gate 已通過。
+
 ## Release smoke orchestrator
 
 For a real frozen directory with an external managed model, run the fail-closed
