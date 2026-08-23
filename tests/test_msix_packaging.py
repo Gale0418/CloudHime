@@ -1,4 +1,5 @@
 import hashlib
+import os
 import json
 from pathlib import Path
 import shutil
@@ -617,14 +618,36 @@ def test_real_release_dist_preflight_when_available():
         pytest.skip("local PyInstaller dist predates release provenance; clean rebuild required")
 
     script = root / "packaging" / "verify_release_dist.ps1"
-    result = subprocess.run(
-        [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(dist)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        timeout_seconds = max(
+            30,
+            int(os.environ.get("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS", "180")),
+        )
+    except ValueError:
+        pytest.fail("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS must be an integer")
+
+    try:
+        result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(dist)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(
+            f"real release dist preflight exceeded {timeout_seconds}s; "
+            f"stdout={exc.stdout!r} stderr={exc.stderr!r}"
+        )
     assert result.returncode == 0, result.stdout + result.stderr
+def test_real_release_preflight_has_bounded_subprocess_timeout():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "tests" / "test_msix_packaging.py").read_text(encoding="utf-8")
+
+    assert "CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS" in source
+    assert "subprocess.TimeoutExpired" in source
+    assert "timeout=timeout_seconds" in source
 
 def test_release_dist_preflight_rejects_incomplete_third_party_notices():
     powershell = _powershell_executable()
