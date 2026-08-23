@@ -506,6 +506,11 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File packaging\verify_release_dist.ps1 -DistDir dist\CloudHime
 
+      - name: Run environment-isolated packaged launch smoke
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File packaging\test_clean_machine.ps1 -ExecutablePath dist\CloudHime\CloudHime.exe -LaunchWaitSeconds 20
+
       - name: Upload real frozen release artifact
         uses: actions/upload-artifact@v4
         with:

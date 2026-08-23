@@ -121,7 +121,7 @@ The gate creates a unique `cloudhime-clean-machine-*` sandbox for TEMP/TMP/APPDA
 - CLOUDHIME_RELEASE_RUNTIME_SHA256
 - CLOUDHIME_RELEASE_RUNTIME_COMMIT
 
-它會先以 `packaging/fetch_runtime_assets.ps1` 驗證 archive hash、zip path safety、唯一 `llama-server.exe` 與 commit，再呼叫 `build_exe.bat`。這個 job 目前只是可重現建置入口；沒有配置 runner／repository variables 時不會執行，也不代表 Store、WACK、clean VM 或 GPU accuracy gate 已通過。
+它會先以 `packaging/fetch_runtime_assets.ps1` 驗證 archive hash、zip path safety、唯一 `llama-server.exe` 與 commit，再呼叫 `build_exe.bat`，並在上傳前執行 environment-isolated packaged launch smoke。這個 job 目前只是可重現建置入口；沒有配置 runner／repository variables 時不會執行，也不代表 Store、WACK、clean VM 或 GPU accuracy gate 已通過。
 
 ## Release smoke orchestrator
 

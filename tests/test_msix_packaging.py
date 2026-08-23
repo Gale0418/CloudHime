@@ -92,6 +92,8 @@ def test_ci_exposes_opt_in_reproducible_real_release_build_gate():
     assert "-ExpectedSha256" in build_job
     assert "-SourceCommit" in build_job
     assert "build_exe.bat" in build_job
+    assert r"packaging\test_clean_machine.ps1" in build_job
+    assert "-ExecutablePath dist\\CloudHime\\CloudHime.exe" in build_job
     assert "actions/upload-artifact@v4" in build_job
 
 def test_ci_msix_signing_prefers_x64_signtool():
