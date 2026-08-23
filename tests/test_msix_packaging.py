@@ -50,12 +50,30 @@ def test_ci_msix_contract_runs_environment_isolated_launch_smoke():
     assert "packaging/test_clean_machine.ps1" in ci
     assert "Environment-isolated release executable smoke" in ci
     assert "Structural launch smoke only" in ci
-    assert "packaging/release_functional_smoke.py" in ci
+    assert "release_functional_smoke.py" in ci
     assert "-ExecutablePath $executable" in ci
     assert "-LaunchWaitSeconds 5" in ci
     assert ci.index("Environment-isolated release executable smoke") > ci.index("Prepare MSIX contract fixture")
     assert ci.index("Environment-isolated release executable smoke") < ci.index("Build MSIX package")
 
+def test_ci_exposes_an_opt_in_real_frozen_release_smoke_gate():
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in ci
+    assert "run_real_release:" in ci
+    assert "real-release-smoke:" in ci
+    real_job = ci[ci.index("  real-release-smoke:"):]
+    assert "self-hosted" in real_job
+    assert "cloudhime-gpu" in real_job
+    assert "CLOUDHIME_RELEASE_DIST_DIR" in real_job
+    assert "CLOUDHIME_RELEASE_MODEL_PATH" in real_job
+    assert "CLOUDHIME_RELEASE_PROJECTOR_PATH" in real_job
+    assert "CLOUDHIME_RELEASE_IMAGE_PATH" in real_job
+    assert r"packaging\test_release_smoke.ps1" in real_job
+    assert "-RequireGpu" in real_job
+    assert "The real release gate refuses the dummy MSIX fixture." in real_job
+    assert "packaging/release_functional_smoke.py" not in ci
 def test_ci_msix_signing_prefers_x64_signtool():
     root = Path(__file__).resolve().parents[1]
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
