@@ -627,6 +627,47 @@ def test_release_dist_preflight_rejects_incomplete_third_party_notices():
             _remove_release_fixture(powershell, temp_root)
 
 
+def test_release_dist_preflight_rejects_missing_japanese_ocr_notices():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    temp_root = root / f".tmp-msix-japanese-notices-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    try:
+        _write_release_fixture(powershell, fixture)
+        notice_path = fixture / "_internal" / "THIRD_PARTY_NOTICES.md"
+        notice_path.write_text(
+            "\n".join(
+                (
+                    "## Knowledge research providers",
+                    "DDGS",
+                    "click",
+                    "primp",
+                    "lxml",
+                    "httpx",
+                    "fake-useragent",
+                    "certifi",
+                    "Jina Reader",
+                )
+            ),
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert result.returncode != 0
+        assert "meikiocr" in (result.stdout + result.stderr).lower()
+    finally:
+        if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-japanese-notices-"):
+            _remove_release_fixture(powershell, temp_root)
+
 def test_release_preflight_requires_self_contained_dependency_provenance_and_ci_unpacks_it():
     root = Path(__file__).resolve().parents[1]
     verifier = (root / "packaging" / "verify_release_dist.ps1").read_text(encoding="utf-8")

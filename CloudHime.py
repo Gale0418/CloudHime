@@ -159,6 +159,8 @@ PACKAGED_IMPORT_SMOKE_MODULES = (
     "primp",
     "fake_useragent",
     "certifi",
+    "meikiocr.ocr",
+    "onnxruntime",
 )
 
 

@@ -554,6 +554,28 @@ def test_stale_japanese_rescue_callback_is_silent_and_preserves_new_future():
     assert statuses == []
 
 
+def test_enabled_japanese_rescue_restarts_after_cancelled_start():
+    statuses = []
+    restarts = []
+    future = Future()
+    future.set_result(False)
+    worker = SimpleNamespace(
+        _japanese_rescue_load_future=future,
+        japanese_rescue_enabled=True,
+        japanese_rescue_runtime=SimpleNamespace(
+            state=workers_module.JapaneseOCRRuntimeState.disabled,
+            last_error="",
+        ),
+        japanese_rescue_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+        request_japanese_rescue_start=lambda: restarts.append("restart"),
+    )
+
+    OCRWorker._on_japanese_rescue_start_done(worker, future)
+
+    assert worker._japanese_rescue_load_future is None
+    assert restarts == ["restart"]
+    assert statuses == []
+
 def test_request_japanese_rescue_start_reports_executor_submit_failure():
     statuses = []
 
@@ -631,6 +653,7 @@ def test_cleanup_disables_japanese_runtime_and_shuts_down_executor():
 
     OCRWorker.cleanup(worker)
 
+    assert worker.japanese_rescue_enabled is False
     assert calls == [
         "disable",
         ("shutdown", {"wait": True}),

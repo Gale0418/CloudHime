@@ -164,7 +164,15 @@ def test_release_build_runs_frozen_dependency_smoke_before_preflight():
     app_source = (root / "CloudHime.py").read_text(encoding="utf-8")
 
     smoke_env = "CLOUDHIME_PACKAGED_IMPORT_SMOKE"
-    required_modules = ("ddgs", "lxml", "primp", "fake_useragent", "certifi")
+    required_modules = (
+        "ddgs",
+        "lxml",
+        "primp",
+        "fake_useragent",
+        "certifi",
+        "meikiocr.ocr",
+        "onnxruntime",
+    )
     assert smoke_env in app_source
     assert "run_packaged_import_smoke" in app_source
     smoke_call_index = app_source.index("if run_packaged_import_smoke():")
