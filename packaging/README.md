@@ -88,6 +88,19 @@ After building the frozen release directory, run the optional launch gate with a
 
 The gate creates a unique `cloudhime-clean-machine-*` sandbox for TEMP/TMP/APPDATA/LOCALAPPDATA, keeps only required Windows variables, removes inherited developer PATH entries, verifies GUI liveness, and cleans up the exact packaged PID plus its owned descendant tree. This is environment-isolated packaged evidence, not proof from a clean Windows VM or Store certification.
 
+## Optional real release CI gate
+
+一般 push/PR 的 msix-contract 仍是 dummy structural fixture，只驗證 MSIX schema、解包、簽章與安裝契約，不代表真正 PyInstaller 或 Vision 通過。CI 另提供手動 workflow_dispatch 的 real-release-smoke job；只有勾選 run_real_release 且使用標籤為 self-hosted/windows/x64/cloudhime-gpu 的 runner 才會執行。
+
+啟用前，請在 repository variables 設定：
+
+- CLOUDHIME_RELEASE_DIST_DIR
+- CLOUDHIME_RELEASE_MODEL_PATH
+- CLOUDHIME_RELEASE_PROJECTOR_PATH
+- CLOUDHIME_RELEASE_IMAGE_PATH
+
+這些路徑必須指向真實 frozen dist、Gemma GGUF、mmproj 與 smoke image；job 會拒絕 cloudhime-dummy-dist，並要求 _internal/runtime/runtime-manifest.json。它只執行 packaging/test_release_smoke.ps1 的 real GPU gate，不會把 CPU 或 dummy 結果冒充 GPU；Partner Center、WACK 與 clean Windows VM 仍是獨立 gate。
+
 ## Release smoke orchestrator
 
 For a real frozen directory with an external managed model, run the fail-closed
