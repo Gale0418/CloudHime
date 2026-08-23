@@ -289,3 +289,69 @@ def test_compare_conditions_does_not_count_uncompared_repeat_as_clean():
     assert summary["repeats_with_regression"] == 0
     assert summary["repeats_without_regression"] == 0
     assert summary["repeats_without_comparison"] == 1
+
+def test_promotion_gate_fails_closed_when_pairs_are_incomplete():
+    baseline = [{
+        "case_id": "a",
+        "repeat": 1,
+        "anchor_count": 1,
+        "anchor_hits": 1,
+        "anchor_recall": 1.0,
+        "item_count": 1,
+        "elapsed_ms": 10,
+        "error": "",
+        "grid_recovery_triggered": False,
+        "grid_recovery_accepted": False,
+    }]
+
+    gate = evaluator.evaluate_promotion_gate(
+        baseline,
+        [],
+        expected_case_count=1,
+        expected_repeats=1,
+    )
+
+    assert gate["passed"] is False
+    assert gate["complete"] is False
+    assert "paired_coverage_incomplete" in gate["reasons"]
+
+
+def test_promotion_gate_rejects_candidate_empty_output_even_without_anchor_regression():
+    def record(text, recall):
+        return {
+            "case_id": "a",
+            "repeat": 1,
+            "anchor_count": 1,
+            "anchor_hits": recall,
+            "anchor_recall": float(recall),
+            "item_count": 1 if text else 0,
+            "elapsed_ms": 10,
+            "error": "",
+            "grid_recovery_triggered": False,
+            "grid_recovery_accepted": False,
+        }
+
+    gate = evaluator.evaluate_promotion_gate(
+        [record("文字", 1)],
+        [record("", 1)],
+        expected_case_count=1,
+        expected_repeats=1,
+    )
+
+    assert gate["passed"] is False
+    assert "candidate_empty_output" in gate["reasons"]
+
+
+def test_main_require_no_regression_is_fail_closed(monkeypatch, tmp_path):
+    manifest = _write_manifest(tmp_path)
+    report = {
+        "schema_version": 2,
+        "promotion_gate": {
+            "passed": False,
+            "complete": False,
+            "reasons": ["paired_coverage_incomplete"],
+        },
+    }
+    monkeypatch.setattr(evaluator, "run_repeated_benchmark", lambda *args, **kwargs: report)
+
+    assert evaluator.main([str(manifest), "--require-no-regression"]) == 1

@@ -448,6 +448,76 @@ def compare_conditions(
         "repeat_deltas": repeat_deltas,
     }
 
+
+def evaluate_promotion_gate(
+    baseline: Sequence[Mapping[str, Any]],
+    variant: Sequence[Mapping[str, Any]],
+    *,
+    expected_case_count: int,
+    expected_repeats: int,
+) -> dict[str, Any]:
+    """Return an explicit fail-closed gate for a paired OCR promotion run."""
+    reasons: list[str] = []
+    expected_case_count = int(expected_case_count)
+    expected_repeats = int(expected_repeats)
+    expected_total = expected_case_count * expected_repeats
+
+    def keys(records: Sequence[Mapping[str, Any]]) -> set[tuple[str, int]]:
+        return {
+            (str(record["case_id"]), int(record.get("repeat", 1)))
+            for record in records
+        }
+
+    try:
+        baseline_keys = keys(baseline)
+        variant_keys = keys(variant)
+        comparison = compare_conditions(baseline, variant)
+    except (KeyError, TypeError, ValueError) as exc:
+        return {
+            "passed": False,
+            "complete": False,
+            "reasons": ["invalid_records"],
+            "error_type": type(exc).__name__,
+        }
+
+    complete = (
+        expected_case_count > 0
+        and expected_repeats > 0
+        and len(baseline_keys) == expected_total
+        and len(variant_keys) == expected_total
+        and baseline_keys == variant_keys
+        and comparison["page_regression"]["compared_pages"] == expected_case_count
+        and comparison["paired_repeat_regression"]["compared_observations"] == expected_total
+    )
+    if not complete:
+        reasons.append("paired_coverage_incomplete")
+
+    if comparison["page_regression"]["regressed_pages"] > 0:
+        reasons.append("page_regression")
+    if comparison["paired_repeat_regression"]["regressed_observations"] > 0:
+        reasons.append("repeat_regression")
+
+    baseline_summary = summarize_records(baseline)
+    variant_summary = summarize_records(variant)
+    if baseline_summary["error_pages"] > 0:
+        reasons.append("baseline_errors")
+    if variant_summary["error_pages"] > 0:
+        reasons.append("candidate_errors")
+    if baseline_summary["nonempty_page_rate"] != 1.0:
+        reasons.append("baseline_empty_output")
+    if variant_summary["nonempty_page_rate"] != 1.0:
+        reasons.append("candidate_empty_output")
+
+    reasons = list(dict.fromkeys(reasons))
+    return {
+        "passed": not reasons,
+        "complete": complete,
+        "expected_case_count": expected_case_count,
+        "expected_repeats": expected_repeats,
+        "reasons": reasons,
+    }
+
+
 def _git_value(*args: str) -> str | None:
     try:
         completed = subprocess.run(
@@ -550,6 +620,12 @@ def run_repeated_benchmark(
             "grid_recovery": summarize_records(variant),
         },
         "comparison": compare_conditions(baseline, variant),
+        "promotion_gate": evaluate_promotion_gate(
+            baseline,
+            variant,
+            expected_case_count=len(cases),
+            expected_repeats=repeats,
+        ),
         "records": records,
     }
 
@@ -578,6 +654,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="每頁開始時重設的基準 threshold",
     )
     parser.add_argument("--output", help="將不含 OCR 原文的摘要報告寫入 JSON")
+    parser.add_argument(
+        "--require-no-regression",
+        action="store_true",
+        help="若 paired coverage 不完整、輸出為空或任一頁／重複退化則以非零結束",
+    )
     parser.add_argument("--pretty", action="store_true", help="美化 JSON 輸出")
     return parser
 
@@ -606,6 +687,9 @@ def main(argv: list[str] | None = None) -> int:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(encoded + "\n", encoding="utf-8")
     print(encoded)
+    if args.require_no_regression:
+        gate = report.get("promotion_gate")
+        return 0 if isinstance(gate, Mapping) and gate.get("passed") is True else 1
     return 0
 
 
