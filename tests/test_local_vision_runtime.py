@@ -323,6 +323,32 @@ def test_start_uses_loopback_dynamic_port_and_mmproj(fake_assets):
     assert args[parallel_idx + 1] == "1"
 
 
+
+def test_runtime_uses_per_launch_api_key_and_clears_it_on_stop(fake_assets):
+    popen = FakePopen([RunningProcess()])
+    runtime = LocalVisionRuntime(
+        assets=fake_assets,
+        popen_factory=popen,
+        urlopen=_make_health_urlopen([True]),
+        port_allocator=_port_allocator(43123),
+        sleep=_no_sleep,
+        asset_minimum_bytes=_TEST_MIN,
+        api_key_factory=lambda: "runtime-test-key",
+    )
+
+    state = runtime.start()
+
+    args = popen.calls[0]
+    key_index = args.index("--api-key")
+    assert args[key_index + 1] == "runtime-test-key"
+    assert runtime.api_key == "runtime-test-key"
+    assert "runtime-test-key" not in state.detail
+
+    runtime.stop()
+
+    assert runtime.api_key == ""
+    assert runtime.owned_process is None
+
 def test_default_health_budget_allows_slow_cold_start(fake_assets):
     health = [False] * 100 + [True]
     runtime = LocalVisionRuntime(
@@ -916,6 +942,7 @@ def test_cpu_retry_uses_ngl_0(fake_assets):
         sleep=_no_sleep,
         health_retries=3,
         asset_minimum_bytes=_TEST_MIN,
+        api_key_factory=iter(("gpu-key", "cpu-key")).__next__,
     )
     runtime.start()
     # 第二次呼叫（CPU retry）
@@ -924,6 +951,8 @@ def test_cpu_retry_uses_ngl_0(fake_assets):
     assert "-ngl" in cpu_args
     idx = cpu_args.index("-ngl")
     assert cpu_args[idx + 1] == "0"
+    assert popen.calls[0][popen.calls[0].index("--api-key") + 1] == "gpu-key"
+    assert cpu_args[cpu_args.index("--api-key") + 1] == "cpu-key"
 
 
 def test_cuda_failure_then_cpu_also_fails_returns_failed(fake_assets):
@@ -1067,7 +1096,7 @@ def test_stop_returns_stopped_state(fake_assets):
 
 def test_stderr_truncated_to_2000_chars_in_detail(fake_assets):
     """process 提早退出時，detail 中的 stderr 最多保留 2000 字元。"""
-    long_stderr = "x" * 5000
+    long_stderr = "runtime-test-key" + "x" * 5000
     proc = ExitedProcess(long_stderr)
     popen = FakePopen([proc])
     runtime = LocalVisionRuntime(
@@ -1078,9 +1107,11 @@ def test_stderr_truncated_to_2000_chars_in_detail(fake_assets):
         sleep=_no_sleep,
         health_retries=1,
         asset_minimum_bytes=_TEST_MIN,
+        api_key_factory=lambda: "runtime-test-key",
     )
     state = runtime.start()
     assert state.name == "failed"
+    assert "runtime-test-key" not in state.detail
     assert len(state.detail) <= 2000 + len("process_exited: ")  # 允許 detail 含 code 前綴
 
 

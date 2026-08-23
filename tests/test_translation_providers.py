@@ -399,6 +399,42 @@ def test_remote_request_sampling_fields_follow_model_capability(monkeypatch):
     assert payloads[1]["generationConfig"]["temperature"] == 0.2
 
 
+
+def test_local_multimodal_request_uses_runtime_bearer_key(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"message":{"content":"ok"}}]}'
+
+    def fake_urlopen(req, timeout):
+        captured["authorization"] = req.get_header("Authorization")
+        return Response()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = LocalMultimodalProvider(
+        base_url="http://127.0.0.1:43123/v1",
+        model_name="gemma-local",
+        enabled=True,
+    )
+    provider.update_runtime(
+        "http://127.0.0.1:43123/v1",
+        "gemma-local",
+        ready=True,
+        api_key="runtime-test-key",
+    )
+
+    assert provider._perform_chat_completion({"messages": []}) == "ok"
+    assert captured["authorization"] == "Bearer runtime-test-key"
+    provider.update_runtime("", "", ready=False)
+    assert provider._runtime_api_key == ""
+
 def test_local_multimodal_sampling_settings_reach_payload_and_cache_key():
     provider = LocalMultimodalProvider(
         base_url="http://127.0.0.1:8080/v1",

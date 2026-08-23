@@ -762,6 +762,7 @@ class OCRWorker(QObject):
                         runtime_state.base_url,
                         config.local_multimodal_model,
                         ready=True,
+                        api_key=getattr(embedded_runtime, "api_key", ""),
                     )
                 else:
                     self.local_multimodal_provider.update_runtime("", "", ready=False)
@@ -960,10 +961,14 @@ class OCRWorker(QObject):
             return False
         runtime_endpoint = getattr(state, "base_url", "").rstrip("/")
         expected_model = getattr(self, "local_multimodal_model", "gemma-3-4b-it")
+        runtime_key = getattr(getattr(self, "local_vision_runtime", None), "api_key", "")
+        provider_key = getattr(provider, "_runtime_api_key", "")
+        key_synced = not runtime_key or provider_key == runtime_key
         return (
             bool(getattr(provider, "_runtime_ready", False))
             and getattr(provider, "base_url", "").rstrip("/") == runtime_endpoint
             and getattr(provider, "model_name", "") == expected_model
+            and key_synced
         )
 
     def _wait_for_local_vision_callback(self, future, deadline):
@@ -1108,6 +1113,7 @@ class OCRWorker(QObject):
                 state.base_url,
                 getattr(self, "local_multimodal_model", "gemma-3-4b-it"),
                 ready=True,
+                api_key=getattr(runtime, "api_key", ""),
             )
             OCRWorker._emit_local_vision_status(self, state.name, state.detail)
             return
@@ -1203,6 +1209,7 @@ class OCRWorker(QObject):
                 state.base_url if ready else "",
                 getattr(self, "local_multimodal_model", "gemma-3-4b-it") if ready else "",
                 ready=ready,
+                api_key=getattr(getattr(self, "local_vision_runtime", None), "api_key", "") if ready else "",
             )
             if ready:
                 self._refresh_translation_registry()
@@ -1234,13 +1241,21 @@ class OCRWorker(QObject):
             if lease is not None
             else getattr(runtime, "stop", None)
         )
-        if not callable(stopper):
-            return None
+        result = None
         try:
-            return stopper()
+            if callable(stopper):
+                result = stopper()
         except Exception as exc:
             logger.error(f"[LocalVisionRuntime] stop failed type={type(exc).__name__}")
-            return None
+        finally:
+            provider = getattr(self, "local_multimodal_provider", None)
+            clear_runtime = getattr(provider, "update_runtime", None)
+            if callable(clear_runtime):
+                try:
+                    clear_runtime("", "", ready=False)
+                except Exception:
+                    pass
+        return result
 
     def shutdown_local_vision_runtime(self):
         lifecycle_lock = getattr(self, "_local_vision_lifecycle_lock", None)

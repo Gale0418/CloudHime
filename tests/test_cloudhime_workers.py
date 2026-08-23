@@ -860,6 +860,7 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
     class FakeRuntime:
         def __init__(self):
             self._state = SimpleNamespace(name="stopped", detail="", base_url="", mode="")
+            self.api_key = "runtime-test-key"
             self.owned_process = FakeProcess()
 
         def start(self, **_kwargs):
@@ -875,8 +876,8 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
         def __init__(self):
             self.runtime_updates = []
 
-        def update_runtime(self, base_url, model_name, ready):
-            self.runtime_updates.append((base_url, model_name, ready))
+        def update_runtime(self, base_url, model_name, ready, **kwargs):
+            self.runtime_updates.append((base_url, model_name, ready, kwargs.get("api_key", "")))
 
     runtime = FakeRuntime()
     provider = FakeProvider()
@@ -896,7 +897,7 @@ def test_request_local_vision_start_runs_runtime_in_single_executor():
     assert len(submitted) == 1
     assert statuses == [("starting", ""), ("ready", "")]
     assert provider.runtime_updates == [
-        ("http://127.0.0.1:43123/v1", "gemma-3-4b-it", True),
+        ("http://127.0.0.1:43123/v1", "gemma-3-4b-it", True, "runtime-test-key"),
     ]
     assert refreshes == [True]
 
