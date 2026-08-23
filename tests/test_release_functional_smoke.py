@@ -138,3 +138,15 @@ def test_parser_requires_release_asset_arguments() -> None:
     ])
     assert args.runtime_dir == Path("runtime")
     assert args.require_gpu is False
+
+
+def test_parser_exposes_validate_only() -> None:
+    args = smoke.build_parser().parse_args([
+        "--runtime-dir", "runtime",
+        "--model", "model.gguf",
+        "--projector", "projector.gguf",
+        "--image", "sample.png",
+        "--validate-only",
+    ])
+
+    assert args.validate_only is True

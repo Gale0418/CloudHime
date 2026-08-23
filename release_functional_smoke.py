@@ -212,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--startup-timeout", type=int, default=90)
     parser.add_argument("--context-size", type=int, default=4096)
     parser.add_argument("--gpu-layers", type=int, default=999)
+    parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -219,6 +220,26 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.validate_only:
+            assets = validate_release_inputs(
+                args.runtime_dir,
+                args.model_path,
+                args.projector_path,
+                args.image,
+            )
+            _configure_stdout_for_unicode()
+            payload = {
+                "validation": "passed",
+                "server": str(assets.server_path),
+                "model": str(assets.model_path),
+                "projector": str(assets.projector_path),
+                "image": str(args.image.expanduser().resolve()),
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print("Release functional smoke inputs passed.")
+            return 0
         result = run_release_smoke(
             args.runtime_dir,
             args.model_path,

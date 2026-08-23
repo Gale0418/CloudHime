@@ -5,6 +5,7 @@ param(
     [switch]$UnpackedMsix,
     [string]$ExpectedIdentityName = "CloudHime",
     [string]$ExpectedPublisher = "",
+    [string]$PythonPath = "python",
     [ValidateSet("x64")]
     [string]$ExpectedArchitecture = "x64"
 )
@@ -16,7 +17,7 @@ if (-not (Test-Path -LiteralPath $dist -PathType Container)) {
 }
 
 $provenanceRoot = Join-Path $dist "_internal\provenance"
-& python (Join-Path $PSScriptRoot "release_provenance.py") verify --provenance-dir $provenanceRoot
+& $PythonPath (Join-Path $PSScriptRoot "release_provenance.py") verify --provenance-dir $provenanceRoot
 if ($LASTEXITCODE -ne 0) {
     throw "Release dist dependency provenance verification failed."
 }

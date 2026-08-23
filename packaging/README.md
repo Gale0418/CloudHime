@@ -79,3 +79,18 @@ After building the frozen release directory, run the optional launch gate with a
     pwsh -File packaging/test_clean_machine.ps1 -ExecutablePath .\dist\CloudHime\CloudHime.exe -LaunchWaitSeconds 20
 
 The gate keeps only required Windows and user AppData variables, removes inherited developer PATH entries, verifies GUI liveness, and cleans up the exact child PID. This is environment-isolated packaged evidence, not proof from a clean Windows VM or Store certification.
+
+## Release smoke orchestrator
+
+For a real frozen directory with an external managed model, run the fail-closed
+three-stage gate:
+
+    pwsh -File packaging/test_release_smoke.ps1 -DistDir .\dist\CloudHime -ModelPath "$env:LOCALAPPDATA\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a\gemma-3-4b-it.Q4_K_M.gguf" -ProjectorPath "$env:LOCALAPPDATA\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a\mmproj-model-f16.gguf" -ImagePath ".\example\smoke.png" -RequireGpu
+
+The stages are: release dist/provenance preflight, explicit model/projector/image
+validation, environment-isolated packaged launch, and functional Vision coverage.
+The command requires an interactive desktop session and never starts an elevation
+prompt. Exit codes are 20 for structural preflight, 30 for packaged launch, 40
+for functional coverage, and 70 for execution-context errors. A passing run proves
+packaged launch and non-empty local Vision requests; it does not prove OCR or
+translation accuracy, clean Windows VM behavior, WACK, or Store certification.
