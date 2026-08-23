@@ -70,8 +70,17 @@ def test_runtime_manifest_is_generated_and_verified():
         encoding="utf-8"
     )
     assert "runtime-manifest.json" in verifier
-    assert "Get-FileHash" in verifier
+    assert "Get-Sha256Hex" in verifier
     assert "file set mismatch" in verifier
+
+def test_release_verifier_uses_streaming_sha256_without_get_file_hash():
+    root = Path(__file__).resolve().parents[1]
+    verifier = (root / "packaging" / "verify_release_dist.ps1").read_text(encoding="utf-8")
+
+    assert "function Get-Sha256Hex" in verifier
+    assert "SequentialScan" in verifier
+    assert "1048576" in verifier
+    assert "Get-FileHash" not in verifier
 
 def test_production_requirements_are_exactly_version_pinned():
     root = Path(__file__).resolve().parents[1]

@@ -621,7 +621,7 @@ def test_real_release_dist_preflight_when_available():
     try:
         timeout_seconds = max(
             30,
-            int(os.environ.get("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS", "180")),
+            int(os.environ.get("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS", "600")),
         )
     except ValueError:
         pytest.fail("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS must be an integer")

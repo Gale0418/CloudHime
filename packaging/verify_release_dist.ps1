@@ -11,6 +11,34 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-Sha256Hex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [IO.FileStream]::new(
+            $Path,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Read,
+            [IO.FileShare]::Read,
+            1048576,
+            [IO.FileOptions]::SequentialScan
+        )
+        $digest = $algorithm.ComputeHash($stream)
+        return (($digest | ForEach-Object { $_.ToString("x2") }) -join "")
+    }
+    finally {
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+        $algorithm.Dispose()
+    }
+}
 $dist = [System.IO.Path]::GetFullPath($DistDir)
 if (-not (Test-Path -LiteralPath $dist -PathType Container)) {
     throw "Release dist directory not found: $dist"
@@ -336,7 +364,7 @@ foreach ($entry in $manifestEntries) {
     if ($expectedHash -notmatch "^[0-9a-fA-F]{64}$") {
         throw "Release dist runtime manifest has an invalid SHA-256: $relative"
     }
-    $actualHash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash
+    $actualHash = Get-Sha256Hex -Path $candidate
     if ($actualHash -ine $expectedHash) {
         throw "Release dist runtime manifest hash or size mismatch: $relative"
     }
