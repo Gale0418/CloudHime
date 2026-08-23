@@ -385,6 +385,41 @@ if ($serverManifestPath -ne "llama-server.exe" -or -not $manifestFiles.ContainsK
     throw "Release dist runtime manifest does not identify llama-server.exe"
 }
 
+
+$runtimeSourcePath = Join-Path $runtimeRoot "runtime-source.json"
+if (Test-Path -LiteralPath $runtimeSourcePath -PathType Leaf) {
+    if (-not $manifestFiles.ContainsKey("runtime-source.json")) {
+        throw "Release dist runtime-source.json is not listed in runtime-manifest.json"
+    }
+    try {
+        $runtimeSource = Get-Content -LiteralPath $runtimeSourcePath -Raw | ConvertFrom-Json
+    } catch {
+        throw "Release dist runtime-source.json is not valid JSON: $($_.Exception.Message)"
+    }
+    if ($runtimeSource.schema_version -ne 1) {
+        throw "Release dist runtime-source.json has an unsupported schema"
+    }
+    foreach ($metadataName in @("source_commit", "backend", "architecture")) {
+        $metadataValue = [string]$runtimeSource.$metadataName
+        if ([string]::IsNullOrWhiteSpace($metadataValue)) {
+            throw "Release dist runtime-source.json is missing metadata: $metadataName"
+        }
+    }
+    $sourceArchiveSha = [string]$runtimeSource.archive_sha256
+    if ($sourceArchiveSha -notmatch "^[0-9a-fA-F]{64}$") {
+        throw "Release dist runtime-source.json has an invalid archive SHA-256"
+    }
+    if ([string]$runtimeSource.source_commit -ine [string]$runtimeManifest.build.source_commit) {
+        throw "Release dist runtime-source.json source commit does not match runtime manifest"
+    }
+    if ([string]$runtimeSource.backend -ine [string]$runtimeManifest.build.backend) {
+        throw "Release dist runtime-source.json backend does not match runtime manifest"
+    }
+    if ([string]$runtimeSource.architecture -ine [string]$runtimeManifest.build.architecture) {
+        throw "Release dist runtime-source.json architecture does not match runtime manifest"
+    }
+}
+
 $files = @(Get-ChildItem -LiteralPath $dist -Recurse -File)
 $inProcessLlamaBindings = @($files | Where-Object {
     $relativePath = $_.FullName.Substring($dist.Length).TrimStart("\", "/")

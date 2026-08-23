@@ -447,6 +447,62 @@ def _write_runtime_manifest(runtime_root):
         encoding="utf-8",
     )
 
+def test_release_dist_preflight_validates_optional_runtime_source_metadata():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "verify_release_dist.ps1"
+    temp_root = root / f".tmp-runtime-source-preflight-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    runtime_root = fixture / "_internal" / "runtime"
+    source_path = runtime_root / "runtime-source.json"
+    try:
+        _write_release_fixture(powershell, fixture)
+        source_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "source_commit": "fixture",
+                    "archive_sha256": "a" * 64,
+                    "backend": "cuda",
+                    "architecture": "x64",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (runtime_root / "runtime-manifest.json").unlink()
+        _write_runtime_manifest(runtime_root)
+
+        valid = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert valid.returncode == 0, valid.stdout + valid.stderr
+
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source["source_commit"] = "different"
+        source_path.write_text(json.dumps(source) + "\n", encoding="utf-8")
+        (runtime_root / "runtime-manifest.json").unlink()
+        _write_runtime_manifest(runtime_root)
+        rejected = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert rejected.returncode != 0
+        assert "source commit" in (rejected.stdout + rejected.stderr).lower()
+    finally:
+        if temp_root.parent == root and temp_root.name.startswith(".tmp-runtime-source-preflight-"):
+            _remove_release_fixture(powershell, temp_root)
+
 def _remove_release_fixture(powershell, root):
     root_literal = str(root).replace("'", "''")
     command = f"if (Test-Path -LiteralPath '{root_literal}') {{ Remove-Item -LiteralPath '{root_literal}' -Recurse -Force }}"
