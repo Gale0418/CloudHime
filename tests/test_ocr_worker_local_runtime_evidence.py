@@ -21,9 +21,10 @@ class FakeProvider:
         self._runtime_ready = False
         self.runtime_updates = []
 
-    def update_runtime(self, base_url, model_name, ready):
+    def update_runtime(self, base_url, model_name, ready, api_key=""):
         self.base_url = (base_url or "").rstrip("/")
         self.model_name = model_name
+        self._runtime_api_key = api_key
         self._runtime_ready = bool(ready and self.base_url and model_name)
         self.runtime_updates.append((base_url, model_name, ready))
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import subprocess
 from collections import deque
 import threading
@@ -173,6 +174,7 @@ class LocalVisionRuntime:
         asset_minimum_bytes: dict[str, int] | None = None,
         progress_callback: Optional[Callable[[str, int], None]] = None,
         gpu_process_probe: Optional[Callable[[int], bool]] = None,
+        api_key_factory: Optional[Callable[[], str]] = None,
     ) -> None:
         self._assets = assets
         self._profile = resolve_runtime_profile(profile)
@@ -186,6 +188,7 @@ class LocalVisionRuntime:
         self._gpu_layers = max(0, int(gpu_layers))
         self._progress_callback = progress_callback
         self._gpu_process_probe = gpu_process_probe or _default_gpu_process_probe
+        self._api_key_factory = api_key_factory or (lambda: secrets.token_urlsafe(32))
         self._last_progress = 0
         # 可注入資產大小最小值（測試用小數值，生產用正式大小）
         self._asset_minimum_bytes: dict[str, int] = (
@@ -194,6 +197,7 @@ class LocalVisionRuntime:
 
         self._state: VisionRuntimeState = _STOPPED
         self._process = None   # FakeProcess or Popen；有啟動程序時非 None
+        self._api_key = ""
         self._port: Optional[int] = None
         self._start_lock = threading.Lock()
         self._state_lock = threading.Lock()
@@ -207,8 +211,20 @@ class LocalVisionRuntime:
         return self._process
 
     @property
+    def api_key(self) -> str:
+        """Current launch key; never included in VisionRuntimeState or evidence."""
+        return self._api_key
+
+
+
+    @property
     def profile_name(self) -> str:
         return self._profile.name
+
+    def _redact_secret(self, text: str) -> str:
+        if self._api_key:
+            return text.replace(self._api_key, "[REDACTED]")
+        return text
 
     def set_profile(self, profile: LocalRuntimeProfile | str) -> None:
         """設定下一次啟動的 text/vision profile；執行中必須先 stop。"""
@@ -337,6 +353,7 @@ class LocalVisionRuntime:
             self._cancel_event.set()
             proc = self._process
             self._process = None
+            self._api_key = ""
             self._state = _STOPPED
         if proc is not None:
             self._cleanup_process(proc)
@@ -358,12 +375,31 @@ class LocalVisionRuntime:
         """
         if self._cancel_event.is_set() or _cancel_requested(cancel_event):
             return _STOPPED
+        self._api_key = ""
+        try:
+            api_key = str(self._api_key_factory() or "").strip()
+        except Exception:
+            return VisionRuntimeState(
+                name="failed",
+                detail="api_key_generation_failed",
+                base_url="",
+                mode=mode,
+            )
+        if not api_key:
+            return VisionRuntimeState(
+                name="failed",
+                detail="api_key_generation_failed",
+                base_url="",
+                mode=mode,
+            )
+        self._api_key = api_key
         assets = self._assets
         args = [
             str(assets.server_path),
             "--host", "127.0.0.1",
             "--port", str(port),
             "--no-webui",
+            "--api-key", api_key,
             "-m", str(assets.model_path),
         ]
         if self._profile.requires_projector:
@@ -390,9 +426,11 @@ class LocalVisionRuntime:
                 creationflags=creationflags,
             )
         except Exception as exc:
+            detail = self._redact_secret(str(exc))
+            self._api_key = ""
             return VisionRuntimeState(
                 name="failed",
-                detail=f"process_start_failed: {exc}"[:_STDERR_MAX_CHARS],
+                detail=f"process_start_failed: {detail}"[:_STDERR_MAX_CHARS],
                 base_url="",
                 mode=mode,
             )
@@ -401,6 +439,7 @@ class LocalVisionRuntime:
         if self._cancel_event.is_set() or _cancel_requested(cancel_event):
             self._cleanup_process(proc)
             self._process = None
+            self._api_key = ""
             return _STOPPED
         state = self._wait_healthy(proc, port, mode, cancel_event=cancel_event)
 
@@ -408,7 +447,7 @@ class LocalVisionRuntime:
         if state.name != "ready" and self._process is proc:
             self._cleanup_process(proc)
             self._process = None
-
+            self._api_key = ""
         return state
 
     # ── 內部：健康輪詢 ────────────────────────────────────────────────────────
@@ -428,7 +467,10 @@ class LocalVisionRuntime:
 
         def _snapshot_stderr() -> str:
             with stderr_lock:
-                return "".join(stderr_lines)[:_STDERR_MAX_CHARS]
+                snapshot = "".join(stderr_lines)
+            if self._api_key:
+                snapshot = snapshot.replace(self._api_key, "[REDACTED]")
+            return snapshot[:_STDERR_MAX_CHARS]
 
         def _snapshot_gpu_offload() -> tuple[int, int]:
             with stderr_lock:
