@@ -60,6 +60,20 @@ pip report 是 provenance 證據；hash lock 才是安裝約束，但只適用�
 所有 resolved distribution 的版本與 wheel SHA-256；CI 以 `--require-hashes` 安裝，並用原始
 `requirements.txt`／`requirements-ci.txt` 驗證 direct intent。更新 direct dependency 或 Python／平台
 版本時，必須重新解析並重新驗證 lock；它們不是可套用到任意 Python 版本的通用 lock。
+## Frozen release build tooling
+
+`requirements-build-win-amd64-py310.txt` is a separate, hash-pinned build-tool lock for
+CPython 3.10／Windows x64. It contains PyInstaller and its build-only dependencies;
+it is intentionally excluded from the production runtime lock and from the packaged
+application dependency provenance. Before running `build_exe.bat`, install both the
+production lock and this build lock into the same Python 3.10 x64 environment:
+
+    py -3.10-64 -m pip install --require-hashes -r requirements-lock-win-amd64-py310.txt
+    py -3.10-64 -m pip install --require-hashes -r requirements-build-win-amd64-py310.txt
+
+CI's opt-in real release job follows the same separation. The lock is target-specific
+and must be regenerated when the Python, Windows architecture, or PyInstaller version
+changes.
 ## Release artifact dependency provenance
 
 正式 ZIP／MSIX 內的 `_internal/provenance/` 由 `prepare_release_provenance.ps1` 以 CPython 3.10、Windows x64 的 fresh venv 產生，並由 `release_provenance.py verify` 在 release preflight 與 MSIX unpack 後 fail-closed 驗證。它固定包含 production pip report、CycloneDX SBOM、direct requirements、hash lock 與 schema 1 manifest；manifest 驗證相對路徑、精確檔案集合、大小與 SHA-256，並從 pip report 實際 environment 驗證 CPython 3.10／Windows／AMD64。

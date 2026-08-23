@@ -12,12 +12,17 @@ set "ZIP_FILE=dist\%APP_NAME%.zip"
 set "RUNTIME_STAGE=build\runtime"
 set "BUILD_EXIT_CODE=0"
 set "PYTHON=py -3.10-64"
+set "BUILD_REQUIREMENTS=requirements-build-win-amd64-py310.txt"
 %PYTHON% -c "import platform, sys; ok = sys.implementation.name == 'cpython' and sys.version_info[:2] == (3, 10) and sys.platform == 'win32' and platform.machine().lower() in ('amd64', 'x86_64'); sys.exit('Python 3.10 x64 is required for the production release build.') if not ok else None"
 if errorlevel 1 (
   echo Python 3.10 x64 is required for the production release build.
   goto :failure
 )
 
+if not exist "%BUILD_REQUIREMENTS%" (
+  echo Missing %BUILD_REQUIREMENTS%. Install the pinned release build tooling first.
+  goto :failure
+)
 if not exist "runtime\llama-server.exe" (
   echo Missing runtime\llama-server.exe
   goto :failure
@@ -95,7 +100,7 @@ rem CloudHime ships a lightweight Windows OCR build.
 rem Optional OCR backends are source-mode only; packaged builds do not install Python packages.
 %PYTHON% -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
-  echo PyInstaller is not installed. Run "py -3.10-64 -m pip install pyinstaller -r requirements-lock-win-amd64-py310.txt" first.
+  echo PyInstaller is not installed. Run "py -3.10-64 -m pip install --require-hashes -r %BUILD_REQUIREMENTS%" first.
   goto :failure
 )
 
