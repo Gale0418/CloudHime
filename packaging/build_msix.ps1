@@ -11,11 +11,64 @@ param(
     [ValidateSet("x64")]
     [string]$Architecture = "x64",
     [string]$MakeAppxPath = "",
+    [string]$StoreIdentityConfigPath = "",
+    [switch]$StoreRelease,
     [switch]$CreateUpload,
     [switch]$PreflightOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-RequiredStoreConfigValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Config,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $property = $Config.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        throw "Store identity config is missing '$Name'."
+    }
+    $value = ([string]$property.Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "Store identity config field '$Name' is empty."
+    }
+    return $value
+}
+
+if ($StoreRelease) {
+    if ([string]::IsNullOrWhiteSpace($StoreIdentityConfigPath)) {
+        throw "StoreRelease requires -StoreIdentityConfigPath from Partner Center identity data."
+    }
+    $storeConfigPath = (Resolve-Path -LiteralPath $StoreIdentityConfigPath -ErrorAction Stop).Path
+    try {
+        $storeConfig = Get-Content -LiteralPath $storeConfigPath -Raw -ErrorAction Stop | ConvertFrom-Json
+    } catch {
+        throw "Store identity config is not valid JSON: $storeConfigPath"
+    }
+    if ([int]$storeConfig.schema_version -ne 1) {
+        throw "Store identity config schema_version must be 1."
+    }
+
+    $IdentityName = Get-RequiredStoreConfigValue -Config $storeConfig -Name "identity_name"
+    $Publisher = Get-RequiredStoreConfigValue -Config $storeConfig -Name "publisher"
+    $PublisherDisplayName = Get-RequiredStoreConfigValue -Config $storeConfig -Name "publisher_display_name"
+    $packageFamilyName = Get-RequiredStoreConfigValue -Config $storeConfig -Name "package_family_name"
+
+    if ($Publisher -notmatch '^CN=.+') {
+        throw "Store release publisher must be an explicit CN= publisher."
+    }
+    if ($Publisher -match '(?i)(^|[\s._-])(development|ci|example|placeholder|test)([\s._-]|$)') {
+        throw "StoreRelease rejects development, CI, test, example, or placeholder publisher values."
+    }
+    if ($packageFamilyName -notmatch '^[A-Za-z0-9.-]+_[A-Za-z0-9]{13}$') {
+        throw "Store identity config package_family_name has an invalid shape."
+    }
+    Write-Host "Loaded controlled Store identity '$IdentityName' with package family '$packageFamilyName'."
+}
 
 $versionParts = $Version.Split(".")
 $validVersion = $versionParts.Count -eq 4

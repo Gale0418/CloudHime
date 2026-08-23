@@ -10,6 +10,13 @@ makeappx.exe 由 Windows SDK 提供。預設開發 Publisher 只適合本機驗�
 
 CreateUpload also produces a manually assembled .msixupload archive containing the MSIX. Public symbols are optional and are not included by this builder yet.
 
+## Store release identity guard
+
+本機開發套件仍可使用 `CN=CloudHime Development`；但正式 Store 路徑必須明確使用 Partner Center 提供的 identity data。`-StoreRelease` 會要求 `-StoreIdentityConfigPath`，並從未納入版控的 `packaging/store-identity.local.json` 讀取 schema 1：`identity_name`、`publisher`、`publisher_display_name` 與 `package_family_name`。development、CI、test、example 或 placeholder publisher 會在 dist preflight 前 fail-closed。
+
+    pwsh -File packaging/build_msix.ps1 -StoreRelease -StoreIdentityConfigPath packaging/store-identity.local.json -Version 0.1.0.0 -CreateUpload
+
+這個 guard 不會建立、猜測或替代 Partner Center product identity；缺少正式 identity 時應保持未執行，不可用開發 publisher 偽裝成 Store release。`store-identity.local.json` 已加入 `.gitignore`，不可提交身分資料。
 ## Release dist preflight
 
 在尚未安裝 Windows SDK 的開發機上，可以先驗證真正會被放入 MSIX 的 PyInstaller bundle：
