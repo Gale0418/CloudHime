@@ -340,6 +340,7 @@ def run_smoke(
         provider = LocalMultimodalProvider(
             base_url=state.base_url,
             model_name=model_name,
+            api_key=getattr(runtime, "api_key", ""),
             enabled=True,
             timeout_seconds=timeout_seconds,
         )

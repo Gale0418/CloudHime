@@ -29,6 +29,7 @@ def test_local_vision_integration():
         provider = LocalMultimodalProvider(
             base_url=state.base_url,
             model_name=VISION_MODEL_NAME,
+            api_key=getattr(runtime, "api_key", ""),
             target_lang="zh-TW",
             enabled=True,
             timeout_seconds=60,

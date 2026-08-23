@@ -213,6 +213,48 @@ def test_run_smoke_marks_path_only_cases_as_coverage_not_accuracy(monkeypatch, t
     assert result["results"][0]["match_score"] is None
 
 
+def test_run_smoke_passes_runtime_api_key_to_provider(monkeypatch, tmp_path) -> None:
+    image_path = tmp_path / "sample.png"
+    assert cv2.imwrite(str(image_path), np.zeros((95, 617, 3), dtype=np.uint8))
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"cases": [{"sample_source": "sample.png", "category": "coverage_only"}]}),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class FakeVisionRuntime:
+        api_key = "smoke-runtime-key"
+
+        def __init__(self, *args, **kwargs):
+            self.state = SimpleNamespace(
+                name="ready",
+                detail="",
+                mode="cpu",
+                base_url="http://vision",
+            )
+
+        def start(self):
+            return self.state
+
+        def stop(self):
+            pass
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def transcribe_screenshot(self, parts, **kwargs):
+            return SimpleNamespace(text="讀到的內容")
+
+    monkeypatch.setattr(benchmark, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(benchmark, "LocalVisionRuntime", FakeVisionRuntime)
+    monkeypatch.setattr(benchmark, "LocalMultimodalProvider", FakeProvider)
+
+    benchmark.run_smoke(manifest_path, max_cases=1)
+
+    assert captured["api_key"] == "smoke-runtime-key"
+
 def test_rescue_quality_gate_rejects_unscored_coverage() -> None:
     summary = evaluate_rescue_quality_gate(
         [{"sample_source": "coverage", "quality_scored": False}],
