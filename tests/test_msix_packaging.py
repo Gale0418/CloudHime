@@ -48,6 +48,8 @@ def test_ci_msix_contract_runs_environment_isolated_launch_smoke():
 
     assert "packaging/test_clean_machine.ps1" in ci
     assert "Environment-isolated release executable smoke" in ci
+    assert "Structural launch smoke only" in ci
+    assert "packaging/release_functional_smoke.py" in ci
     assert "-ExecutablePath $executable" in ci
     assert "-LaunchWaitSeconds 5" in ci
     assert ci.index("Environment-isolated release executable smoke") > ci.index("Prepare MSIX contract fixture")

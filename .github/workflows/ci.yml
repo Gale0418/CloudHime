@@ -259,10 +259,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "MSIX fixture release provenance staging failed." }
           Write-Host "MSIX fixture prepared at $dummyDist"
 
-      - name: Environment-isolated release executable smoke
+      - name: Environment-isolated release executable smoke (structural)
         timeout-minutes: 5
         shell: pwsh
         run: |
+          Write-Host "Structural launch smoke only. Functional vision smoke requires real runtime/model assets and uses packaging/release_functional_smoke.py."
           $executable = Join-Path (Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist") "CloudHime.exe"
           pwsh -NoLogo -NoProfile -File packaging/test_clean_machine.ps1 -ExecutablePath $executable -LaunchWaitSeconds 5
       - name: Build MSIX package
