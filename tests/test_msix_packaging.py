@@ -241,6 +241,16 @@ def test_ci_msix_fixture_uses_an_environment_probe_with_liveness_margin():
     assert '/target:winexe' in fixture
     assert '& $csc /nologo /target:winexe /out:$probePath $probeSourcePath' in fixture
     assert "Environment.GetEnvironmentVariable" in fixture
+    for sandbox_marker in (
+        'Environment.GetEnvironmentVariable("LOCALAPPDATA")',
+        'Environment.GetEnvironmentVariable("APPDATA")',
+        'Environment.GetEnvironmentVariable("TEMP")',
+        'Environment.GetEnvironmentVariable("TMP")',
+        'cloudhime-clean-machine-',
+        'return 15;',
+        'return 16;',
+    ):
+        assert sandbox_marker in fixture
     for guard in (
         'if (String.IsNullOrWhiteSpace(systemRoot)) return 11;',
         'if (Environment.GetEnvironmentVariable("WINDIR") != systemRoot) return 12;',
