@@ -37,6 +37,7 @@
         "tests/test_release_provenance.py",
         "tests/test_secret_store.py",
         "tests/test_settings_store.py",
+        "tests/test_persistent_translation_cache.py",
         "tests/test_translation_helpers.py",
         "tests/test_translation_orchestrator.py",
         "tests/test_translation_providers.py",
