@@ -1151,3 +1151,12 @@
 - Decision：strengthen the existing region prompt contract and use a bounded max_tokens budget of 768..2048; keep the change scoped to interpret_regions and its tests. Do not enable a new full-page structured route or change the existing fullscreen production default.
 - Evidence：targeted provider/region suite 89 passed in 1.40s; real GPU runtime reached ready/gpu and both diagnostic cases parsed as one region, but source similarity was only 0.25 and 0.0. This proves schema robustness, not translation accuracy.
 - Follow-up：use crop/geometry hints with trusted human annotations for the next paired experiment; treat prompt-only full-page schema output as non-promotable until it clears per-case accuracy and no-regression gates.
+
+## 2026-08-24：CH-T100 fullscreen crop-batch admission decision
+
+- 目的：把 direct local fullscreen Vision 失敗後的 crop-batch 變成明確、可退回的 admission fallback；這一輪不把 crop-batch 或 geometry route 開成 production default，也不改 remote Google／Gemma 行為。
+- Admission contract：只有 local fullscreen、同一次 scan 已嘗試 direct Vision 且以非取消原因失敗、OCR 有完整有效 geometry 時才可進入；structured batch 必須一個 supplied id 對應一個非空翻譯，任何 schema／數量／空值錯誤都 fail-closed，不自動 grid、不退回 legacy per-crop retry。預設 flag 為 off。
+- 真 GPU paired evidence：同 locked owner-confirmed manifest、同一 local llama-server／Gemma 3 4B／GPU／sampling／context，candidate_then_baseline 與 baseline_then_candidate 各 4 cases × 5 repeats；兩輪皆 `20/20 + 20/20`、coverage `1.0`、case regressions `0`、promotion gate `true`。candidate quality 分別 `0.3078978262`、`0.3055463851`，baseline `0.1957581248`；candidate nonempty `1.0` 對 baseline `0.75`。
+- 速度判定：candidate_then_baseline total avg/p95 `10677.476/15129.873ms` 對 `2081.391/4359.098ms`；baseline_then_candidate total avg/p95 `9541.297/13015.610ms` 對 `2133.689/4478.151ms`。latency order 仍非 balanced，且 candidate 約 4.47x／5.13x baseline avg，因此只接受準度候選證據，不做速度 promotion。
+- Code／regression evidence：新增 `CLOUDHIME_FULLSCREEN_CROP_BATCH_ADMISSION`（預設 off）與 strict batch fail-closed 路由；新增 direct Vision failure admission、malformed batch no-legacy-retry 兩項 regression。`tests/test_ocr_worker_mode_matrix.py` `115 passed in 6.36s`；compileall exit `0`；`git diff --check` exit `0`。
+- 後續：先保留為 gated candidate，收集更多 owner-confirmed paired cases／balanced latency，再決定是否只對特定 profile 開啟；不宣稱這輪已解決 direct Vision 本身的語意誤讀。
