@@ -239,6 +239,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="condition order for this paired run; execute both orders for balanced latency evidence",
     )
     parser.add_argument("--geometry-hints", action="store_true", help="run fullscreen candidate with OCR boxes as text-free Vision hints")
+    parser.add_argument("--progress", action="store_true", help="write bounded case/repeat progress to stderr")
+
     parser.add_argument("--preflight", action="store_true", help="validate immutable inputs without starting GPU runtime")
     return parser
 
@@ -261,6 +263,18 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"ok": True, "preflight": True}, separators=(",", ":")))
             return 0
         # Worker diagnostics may contain raw OCR content, so never emit them.
+        def report_progress(event: Mapping[str, Any]) -> None:
+            print(
+                "[product-path] "
+                f"condition={event['condition']} "
+                f"case={event['case_id']} "
+                f"repeat={event['repeat']} "
+                f"completed={event['completed']}/{event['total']} "
+                f"elapsed_ms={event['elapsed_ms']:.1f}",
+                file=sys.stderr,
+                flush=True,
+            )
+
         with contextlib.redirect_stdout(io.StringIO()):
             report = evaluate_product_path_pair(
                 ready["manifest"], ready["baseline"], ready["candidate"],
@@ -271,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime_mode_probe=lambda _worker: "gpu",
                 session_factory=_session_factory(args.startup_timeout),
                 execution_order=args.execution_order,
+                progress_callback=report_progress if args.progress else None,
             )
         print(json.dumps(
             redact_report(_with_runner_metadata(report, args.execution_order)),

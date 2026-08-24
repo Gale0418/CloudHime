@@ -23,6 +23,33 @@ _SAFE_FALLBACK = re.compile(r"^(?:[a-z0-9][a-z0-9_.:-]{0,63})?$")
 _SAFE_RUNTIME = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")
 
 
+def _emit_progress(
+    callback: Callable[[Mapping[str, Any]], None] | None,
+    *,
+    condition: Mapping[str, Any],
+    case_id: str,
+    repeat: int,
+    completed: int,
+    total: int,
+    elapsed_ms: float,
+) -> None:
+    if callback is None:
+        return
+    event = {
+        "condition": str(condition.get("route", "")),
+        "runtime_profile": str(condition.get("runtime_profile", "")),
+        "case_id": str(case_id),
+        "repeat": int(repeat),
+        "completed": int(completed),
+        "total": int(total),
+        "elapsed_ms": round(float(elapsed_ms), 3),
+    }
+    try:
+        callback(event)
+    except Exception:
+        # Progress reporting must never change benchmark semantics.
+        return
+
 def _value(item: Any, name: str, default: Any = None) -> Any:
     if isinstance(item, Mapping):
         return item.get(name, default)
@@ -258,7 +285,8 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
                                 configure_worker: Callable[[Any, Mapping[str, Any]], None],
                                 image_loader: Callable[[Mapping[str, Any]], tuple[Any, bytes]],
                                 residual_probe: Callable[[Any], int],
-                                runtime_mode_probe: Callable[[Any], str]) -> dict[str, Any]:
+                                runtime_mode_probe: Callable[[Any], str],
+                               progress_callback: Callable[[Mapping[str, Any]], None] | None = None) -> dict[str, Any]:
     session = session_factory()
     if session is None:
         raise ValueError("session_factory returned None")
@@ -277,6 +305,8 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
         fingerprint = evaluator.condition_fingerprint(condition)
         cases = [case for case in evaluator.validate_manifest(manifest)
                  if case["usage_status"] in evaluator.LOCKED_USAGE]
+        progress_total = len(cases) * REPEATS
+        progress_completed = 0
         for case in cases:
             pixels, image_bytes = image_loader(case)
             _validate_image(case, image_bytes)
@@ -314,6 +344,16 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
                                 "detected_source": source, "translation": translation,
                                 "source_available": source_available,
                                 "trace_events": trace_events})
+                progress_completed += 1
+                _emit_progress(
+                    progress_callback,
+                    condition=condition,
+                    case_id=case["id"],
+                    repeat=repeat,
+                    completed=progress_completed,
+                    total=progress_total,
+                    elapsed_ms=stages["total"],
+                )
     except Exception as exc:
         primary_error = exc
     finally:
@@ -352,23 +392,29 @@ def collect_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, A
                           residual_probe: Callable[[Any], int],
                           runtime_mode_probe: Callable[[Any], str],
                           repeats: int = REPEATS,
-                          session_factory: Callable[[], Any] | None = None) -> dict[str, Any]:
+                          session_factory: Callable[[], Any] | None = None,
+                          progress_callback: Callable[[Mapping[str, Any]], None] | None = None) -> dict[str, Any]:
     """Collect exactly five fixed-image scans into an in-memory run."""
     if repeats != REPEATS:
         raise ValueError("product-path collection requires exactly 5 repeats")
     if not callable(configure_worker):
         raise TypeError("configure_worker must be callable")
+    if progress_callback is not None and not callable(progress_callback):
+        raise TypeError("progress_callback must be callable")
     if session_factory is not None:
         if not callable(session_factory):
             raise TypeError("session_factory must be callable")
         return _collect_warm_condition_raw(
             manifest, condition, session_factory=session_factory,
             configure_worker=configure_worker, image_loader=image_loader,
-            residual_probe=residual_probe, runtime_mode_probe=runtime_mode_probe)
+            residual_probe=residual_probe, runtime_mode_probe=runtime_mode_probe,
+            progress_callback=progress_callback)
 
     fingerprint = evaluator.condition_fingerprint(condition)
     cases = [case for case in evaluator.validate_manifest(manifest)
              if case["usage_status"] in evaluator.LOCKED_USAGE]
+    progress_total = len(cases) * REPEATS
+    progress_completed = 0
     records: list[dict[str, Any]] = []
     for case in cases:
         pixels, image_bytes = image_loader(case)
@@ -423,6 +469,16 @@ def collect_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, A
                             "detected_source": source, "translation": translation,
                             "source_available": source_available,
                             "trace_events": trace_events})
+            progress_completed += 1
+            _emit_progress(
+                progress_callback,
+                condition=condition,
+                case_id=case["id"],
+                repeat=repeat,
+                completed=progress_completed,
+                total=progress_total,
+                elapsed_ms=stages["total"],
+            )
     return {"condition": dict(condition), "records": records}
 
 def evaluate_product_path_pair(
