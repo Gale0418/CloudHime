@@ -317,7 +317,8 @@ def test_start_uses_loopback_dynamic_port_and_mmproj(fake_assets):
     idx = args.index("--mmproj")
     assert args[idx + 1] == str(fake_assets.projector_path)
     assert "--no-mmproj-offload" not in args
-    assert "--no-op-offload" in args
+    assert "--op-offload" in args
+    assert "--no-op-offload" not in args
     assert "--no-mmap" not in args
     parallel_idx = args.index("--parallel")
     assert args[parallel_idx + 1] == "1"

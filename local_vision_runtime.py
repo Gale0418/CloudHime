@@ -406,8 +406,8 @@ class LocalVisionRuntime:
             args.extend(["--mmproj", str(assets.projector_path)])
         args.extend([
             # Keep OS memory mapping enabled; disabling it can stall large Gemma 3 projector loads on Windows.
-            # Keep model layers on GPU but avoid WDDM operator offload stalls under VRAM pressure.
-            "--no-op-offload",
+            # Explicit operator offload keeps the Gemma projector startup path responsive on this GPU.
+            "--op-offload",
             # CloudHime serializes translations, so extra server slots only waste KV memory.
             "--parallel", "1",
             "-c", str(self._context_size),
