@@ -1144,3 +1144,10 @@
 - 先前兩個方向的結果保留：geometry route 會因 response region mismatch fail-closed；crop merge 只少一個 crop 且沒有速度收益，已撤回。crop-batch 只在 benchmark adapter 以 `vision_strategy=crop_batch` opt-in，產品預設不變。
 - 真 GPU paired 結果：同 manifest／model／sampling／context／GPU 下，baseline 20 records、candidate 20 records；quality `0.1957581248 -> 0.2725396014`、nonempty `0.75 -> 1.0`、coverage `1.0`、case regression `0`，promotion gate `true`。candidate total avg/p95 `8053.6847/13232.4256ms` 對 baseline `2229.1753/4665.1918ms`，約 3.61x avg、2.84x p95；準度優先下可保留作候選證據，但未通過速度 promotion。
 - 判定：保留 crop-batch 的 bounded implementation、condition fingerprint、per-batch progress 與 regression tests；不把實驗 flag 開到 production default，不新增全域多次 retry，不宣稱所有圖片都會更快。下一步應先取得更多可信 owner-confirmed Vision ground truth，再考慮 batch size／payload tuning。
+
+## 2026-08-24：CH-T99 Region Vision schema hardening decision
+
+- Root cause：local multimodal structured output was allowed to invent region ids, a single full-image hint was not explicitly bound to one id, and the single-hint response budget was only 384 tokens. GPU diagnosis reproduced both id drift and truncation.
+- Decision：strengthen the existing region prompt contract and use a bounded max_tokens budget of 768..2048; keep the change scoped to interpret_regions and its tests. Do not enable a new full-page structured route or change the existing fullscreen production default.
+- Evidence：targeted provider/region suite 89 passed in 1.40s; real GPU runtime reached ready/gpu and both diagnostic cases parsed as one region, but source similarity was only 0.25 and 0.0. This proves schema robustness, not translation accuracy.
+- Follow-up：use crop/geometry hints with trusted human annotations for the next paired experiment; treat prompt-only full-page schema output as non-promotable until it clears per-case accuracy and no-regression gates.

@@ -37,6 +37,21 @@ def test_build_prompt_makes_image_authoritative_and_includes_hints() -> None:
     assert '"regions"' in prompt
     assert '"id":7' in prompt
     assert '"text":"0CR?"' in prompt
+    assert "using each supplied id exactly once" in prompt
+    assert "Never invent ids" in prompt
+    assert "not English unless the target language is English" in prompt
+
+
+def test_build_prompt_binds_single_full_image_hint_to_one_id() -> None:
+    prompt = build_region_vision_prompt(
+        [{"id": 0, "x": 0, "y": 0, "w": 800, "h": 600, "text": "whole page"}],
+        image_width=800,
+        image_height=600,
+        target_lang="zh-TW",
+    )
+
+    assert "exactly one region using that hint id" in prompt
+    assert "zh-TW" in prompt
 
 
 def test_build_prompt_does_not_invent_whole_region_hint() -> None:
