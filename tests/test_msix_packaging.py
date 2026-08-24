@@ -1128,3 +1128,50 @@ def test_store_release_rejects_placeholder_publisher_before_preflight():
     combined = result.stdout + result.stderr
     assert result.returncode != 0
     assert "StoreRelease rejects development" in combined
+
+def test_store_release_rejects_mismatched_package_family_identity():
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the Store identity guard test")
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "packaging" / "build_msix.ps1"
+    config_path = root / f".tmp-store-identity-{uuid.uuid4().hex}.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "identity_name": "CloudHime.Store",
+                "publisher": "CN=WindSheep",
+                "publisher_display_name": "CloudHime",
+                "package_family_name": "AnotherProduct_1234567890123",
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        result = subprocess.run(
+            [
+                powershell,
+                "-NoLogo",
+                "-NoProfile",
+                "-File",
+                str(script),
+                "-StoreRelease",
+                "-StoreIdentityConfigPath",
+                str(config_path),
+                "-PreflightOnly",
+                "-DistDir",
+                str(root / "missing-store-release-dist"),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    finally:
+        config_path.unlink(missing_ok=True)
+
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "package_family_name identity prefix" in combined
