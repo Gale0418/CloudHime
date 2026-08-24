@@ -495,3 +495,21 @@ def test_warm_session_reports_cleanup_error_without_masking_it():
 
     with pytest.raises(RuntimeError, match="cleanup failed"):
         _collect_warm(CleanupFailureSession)
+
+
+def test_progress_callback_reports_bounded_observation_metadata():
+    progress = []
+    run, _, _ = _collect(progress_callback=progress.append)
+
+    assert len(progress) == 5
+    assert progress[-1]["condition"] == "baseline-route"
+    assert progress[-1]["case_id"] == "unicode-case"
+    assert progress[-1]["repeat"] == 5
+    assert progress[-1]["completed"] == 5
+    assert progress[-1]["total"] == 5
+    assert progress[-1]["elapsed_ms"] >= 0.0
+    assert all(
+        not any(key in event for key in ("detected_source", "translation", "raw_text"))
+        for event in progress
+    )
+    assert len(run["records"]) == 5
