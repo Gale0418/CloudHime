@@ -143,3 +143,8 @@ translation accuracy, clean Windows VM behavior, WACK, or Store certification.
 The final functional stage of `packaging/test_release_smoke.ps1` now runs inside the frozen `CloudHime.exe` through an opt-in environment-controlled self-test. Host Python is still used for deterministic input validation, but it is no longer the authority for the final functional result. The packaged mode writes a redacted machine-readable result and returns a non-zero exit code on failure.
 
 This proves the release orchestrator is wired to the packaged entrypoint only when a valid frozen build exists. It does not replace a real GPU run, a clean Windows machine, WACK/Partner Center certification, or Store submission. The current runtime must first pass `llama-server.exe --version` and produce a valid runtime manifest.
+## Latest frozen GPU smoke evidence
+
+On 2026-08-24 a fresh local frozen build completed with 26 runtime files and a valid runtime manifest. The packaged release smoke then used the new `dist\CloudHime` with a local Gemma 3 4B GGUF, its mmproj, and one example image under `-RequireGpu`; the final functional stage ran inside `CloudHime.exe` and passed. Post-run executable-path cleanup found no CloudHime-owned `llama-server.exe` process.
+
+This is a real local GPU wiring smoke for one image, not an accuracy benchmark or Store/WACK/clean-VM certification. The local runtime lacked archived source metadata, so the build supplied `LLAMA_RUNTIME_COMMIT` from the server's reported build identifier. Release CI should continue to require the fetched runtime archive URL/hash/commit provenance.
