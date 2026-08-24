@@ -2205,6 +2205,55 @@ def test_fullscreen_local_vision_failure_admits_strict_crop_batch(monkeypatch, q
         worker.cleanup()
 
 
+def test_fullscreen_crop_batch_rejects_duplicate_region_ids(
+    monkeypatch, qtbot
+):
+    image = np.zeros((120, 240, 3), dtype=np.uint8)
+    provider = SimpleNamespace(
+        available=lambda: True,
+        translate_screenshot=Mock(side_effect=RuntimeError("direct vision failed")),
+        interpret_regions=Mock(return_value=[
+            SimpleNamespace(id=0, source_text="duplicate-a", translation="duplicate-a"),
+            SimpleNamespace(id=0, source_text="duplicate-b", translation="duplicate-b"),
+        ]),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_crop_batch_admission_mode = True
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "vision"}}]
+    )
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "", "x": 17, "y": 21, "w": 40, "h": 16},
+    ]))
+    worker.translate_items_with_ai_and_providers = Mock(return_value=(
+        ["text-route"],
+        ["local_multimodal"],
+    ))
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[['text-route', 17, 21, 40, 16]]]
+        assert provider.translate_screenshot.call_count == 1
+        provider.interpret_regions.assert_called_once()
+        assert not any(
+            event.detail == "translation_fullscreen_crop_batch_vision_completed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
+
 def test_fullscreen_crop_batch_admission_fails_closed_without_legacy_retry(
     monkeypatch, qtbot
 ):

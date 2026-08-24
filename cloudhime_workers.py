@@ -5141,9 +5141,19 @@ class OCRWorker(QObject):
                 finally:
                     self._capture_local_vision_request_metrics(provider)
                 self._emit_product_path_stage("fullscreen_vision_batch_finished")
-                by_id = {int(getattr(result, "id", -1)): result for result in results or ()}
-                if set(by_id) != set(range(len(valid_crops))):
+                raw_results = list(results or ())
+                expected_ids = list(range(len(valid_crops)))
+                try:
+                    result_ids = [int(getattr(result, "id", -1)) for result in raw_results]
+                except (TypeError, ValueError):
                     raise ValueError("incomplete_fullscreen_crop_batch_response")
+                if (
+                    len(raw_results) != len(expected_ids)
+                    or len(set(result_ids)) != len(result_ids)
+                    or set(result_ids) != set(expected_ids)
+                ):
+                    raise ValueError("incomplete_fullscreen_crop_batch_response")
+                by_id = dict(zip(result_ids, raw_results))
                 for index, crop_spec in enumerate(valid_crops):
                     result = by_id[index]
                     translated_text = str(getattr(result, "translation", "") or "").strip()
