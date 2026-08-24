@@ -121,6 +121,8 @@
 
 | CH-T105 | Current HEAD full CI inventory rerun | Task | CH-E9 | P0 | Done | Codex | CH-T104 | 以 ci/test_groups.json 宣告的五組測試重新驗證目前 HEAD，包含 core、OCR、runtime、UI 隔離與 benchmarks；結果只作 correctness/release contract evidence | 五組均須完成；UI 使用 QT_QPA_PLATFORM=offscreen 且逐檔隔離；任何 skipped、incomplete、GPU／Store／WACK 外部 gate 必須明確列出，不得把 inventory 綠燈冒充產品發行完成 | YES | YES | 30m | ci, regression, release, vision-first, evidence | 2026-08-24：core 469 passed；ocr 296 passed；runtime 163 passed／2 skipped；UI 隔離 56 passed；benchmarks 203 passed；合計 1187 passed／2 skipped。未新增 GPU accuracy／latency、WACK、Partner Center 或 Store certification claim。 |
 
+| CH-T106 | Store identity package-family consistency guard | Task | CH-E7 | P0 | Done | Codex | CH-T53, CH-T64 | 正式 Store identity config 的 package_family_name 必須與同一份 identity_name 一致；錯誤資料要在 release dist preflight 前 fail-closed | mismatch identity／publisher／package family 不得進入 MakeAppx；開發 Publisher、缺少 config、既有 MSIX／release contract 行為維持；Partner Center 真實 identity 尚未建立時不得猜值 | YES | YES | 30m | store, identity, packaging, fail-closed, regression | 2026-08-24：TDD RED 重現 mismatched package family 通過初始 identity guard；加入前綴一致性檢查後，Store guard targeted 3 passed in 2.79s，受影響 MSIX／release／orchestrator／functional smoke 69 passed in 287.99s，compileall／diff-check PASS。 |
+
 ## 0.3.1 遷移註記
 
 - 原始完整內容保留於 `archive/tasks-pre-0.3.1-2026-08-13.md`。

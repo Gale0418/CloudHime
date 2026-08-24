@@ -67,6 +67,10 @@ if ($StoreRelease) {
     if ($packageFamilyName -notmatch '^[A-Za-z0-9.-]+_[A-Za-z0-9]{13}$') {
         throw "Store identity config package_family_name has an invalid shape."
     }
+    $packageFamilyPrefix = $packageFamilyName.Substring(0, $packageFamilyName.LastIndexOf("_"))
+    if ($packageFamilyPrefix -cne $IdentityName) {
+        throw "Store identity config package_family_name identity prefix must match identity_name."
+    }
     Write-Host "Loaded controlled Store identity '$IdentityName' with package family '$packageFamilyName'."
 }
 
