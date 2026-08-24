@@ -1160,3 +1160,11 @@
 - 速度判定：candidate_then_baseline total avg/p95 `10677.476/15129.873ms` 對 `2081.391/4359.098ms`；baseline_then_candidate total avg/p95 `9541.297/13015.610ms` 對 `2133.689/4478.151ms`。latency order 仍非 balanced，且 candidate 約 4.47x／5.13x baseline avg，因此只接受準度候選證據，不做速度 promotion。
 - Code／regression evidence：新增 `CLOUDHIME_FULLSCREEN_CROP_BATCH_ADMISSION`（預設 off）與 strict batch fail-closed 路由；新增 direct Vision failure admission、malformed batch no-legacy-retry 兩項 regression。`tests/test_ocr_worker_mode_matrix.py` `115 passed in 6.36s`；compileall exit `0`；`git diff --check` exit `0`。
 - 後續：先保留為 gated candidate，收集更多 owner-confirmed paired cases／balanced latency，再決定是否只對特定 profile 開啟；不宣稱這輪已解決 direct Vision 本身的語意誤讀。
+
+## 2026-08-24：CH-T101 crop-batch region-id cardinality decision
+
+- Root cause：`_run_fullscreen_crop_batch_vision_translation()` 先以 dict 建立 `id -> result`，只檢查 key set；同一 id 出現兩次時，後者會靜默覆蓋前者，仍可能產生成功結果，破壞 fail-closed 與空間歸因可信度。
+- 修正：先 materialize raw results，要求 result count 與 valid crop count 完全相等；所有 id 必須可轉整數、不可重複，且 id 集合必須完全等於 expected ids，通過後才建立 by-id map。duplicate／partial／unknown id 會拒絕整批，admission fallback 回到既有文字路徑，不採用部分結果。
+- TDD evidence：RED `1 failed` 重現 duplicate id 被錯誤採用；GREEN targeted `3 passed in 1.36s`；完整 `tests/test_ocr_worker_mode_matrix.py` `116 passed in 6.41s`；compileall exit `0`；`git diff --check` exit `0`。
+- Gemini 本輪雖成功回覆，但提出的 C# 專案檔案不存在於 CloudHime，且 dynamic ROI／tile cache 沒有本地 paired evidence；本輪只採納「先補 attribution correctness」的方向，沒有引入虛構 C# 架構或未驗證 cache。
+- 邊界：本輪是 deterministic correctness hardening，沒有重跑 GPU paired benchmark；CH-T100 的既有品質／延遲數字保持原判定，仍不 promotion crop-batch default。
