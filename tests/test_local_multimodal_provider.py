@@ -563,7 +563,7 @@ def test_interpret_regions_scales_output_budget_with_hint_count():
         image_height=600,
     )
 
-    assert [payload["max_tokens"] for payload in payloads] == [384, 1408]
+    assert [payload["max_tokens"] for payload in payloads] == [768, 2048]
 
 
 def test_local_multimodal_operations_bound_output_tokens():

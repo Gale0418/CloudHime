@@ -113,6 +113,8 @@
 
 | CH-T98 | Rescue gate completeness contract | Task | CH-E6 | P0 | Done | Codex | CH-T96, CH-T97 | 讓 rescue quality report 與 `--require-rescue-no-regression` 共用完整性判定；任何 incomplete／truncated run 即使沒有 per-case regression 也必須 fail-closed | `rescue_quality.complete`、`rescue_quality.passed` 與 CLI exit code 一致；完整 run 才能通過；既有 regression gate 行為不變 | YES | YES | 30m | accuracy, rescue, benchmark, completeness, fail-closed, evidence | 2026-08-14：新增 completeness regression；targeted gate tests `3 passed`、compileall exit 0；受影響 suite 仍受既有 Windows pytest temp ACL 影響（4 個 tmp_path cleanup errors）；公開漫畫 GPU rerun `6/6` complete、improved=0／equal=6／regressed=0、gate=true、exit 0；前次 5/6 截斷仍保留為 fail-closed 證據，CH-T35 未完成。 |
 
+| CH-T99 | Region Vision schema hardening and bounded attribution | Task | CH-E9 | P0 | Done | Codex | CH-T43, CH-T95 | 修正 local interpret_regions 的 region id 漂移、單整頁 hint 自行拆區與輸出截斷風險；保留 Vision-first 與既有 crop/grid opt-in 邊界，不把整頁 schema 實驗升為 production default | prompt 必須要求每個 supplied id 恰好一次且不得發明 id；單 hint 不得自行拆頁；輸出預算須有 bounded minimum；既有 provider／worker regression 不退化；準度未經 paired gate 不得 promotion | YES | YES | 45m | vision-first, region-vision, schema, attribution, accuracy, fail-closed | 2026-08-24：先以兩張 owner-confirmed regression 圖片做 GPU 診斷，重現 id 越界與 384-token 截斷；加入 prompt contract 與 768..2048 bounded token budget。targeted 89 passed in 1.40s；GPU runtime ready/gpu，兩案 schema 均可解析且 result_count=1，但 source similarity 0.25/0.0，故只接受格式 hardening，不宣稱準度改善、速度 promotion 或 production route promotion。 |
+
 ## 0.3.1 遷移註記
 
 - 原始完整內容保留於 `archive/tasks-pre-0.3.1-2026-08-13.md`。

@@ -1339,11 +1339,12 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             knowledge_context=knowledge_context,
         )
         allowed_ids = [hint["id"] for hint in hints]
+        output_token_budget = min(2048, max(768, len(hints) * 256 + 256))
         payload = self._build_chat_payload(
             prompt=prompt,
             image_parts=image_parts,
             response_format="json_object",
-            max_tokens=min(2048, max(384, len(hints) * 160 + 128)),
+            max_tokens=output_token_budget,
         )
         request_kwargs = (
             {"cancel_predicate": cancel_predicate}
