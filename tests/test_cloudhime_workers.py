@@ -1918,12 +1918,13 @@ def test_scan_status_notifies_bounded_product_observer_without_raw_message():
         _scan_generation=7,
         status_msg=SimpleNamespace(emit=lambda *args: statuses.append(args)),
         scan_status_msg=SimpleNamespace(emit=lambda *args: statuses.append(args)),
-        _product_path_scan_status_observer=lambda: observed.append("heartbeat"),
+        _product_path_scan_status_observer=lambda *args: observed.append(args),
     )
 
     assert OCRWorker._emit_scan_status(worker, "原文與翻譯不得外洩") is None
+    OCRWorker._emit_product_path_stage(worker, "ocr_start")
     assert statuses == [("原文與翻譯不得外洩",), (7, "原文與翻譯不得外洩")]
-    assert observed == ["heartbeat"]
+    assert observed == [("scan_status",), ("ocr_start",)]
 
 
 def test_cleanup_only_shuts_down_server_runtime():
