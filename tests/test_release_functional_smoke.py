@@ -150,3 +150,73 @@ def test_parser_exposes_validate_only() -> None:
     ])
 
     assert args.validate_only is True
+
+
+def test_packaged_functional_smoke_is_noop_without_opt_in():
+    import packaged_functional_smoke as packaged
+
+    assert packaged.run_packaged_functional_smoke(environ={}) is None
+
+
+def test_packaged_functional_smoke_writes_redacted_success_summary(tmp_path):
+    import json
+    import packaged_functional_smoke as packaged
+
+    result_path = tmp_path / "packaged-result.json"
+    captured = {}
+
+    def fake_runner(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {
+            "runtime_mode": "gpu",
+            "evaluation_mode": "technical_coverage",
+            "image_count": 1,
+            "case_count": 1,
+            "successful_images": 1,
+            "successful_cases": 1,
+            "request_success_images": 1,
+            "request_success_cases": 1,
+            "image_results": [{"actual": "不要寫入結果的原文", "error": ""}],
+        }
+
+    environ = {
+        packaged.PACKAGED_FUNCTIONAL_SMOKE_ENV: "1",
+        packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
+        packaged.PACKAGED_SMOKE_RUNTIME_DIR_ENV: "runtime",
+        packaged.PACKAGED_SMOKE_MODEL_PATH_ENV: "model.gguf",
+        packaged.PACKAGED_SMOKE_PROJECTOR_PATH_ENV: "mmproj.gguf",
+        packaged.PACKAGED_SMOKE_IMAGE_PATH_ENV: "sample.png",
+        packaged.PACKAGED_SMOKE_REQUIRE_GPU_ENV: "1",
+    }
+
+    assert packaged.run_packaged_functional_smoke(environ=environ, runner=fake_runner) == 0
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "passed"
+    assert payload["evaluation_mode"] == "technical_coverage"
+    assert payload["successful_images"] == 1
+    assert "不要寫入結果的原文" not in result_path.read_text(encoding="utf-8")
+    assert captured["kwargs"]["require_gpu"] is True
+
+
+def test_packaged_functional_smoke_writes_fail_closed_result(tmp_path):
+    import json
+    import packaged_functional_smoke as packaged
+
+    result_path = tmp_path / "packaged-result.json"
+    environ = {
+        packaged.PACKAGED_FUNCTIONAL_SMOKE_ENV: "1",
+        packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
+    }
+
+    def fail_runner(*args, **kwargs):
+        raise RuntimeError("raw prompt must not be persisted")
+
+    assert packaged.run_packaged_functional_smoke(environ=environ, runner=fail_runner) == 2
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload == {
+        "error_code": "packaged_functional_smoke_failed",
+        "schema_version": 1,
+        "status": "failed",
+    }
+    assert "raw prompt" not in result_path.read_text(encoding="utf-8")

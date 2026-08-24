@@ -28,7 +28,7 @@ a = Analysis(
     ['CloudHime.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('dictionary.json', '.'), ('LICENSE', '.'), ('THIRD_PARTY_NOTICES.md', '.'), ('build\\runtime', 'runtime'), ('build\\provenance', 'provenance'), *fake_useragent_datas, *certifi_datas],
+    datas=[('assets', 'assets'), ('dictionary.json', '.'), ('LICENSE', '.'), ('THIRD_PARTY_NOTICES.md', '.'), ('build\\runtime', 'runtime'), ('build\\provenance', 'provenance'), ('packaging\\runtime_manifest.py', 'packaging'), *fake_useragent_datas, *certifi_datas],
     hiddenimports=['winrt.windows.media.ocr', 'winrt.windows.globalization', 'winrt.windows.graphics.imaging', 'winrt.windows.storage.streams', 'ddgs', 'ddgs.ddgs', 'lxml.html', 'lxml.etree', *ddgs_engine_hiddenimports, *japanese_ocr_hiddenimports],
     hookspath=[],
     hooksconfig={},

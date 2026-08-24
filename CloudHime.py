@@ -149,6 +149,7 @@ def startup_log(stage, detail=""):
 # ==========================================
 from cloudhime_core import is_valid_content, needs_cjk_tight_join, merge_horizontal_lines
 from cloudhime_workers import OCRWorker
+from packaged_functional_smoke import run_packaged_functional_smoke
 
 from cloudhime_ui import Controller, OverlayWindow
 
@@ -172,6 +173,9 @@ def run_packaged_import_smoke():
     return True
 
 if __name__ == "__main__":
+    packaged_functional_exit = run_packaged_functional_smoke()
+    if packaged_functional_exit is not None:
+        sys.exit(packaged_functional_exit)
     if run_packaged_import_smoke():
         sys.exit(0)
     startup_log("main start")

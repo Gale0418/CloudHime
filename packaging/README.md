@@ -137,3 +137,9 @@ prompt. Exit codes are 20 for structural preflight, 30 for packaged launch, 40
 for functional coverage, and 70 for execution-context errors. A passing run proves
 packaged launch and non-empty local Vision requests; it does not prove OCR or
 translation accuracy, clean Windows VM behavior, WACK, or Store certification.
+
+## Packaged functional smoke boundary
+
+The final functional stage of `packaging/test_release_smoke.ps1` now runs inside the frozen `CloudHime.exe` through an opt-in environment-controlled self-test. Host Python is still used for deterministic input validation, but it is no longer the authority for the final functional result. The packaged mode writes a redacted machine-readable result and returns a non-zero exit code on failure.
+
+This proves the release orchestrator is wired to the packaged entrypoint only when a valid frozen build exists. It does not replace a real GPU run, a clean Windows machine, WACK/Partner Center certification, or Store submission. The current runtime must first pass `llama-server.exe --version` and produce a valid runtime manifest.
