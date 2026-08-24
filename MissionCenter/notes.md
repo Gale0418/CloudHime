@@ -253,3 +253,9 @@
 - Windows OCR language inventory on this machine contains only ja and zh-Hant-TW. An en-US train/dev probe returned no engine, so no English-language-pack routing assumption was added. Microsoft Windows.Media.Ocr supports language-specific recognizers, but installed packs vary by machine.
 - A visible-first Gemini bridge attempt failed first with unable to open database file and then with planner config is not declarative: not set; no Gemini answer or review is claimed. Three local Luna read-only reviews completed and were closed.
 - The remaining llama-server process was verified as D:/MyGame/Dreamsprite/tools/llama-server.exe and was not touched. The nine private .codex-* evidence directories remain untracked and untouched. CodeRabbit was not invoked for this new payload because no separate external-review authorization was established.
+## 2026-08-24：Knowledge Pack／remote discovery regression rerun
+
+- 重新執行 Knowledge Builder、extraction、Pack Store、prompt context／integration、research、retrieval、search，以及 remote model discovery／availability worker：`105 passed in 6.61s`；使用 `QT_QPA_PLATFORM=offscreen` 與隔離 runtime fixture，未把 pytest temp ACL 問題誤算成產品失敗。
+- CH-T48 的 retrieval／prompt evidence／revision cache correctness 維持通過，但因既有 CodeRabbit 複審尚未完成，任務仍保持 Review；CH-T49 同理，未因測試綠燈提前結案。
+- CH-T67 的 offline snapshot／worker regression 維持通過；沒有有效 API key，因此沒有宣稱 live `models.list` 或遠端 availability 已完成。
+- 本地 `main` 已推送 `524d096` 到 `origin/main`。相對於 origin 的 56 個 tracked changes 中，新增／修改 example 圖片數為 0；受保護的私有 evidence 目錄未觸碰。
