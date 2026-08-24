@@ -399,6 +399,11 @@ class ProductPathLocalSession:
             raise ValueError("condition geometry_hints must be boolean")
         if geometry_hints and scan_mode != "fullscreen":
             raise ValueError("condition geometry_hints requires fullscreen scan mode")
+        vision_strategy = str(condition.get("vision_strategy", "crop")).strip().lower()
+        if vision_strategy not in {"crop", "crop_batch", "geometry"}:
+            raise ValueError("condition vision_strategy must be crop, crop_batch, or geometry")
+        if vision_strategy == "geometry" and not geometry_hints:
+            raise ValueError("condition vision_strategy geometry requires geometry_hints")
         return {
             "route": route,
             "runtime_profile": "text" if route == "baseline" else "vision",
@@ -410,6 +415,7 @@ class ProductPathLocalSession:
             "vision_image_max_width": vision_image_max_width,
             "scan_mode": scan_mode,
             "geometry_hints": geometry_hints,
+            "vision_strategy": vision_strategy,
         }
 
     @staticmethod
@@ -471,8 +477,15 @@ class ProductPathLocalSession:
             worker.region_render_mode = "bubble"
 
             worker._local_fullscreen_geometry_hint_mode = bool(condition.get("geometry_hints", False))
-            worker._local_fullscreen_crop_vision_mode = bool(condition.get("geometry_hints", False))
+            worker._local_fullscreen_crop_vision_mode = (
+                bool(condition.get("geometry_hints", False))
+                and condition.get("vision_strategy", "crop") in {"crop", "crop_batch"}
+            )
             worker._local_fullscreen_grid_direct_translate_mode = bool(condition.get("geometry_hints", False))
+            worker._local_fullscreen_crop_batch_mode = (
+                bool(condition.get("geometry_hints", False))
+                and condition.get("vision_strategy", "crop") == "crop_batch"
+            )
             chain = ["windows"] if (
                 condition["route"] == "baseline"
                 or bool(condition.get("geometry_hints", False))

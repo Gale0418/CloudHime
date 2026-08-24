@@ -56,7 +56,7 @@ FIXED_CONDITION_FIELDS = (
 IDENTITY_FIELDS = frozenset({
     "condition_id", "condition", "name", "route", "route_id", "runtime_profile",
 })
-OPTIONAL_CONDITION_FIELDS = frozenset({"vision_image_max_width", "scan_mode", "geometry_hints"})
+OPTIONAL_CONDITION_FIELDS = frozenset({"vision_image_max_width", "scan_mode", "geometry_hints", "vision_strategy"})
 ALLOWED_CONDITION_FIELDS = (
     frozenset(FIXED_CONDITION_FIELDS)
     | IDENTITY_FIELDS
@@ -262,6 +262,13 @@ def condition_fingerprint(condition: Mapping[str, Any]) -> str:
                 "condition field 'scan_mode' must be region or fullscreen"
             )
         clean["scan_mode"] = value.strip().lower()
+    if "vision_strategy" in clean:
+        value = clean["vision_strategy"]
+        if not isinstance(value, str) or value.strip().lower() not in {"crop", "crop_batch", "geometry"}:
+            raise ValueError(
+                "condition field 'vision_strategy' must be crop, crop_batch, or geometry"
+            )
+        clean["vision_strategy"] = value.strip().lower()
     if not isinstance(clean["sampling"], Mapping):
         raise ValueError("condition sampling must be an object")
     if not isinstance(clean["context"], Mapping):

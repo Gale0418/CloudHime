@@ -122,6 +122,46 @@ def test_conditions_record_geometry_hints_as_a_fixed_fullscreen_control(monkeypa
     assert candidate["geometry_hints"] is True
     assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
 
+def test_conditions_record_geometry_vision_strategy_as_fixed_control(monkeypatch, tmp_path):
+    assets = _assets(tmp_path)
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64, "model_path": "b" * 64, "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+
+    baseline, candidate = benchmark.build_conditions(
+        assets,
+        scan_mode="fullscreen",
+        geometry_hints=True,
+        vision_strategy="geometry",
+    )
+
+    assert baseline["vision_strategy"] == "geometry"
+    assert candidate["vision_strategy"] == "geometry"
+    assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
+    with pytest.raises(ValueError, match="geometry strategy"):
+        benchmark.build_conditions(
+            assets,
+            scan_mode="fullscreen",
+            vision_strategy="geometry",
+        )
+def test_conditions_record_crop_batch_vision_strategy(monkeypatch, tmp_path):
+    assets = _assets(tmp_path)
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {
+        "server_path": "a" * 64, "model_path": "b" * 64, "projector_path": "c" * 64,
+    })
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+
+    baseline, candidate = benchmark.build_conditions(
+        assets,
+        scan_mode="fullscreen",
+        geometry_hints=True,
+        vision_strategy="crop_batch",
+    )
+
+    assert baseline["vision_strategy"] == "crop_batch"
+    assert candidate["vision_strategy"] == "crop_batch"
+    assert benchmark.condition_fingerprint(baseline) == benchmark.condition_fingerprint(candidate)
 def test_conditions_reject_unknown_scan_mode(monkeypatch, tmp_path):
     assets = _assets(tmp_path)
     monkeypatch.setattr(benchmark, "_verify_assets", lambda _: {

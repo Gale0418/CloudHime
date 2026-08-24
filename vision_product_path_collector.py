@@ -237,6 +237,7 @@ def _require_geometry_hint_execution(
     completed_details = {
         "translation_fullscreen_geometry_vision_completed",
         "translation_fullscreen_crop_vision_completed",
+        "translation_fullscreen_crop_batch_vision_completed",
         "translation_fullscreen_grid_crop_vision_completed",
         "translation_fullscreen_crop_vision_skipped_reliable_ocr_completed",
     }

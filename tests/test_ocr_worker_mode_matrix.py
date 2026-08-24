@@ -2069,6 +2069,8 @@ def test_fullscreen_geometry_hint_vision_uses_padded_crops(monkeypatch, qtbot):
     worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
     worker._local_fullscreen_geometry_hint_mode = True
     worker._local_fullscreen_crop_vision_mode = True
+    observed_stages = []
+    worker._product_path_scan_status_observer = lambda *args: observed_stages.append(args)
     worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
         {"text": "", "x": 17, "y": 21, "w": 20, "h": 10},
         {"text": "", "x": 117, "y": 61, "w": 20, "h": 10},
@@ -2089,6 +2091,8 @@ def test_fullscreen_geometry_hint_vision_uses_padded_crops(monkeypatch, qtbot):
         assert len(crop_calls) == 2
         assert all(hints == [] for _shape, hints in crop_calls)
         assert all(shape[0] > 10 and shape[1] > 20 for shape, _hints in crop_calls)
+        assert observed_stages.count(("fullscreen_vision_crop_start",)) == 2
+        assert observed_stages.count(("fullscreen_vision_crop_finished",)) == 2
         assert any(
             event.detail == "translation_fullscreen_crop_vision_completed"
             for event in worker.last_scan_trace.events
@@ -2097,6 +2101,60 @@ def test_fullscreen_geometry_hint_vision_uses_padded_crops(monkeypatch, qtbot):
         worker.cleanup()
 
 
+def test_fullscreen_crop_batch_vision_uses_one_region_request_for_two_crops(monkeypatch, qtbot):
+    image = np.zeros((120, 240, 3), dtype=np.uint8)
+
+    def interpret_regions(_parts, hints, **_kwargs):
+        return [SimpleNamespace(
+            id=hint["id"],
+            source_text=f"source-{hint['id']}",
+            translation=f"batch-{hint['id']}",
+            provider="local_multimodal",
+        ) for hint in hints]
+
+    provider = SimpleNamespace(
+        available=lambda: True,
+        translate_screenshot=Mock(side_effect=AssertionError("legacy crop route should not run")),
+        interpret_regions=Mock(side_effect=interpret_regions),
+    )
+    worker = OCRWorker()
+    _configure_text_worker(worker, image)
+    worker.scan_mode = SCAN_MODE_FULLSCREEN
+    worker.has_any_multimodal_ai = lambda: True
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.resolve_multimodal_provider_name = lambda: "local_multimodal"
+    worker.local_multimodal_provider = provider
+    worker._get_translation_provider = lambda name: provider if name == "local_multimodal" else None
+    worker._local_fullscreen_geometry_hint_mode = True
+    worker._local_fullscreen_crop_vision_mode = True
+    worker._local_fullscreen_crop_batch_mode = True
+    worker.run_ocr_with_best_threshold = Mock(return_value=(100, [
+        {"text": "", "x": 17, "y": 21, "w": 20, "h": 10},
+        {"text": "", "x": 117, "y": 61, "w": 20, "h": 10},
+    ]))
+    worker.build_local_vision_image_parts = Mock(
+        return_value=[{"inline_data": {"data": "sheet"}}]
+    )
+    finished = []
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+
+    try:
+        worker.run_scan_once()
+
+        assert finished == [[
+            ["batch-0", 17, 21, 20, 10],
+            ["batch-1", 117, 61, 20, 10],
+        ]]
+        assert provider.interpret_regions.call_count == 1
+        provider.translate_screenshot.assert_not_called()
+        assert any(
+            event.detail == "translation_fullscreen_crop_batch_vision_completed"
+            for event in worker.last_scan_trace.events
+        )
+    finally:
+        worker.cleanup()
 def test_fullscreen_crop_vision_skips_reliable_single_ocr_item(monkeypatch, qtbot):
     image = np.zeros((100, 200, 3), dtype=np.uint8)
     worker = OCRWorker()
