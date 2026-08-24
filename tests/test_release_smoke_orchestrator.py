@@ -71,3 +71,14 @@ def test_release_orchestrator_is_valid_powershell() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_release_orchestrator_runs_functional_smoke_inside_packaged_exe():
+    script = (ROOT / "packaging" / "test_release_smoke.ps1").read_text(encoding="utf-8")
+
+    assert "-FunctionalSmoke" in script
+    assert "-AdditionalEnvironmentVariables" in script
+    assert "CLOUDHIME_PACKAGED_FUNCTIONAL_SMOKE" in script
+    assert "CLOUDHIME_PACKAGED_SMOKE_RESULT_PATH" in script
+    assert "packaged functional smoke result" in script
+    assert '$PythonPath @smokeArgs "--json"' not in script

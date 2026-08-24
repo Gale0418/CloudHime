@@ -501,3 +501,22 @@ def test_clean_machine_uses_unique_user_sandbox_and_owned_descendant_cleanup():
     assert "ParentProcessId" in script
     assert "Stop-Process -Id $descendantId" in script
     assert "Remove-Item -LiteralPath $sandboxRoot" in script
+
+
+def test_clean_machine_script_exposes_packaged_functional_mode():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "packaging" / "test_clean_machine.ps1").read_text(encoding="utf-8")
+
+    assert "FunctionalSmoke" in script
+    assert "FunctionalTimeoutSeconds" in script
+    assert "AdditionalEnvironmentVariables" in script
+    assert "Packaged functional smoke failed" in script
+
+
+def test_frozen_spec_bundles_runtime_manifest_for_packaged_functional_smoke():
+    root = Path(__file__).resolve().parents[1]
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+    entry = (root / "CloudHime.py").read_text(encoding="utf-8")
+
+    assert r"packaging\\runtime_manifest.py" in spec
+    assert "run_packaged_functional_smoke" in entry

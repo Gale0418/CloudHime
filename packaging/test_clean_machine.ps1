@@ -4,7 +4,14 @@ param(
     [string]$ExecutablePath,
 
     [ValidateRange(5, 120)]
-    [int]$LaunchWaitSeconds = 20
+    [int]$LaunchWaitSeconds = 20,
+
+    [hashtable]$AdditionalEnvironmentVariables = @{},
+
+    [switch]$FunctionalSmoke,
+
+    [ValidateRange(5, 600)]
+    [int]$FunctionalTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = "Stop"
@@ -200,6 +207,13 @@ foreach ($name in $userEnvironment.Keys) {
     }
 }
 
+foreach ($entry in $AdditionalEnvironmentVariables.GetEnumerator()) {
+    $key = [string]$entry.Key
+    if ([string]::IsNullOrWhiteSpace($key)) {
+        throw "Additional environment variable name must not be empty."
+    }
+    $processEnvironment[$key] = [string]$entry.Value
+}
 $process = [Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
 $processId = 0
@@ -208,6 +222,20 @@ try {
         throw "Packaged executable failed to start: $executable"
     }
     $processId = $process.Id
+    if ($FunctionalSmoke) {
+        $functionalDeadline = [DateTime]::UtcNow.AddSeconds($FunctionalTimeoutSeconds)
+        while (-not $process.HasExited -and [DateTime]::UtcNow -lt $functionalDeadline) {
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $process.HasExited) {
+            throw "Packaged functional smoke timed out after $FunctionalTimeoutSeconds seconds."
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "Packaged functional smoke failed with exit code $($process.ExitCode)."
+        }
+        Write-Output "Clean-machine packaged functional smoke passed: PID=$processId"
+    }
+    else {
     $deadline = [DateTime]::UtcNow.AddSeconds($LaunchWaitSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($process.HasExited) {
@@ -216,6 +244,7 @@ try {
         Start-Sleep -Milliseconds 250
     }
     Write-Output "Clean-machine packaged launch passed: PID=$processId, seconds=$LaunchWaitSeconds"
+    }
 }
 finally {
     try {
