@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 from CloudHime import Controller, OverlayWindow
 from cloudhime_ui import StatusChargeBar, _resource_path
+from PySide6.QtCore import QTimer
 
 
 def test_resource_path_resolves_bundled_assets():
@@ -522,6 +523,52 @@ def test_controller_rejects_stale_stream_chunk_at_render_admission():
     controller.on_translation_stream_update.assert_called_once_with(
         0, "current", "google", 1, 2, 3, 4
     )
+
+
+def test_controller_coalesces_stream_updates_until_render_flush(qtbot):
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 5
+    controller._pending_stream_updates = {}
+    controller._stream_render_timer = QTimer()
+    controller._stream_render_timer.setSingleShot(True)
+    controller._stream_render_timer.setInterval(1000)
+    controller.on_translation_stream_update = Mock()
+
+    Controller.on_translation_stream_update_for_generation(
+        controller, 5, 0, 'first', 'google', 1, 2, 3, 4
+    )
+    Controller.on_translation_stream_update_for_generation(
+        controller, 5, 0, 'latest', 'google', 1, 2, 3, 4
+    )
+
+    controller.on_translation_stream_update.assert_not_called()
+    Controller._flush_stream_updates(controller)
+
+    controller.on_translation_stream_update.assert_called_once_with(
+        0, 'latest', 'google', 1, 2, 3, 4
+    )
+    controller._stream_render_timer.deleteLater()
+
+
+def test_controller_flushes_latest_stream_chunk_before_scan_complete(qtbot):
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 5
+    controller._pending_stream_updates = {}
+    controller._stream_render_timer = QTimer()
+    controller._stream_render_timer.setSingleShot(True)
+    controller._stream_render_timer.setInterval(1000)
+    events = []
+    controller.on_translation_stream_update = lambda *args: events.append(('stream', args))
+    controller.on_scan_complete = lambda results: events.append(('complete', results))
+
+    Controller.on_translation_stream_update_for_generation(
+        controller, 5, 0, 'latest', 'google', 1, 2, 3, 4
+    )
+    Controller.on_scan_complete_for_generation(controller, 5, [['final']])
+
+    assert [kind for kind, _payload in events] == ['stream', 'complete']
+    assert events[0][1][1] == 'latest'
+    controller._stream_render_timer.deleteLater()
 
 
 def test_controller_rejects_stale_status_at_generation_admission():

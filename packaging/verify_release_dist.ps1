@@ -265,7 +265,11 @@ $requiredNoticeMarkers = @(
     "## meikiocr",
     "Apache License 2.0",
     "## Meiki OCR model weights",
-    "GNU Lesser General Public License v3.0"
+    "GNU Lesser General Public License v3.0",
+    "https://github.com/rtr46/meikiocr",
+    "https://huggingface.co/rtr46/meiki.text.detect.v0",
+    "https://huggingface.co/rtr46/meiki.txt.recognition.v0",
+    "https://www.gnu.org/licenses/lgpl-3.0.html"
 )
 foreach ($marker in $requiredNoticeMarkers) {
     if ($noticeText.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {

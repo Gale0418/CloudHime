@@ -323,6 +323,17 @@ def test_release_bundle_includes_knowledge_search_dependency_and_notice():
     for dependency in ("click", "primp", "httpx", "fake-useragent", "certifi"):
         assert dependency in notices
 
+def test_release_preflight_requires_pinned_japanese_ocr_sources_and_license():
+    root = Path(__file__).resolve().parents[1]
+    verifier = (root / 'packaging' / 'verify_release_dist.ps1').read_text(encoding='utf-8')
+    required_markers = (
+        'https://github.com/rtr46/meikiocr',
+        'https://huggingface.co/rtr46/meiki.text.detect.v0',
+        'https://huggingface.co/rtr46/meiki.txt.recognition.v0',
+        'https://www.gnu.org/licenses/lgpl-3.0.html',
+    )
+    for marker in required_markers:
+        assert marker in verifier
 def test_release_build_runs_frozen_dependency_smoke_before_preflight():
     root = Path(__file__).resolve().parents[1]
     build_script = (root / "build_exe.bat").read_text(encoding="utf-8")

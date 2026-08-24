@@ -71,6 +71,32 @@ def test_ci_uses_explicit_requirements_without_in_process_llama():
     assert "Where-Object { $_.Trim() -and $_.Trim() -ne 'llama-cpp-python' }" not in workflow
     assert "llama-cpp-python" not in ci_requirements
 
+def test_gitignore_covers_cross_tool_probe_roots():
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    required_patterns = (
+        "/.codex-*/",
+        "/.h3_*/",
+        "/.h3tests/",
+        "/_codex_*/",
+        "/_pytest_*/",
+        "/_tmp_*/",
+        "/.tmp/",
+        "/tmp*/",
+        "/pytest-cache-files-*/",
+        "/pytest-runner-writable-*/",
+        "/pytest-runtime-*/",
+        "/codex_pytest_release_tdd/",
+        "/manual-pytest-base/",
+        "/.pytest_*/",
+        "/.test-temp-*/",
+        "/scratch/pytest-*/",
+        "/scratch/_pytest_*/",
+        "/scratch/flash-pytest-*/",
+        "/scratch/jp-rescue-*/",
+        "/scratch/_codex_owner_confirm*/",
+    )
+    for pattern in required_patterns:
+        assert pattern in ignore
 def test_ci_inventory_includes_release_provenance_contract():
     inventory = _load_inventory()
     assigned = {

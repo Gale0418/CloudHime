@@ -67,6 +67,27 @@ _tmp-*/
 ch-pack-smoke-*/
 runtime-smoke-*/
 temp_pytest_runtime/
+# Cross-tool generated probe roots; raw evidence is recorded in MissionCenter, not versioned.
+/.codex-*/
+/.h3_*/
+/.h3tests/
+/_codex_*/
+/_pytest_*/
+/_tmp_*/
+/.tmp/
+/tmp*/
+/pytest-cache-files-*/
+/pytest-runner-writable-*/
+/pytest-runtime-*/
+/codex_pytest_release_tdd/
+/manual-pytest-base/
+/.pytest_*/
+/.test-temp-*/
+/scratch/pytest-*/
+/scratch/_pytest_*/
+/scratch/flash-pytest-*/
+/scratch/jp-rescue-*/
+/scratch/_codex_owner_confirm*/
 # Local private research archive and generated MissionCenter HUD output.
 records/private/
 output/
