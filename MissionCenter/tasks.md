@@ -119,6 +119,8 @@
 
 | CH-T104 | Default local fullscreen crop-batch admission after direct Vision failure | Task | CH-E9 | P0 | Done | Codex | CH-T101 | direct local Vision 失敗且 OCR 僅提供有效 geometry 時，自動 admission crop-batch；保留直接 Vision 優先、明確 off opt-out、既有 crop/geometry 路徑與 fail-closed 行為 | local fullscreen 且 direct Vision 失敗才可自動進入；FULLSCREEN_CROP_BATCH_ADMISSION=off 必須關閉；既有 geometry/crop/grid 與 remote 路徑不得回歸；不得把本輪 correctness 測試誤寫成 GPU 準度 promotion | YES | YES | 30m | vision-first, crop-batch, admission-gate, regression, fail-closed | 2026-08-24：TDD RED 1 failed, 116 passed；修正 helper 綁定與呼叫邊界後 GREEN worker matrix 118 passed in 7.06s、受影響 product-path／collector／benchmark／E2E 149 passed in 1.96s；compileall、git diff --check PASS。預設 admission 開啟、off 可安全回滾；未重跑 GPU paired，無新增 accuracy／latency／Store／WACK claim。 |
 
+| CH-T105 | Current HEAD full CI inventory rerun | Task | CH-E9 | P0 | Done | Codex | CH-T104 | 以 ci/test_groups.json 宣告的五組測試重新驗證目前 HEAD，包含 core、OCR、runtime、UI 隔離與 benchmarks；結果只作 correctness/release contract evidence | 五組均須完成；UI 使用 QT_QPA_PLATFORM=offscreen 且逐檔隔離；任何 skipped、incomplete、GPU／Store／WACK 外部 gate 必須明確列出，不得把 inventory 綠燈冒充產品發行完成 | YES | YES | 30m | ci, regression, release, vision-first, evidence | 2026-08-24：core 469 passed；ocr 296 passed；runtime 163 passed／2 skipped；UI 隔離 56 passed；benchmarks 203 passed；合計 1187 passed／2 skipped。未新增 GPU accuracy／latency、WACK、Partner Center 或 Store certification claim。 |
+
 ## 0.3.1 遷移註記
 
 - 原始完整內容保留於 `archive/tasks-pre-0.3.1-2026-08-13.md`。
