@@ -258,6 +258,32 @@ def test_geometry_hint_candidate_keeps_ocr_backend_but_marks_hint_only_mode():
     assert worker._local_fullscreen_grid_direct_translate_mode is True
     assert worker.local_multimodal_enabled is True
 
+def test_geometry_vision_strategy_disables_per_box_crop_route():
+    worker = FakeWorker()
+    session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)
+
+    session.start_cold(_condition(
+        route="candidate",
+        scan_mode="fullscreen",
+        geometry_hints=True,
+        vision_strategy="geometry",
+    ))
+
+    assert worker._local_fullscreen_geometry_hint_mode is True
+    assert worker._local_fullscreen_crop_vision_mode is False
+def test_crop_batch_vision_strategy_enables_batch_and_crop_routes():
+    worker = FakeWorker()
+    session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)
+
+    session.start_cold(_condition(
+        route="candidate",
+        scan_mode="fullscreen",
+        geometry_hints=True,
+        vision_strategy="crop_batch",
+    ))
+
+    assert worker._local_fullscreen_crop_vision_mode is True
+    assert worker._local_fullscreen_crop_batch_mode is True
 def test_local_vision_width_experiment_is_applied_without_changing_default():
     worker = FakeWorker()
     session = ProductPathLocalSession(lambda: worker, timeout_seconds=9)

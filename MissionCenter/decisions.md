@@ -1138,3 +1138,9 @@
 - Follow-up command: `wsl -d Ubuntu -- bash -lc '/root/.local/bin/coderabbit review --agent -t committed --base-commit 0c0a401 -c AGENTS.md'`.
 - Receipt: CodeRabbit CLI `0.7.2`, `review_completed`, `reviewedFiles=5`, `findings=0`; free CLI allowance was used because the repository is not connected to an accessible CodeRabbit organization.
 - The quoting fix and its regression probe therefore have an actual post-fix review receipt; no manual review result is substituted.
+## 2026-08-24：CH-T43 fullscreen crop-batch Vision 實驗決策
+
+- 目的：在既有 fullscreen Vision-first crop 路徑上，將最多兩個局部 crop 組成 bounded contact sheet，透過同一個 local multimodal `interpret_regions` request 減少 request 次數；這是實驗策略，不是 UI 改版，也不涉及 Ollama 或 remote provider。
+- 先前兩個方向的結果保留：geometry route 會因 response region mismatch fail-closed；crop merge 只少一個 crop 且沒有速度收益，已撤回。crop-batch 只在 benchmark adapter 以 `vision_strategy=crop_batch` opt-in，產品預設不變。
+- 真 GPU paired 結果：同 manifest／model／sampling／context／GPU 下，baseline 20 records、candidate 20 records；quality `0.1957581248 -> 0.2725396014`、nonempty `0.75 -> 1.0`、coverage `1.0`、case regression `0`，promotion gate `true`。candidate total avg/p95 `8053.6847/13232.4256ms` 對 baseline `2229.1753/4665.1918ms`，約 3.61x avg、2.84x p95；準度優先下可保留作候選證據，但未通過速度 promotion。
+- 判定：保留 crop-batch 的 bounded implementation、condition fingerprint、per-batch progress 與 regression tests；不把實驗 flag 開到 production default，不新增全域多次 retry，不宣稱所有圖片都會更快。下一步應先取得更多可信 owner-confirmed Vision ground truth，再考慮 batch size／payload tuning。

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from vision_product_path_collector import (
     _is_loopback_endpoint,
+    _require_geometry_hint_execution,
     collect_condition_raw,
     evaluate_product_path_pair,
 )
@@ -98,6 +99,21 @@ def test_trace_tokens_reject_non_string_values_before_truthiness(field, value):
         _collect(worker_factory=lambda: InvalidTokenWorker(0))
 
 
+def test_geometry_hint_candidate_accepts_crop_batch_execution_marker():
+    condition = {
+        "route": "candidate",
+        "geometry_hints": True,
+    }
+    observation = {
+        "trace_events": [{
+            "stage": "translation",
+            "outcome": "success",
+            "provider": "local_multimodal",
+            "detail": "translation_fullscreen_crop_batch_vision_completed",
+        }],
+    }
+
+    _require_geometry_hint_execution(condition, observation["trace_events"])
 def test_geometry_hint_candidate_requires_execution_marker():
     condition = {
         **_condition("candidate", "candidate"),

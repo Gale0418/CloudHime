@@ -205,10 +205,12 @@ MANGA_ADAPTIVE_MAX_MS = 600
 MANGA_CROP_CONTEXT_ENV = "CLOUDHIME_MANGA_CROP_CONTEXT"
 FULLSCREEN_GEOMETRY_VISION_ENV = "CLOUDHIME_FULLSCREEN_GEOMETRY_VISION"
 FULLSCREEN_GEOMETRY_VISION_BATCH_SIZE = 4
+FULLSCREEN_CROP_VISION_BATCH_SIZE = 2
 FULLSCREEN_RELIABLE_OCR_MIN_CONFIDENCE = 0.60
 FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO = 0.15
 FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT = 64
 FULLSCREEN_GEOMETRY_CROP_MAX_SCALE = 3.0
+FULLSCREEN_CROP_BATCH_ENV = "CLOUDHIME_FULLSCREEN_CROP_BATCH"
 FULLSCREEN_GRID_DIRECT_TRANSLATE_ENV = "CLOUDHIME_FULLSCREEN_GRID_DIRECT_TRANSLATE"
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
 LOW_CONFIDENCE_HYBRID_RESCUE_ENV = "CLOUDHIME_LOW_CONFIDENCE_HYBRID_RESCUE"
@@ -3455,6 +3457,16 @@ class OCRWorker(QObject):
             return bool(override)
         return False
 
+    def fullscreen_crop_batch_mode_enabled(self):
+        override = getattr(self, "_local_fullscreen_crop_batch_mode", None)
+        if override is not None:
+            return bool(override)
+        return os.environ.get(FULLSCREEN_CROP_BATCH_ENV, "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+
+
+
     @staticmethod
     def is_degenerate_manga_transcription(text):
         lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
@@ -5029,6 +5041,147 @@ class OCRWorker(QObject):
                 exception=exc,
             )
             return False
+    def build_fullscreen_crop_contact_sheet(self, crops):
+        """Pack close-up crops into bounded geometry hints for one Vision request."""
+        valid = []
+        for crop_spec in crops or []:
+            crop = crop_spec.get("crop") if isinstance(crop_spec, dict) else None
+            if crop is None or not hasattr(crop, "shape") or crop.size == 0:
+                continue
+            valid.append(crop_spec)
+        if not valid:
+            raise ValueError("fullscreen_crop_batch_no_crops")
+
+        max_cell_width = min(640, max(int(spec["crop"].shape[1]) for spec in valid))
+        max_cell_height = min(640, max(int(spec["crop"].shape[0]) for spec in valid))
+        padding = 16
+        columns = min(2, len(valid))
+        rows = int(math.ceil(len(valid) / columns))
+        sheet_width = columns * max_cell_width + (columns + 1) * padding
+        sheet_height = rows * max_cell_height + (rows + 1) * padding
+        sheet = np.full((sheet_height, sheet_width, 3), 255, dtype=np.uint8)
+        hints = []
+        for index, crop_spec in enumerate(valid):
+            crop = crop_spec["crop"]
+            crop_height, crop_width = int(crop.shape[0]), int(crop.shape[1])
+            scale = min(
+                1.0,
+                max_cell_width / max(1, crop_width),
+                max_cell_height / max(1, crop_height),
+            )
+            if scale < 1.0:
+                crop = cv2.resize(
+                    crop,
+                    (
+                        max(1, int(round(crop_width * scale))),
+                        max(1, int(round(crop_height * scale))),
+                    ),
+                    interpolation=cv2.INTER_AREA,
+                )
+            crop_height, crop_width = int(crop.shape[0]), int(crop.shape[1])
+            row, column = divmod(index, columns)
+            x = padding + column * max_cell_width + max(0, (max_cell_width - crop_width) // 2)
+            y = padding + row * max_cell_height + max(0, (max_cell_height - crop_height) // 2)
+            sheet[y:y + crop_height, x:x + crop_width] = crop
+            hints.append({
+                "id": index,
+                "x": x,
+                "y": y,
+                "w": crop_width,
+                "h": crop_height,
+                "text": "",
+            })
+        return sheet, hints, valid
+
+    def _run_fullscreen_crop_batch_vision_translation(
+        self,
+        img,
+        offset_x,
+        offset_y,
+        crops,
+        provider,
+        interpret_regions,
+    ):
+        """Try batched close-up Vision, failing open to the legacy per-crop route."""
+        vision_started = time.perf_counter()
+        try:
+            final_results = []
+            source_texts = []
+            current_provider = self._canonical_cache_provider("local_multimodal")
+            for start in range(0, len(crops), FULLSCREEN_CROP_VISION_BATCH_SIZE):
+                batch_crops = crops[start:start + FULLSCREEN_CROP_VISION_BATCH_SIZE]
+                self._emit_product_path_stage("fullscreen_vision_batch_start")
+                sheet, hints, valid_crops = self.build_fullscreen_crop_contact_sheet(batch_crops)
+                image_parts = self.build_local_vision_image_parts(sheet, [])
+                interpret_kwargs = {
+                    "image_width": int(sheet.shape[1]),
+                    "image_height": int(sheet.shape[0]),
+                    "target_lang": self.translation_target_lang,
+                }
+                if isinstance(provider, LocalMultimodalProvider):
+                    interpret_kwargs["cancel_predicate"] = (
+                        lambda: not self._active_scan_is_current()
+                    )
+                try:
+                    results = interpret_regions(
+                        image_parts,
+                        hints,
+                        **interpret_kwargs,
+                    )
+                finally:
+                    self._capture_local_vision_request_metrics(provider)
+                self._emit_product_path_stage("fullscreen_vision_batch_finished")
+                by_id = {int(getattr(result, "id", -1)): result for result in results or ()}
+                if set(by_id) != set(range(len(valid_crops))):
+                    raise ValueError("incomplete_fullscreen_crop_batch_response")
+                for index, crop_spec in enumerate(valid_crops):
+                    result = by_id[index]
+                    translated_text = str(getattr(result, "translation", "") or "").strip()
+                    if not translated_text:
+                        raise ValueError("empty_fullscreen_crop_batch_response")
+                    source_text = str(getattr(result, "source_text", "") or "").strip()
+                    if source_text:
+                        source_texts.append(source_text)
+                    current_provider = self._canonical_cache_provider(
+                        getattr(result, "provider", None) or "local_multimodal"
+                    )
+                    final_results.append((translated_text, *crop_spec["output_rect"]))
+
+            if len(final_results) != len(crops):
+                raise ValueError("incomplete_fullscreen_crop_batch_response")
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            self.sync_gemma_call_timestamps_from_provider(provider)
+            self.last_combined_text = "\n".join(source_texts) or "screenshot"
+            self._last_scan_source_available = bool(source_texts)
+            self.last_provider = current_provider
+            self.last_results = final_results
+            self.exact_image_cache.put(
+                img,
+                self._exact_image_cache_context(offset_x, offset_y),
+                final_results,
+                current_provider,
+                self.last_combined_text,
+            )
+            self._record_scan_event(
+                ScanStage.TRANSLATION,
+                ScanOutcome.SUCCESS,
+                started_at=vision_started,
+                detail="translation_fullscreen_crop_batch_vision_completed",
+                provider=current_provider,
+                item_count=len(final_results),
+            )
+            self._emit_scan_status("✅ 全螢幕 Batch Crop Vision 翻譯完成")
+            self._emit_scan_finished(final_results)
+            self.show_ui.emit()
+            return True
+        except LocalRequestCancelled:
+            if self._abort_stale_scan(ScanStage.TRANSLATION):
+                return True
+            raise
+        except Exception as exc:
+            logger.info("[Fullscreen crop batch Vision] fallback: %s", type(exc).__name__)
+            return False
     def _run_fullscreen_crop_vision_translation(
         self,
         img,
@@ -5056,6 +5209,16 @@ class OCRWorker(QObject):
                 raise ValueError("fullscreen_crop_vision_no_crops")
 
             interpret_regions = getattr(provider, "interpret_regions", None)
+            if self.fullscreen_crop_batch_mode_enabled() and callable(interpret_regions):
+                if self._run_fullscreen_crop_batch_vision_translation(
+                    img,
+                    offset_x,
+                    offset_y,
+                    crops,
+                    provider,
+                    interpret_regions,
+                ):
+                    return True
             interpret_kwargs = {
                 "image_width": int(img.shape[1]),
                 "image_height": int(img.shape[0]),
@@ -5068,6 +5231,7 @@ class OCRWorker(QObject):
             final_results = []
             current_provider = self._canonical_cache_provider(provider_name)
             for crop_spec in crops:
+                self._emit_product_path_stage("fullscreen_vision_crop_start")
                 direct_transcribe = getattr(provider, "transcribe_screenshot", None)
                 direct_translate = getattr(provider, "translate", None)
                 if callable(direct_transcribe) and callable(direct_translate):
@@ -5096,6 +5260,7 @@ class OCRWorker(QObject):
                             or provider_name
                         )
                         final_results.append((direct_text, *crop_spec["output_rect"]))
+                        self._emit_product_path_stage("fullscreen_vision_crop_finished")
                         continue
                     except ValueError:
                         pass
@@ -5176,6 +5341,7 @@ class OCRWorker(QObject):
                         )
                 current_provider = self._canonical_cache_provider(result_provider)
                 final_results.append((translated_text, *crop_spec["output_rect"]))
+                self._emit_product_path_stage("fullscreen_vision_crop_finished")
             self.sync_gemma_call_timestamps_from_provider(provider)
             if len(final_results) != len(crops):
                 raise ValueError("incomplete_fullscreen_crop_vision_response")
