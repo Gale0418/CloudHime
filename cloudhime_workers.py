@@ -211,6 +211,7 @@ FULLSCREEN_GEOMETRY_CROP_PADDING_RATIO = 0.15
 FULLSCREEN_GEOMETRY_CROP_MIN_TEXT_HEIGHT = 64
 FULLSCREEN_GEOMETRY_CROP_MAX_SCALE = 3.0
 FULLSCREEN_CROP_BATCH_ENV = "CLOUDHIME_FULLSCREEN_CROP_BATCH"
+FULLSCREEN_CROP_BATCH_ADMISSION_ENV = "CLOUDHIME_FULLSCREEN_CROP_BATCH_ADMISSION"
 FULLSCREEN_GRID_DIRECT_TRANSLATE_ENV = "CLOUDHIME_FULLSCREEN_GRID_DIRECT_TRANSLATE"
 MANGA_GRID_RECOVERY_ENV = "CLOUDHIME_MANGA_GRID_RECOVERY"
 LOW_CONFIDENCE_HYBRID_RESCUE_ENV = "CLOUDHIME_LOW_CONFIDENCE_HYBRID_RESCUE"
@@ -3465,6 +3466,15 @@ class OCRWorker(QObject):
             "1", "true", "yes", "on",
         }
 
+    def fullscreen_crop_batch_admission_mode_enabled(self):
+        override = getattr(self, "_local_fullscreen_crop_batch_admission_mode", None)
+        if override is not None:
+            return bool(override)
+        return os.environ.get(
+            FULLSCREEN_CROP_BATCH_ADMISSION_ENV,
+            "",
+        ).strip().lower() in {"1", "true", "yes", "on"}
+
 
 
     @staticmethod
@@ -5209,7 +5219,13 @@ class OCRWorker(QObject):
                 raise ValueError("fullscreen_crop_vision_no_crops")
 
             interpret_regions = getattr(provider, "interpret_regions", None)
-            if self.fullscreen_crop_batch_mode_enabled() and callable(interpret_regions):
+            if (
+                (
+                    self.fullscreen_crop_batch_mode_enabled()
+                    or self.fullscreen_crop_batch_admission_mode_enabled()
+                )
+                and callable(interpret_regions)
+            ):
                 if self._run_fullscreen_crop_batch_vision_translation(
                     img,
                     offset_x,
@@ -5219,6 +5235,8 @@ class OCRWorker(QObject):
                     interpret_regions,
                 ):
                     return True
+                if self.fullscreen_crop_batch_admission_mode_enabled():
+                    return False
             interpret_kwargs = {
                 "image_width": int(img.shape[1]),
                 "image_height": int(img.shape[0]),
@@ -6064,10 +6082,19 @@ class OCRWorker(QObject):
         if self._abort_stale_scan(ScanStage.OCR):
             return
 
+        fullscreen_crop_batch_admission = (
+            is_fullscreen_vision_fallback
+            and fullscreen_vision_first_attempted
+            and self.fullscreen_crop_batch_admission_mode_enabled()
+            and self.get_current_ai_provider() == "local_multimodal"
+        )
         if (
             is_fullscreen_vision_fallback
             and filtered_items
-            and self.fullscreen_geometry_hint_mode_enabled()
+            and (
+                self.fullscreen_geometry_hint_mode_enabled()
+                or fullscreen_crop_batch_admission
+            )
             and self.get_current_ai_provider() == "local_multimodal"
         ):
             if not ocr_trace_recorded:
@@ -6088,7 +6115,10 @@ class OCRWorker(QObject):
             else:
                 vision_runner = (
                     self._run_fullscreen_crop_vision_translation
-                    if self.fullscreen_crop_vision_mode_enabled()
+                    if (
+                        self.fullscreen_crop_vision_mode_enabled()
+                        or fullscreen_crop_batch_admission
+                    )
                     else self._run_fullscreen_geometry_vision_translation
                 )
                 self._emit_product_path_stage("fullscreen_vision_start")
