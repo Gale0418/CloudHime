@@ -148,3 +148,8 @@ This proves the release orchestrator is wired to the packaged entrypoint only wh
 On 2026-08-24 a fresh local frozen build completed with 26 runtime files and a valid runtime manifest. The packaged release smoke then used the new `dist\CloudHime` with a local Gemma 3 4B GGUF, its mmproj, and one example image under `-RequireGpu`; the final functional stage ran inside `CloudHime.exe` and passed. Post-run executable-path cleanup found no CloudHime-owned `llama-server.exe` process.
 
 This is a real local GPU wiring smoke for one image, not an accuracy benchmark or Store/WACK/clean-VM certification. The local runtime lacked archived source metadata, so the build supplied `LLAMA_RUNTIME_COMMIT` from the server's reported build identifier. Release CI should continue to require the fetched runtime archive URL/hash/commit provenance.
+## Unsigned MSIX packaging boundary
+
+With the x64 Windows SDK `makeappx.exe`, `packaging\build_msix.ps1` can build an unsigned development package from the verified frozen dist. The package was unpacked and its `AppxManifest.xml`, runtime manifest, model exclusion, and sensitive-material boundary were checked successfully on 2026-08-24.
+
+This package uses the development publisher `CN=CloudHime Development` and is not installable as a trusted Store package until the separate development-signing gate is run. Creating a short-lived certificate, signing, installing, activating, and uninstalling it requires explicit owner authorization and elevated Windows operations. Store identity and Partner Center certification remain separate gates.
