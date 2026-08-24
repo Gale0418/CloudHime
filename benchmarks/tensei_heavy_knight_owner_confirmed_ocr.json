@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "dataset": "tensei-heavy-knight-owner-confirmed-ocr",
+  "status": "locked_owner_confirmed",
+  "ground_truth_eligible": true,
+  "owner_confirmation": "User-confirmed Japanese source snippets; no model OCR output was used as ground truth.",
+  "usage_policy": {
+    "split": "test",
+    "holdout_only": true,
+    "allow_threshold_training": false,
+    "allow_prompt_tuning": false,
+    "selection_rule": "Score only explicit owner-confirmed anchors; do not infer missing text from translations or sound effects."
+  },
+  "cases": [
+    {
+      "id": "heavy-knight-001",
+      "image": "example/転生重騎士/001.jpg",
+      "anchors": ["守りに特化で"],
+      "review_note": "Owner corrected the text as 守りに特化で; do not substitute 粉砕特化で."
+    },
+    {
+      "id": "heavy-knight-004",
+      "image": "example/転生重騎士/004.jpg",
+      "anchors": ["たびに"],
+      "review_note": "Only the explicitly confirmed ending fragment is scored; no missing Japanese is inferred from the Chinese note."
+    },
+    {
+      "id": "heavy-knight-006",
+      "image": "example/転生重騎士/006.jpg",
+      "anchors": ["マジックワールド最強と呼ばれるインチキクラス"]
+    },
+    {
+      "id": "heavy-knight-007",
+      "image": "example/転生重騎士/007.jpg",
+      "anchors": ["晩成型"]
+    },
+    {
+      "id": "heavy-knight-008",
+      "image": "example/転生重騎士/008.jpg",
+      "anchors": ["まごうことなき外れクラス"]
+    },
+    {
+      "id": "heavy-knight-013",
+      "image": "example/転生重騎士/013.jpg",
+      "anchors": ["剣聖のクラスを得たとなれば"]
+    },
+    {
+      "id": "heavy-knight-021",
+      "image": "example/転生重騎士/021.jpg",
+      "anchors": ["嵌まれば", "振りました"]
+    },
+    {
+      "id": "heavy-knight-026",
+      "image": "example/転生重騎士/026.jpg",
+      "anchors": ["城壁返し"],
+      "review_note": "The collision sound is excluded; only the explicitly named non-sound-effect phrase is scored."
+    },
+    {
+      "id": "heavy-knight-029",
+      "image": "example/転生重騎士/029.jpg",
+      "anchors": ["安いだろうが確保しておこう"]
+    },
+    {
+      "id": "heavy-knight-034",
+      "image": "example/転生重騎士/034.jpg",
+      "anchors": ["フンッ！！"],
+      "review_note": "Punctuation is part of the owner-confirmed anchor: two exclamation marks."
+    }
+  ],
+  "excluded_cases": [
+    {"image": "example/転生重騎士/019.jpg", "reason": "UI text is too small; no exact owner-confirmed Japanese anchor supplied."},
+    {"image": "example/転生重騎士/022.jpg", "reason": "Upgrade background sound effect; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/024.jpg", "reason": "Frog charging sound effect; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/025.jpg", "reason": "Frog croak sound effect; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/027.jpg", "reason": "Sound effects only; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/033.jpg", "reason": "Sound effects only; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/035.jpg", "reason": "Monster collision sound effect; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/036.jpg", "reason": "Frog croak sound effects only; intentionally excluded from translation accuracy scoring."},
+    {"image": "example/転生重騎士/037.jpg", "reason": "Frog croak sound effects only; intentionally excluded from translation accuracy scoring."}
+  ]
+}

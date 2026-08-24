@@ -355,3 +355,25 @@ def test_main_require_no_regression_is_fail_closed(monkeypatch, tmp_path):
     monkeypatch.setattr(evaluator, "run_repeated_benchmark", lambda *args, **kwargs: report)
 
     assert evaluator.main([str(manifest), "--require-no-regression"]) == 1
+
+
+def test_owner_confirmed_heavy_knight_manifest_is_locked_and_scored_only_on_explicit_anchors():
+    manifest_path = Path(__file__).resolve().parents[1] / 'benchmarks' / 'tensei_heavy_knight_owner_confirmed_ocr.json'
+    payload = json.loads(manifest_path.read_text(encoding='utf-8'))
+
+    assert payload['status'] == 'locked_owner_confirmed'
+    assert payload['ground_truth_eligible'] is True
+    assert len(payload['cases']) == 10
+    assert all(case['anchors'] for case in payload['cases'])
+    assert payload['excluded_cases']
+    assert all(item['reason'] for item in payload['excluded_cases'])
+
+    suite = evaluator.load_suite(manifest_path)
+    assert len(suite['cases']) == 10
+    assert {case['id'] for case in suite['cases']} == {
+        'heavy-knight-001', 'heavy-knight-004', 'heavy-knight-006',
+        'heavy-knight-007', 'heavy-knight-008', 'heavy-knight-013',
+        'heavy-knight-021', 'heavy-knight-026', 'heavy-knight-029',
+        'heavy-knight-034',
+    }
+    assert suite['cases'][0]['image_sha256']
