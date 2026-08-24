@@ -259,9 +259,21 @@ class WarmSession(FakeWorker):
             "cache_hit": False,
         }
 
+    def set_progress_callback(self, callback):
+        self.progress_callback = callback
+
     def start_cold(self, condition):
         self.start_cold_calls += 1
         self.started_condition = condition
+        callback = getattr(self, "progress_callback", None)
+        if callable(callback):
+            callback({
+                "type": "startup",
+                "phase": "ready",
+                "progress": 100,
+                "total": 100,
+                "elapsed_ms": 1.0,
+            })
         return self.evidence
 
     def run_repeat(self, case_id, pixels):
@@ -512,4 +524,32 @@ def test_progress_callback_reports_bounded_observation_metadata():
         not any(key in event for key in ("detected_source", "translation", "raw_text"))
         for event in progress
     )
+    assert len(run["records"]) == 5
+
+def test_warm_session_receives_bounded_progress_callback():
+    progress = []
+    session = WarmSession()
+
+    run = collect_condition_raw(
+        _manifest(b"fixed-image"),
+        _warm_condition(),
+        worker_factory=lambda: pytest.fail("legacy worker must not be used"),
+        session_factory=lambda: session,
+        configure_worker=lambda worker, condition: setattr(
+            worker, "configured", condition["route"]
+        ),
+        image_loader=lambda case: (bytearray(b"fixed-image"), b"fixed-image"),
+        residual_probe=lambda worker: 0,
+        runtime_mode_probe=lambda worker: "gpu",
+        progress_callback=progress.append,
+    )
+
+    assert progress[0] == {
+        "type": "startup",
+        "phase": "ready",
+        "progress": 100,
+        "total": 100,
+        "elapsed_ms": 1.0,
+    }
+    assert len(progress) == 6
     assert len(run["records"]) == 5

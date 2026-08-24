@@ -317,3 +317,60 @@ def test_runner_emits_only_sanitized_trace_rejection_diagnostics(monkeypatch, ca
     captured = capsys.readouterr()
     assert captured.err.startswith("benchmark_failed: ValueError: scan trace rejected:")
     assert "translation_region_vision_failed" in captured.err
+
+def test_progress_flag_emits_bounded_startup_and_scan_checkpoints(
+    monkeypatch, tmp_path, capsys
+):
+    image = tmp_path / "image.png"
+    image.write_bytes(b"image")
+    manifest_path = _write_manifest(tmp_path, _manifest(image, b"image"))
+    assets = _assets(tmp_path)
+    asset_hashes = {
+        "server_path": "a" * 64,
+        "model_path": "b" * 64,
+        "projector_path": "c" * 64,
+    }
+    monkeypatch.setattr(benchmark, "_verify_assets", lambda _: asset_hashes)
+    monkeypatch.setattr(benchmark, "_prompt_bundle_sha256", lambda: "d" * 64)
+    baseline, candidate = benchmark.build_conditions(assets)
+    monkeypatch.setattr(
+        benchmark,
+        "preflight",
+        lambda _: {
+            "ok": True,
+            "assets": assets,
+            "manifest": _manifest(image, b"image"),
+            "baseline": baseline,
+            "candidate": candidate,
+        },
+    )
+
+    def fake_evaluate(manifest, baseline, candidate, **kwargs):
+        callback = kwargs["progress_callback"]
+        callback({
+            "type": "startup",
+            "phase": "ready",
+            "progress": 100,
+            "total": 100,
+            "elapsed_ms": 12.5,
+        })
+        callback({
+            "type": "scan",
+            "phase": "scan_status",
+            "sequence": 3,
+            "elapsed_ms": 34.5,
+        })
+        return {"records": []}
+
+    monkeypatch.setattr(benchmark, "evaluate_product_path_pair", fake_evaluate)
+
+    assert benchmark.main([
+        "--manifest", str(manifest_path),
+        "--progress",
+    ]) == 0
+
+    captured = capsys.readouterr()
+    assert "[product-path] startup phase=ready progress=100/100" in captured.err
+    assert "[product-path] scan phase=scan_status sequence=3" in captured.err
+    assert "image" not in captured.err
+    assert json.loads(captured.out)["records"] == []

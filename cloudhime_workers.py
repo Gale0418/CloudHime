@@ -560,6 +560,13 @@ class OCRWorker(QObject):
         generation = request.generation if request is not None else self._scan_generation
         self.status_msg.emit(message)
         self.scan_status_msg.emit(generation, message)
+        observer = getattr(self, "_product_path_scan_status_observer", None)
+        if callable(observer):
+            try:
+                observer()
+            except Exception:
+                # Benchmark observability must never alter production scan behavior.
+                pass
 
     def _emit_scan_translation_stream_update(
         self, index, partial_text, provider, x, y, w, h
@@ -820,6 +827,17 @@ class OCRWorker(QObject):
             return
         if signal is not None:
             signal.emit(*args)
+        observer = getattr(
+            self,
+            "_product_path_local_vision_status_observer",
+            None,
+        )
+        if callable(observer):
+            try:
+                observer(*args)
+            except Exception:
+                # Benchmark observability must never alter production lifecycle.
+                pass
         if getattr(self, "_local_runtime_profile", None) == "text":
             status, *details = args
             if status in {"starting", "progress"}:

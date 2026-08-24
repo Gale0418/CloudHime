@@ -290,6 +290,10 @@ def _collect_warm_condition_raw(manifest: Mapping[str, Any], condition: Mapping[
     session = session_factory()
     if session is None:
         raise ValueError("session_factory returned None")
+    if progress_callback is not None:
+        setter = getattr(session, "set_progress_callback", None)
+        if callable(setter):
+            setter(progress_callback)
     records: list[dict[str, Any]] = []
     cold_start: dict[str, Any] = {}
     cleanup: dict[str, Any] = {}
