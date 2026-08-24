@@ -1168,3 +1168,8 @@
 - TDD evidence：RED `1 failed` 重現 duplicate id 被錯誤採用；GREEN targeted `3 passed in 1.36s`；完整 `tests/test_ocr_worker_mode_matrix.py` `116 passed in 6.41s`；compileall exit `0`；`git diff --check` exit `0`。
 - Gemini 本輪雖成功回覆，但提出的 C# 專案檔案不存在於 CloudHime，且 dynamic ROI／tile cache 沒有本地 paired evidence；本輪只採納「先補 attribution correctness」的方向，沒有引入虛構 C# 架構或未驗證 cache。
 - 邊界：本輪是 deterministic correctness hardening，沒有重跑 GPU paired benchmark；CH-T100 的既有品質／延遲數字保持原判定，仍不 promotion crop-batch default。
+## 2026-08-24：CH-T102 release contract rerun
+
+- 以現行 HEAD `7f64ec9` 重新執行 `tests/test_release_packaging.py`、`tests/test_msix_packaging.py` 與 `tests/test_ci_test_inventory.py`；排除已知會執行 local real-dist 600 秒 slow smoke 的 `real_release_dist_preflight_when_available` 後，結果為 `60 passed, 1 deselected in 57.60s`。
+- 未過濾全套曾在約 40 個 dot 後長時間沒有輸出，已 Ctrl+C exit `1`；這是 incomplete verification，不是 test failure，也不算 full suite pass。測試後只確認既有 Dreamsprite `llama-server.exe`，未留下 CloudHime server。
+- 判定：release／MSIX／CI static contract 維持綠燈；CH-T64 仍不能標 Done，因真正 frozen dist slow smoke、clean Windows、optional WACK 與 Partner Center Store submission 仍需各自證據。
