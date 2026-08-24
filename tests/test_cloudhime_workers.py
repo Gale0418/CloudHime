@@ -1894,6 +1894,38 @@ def test_server_status_continues_local_model_status_for_text_profile():
     ]
 
 
+def test_server_status_notifies_bounded_product_observer_without_changing_ui_signal():
+    vision_statuses = []
+    observed = []
+    worker = SimpleNamespace(
+        _local_runtime_profile="vision",
+        local_vision_status=SimpleNamespace(emit=lambda *args: vision_statuses.append(args)),
+        _product_path_local_vision_status_observer=lambda *args: observed.append(args),
+    )
+
+    OCRWorker._emit_local_vision_status(worker, "progress", "42|model_download")
+
+    assert vision_statuses == [("progress", "42|model_download")]
+    assert observed == [("progress", "42|model_download")]
+
+
+def test_scan_status_notifies_bounded_product_observer_without_raw_message():
+    statuses = []
+    observed = []
+    worker = SimpleNamespace(
+        _active_scan_is_current=lambda: True,
+        _active_scan_request=None,
+        _scan_generation=7,
+        status_msg=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+        scan_status_msg=SimpleNamespace(emit=lambda *args: statuses.append(args)),
+        _product_path_scan_status_observer=lambda: observed.append("heartbeat"),
+    )
+
+    assert OCRWorker._emit_scan_status(worker, "原文與翻譯不得外洩") is None
+    assert statuses == [("原文與翻譯不得外洩",), (7, "原文與翻譯不得外洩")]
+    assert observed == ["heartbeat"]
+
+
 def test_cleanup_only_shuts_down_server_runtime():
     calls = []
     worker = SimpleNamespace(

@@ -60,6 +60,7 @@ class ProductPathLocalSession:
         timeout_seconds: int = 30,
         pixels_hash: Callable[[Any], str] = _default_pixels_hash,
         monotonic: Callable[[], float] = time.perf_counter,
+        progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> None:
         if not callable(worker_factory):
             raise TypeError("worker_factory must be callable")
@@ -67,15 +68,35 @@ class ProductPathLocalSession:
             raise TypeError("pixels_hash must be callable")
         if not callable(monotonic):
             raise TypeError("monotonic must be callable")
+        if progress_callback is not None and not callable(progress_callback):
+            raise TypeError("progress_callback must be callable")
         self._worker_factory = worker_factory
         self._pixels_hash = pixels_hash
         self._monotonic = monotonic
+        self._progress_callback = progress_callback
+        self._progress_observer_worker: Any = None
+        self._progress_observer_previous: Any = None
+        self._progress_observer_previous_scan: Any = None
+        self._startup_started_at: float | None = None
+        self._scan_status_count = 0
         self._timeout_seconds = max(1, int(timeout_seconds))
         self._worker: Any = None
         self._condition: dict[str, Any] | None = None
         self._owned_process: Any = None
         self._evidence: dict[str, Any] | None = None
         self._closed_evidence: dict[str, Any] | None = None
+
+    def set_progress_callback(
+        self,
+        callback: Callable[[Mapping[str, Any]], None] | None,
+    ) -> None:
+        if callback is not None and not callable(callback):
+            raise TypeError("progress_callback must be callable")
+        self._progress_callback = callback
+        if callback is None:
+            self._remove_progress_observer()
+        elif self._worker is not None:
+            self._install_progress_observer(self._worker)
 
     def start_cold(self, condition: Mapping[str, Any]) -> dict[str, Any]:
         if self._closed_evidence is not None:
@@ -88,6 +109,10 @@ class ProductPathLocalSession:
         elif normalized != self._condition:
             raise RuntimeError("condition change requires a new session")
 
+        self._startup_started_at = self._monotonic()
+        self._scan_status_count = 0
+        self._install_progress_observer(self._worker)
+        self._emit_startup_progress("ensure_started", 0)
         try:
             self._configure_worker(self._worker, normalized)
             self._require_runtime_configuration(self._worker, normalized)
@@ -97,11 +122,13 @@ class ProductPathLocalSession:
             if not isinstance(ready, bool):
                 raise ValueError("ensure_local_runtime_ready must return bool")
             if not ready:
+                self._emit_startup_progress("runtime_not_ready", 0)
                 raise ValueError("local runtime is not ready")
 
             raw_evidence = self._worker.local_runtime_evidence()
             self._evidence = self._normalize_evidence(raw_evidence, normalized)
             self._condition = normalized
+            self._emit_startup_progress("runtime_evidence_ready", 100)
             return dict(self._evidence)
         except Exception:
             try:
@@ -109,6 +136,127 @@ class ProductPathLocalSession:
             except Exception:
                 pass
             raise
+
+    def _install_progress_observer(self, worker: Any) -> None:
+        if self._progress_callback is None:
+            return
+        if self._progress_observer_worker is worker:
+            return
+        self._remove_progress_observer()
+        attr = "_product_path_local_vision_status_observer"
+        previous = getattr(worker, attr, None)
+        scan_attr = "_product_path_scan_status_observer"
+        previous_scan = getattr(worker, scan_attr, None)
+        try:
+            setattr(worker, attr, self._on_worker_local_vision_status)
+            setattr(worker, scan_attr, self._on_worker_scan_status)
+        except Exception:
+            try:
+                if previous is None:
+                    delattr(worker, attr)
+                else:
+                    setattr(worker, attr, previous)
+            except Exception:
+                pass
+            return
+        self._progress_observer_worker = worker
+        self._progress_observer_previous = previous
+        self._progress_observer_previous_scan = previous_scan
+
+    def _remove_progress_observer(self) -> None:
+        worker = self._progress_observer_worker
+        if worker is None:
+            return
+        attr = "_product_path_local_vision_status_observer"
+        scan_attr = "_product_path_scan_status_observer"
+        try:
+            try:
+                if self._progress_observer_previous is None:
+                    delattr(worker, attr)
+                else:
+                    setattr(worker, attr, self._progress_observer_previous)
+            except Exception:
+                pass
+            try:
+                if self._progress_observer_previous_scan is None:
+                    delattr(worker, scan_attr)
+                else:
+                    setattr(worker, scan_attr, self._progress_observer_previous_scan)
+            except Exception:
+                pass
+        finally:
+            self._progress_observer_worker = None
+            self._progress_observer_previous = None
+            self._progress_observer_previous_scan = None
+
+    @staticmethod
+    def _safe_progress_phase(value: Any, fallback: str) -> str:
+        normalized = re.sub(r"[^a-z0-9_.:-]+", "_", str(value or "").lower())[:64]
+        return normalized or fallback
+
+    def _emit_progress_event(self, event: Mapping[str, Any]) -> None:
+        callback = self._progress_callback
+        if callback is None:
+            return
+        started = self._startup_started_at
+        elapsed_ms = 0.0 if started is None else max(
+            0.0, (self._monotonic() - started) * 1000.0
+        )
+        bounded = {
+            "type": str(event.get("type", "progress")),
+            "phase": self._safe_progress_phase(event.get("phase"), "progress"),
+            "elapsed_ms": round(elapsed_ms, 3),
+        }
+        if bounded["type"] == "startup":
+            bounded.update({
+                "progress": max(0, min(100, int(event.get("progress", 0)))),
+                "total": 100,
+            })
+        elif bounded["type"] == "scan":
+            bounded["sequence"] = max(0, int(event.get("sequence", 0)))
+        try:
+            callback(bounded)
+        except Exception:
+            # Observability must never change benchmark semantics.
+            return
+
+    def _emit_startup_progress(self, phase: str, progress: int) -> None:
+        self._emit_progress_event({
+            "type": "startup",
+            "phase": phase,
+            "progress": progress,
+        })
+
+    def _on_worker_local_vision_status(self, *args: Any) -> None:
+        status = str(args[0] if args else "").strip().lower()
+        if status == "progress":
+            payload = str(args[1] if len(args) > 1 else "")
+            raw_progress, separator, raw_phase = payload.partition("|")
+            try:
+                progress = int(raw_progress)
+            except (TypeError, ValueError):
+                progress = 0
+            phase = self._safe_progress_phase(
+                raw_phase if separator else "progress",
+                "progress",
+            )
+        elif status in {"starting", "loading"}:
+            progress, phase = 0, status
+        elif status == "ready":
+            progress, phase = 100, "ready"
+        elif status in {"failed", "stopped"}:
+            progress, phase = 0, status
+        else:
+            return
+        self._emit_startup_progress(phase, progress)
+
+    def _on_worker_scan_status(self) -> None:
+        self._scan_status_count += 1
+        self._emit_progress_event({
+            "type": "scan",
+            "phase": "scan_status",
+            "sequence": self._scan_status_count,
+        })
 
     def run_repeat(self, case_id: str, pixels: Any) -> dict[str, Any]:
         if self._worker is None or self._evidence is None:
@@ -180,6 +328,7 @@ class ProductPathLocalSession:
             if self._worker is not None:
                 self._worker.cleanup()
         finally:
+            self._remove_progress_observer()
             exited = False
             if self._owned_process is not None:
                 exited = self._owned_process.poll() is not None

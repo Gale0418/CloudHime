@@ -264,6 +264,26 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         # Worker diagnostics may contain raw OCR content, so never emit them.
         def report_progress(event: Mapping[str, Any]) -> None:
+            if event.get("type") == "startup":
+                print(
+                    "[product-path] startup "
+                    f"phase={event['phase']} "
+                    f"progress={event['progress']}/{event['total']} "
+                    f"elapsed_ms={event['elapsed_ms']:.1f}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return
+            if event.get("type") == "scan":
+                print(
+                    "[product-path] scan "
+                    f"phase={event['phase']} "
+                    f"sequence={event['sequence']} "
+                    f"elapsed_ms={event['elapsed_ms']:.1f}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return
             print(
                 "[product-path] "
                 f"condition={event['condition']} "

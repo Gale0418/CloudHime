@@ -138,6 +138,15 @@ class FakeWorker:
 
     def ensure_local_runtime_ready(self, *, timeout_seconds):
         self.ensure_calls.append(timeout_seconds)
+        observer = getattr(
+            self,
+            "_product_path_local_vision_status_observer",
+            None,
+        )
+        if callable(observer):
+            observer("starting", "")
+            observer("progress", "10|checking_assets")
+            observer("progress", "100|ready")
         return True
 
     def local_runtime_evidence(self):
@@ -720,3 +729,35 @@ def test_trace_rejection_reports_safe_stage_diagnostics_without_source_text():
     assert "fallback=translation_region_vision_failed" in message
     assert "detail=translation_region_vision_response_json_invalid" in message
     assert "原文" not in message
+
+def test_startup_progress_callback_reports_bounded_runtime_phases():
+    progress = []
+    worker = FakeWorker()
+    session = ProductPathLocalSession(
+        lambda: worker,
+        timeout_seconds=9,
+    )
+    session.set_progress_callback(progress.append)
+
+    session.start_cold(_condition())
+
+    assert [event["type"] for event in progress] == ["startup"] * 5
+    assert [event["phase"] for event in progress] == [
+        "ensure_started",
+        "starting",
+        "checking_assets",
+        "ready",
+        "runtime_evidence_ready",
+    ]
+    assert progress[-1]["progress"] == 100
+    assert all(event["elapsed_ms"] >= 0.0 for event in progress)
+    assert all(
+        not any(key in event for key in ("detail", "source", "translation", "raw_text"))
+        for event in progress
+    )
+    session._on_worker_scan_status()
+    assert progress[-1]["type"] == "scan"
+    assert progress[-1]["phase"] == "scan_status"
+    assert progress[-1]["sequence"] == 1
+    session.close()
+    assert not hasattr(worker, "_product_path_local_vision_status_observer")
