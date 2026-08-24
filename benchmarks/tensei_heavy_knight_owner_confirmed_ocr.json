@@ -15,67 +15,125 @@
     {
       "id": "heavy-knight-001",
       "image": "example/転生重騎士/001.jpg",
-      "anchors": ["守りに特化で"],
-      "review_note": "Owner corrected the text as 守りに特化で; do not substitute 粉砕特化で."
+      "anchors": [
+        "守りに特化で"
+      ],
+      "review_note": "Owner corrected the text as 守りに特化で; do not substitute 粉砕特化で.",
+      "image_sha256": "0d0ba3fadfac216a2d2452fe6197e2765deea1b95383f4cbeb02591b6af05241"
     },
     {
       "id": "heavy-knight-004",
       "image": "example/転生重騎士/004.jpg",
-      "anchors": ["たびに"],
-      "review_note": "Only the explicitly confirmed ending fragment is scored; no missing Japanese is inferred from the Chinese note."
+      "anchors": [
+        "たびに"
+      ],
+      "review_note": "Only the explicitly confirmed ending fragment is scored; no missing Japanese is inferred from the Chinese note.",
+      "image_sha256": "ff3f869ecbb645f7954f86c23dc96e78598341949e7587a9f6f0bfaea5fc6273"
     },
     {
       "id": "heavy-knight-006",
       "image": "example/転生重騎士/006.jpg",
-      "anchors": ["マジックワールド最強と呼ばれるインチキクラス"]
+      "anchors": [
+        "マジックワールド最強と呼ばれるインチキクラス"
+      ],
+      "image_sha256": "347a3e01ea1baf9dc8b24ba665ad60d2a585f0bac6d825495f2bd8b036592b0c"
     },
     {
       "id": "heavy-knight-007",
       "image": "example/転生重騎士/007.jpg",
-      "anchors": ["晩成型"]
+      "anchors": [
+        "晩成型"
+      ],
+      "image_sha256": "e4c29d47057cf0d0f27efbfee982a8d307facd85603cd5a649375aa12d36109a"
     },
     {
       "id": "heavy-knight-008",
       "image": "example/転生重騎士/008.jpg",
-      "anchors": ["まごうことなき外れクラス"]
+      "anchors": [
+        "まごうことなき外れクラス"
+      ],
+      "image_sha256": "d33b8cf3a650951ec7cd5ea280f0f59342d68cb4f801a5d534a8060dbc2fd5c3"
     },
     {
       "id": "heavy-knight-013",
       "image": "example/転生重騎士/013.jpg",
-      "anchors": ["剣聖のクラスを得たとなれば"]
+      "anchors": [
+        "剣聖のクラスを得たとなれば"
+      ],
+      "image_sha256": "2691dacfdaf822004a254070947bdd47f2a57785be86359e654543aa28e4bb7a"
     },
     {
       "id": "heavy-knight-021",
       "image": "example/転生重騎士/021.jpg",
-      "anchors": ["嵌まれば", "振りました"]
+      "anchors": [
+        "嵌まれば",
+        "振りました"
+      ],
+      "image_sha256": "dc19fb3817e042121e47aae8d352886825791cd7e40dce8194b42f6d95201544"
     },
     {
       "id": "heavy-knight-026",
       "image": "example/転生重騎士/026.jpg",
-      "anchors": ["城壁返し"],
-      "review_note": "The collision sound is excluded; only the explicitly named non-sound-effect phrase is scored."
+      "anchors": [
+        "城壁返し"
+      ],
+      "review_note": "The collision sound is excluded; only the explicitly named non-sound-effect phrase is scored.",
+      "image_sha256": "d1b029389d8034093eecb8623fcdf64b3083ce94b322e87b1ff72d9860836614"
     },
     {
       "id": "heavy-knight-029",
       "image": "example/転生重騎士/029.jpg",
-      "anchors": ["安いだろうが確保しておこう"]
+      "anchors": [
+        "安いだろうが確保しておこう"
+      ],
+      "image_sha256": "5fed5967ed554da1a913b3477eb3ef0b6a7ab0f02f5351d966fa4a336c07283b"
     },
     {
       "id": "heavy-knight-034",
       "image": "example/転生重騎士/034.jpg",
-      "anchors": ["フンッ！！"],
-      "review_note": "Punctuation is part of the owner-confirmed anchor: two exclamation marks."
+      "anchors": [
+        "フンッ！！"
+      ],
+      "review_note": "Punctuation is part of the owner-confirmed anchor: two exclamation marks.",
+      "image_sha256": "ad930cb5f6e3f97d8dad823c86faa439607cc8f125f148a4c9b4e4ccee78c08c"
     }
   ],
   "excluded_cases": [
-    {"image": "example/転生重騎士/019.jpg", "reason": "UI text is too small; no exact owner-confirmed Japanese anchor supplied."},
-    {"image": "example/転生重騎士/022.jpg", "reason": "Upgrade background sound effect; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/024.jpg", "reason": "Frog charging sound effect; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/025.jpg", "reason": "Frog croak sound effect; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/027.jpg", "reason": "Sound effects only; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/033.jpg", "reason": "Sound effects only; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/035.jpg", "reason": "Monster collision sound effect; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/036.jpg", "reason": "Frog croak sound effects only; intentionally excluded from translation accuracy scoring."},
-    {"image": "example/転生重騎士/037.jpg", "reason": "Frog croak sound effects only; intentionally excluded from translation accuracy scoring."}
+    {
+      "image": "example/転生重騎士/019.jpg",
+      "reason": "UI text is too small; no exact owner-confirmed Japanese anchor supplied."
+    },
+    {
+      "image": "example/転生重騎士/022.jpg",
+      "reason": "Upgrade background sound effect; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/024.jpg",
+      "reason": "Frog charging sound effect; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/025.jpg",
+      "reason": "Frog croak sound effect; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/027.jpg",
+      "reason": "Sound effects only; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/033.jpg",
+      "reason": "Sound effects only; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/035.jpg",
+      "reason": "Monster collision sound effect; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/036.jpg",
+      "reason": "Frog croak sound effects only; intentionally excluded from translation accuracy scoring."
+    },
+    {
+      "image": "example/転生重騎士/037.jpg",
+      "reason": "Frog croak sound effects only; intentionally excluded from translation accuracy scoring."
+    }
   ]
 }
