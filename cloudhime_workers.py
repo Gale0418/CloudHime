@@ -563,7 +563,16 @@ class OCRWorker(QObject):
         observer = getattr(self, "_product_path_scan_status_observer", None)
         if callable(observer):
             try:
-                observer()
+                observer("scan_status")
+            except Exception:
+                # Benchmark observability must never alter production scan behavior.
+                pass
+
+    def _emit_product_path_stage(self, phase):
+        observer = getattr(self, "_product_path_scan_status_observer", None)
+        if callable(observer):
+            try:
+                observer(str(phase))
             except Exception:
                 # Benchmark observability must never alter production scan behavior.
                 pass
@@ -5752,6 +5761,7 @@ class OCRWorker(QObject):
         page_region = None
         if self.scan_mode == SCAN_MODE_FULLSCREEN:
             self._emit_scan_status("🧭 智慧裁切分析中...")
+            self._emit_product_path_stage("page_region_start")
             try:
                 detected_page_region = self.detect_manga_page_region(img)
                 page_region = self.normalize_manga_page_region(img, detected_page_region)
@@ -5763,12 +5773,14 @@ class OCRWorker(QObject):
             except Exception:
                 ocr_regions = None
                 ocr_orientations = [0]
+            self._emit_product_path_stage("page_region_complete")
         elif self.scan_mode == SCAN_MODE_REGION:
             # 框選模式先尊重原始方向，英文/一般網頁多半就是 0 度。
             # 真的抓不到再走後面的旋轉重試，避免平白多花時間。
             ocr_orientations = [0]
         
         self._emit_scan_status("🔍 掃描與翻譯中...")
+        self._emit_product_path_stage("ocr_start")
         _log("② 開始 OCR")
 
         ocr_started = time.perf_counter()
@@ -5797,6 +5809,7 @@ class OCRWorker(QObject):
                     self.show_ui.emit()
                     return
 
+        self._emit_product_path_stage("ocr_finished")
         if (
             self.scan_mode == SCAN_MODE_FULLSCREEN
             and ocr_regions
@@ -5912,12 +5925,15 @@ class OCRWorker(QObject):
                     if self.fullscreen_crop_vision_mode_enabled()
                     else self._run_fullscreen_geometry_vision_translation
                 )
-                if vision_runner(
+                self._emit_product_path_stage("fullscreen_vision_start")
+                vision_completed = vision_runner(
                     img,
                     offset_x,
                     offset_y,
                     filtered_items,
-                ):
+                )
+                self._emit_product_path_stage("fullscreen_vision_finished")
+                if vision_completed:
                     return
         if (
             is_fullscreen_vision_fallback
@@ -6229,6 +6245,7 @@ class OCRWorker(QObject):
             return
 
         translation_started = time.perf_counter()
+        self._emit_product_path_stage("translation_start")
         try:
             self._emit_scan_status("🧠 AI 大圖翻譯..." if self.has_any_multimodal_ai() else "🌐 Google...")
             if _use_google_ocr_refine:
@@ -6290,11 +6307,13 @@ class OCRWorker(QObject):
                         )
                     if crop_batches:
                         try:
+                            self._emit_product_path_stage("crop_batch_request_start")
                             translated_list, provider_list = self.translate_local_manga_crop_batches(
                                 source_texts,
                                 merged_items,
                                 crop_batches,
                             )
+                            self._emit_product_path_stage("crop_batch_request_finished")
                             used_local_crop_batches = any(
                                 bool(text) for text in translated_list
                             )
@@ -6319,7 +6338,9 @@ class OCRWorker(QObject):
                         ai_image_parts = self.build_ai_image_parts(img)
                         _log("⑦ build_ai_image_parts 完成")
                     _log("⑧ 開始 translate_items_with_ai_and_providers")
+                    self._emit_product_path_stage("translation_batch_request_start")
                     translated_list, provider_list = self.translate_items_with_ai_and_providers(source_texts, ai_image_parts, merged_items)
+                    self._emit_product_path_stage("translation_batch_request_finished")
                 _log(f"⑨ 翻譯完成 (共 {len(translated_list)} 段)")
             except LocalRequestCancelled:
                 raise

@@ -250,11 +250,11 @@ class ProductPathLocalSession:
             return
         self._emit_startup_progress(phase, progress)
 
-    def _on_worker_scan_status(self) -> None:
+    def _on_worker_scan_status(self, phase: Any = "scan_status") -> None:
         self._scan_status_count += 1
         self._emit_progress_event({
             "type": "scan",
-            "phase": "scan_status",
+            "phase": phase,
             "sequence": self._scan_status_count,
         })
 
