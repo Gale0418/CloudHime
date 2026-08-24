@@ -363,18 +363,20 @@ def test_owner_confirmed_heavy_knight_manifest_is_locked_and_scored_only_on_expl
 
     assert payload['status'] == 'locked_owner_confirmed'
     assert payload['ground_truth_eligible'] is True
-    assert len(payload['cases']) == 10
+    assert len(payload['cases']) == 11
     assert all(case['anchors'] for case in payload['cases'])
     assert all(isinstance(case.get('image_sha256'), str) and len(case['image_sha256']) == 64 for case in payload['cases'])
     assert payload['excluded_cases']
     assert all(item['reason'] for item in payload['excluded_cases'])
+    assert not any(item['image'].endswith('/019.jpg') for item in payload['excluded_cases'])
 
     suite = evaluator.load_suite(manifest_path)
-    assert len(suite['cases']) == 10
+    assert len(suite['cases']) == 11
     assert [case['image_sha256'] for case in payload['cases']] == [case['image_sha256'] for case in suite['cases']]
     assert {case['id'] for case in suite['cases']} == {
         'heavy-knight-001', 'heavy-knight-004', 'heavy-knight-006',
-        'heavy-knight-007', 'heavy-knight-008', 'heavy-knight-013',
+        'heavy-knight-007', 'heavy-knight-008',
+        'heavy-knight-019', 'heavy-knight-013',
         'heavy-knight-021', 'heavy-knight-026', 'heavy-knight-029',
         'heavy-knight-034',
     }

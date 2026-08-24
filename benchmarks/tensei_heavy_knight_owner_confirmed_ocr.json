@@ -63,6 +63,15 @@
       "image_sha256": "2691dacfdaf822004a254070947bdd47f2a57785be86359e654543aa28e4bb7a"
     },
     {
+      "id": "heavy-knight-019",
+      "image": "example/転生重騎士/019.jpg",
+      "anchors": [
+        "ただこの世界"
+      ],
+      "review_note": "Owner supplied the exact fragment; the tiny UI text remains a deliberately difficult case.",
+      "image_sha256": "e24f4d91855e7a24e97631e2beb61e617b5b13d207042530c6da73f34b88ec25"
+    },
+    {
       "id": "heavy-knight-021",
       "image": "example/転生重騎士/021.jpg",
       "anchors": [
@@ -99,10 +108,6 @@
     }
   ],
   "excluded_cases": [
-    {
-      "image": "example/転生重騎士/019.jpg",
-      "reason": "UI text is too small; no exact owner-confirmed Japanese anchor supplied."
-    },
     {
       "image": "example/転生重騎士/022.jpg",
       "reason": "Upgrade background sound effect; intentionally excluded from translation accuracy scoring."
