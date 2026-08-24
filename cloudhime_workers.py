@@ -3470,12 +3470,19 @@ class OCRWorker(QObject):
         override = getattr(self, "_local_fullscreen_crop_batch_admission_mode", None)
         if override is not None:
             return bool(override)
-        return os.environ.get(
-            FULLSCREEN_CROP_BATCH_ADMISSION_ENV,
-            "",
-        ).strip().lower() in {"1", "true", "yes", "on"}
+        # Direct local Vision remains first; admission only pays crop-batch cost after it fails.
+        # Keep an explicit environment opt-out for emergency rollback and diagnostics.
+        value = os.environ.get(FULLSCREEN_CROP_BATCH_ADMISSION_ENV, "").strip().lower()
+        return value not in {"0", "false", "no", "off"}
 
 
+
+    def fullscreen_crop_batch_admission_explicitly_enabled(self):
+        override = getattr(self, "_local_fullscreen_crop_batch_admission_mode", None)
+        if override is not None:
+            return bool(override)
+        value = os.environ.get(FULLSCREEN_CROP_BATCH_ADMISSION_ENV, "").strip().lower()
+        return value in {"1", "true", "yes", "on"}
 
     @staticmethod
     def is_degenerate_manga_transcription(text):
@@ -5208,6 +5215,7 @@ class OCRWorker(QObject):
         offset_x,
         offset_y,
         items,
+        *, batch_admission=False
     ):
         """Translate padded OCR boxes independently; OCR text never enters the prompt."""
         vision_started = time.perf_counter()
@@ -5232,7 +5240,8 @@ class OCRWorker(QObject):
             if (
                 (
                     self.fullscreen_crop_batch_mode_enabled()
-                    or self.fullscreen_crop_batch_admission_mode_enabled()
+                    or batch_admission
+                    or self.fullscreen_crop_batch_admission_explicitly_enabled()
                 )
                 and callable(interpret_regions)
             ):
@@ -5245,7 +5254,7 @@ class OCRWorker(QObject):
                     interpret_regions,
                 ):
                     return True
-                if self.fullscreen_crop_batch_admission_mode_enabled():
+                if batch_admission or self.fullscreen_crop_batch_admission_explicitly_enabled():
                     return False
             interpret_kwargs = {
                 "image_width": int(img.shape[1]),
@@ -6132,11 +6141,13 @@ class OCRWorker(QObject):
                     else self._run_fullscreen_geometry_vision_translation
                 )
                 self._emit_product_path_stage("fullscreen_vision_start")
+                vision_kwargs = ({"batch_admission": True} if fullscreen_crop_batch_admission else {})
                 vision_completed = vision_runner(
                     img,
                     offset_x,
                     offset_y,
                     filtered_items,
+                    **vision_kwargs,
                 )
                 self._emit_product_path_stage("fullscreen_vision_finished")
                 if vision_completed:
