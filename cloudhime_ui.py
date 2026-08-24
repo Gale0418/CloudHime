@@ -127,6 +127,7 @@ AUTO_THRESHOLD_MAX = 250
 AUTO_THRESHOLD_CANDIDATES = (50, 70, 90, 110, 130, 150, 170, 190, 220, 250)
 AUTO_THRESHOLD_LOCAL_OFFSETS = (-10, 0, 10)
 MAX_OCR_SCALE_FACTOR = 3.0
+STREAM_RENDER_INTERVAL_MS = 40
 MIN_OCR_SCALE_FACTOR = 1.0
 AI_IMAGE_MAX_WIDTH = 1536
 AI_TOP_CONTEXT_RATIO = 0.22
@@ -2930,6 +2931,11 @@ class Controller(QWidget):
         self.cooldown_end_time = 0.0
         self.scan_in_progress = False
         self.scan_generation = 0
+        self._pending_stream_updates = {}
+        self._stream_render_timer = QTimer(self)
+        self._stream_render_timer.setSingleShot(True)
+        self._stream_render_timer.setInterval(STREAM_RENDER_INTERVAL_MS)
+        self._stream_render_timer.timeout.connect(self._flush_stream_updates)
         self.local_runtime_coordinator = LocalVisionRuntimeCoordinator()
         
         self.setWindowTitle("雲朵翻譯姬")
@@ -4361,12 +4367,48 @@ class Controller(QWidget):
         if self.countdown_seconds < 0:
             self.display_timer.stop()
 
+    def _flush_stream_updates(self, generation=None):
+        timer = getattr(self, '_stream_render_timer', None)
+        if timer is not None:
+            timer.stop()
+        pending = getattr(self, '_pending_stream_updates', None)
+        if not pending:
+            return
+        self._pending_stream_updates = {}
+        current_generation = int(getattr(self, 'scan_generation', 0))
+        expected_generation = current_generation if generation is None else int(generation)
+        if expected_generation != current_generation:
+            return
+        for (item_generation, _item_index), payload in pending.items():
+            if int(item_generation) == current_generation:
+                self.on_translation_stream_update(*payload)
+
+    def _clear_stream_updates(self):
+        timer = getattr(self, '_stream_render_timer', None)
+        if timer is not None:
+            timer.stop()
+        pending = getattr(self, '_pending_stream_updates', None)
+        if pending is not None:
+            pending.clear()
+
     def on_translation_stream_update_for_generation(
         self, generation, index, partial_text, provider, x, y, w, h
     ):
         if int(generation) != self.scan_generation:
             return
-        self.on_translation_stream_update(index, partial_text, provider, x, y, w, h)
+        timer = getattr(self, '_stream_render_timer', None)
+        if timer is None:
+            self.on_translation_stream_update(index, partial_text, provider, x, y, w, h)
+            return
+        pending = getattr(self, '_pending_stream_updates', None)
+        if pending is None:
+            pending = {}
+            self._pending_stream_updates = pending
+        pending[(int(generation), int(index))] = (
+            index, partial_text, provider, x, y, w, h
+        )
+        if not timer.isActive():
+            timer.start(STREAM_RENDER_INTERVAL_MS)
 
     def on_translation_stream_update(self, index, partial_text, provider, x, y, w, h):
         if getattr(self, "overlay", None):
@@ -4391,6 +4433,7 @@ class Controller(QWidget):
     def on_scan_complete_for_generation(self, generation, results):
         if int(generation) != self.scan_generation:
             return
+        self._flush_stream_updates(generation)
         self.on_scan_complete(results)
 
     def on_scan_complete(self, results):
@@ -4421,6 +4464,7 @@ class Controller(QWidget):
             self.schedule_next_scan()
 
     def _advance_scan_generation(self, cancel_active=False, rearm_auto=False):
+        self._clear_stream_updates()
         self.scan_generation = max(0, int(getattr(self, "scan_generation", 0))) + 1
         worker = getattr(self, "worker", None)
         if worker is not None and hasattr(worker, "set_scan_generation"):
