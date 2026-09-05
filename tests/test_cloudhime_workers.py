@@ -32,6 +32,35 @@ def make_worker_stub():
     return worker
 
 
+def _prepare_registry_worker():
+    worker = make_worker_stub()
+    worker._refresh_translation_registry = OCRWorker._refresh_translation_registry.__get__(worker, OCRWorker)
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    worker.translation_target_lang = "zh-TW"
+    worker.gemma_prompt = ""
+    worker.screenshot_gemma_prompt = ""
+    worker.gemma_auto_switch_enabled = False
+    worker.local_gemma_temperature = 0.2
+    worker.local_gemma_repeat_penalty = 1.15
+    worker.local_vision_runtime = None
+    worker.request_local_vision_start = lambda: None
+    worker.google_translation_provider = workers_module.GoogleTranslationProvider(target_lang="zh-TW")
+    worker.gemma_translation_provider = workers_module.GemmaTranslationProvider(
+        google_api_key="",
+        gemma_model=worker.gemma_model,
+        target_lang="zh-TW",
+    )
+    worker.local_multimodal_provider = workers_module.LocalMultimodalProvider(
+        base_url="http://127.0.0.1:8080/v1",
+        model_name="old-model",
+        target_lang="zh-TW",
+        enabled=False,
+        timeout_seconds=20,
+    )
+    return worker
+
+
 def test_translation_setting_changes_clear_all_translation_memories():
     worker = make_worker_stub()
     worker.translation_target_lang = "zh-TW"
@@ -1831,6 +1860,124 @@ def test_worker_uses_provider_attribution_from_screenshot_result():
     assert worker._last_screenshot_translation_result.provider == "google"
     assert worker._last_screenshot_translation_result.requested_provider == "local_multimodal"
     assert worker._last_screenshot_translation_result.fallback_reason == "server_fallback"
+
+
+def test_worker_constructor_scrubs_google_metadata_secrets(monkeypatch):
+    monkeypatch.setattr(workers_module, "LocalVisionRuntime", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(OCRWorker, "_refresh_translation_registry", lambda _worker: None)
+    worker = OCRWorker(
+        google_api_keys=("google-a", "google-b"),
+        google_credential_metadata=(
+            {
+                "slot": "primary",
+                "scope": "same-scope",
+                "secret": "metadata-secret",
+                "api_key": "metadata-api-key",
+                "nested": {"google_api_key": "nested-secret"},
+            },
+        ),
+    )
+    try:
+        metadata = worker.google_credential_metadata
+        assert worker.google_api_key == "google-a"
+        assert worker.google_api_keys == ("google-a",)
+        assert metadata == ({"slot": "primary", "scope": "same-scope", "nested": {}},)
+        assert "google-a" not in repr(worker)
+        assert "google-b" not in repr(worker)
+        assert "metadata-secret" not in repr(metadata)
+        assert "metadata-api-key" not in repr(metadata)
+        assert "nested-secret" not in repr(metadata)
+    finally:
+        worker.cleanup()
+
+
+def test_worker_google_pool_migrates_first_key_and_preserves_model_scoped_state():
+    worker = _prepare_registry_worker()
+    worker.set_google_api_keys(
+        ("google-a", "google-b"),
+        (
+            {"slot": "primary", "scope": "same-scope"},
+            {"slot": "secondary", "scope": "same-scope"},
+        ),
+    )
+
+    assert worker.google_api_key == "google-a"
+    assert worker.gemma_translation_provider.google_api_keys == ("google-a",)
+    snapshot = worker.gemma_translation_provider._credential_pool.snapshot()
+    assert {
+        (item["key_id"], item["model"])
+        for item in snapshot
+        if item["model"] in {"gemma-4-26b-a4b-it", "gemma-4-31b-it"}
+    } == {
+        ("primary", "gemma-4-26b-a4b-it"),
+        ("primary", "gemma-4-31b-it"),
+    }
+    assert all(item["quota_scope"].endswith(":same-scope") for item in snapshot)
+    assert all("google-a" not in repr(item) and "google-b" not in repr(item) for item in snapshot)
+
+
+def test_worker_openai_registry_respects_enabled_flag_without_secret_repr():
+    worker = OCRWorker(
+        openai_api_key="openai-secret",
+        openai_enabled=True,
+        openai_model="gpt-5.6-luna",
+        openai_reasoning_effort="high",
+        openai_timeout_seconds=17,
+    )
+    try:
+        assert worker.translation_registry.get("openai") is not None
+        assert "openai-secret" not in repr(worker.translation_registry.get("openai"))
+        assert "openai-secret" not in repr(worker)
+        assert "openai-secret" not in repr(worker._exact_image_cache_context(0, 0))
+
+        worker.set_openai_enabled(False)
+        assert worker.translation_registry.get("openai") is None
+        assert "openai-secret" not in repr(worker)
+    finally:
+        worker.cleanup()
+
+
+def test_worker_translation_registry_batch_refreshes_once_and_safe_on_extra_end():
+    worker = make_worker_stub()
+    worker._translation_registry_batch_depth = 0
+    worker._translation_registry_batch_dirty = False
+    refreshes = []
+    worker._refresh_translation_registry_locked = lambda: refreshes.append("refresh")
+    worker._refresh_translation_registry = OCRWorker._refresh_translation_registry.__get__(worker, OCRWorker)
+
+    OCRWorker.begin_translation_registry_batch(worker)
+    OCRWorker.set_google_api_key(worker, "google-secret")
+    OCRWorker.end_translation_registry_batch(worker)
+    OCRWorker.end_translation_registry_batch(worker)
+
+    assert refreshes == ["refresh"]
+
+
+def test_remote_screenshot_translation_uses_registry_provider_before_raw_http(monkeypatch):
+    worker = _make_segment_repair_worker()
+    worker.scan_mode = "fullscreen"
+    worker.region_render_mode = "screenshot"
+    worker.resolve_multimodal_provider_name = lambda: "gemma"
+    worker.sync_gemma_call_timestamps_from_provider = lambda _provider: None
+    worker.convert_to_trad = lambda text: text
+    calls = []
+
+    class Provider:
+        name = "gemma"
+
+        def translate_screenshot(self, image_parts, **kwargs):
+            calls.append((image_parts, kwargs))
+            return SimpleNamespace(text="registry translation", model="gemma-4-31b-it")
+
+    worker._get_translation_provider = lambda _name: Provider()
+    monkeypatch.setattr(
+        workers_module.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("raw Gemma HTTP must not run")),
+    )
+
+    assert OCRWorker.translate_screenshot_gemma(worker, [{"image": "x"}], "hint") == "registry translation"
+    assert len(calls) == 1
 
 def test_worker_initialization_has_no_embedded_provider_or_loader(monkeypatch):
     monkeypatch.setattr(workers_module, "resolve_preferred_vision_assets", lambda _root: SimpleNamespace())

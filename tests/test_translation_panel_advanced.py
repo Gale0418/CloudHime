@@ -2,8 +2,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QSizePolicy
 
 from translation_settings_panel import TranslationSettingsPanel
+from themes import resolve_theme
 
 class DummyWorker:
     google_api_key = ""
@@ -320,3 +322,203 @@ def test_removed_text_only_model_has_no_translation_panel_note():
     panel.controller = SimpleNamespace(ui_language="en")
 
     assert panel._ai_model_note_text("gemma-3-1b-it") == ""
+
+
+def test_provider_settings_expose_redacted_config_and_accessible_controls(qtbot):
+    controller = DummyController()
+    controller.online_gemma_enabled = True
+    controller.google_api_key = "primary-secret"
+    controller.openai_enabled = True
+    controller.openai_reasoning_effort = "none"
+    controller.openai_timeout_seconds = 75
+
+    panel = TranslationSettingsPanel(controller, [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+
+    assert panel.input_google_api_key.echoMode() != 0
+    assert panel.input_google_api_key.accessibleName()
+    assert panel.input_google_api_key.accessibleDescription()
+    assert panel.input_luna_api_key.echoMode() != 0
+    assert panel.lbl_luna_model.text() == "gpt-5.6-luna"
+    assert panel.cmb_luna_reasoning.currentData() == "none"
+    assert panel.spin_luna_timeout.value() == 75
+    assert panel.btn_api_key_visible.minimumWidth() >= 56
+    assert panel.btn_api_key_visible.height() == 34
+    assert panel.input_api_key.sizePolicy().horizontalPolicy() == QSizePolicy.Expanding
+
+    config = panel.get_provider_config()
+    assert config["online_gemma"]["enabled"] is True
+    assert config["online_gemma"]["models"] == ("gemma-4-26b-a4b-it", "gemma-4-31b-it")
+    assert "primary-secret" not in repr(config)
+    assert "secondary-secret" not in repr(config)
+    assert "api_key" not in config["luna"]
+
+
+def test_provider_metadata_uses_theme_contrast_token(qtbot):
+    panel = TranslationSettingsPanel(DummyController(), [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+    for mode in ("light", "dark", "high_contrast"):
+        theme = resolve_theme(mode)
+        panel.update_theme(mode)
+        capability_style = panel.provider_status_frame.styleSheet()
+        detail_style = panel.provider_status_rows["online_gemma"]["detail"].styleSheet()
+        assert theme.provider_metadata in capability_style
+        assert theme.provider_metadata in detail_style
+
+
+def test_provider_settings_metadata_and_luna_changes_use_optional_controller_callbacks(qtbot):
+    controller = DummyController()
+    calls = []
+    controller.on_api_key_changed = lambda value: calls.append(("google_api_key", value))
+    controller.on_luna_enabled_changed = lambda value: calls.append(("luna_enabled", value))
+    controller.on_luna_reasoning_changed = lambda value: calls.append(("luna_reasoning", value))
+    controller.on_luna_timeout_changed = lambda value: calls.append(("luna_timeout", value))
+
+    panel = TranslationSettingsPanel(controller, [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+    panel.input_google_api_key.setText("secret-a")
+    panel.chk_luna_enabled.setChecked(True)
+    panel.spin_luna_timeout.setValue(90)
+
+    assert ("google_api_key", "secret-a") in calls
+    assert ("luna_enabled", True) in calls
+    assert ("luna_timeout", 90) in calls
+
+
+def test_provider_status_rows_do_not_claim_remaining_quota(qtbot):
+    panel = TranslationSettingsPanel(DummyController(), [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+
+    status_text = " ".join(
+        row["status"].text() + " " + row["detail"].text()
+        for row in panel.provider_status_rows.values()
+    )
+    assert "quota remaining" not in status_text.lower()
+    assert "剩餘額度" not in status_text
+    assert panel.provider_status_rows["local_gemma"]["status"].text()
+
+
+def test_online_gemma_rows_separate_rate_and_cooldown_state(qtbot):
+    controller = DummyController()
+    controller.ui_language = "en"
+    controller.worker.gemma_runtime_snapshot = lambda: [
+        {"model": "gemma-4-26b-a4b-it", "status": "cooldown"},
+        {"model": "gemma-4-31b-it", "status": "using"},
+    ]
+    panel = TranslationSettingsPanel(controller, [("Gemma 4 31B", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+
+    panel.update_provider_status_rows()
+
+    model_26 = panel.online_gemma_model_rows["gemma-4-26b-a4b-it"]
+    model_31 = panel.online_gemma_model_rows["gemma-4-31b-it"]
+    assert model_26["status"].text() == "Cooldown"
+    assert model_26["detail"].text() == "Rate: Limited · Cooldown: Active"
+    assert model_31["status"].text() == "Using"
+    assert model_31["detail"].text() == "Rate: Active · Cooldown: None"
+
+
+def test_provider_status_tones_preserve_semantic_colors(qtbot):
+    controller = DummyController()
+    controller.ui_language = "en"
+    panel = TranslationSettingsPanel(controller, [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+    panel.update_theme("light")
+    theme = resolve_theme("light")
+
+    panel._set_provider_row("online_gemma", "Ready", "", "")
+    ready = panel.provider_status_rows["online_gemma"]["status"]
+    assert ready.property("statusTone") == "operational"
+    assert f'QLabel[statusTone="operational"] {{ color: {theme.operational}; }}' in ready.styleSheet()
+
+    panel._set_provider_row("online_gemma", "Cooldown", "", "")
+    cooldown = panel.provider_status_rows["online_gemma"]["status"]
+    assert cooldown.property("statusTone") == "quota"
+    assert f'QLabel[statusTone="quota"] {{ color: {theme.quota}; }}' in cooldown.styleSheet()
+
+    panel._set_provider_row("online_gemma", "Authentication failed", "", "")
+    failed = panel.provider_status_rows["online_gemma"]["status"]
+    assert failed.property("statusTone") == "error"
+    assert f'QLabel[statusTone="error"] {{ color: {theme.error}; }}' in failed.styleSheet()
+
+
+def test_model_status_tones_follow_ready_cooldown_and_using_rows(qtbot):
+    controller = DummyController()
+    controller.ui_language = "en"
+    controller.worker.gemma_runtime_snapshot = lambda: [
+        {"model": "gemma-4-26b-a4b-it", "status": "cooldown"},
+        {"model": "gemma-4-31b-it", "status": "ready"},
+    ]
+    panel = TranslationSettingsPanel(controller, [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+    panel.update_theme("dark")
+    panel.update_provider_status_rows()
+
+    cooldown = panel.online_gemma_model_rows["gemma-4-26b-a4b-it"]["status"]
+    ready = panel.online_gemma_model_rows["gemma-4-31b-it"]["status"]
+    assert cooldown.property("statusTone") == "quota"
+    assert ready.property("statusTone") == "operational"
+
+
+def test_provider_disclosures_are_keyboard_checkable_and_preserve_state(qtbot):
+    controller = DummyController()
+    panel = TranslationSettingsPanel(controller, [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.resize(500, 900)
+    qtbot.wait(1)
+
+    assert set(panel.provider_disclosures) == {"local_gemma", "online_gemma", "luna"}
+    assert all(not item.body.isVisible() for item in panel.provider_disclosures.values())
+    online = panel.provider_disclosures["online_gemma"]
+    online.header.setFocus()
+    qtbot.keyClick(online.header, Qt.Key_Space)
+    assert online.header.isChecked() is True
+    assert online.body.isVisible() is True
+    assert "\n" not in online.header.text()
+    assert online.capability_label.isVisible() is True
+    assert online.capability_label.wordWrap() is True
+    assert online.capability_label.minimumWidth() == 0
+    assert online.capability_label.sizePolicy().horizontalPolicy() == QSizePolicy.Ignored
+    assert online.capability_label.text()
+    assert panel.input_google_api_key is panel.input_api_key is panel.input_gemma_api_key
+    assert panel.online_gemma_model_rows["gemma-4-26b-a4b-it"]["row"].height() > 0
+    assert panel.online_gemma_model_rows["gemma-4-31b-it"]["row"].height() > 0
+
+    panel.input_api_key.setFocus()
+    qtbot.mouseClick(online.header, Qt.LeftButton)
+    assert online.header.isChecked() is False
+    assert online.body.isVisible() is False
+    assert online.header.hasFocus()
+    before = [item.header.isChecked() for item in panel.provider_disclosures.values()]
+    panel.update_provider_status_rows()
+    assert [item.header.isChecked() for item in panel.provider_disclosures.values()] == before
+    assert "secret" not in online.header.accessibleName().lower()
+    assert "api" not in online.header.accessibleDescription().lower()
+
+
+def test_provider_summary_and_translation_hint_wrap_in_narrow_column(qtbot):
+    panel = TranslationSettingsPanel(DummyController(), [("Gemma Test", "gemma-test")])
+    qtbot.addWidget(panel)
+    panel.resize(337, 720)
+    panel.show()
+    panel.lbl_translate_hint.setText(
+        "This is a deliberately long translation hint that must wrap naturally "
+        "without horizontal clipping in the legacy three-column card."
+    )
+    long_capability = (
+        "Supports screenshot translation, local fallback, model health and "
+        "request-time connectivity checks without exposing credentials."
+    )
+    for disclosure in panel.provider_disclosures.values():
+        disclosure.set_summary("Needs setup", long_capability)
+    qtbot.wait(10)
+
+    viewport_width = panel.translation_scroll_area.viewport().width()
+    assert panel.translation_content.width() <= viewport_width
+    assert panel.lbl_translate_hint.width() <= viewport_width
+    assert panel.lbl_translate_hint.heightForWidth(panel.lbl_translate_hint.width()) <= panel.lbl_translate_hint.height()
+    for disclosure in panel.provider_disclosures.values():
+        assert "\n" not in disclosure.header.text()
+        assert disclosure.capability_label.width() <= viewport_width
+        assert disclosure.capability_label.heightForWidth(disclosure.capability_label.width()) <= disclosure.capability_label.height()

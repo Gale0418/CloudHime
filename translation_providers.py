@@ -17,6 +17,7 @@ from urllib import error, request
 from deep_translator import GoogleTranslator
 
 from model_catalog import get_model_spec, REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
+from provider_runtime import CredentialUnavailable, RuntimeCredentialPool
 from translation_contracts import TranslationProvider, TranslationResult
 from knowledge_prompt_context import KnowledgePromptContext
 from vision_region import (
@@ -58,6 +59,10 @@ GEMMA_RATE_LIMIT_MAX_CALLS_BY_MODEL = {
     "gemini-3.1-flash-lite": 15,
     "gemini-2.5-pro": 15,
 }
+GEMMA_THINKING_LEVEL_MODELS = frozenset({
+    "gemma-4-26b-a4b-it",
+    "gemma-4-31b-it",
+})
 TRANSLATION_CACHE_LIMIT = 512
 LOCAL_MULTIMODAL_BATCH_SIZE = 4
 LOCAL_MULTIMODAL_OCR_TEMPERATURE = 0.1
@@ -110,6 +115,15 @@ _REGION_VISION_VALUE_ERROR_CODES = {
     "Response contains an id outside allowed_ids.": "response_region_mismatch",
     "Response contains a duplicate region id.": "response_region_mismatch",
 }
+GEMMA_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+class GemmaRateLimitError(ValueError):
+    """A bounded, retryable failure after all Gemma model slots are cooling."""
+
+    def __init__(self, message: str = "gemma_rate_limited", *, retry_after: float | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 def classify_region_vision_failure(exception: BaseException | None) -> str:
@@ -268,6 +282,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         self,
         *,
         google_api_key: str = "",
+        google_api_keys: Sequence[str] | Mapping[str, str] | None = None,
+        credential_metadata: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] | None = None,
+        google_api_key_metadata: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] | None = None,
+        credential_pool: RuntimeCredentialPool | None = None,
+        runtime_credential_pool: RuntimeCredentialPool | None = None,
         gemma_model: str = DEFAULT_GEMMA_MODEL,
         gemma_prompt: str = "",
         screenshot_gemma_prompt: str = "",
@@ -276,7 +295,14 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         auto_switch_enabled: bool = False,
         supported_models: Sequence[str] = SUPPORTED_GEMMA_MODEL_NAMES,
     ):
-        self.google_api_key = (google_api_key or "").strip()
+        self.google_api_key = ""
+        self.google_api_keys: tuple[str, ...] = ()
+        self._credential_specs: tuple[dict[str, Any], ...] = ()
+        self._credential_metadata: tuple[dict[str, Any], ...] = ()
+        self._credential_pool = (
+            credential_pool if credential_pool is not None else runtime_credential_pool
+        )
+        self._owns_credential_pool = self._credential_pool is None
         self.target_lang = target_lang
         self.enabled = bool(gemma_enabled)
         self.auto_switch_enabled = bool(auto_switch_enabled)
@@ -285,6 +311,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         self.supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
         self.last_config_warning = ""
         self.gemma_model = self.normalize_gemma_model(gemma_model)
+        self._configure_google_credentials(
+            google_api_key=google_api_key,
+            google_api_keys=google_api_keys,
+            credential_metadata=credential_metadata if credential_metadata is not None else google_api_key_metadata,
+        )
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._rate_limit_lock = threading.RLock()
         self._call_timestamps: dict[str, list[float]] = {name: [] for name in self.supported_models}
@@ -295,6 +326,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         self,
         *,
         google_api_key: str | None = None,
+        google_api_keys: Sequence[str] | Mapping[str, str] | None = None,
+        credential_metadata: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] | None = None,
+        credential_pool: RuntimeCredentialPool | None = None,
+        google_api_key_metadata: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] | None = None,
+        runtime_credential_pool: RuntimeCredentialPool | None = None,
         gemma_model: str | None = None,
         gemma_prompt: str | None = None,
         screenshot_gemma_prompt: str | None = None,
@@ -304,8 +340,54 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         supported_models: Sequence[str] | None = None,
     ) -> str | None:
         self.last_config_warning = ""
-        if google_api_key is not None:
-            self.google_api_key = (google_api_key or "").strip()
+        selected_pool = (
+            credential_pool if credential_pool is not None else runtime_credential_pool
+        )
+        if selected_pool is not None and selected_pool is not self._credential_pool:
+            self._credential_pool = selected_pool
+            self._owns_credential_pool = False
+        if (
+            google_api_key is not None
+            or google_api_keys is not None
+            or credential_metadata is not None
+            or google_api_key_metadata is not None
+        ):
+            existing_keys = (
+                self.google_api_keys
+                if google_api_key is None and google_api_keys is None
+                else google_api_keys
+            )
+            effective_metadata = (
+                credential_metadata
+                if credential_metadata is not None
+                else google_api_key_metadata
+            )
+            if (
+                effective_metadata is not None
+                and google_api_key is None
+                and google_api_keys is None
+                and self._credential_specs
+            ):
+                merged_metadata = [dict(item) for item in self._credential_specs]
+                incoming_metadata = self._metadata_items(effective_metadata)
+                for index, item in enumerate(incoming_metadata):
+                    target_index = next(
+                        (
+                            candidate_index
+                            for candidate_index, existing in enumerate(merged_metadata)
+                            if item.get("key_id") is not None
+                            and existing.get("key_id") == item.get("key_id")
+                        ),
+                        index,
+                    )
+                    if target_index < len(merged_metadata):
+                        merged_metadata[target_index].update(item)
+                effective_metadata = merged_metadata
+            self._configure_google_credentials(
+                google_api_key=google_api_key,
+                google_api_keys=existing_keys,
+                credential_metadata=effective_metadata,
+            )
         if supported_models is not None:
             new_supported_models = tuple(supported_models) if supported_models else SUPPORTED_GEMMA_MODEL_NAMES
             if new_supported_models != self.supported_models:
@@ -316,6 +398,12 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                         name: list(previous_timestamps.get(name, []))
                         for name in self.supported_models
                     }
+                if self._owns_credential_pool and self.google_api_keys:
+                    self._configure_google_credentials(
+                        google_api_key=None,
+                        google_api_keys=tuple(item["secret"] for item in self._credential_specs),
+                        credential_metadata=self._credential_specs,
+                    )
         if gemma_model is not None:
             self.gemma_model = self.normalize_gemma_model(gemma_model)
         if gemma_prompt is not None:
@@ -331,7 +419,178 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         return self.last_config_warning or None
 
     def available(self) -> bool:
-        return bool(self.google_api_key)
+        if self.google_api_keys:
+            return True
+        pool = self._credential_pool
+        if pool is None:
+            return False
+        try:
+            return any(item.get("provider") == "google" for item in pool.snapshot())
+        except (AttributeError, TypeError):
+            # Injectable test/runtime pools only need to implement acquire().
+            return True
+
+    @staticmethod
+    def _clean_secret(value: Any) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+    @staticmethod
+    def _metadata_items(
+        credential_metadata: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]]
+    ) -> list[dict[str, Any]]:
+        if isinstance(credential_metadata, Mapping):
+            if "secret" in credential_metadata or "key_id" in credential_metadata:
+                return [dict(credential_metadata)]
+            return [
+                dict(item, key_id=str(key_id))
+                for key_id, item in credential_metadata.items()
+                if isinstance(item, Mapping)
+            ]
+        return [dict(item) for item in credential_metadata]
+
+    def _configure_google_credentials(
+        self,
+        *,
+        google_api_key: str | None,
+        google_api_keys: Sequence[str] | Mapping[str, str] | None,
+        credential_metadata: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] | None,
+    ) -> None:
+        """Normalize the singular key contract and build the owned pool.
+
+        ``google_api_keys`` remains readable for migration of old settings, but
+        only its first usable secret is accepted.  A single key is registered
+        once per supported model so model quota/cooldown state stays separate.
+        """
+        entries: list[dict[str, Any]] = []
+        if google_api_key is not None and self._clean_secret(google_api_key):
+            entries.append({"secret": google_api_key})
+        elif isinstance(google_api_keys, Mapping):
+            if "secret" in google_api_keys or "api_key" in google_api_keys:
+                entries.append(dict(google_api_keys))
+            else:
+                entries.extend(
+                    {"key_id": str(key_id), "secret": secret}
+                    for key_id, secret in google_api_keys.items()
+                )
+        elif isinstance(google_api_keys, str):
+            entries.append({"secret": google_api_keys})
+        elif google_api_keys is not None:
+            entries.extend(
+                dict(secret) if isinstance(secret, Mapping) else {"secret": secret}
+                for secret in google_api_keys
+            )
+        elif google_api_key is not None:
+            entries.append({"secret": google_api_key})
+
+        metadata_items = self._metadata_items(credential_metadata) if credential_metadata is not None else []
+
+        if metadata_items:
+            by_key_id = {
+                str(item["key_id"]): item
+                for item in metadata_items
+                if item.get("key_id") is not None
+            }
+            for index, entry in enumerate(entries):
+                metadata = by_key_id.get(str(entry.get("key_id")))
+                if metadata is None and index < len(metadata_items):
+                    metadata = metadata_items[index]
+                if metadata:
+                    entry.update(metadata)
+            if not entries:
+                entries = metadata_items
+
+        normalized: list[dict[str, Any]] = []
+        for index, entry in enumerate(entries):
+            secret = self._clean_secret(entry.get("secret", entry.get("api_key", "")))
+            if not secret:
+                continue
+            normalized.append({
+                "secret": secret,
+                "key_id": self._clean_secret(entry.get("key_id")) or f"google-key-{index + 1}",
+                "project_id": entry.get("project_id"),
+                "quota_scope": entry.get("quota_scope"),
+                "model": entry.get("model"),
+            })
+        # New behavior is deliberately single-key.  Keep legacy metadata
+        # migration deterministic by retaining only the first usable entry.
+        normalized = normalized[:1]
+        self._credential_specs = tuple(normalized)
+        self._credential_metadata = tuple(
+            {key: value for key, value in item.items() if key != "secret"}
+            for item in normalized
+        )
+        self.google_api_keys = tuple(item["secret"] for item in normalized)
+        self.google_api_key = self.google_api_keys[0] if self.google_api_keys else ""
+        if self._owns_credential_pool:
+            credentials = []
+            models = tuple(self.supported_models) or (self.gemma_model,)
+            for item in normalized:
+                item_models = (item["model"],) if item.get("model") else models
+                for model in item_models:
+                    credentials.append({
+                        "provider": "google",
+                        "key_id": item["key_id"],
+                        "secret": item["secret"],
+                        "model": model,
+                        "project_id": item.get("project_id"),
+                        "quota_scope": item.get("quota_scope"),
+                    })
+            self._credential_pool = RuntimeCredentialPool(credentials)
+
+    def _acquire_credential(self, model_name: str):
+        pool = self._credential_pool
+        if pool is None:
+            raise CredentialUnavailable("no matching runtime credential")
+        return pool.acquire("google", model_name, wait=False)
+
+    def _credential_retry_after(self, model_name: str) -> float | None:
+        pool = self._credential_pool
+        retry_after = getattr(pool, "retry_after", None)
+        if not callable(retry_after):
+            return None
+        try:
+            value = retry_after("google", model_name)
+            return max(0.0, min(3600.0, float(value))) if value is not None else None
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    def _candidate_models(self, preferred_model: str) -> tuple[str, ...]:
+        preferred = self.normalize_gemma_model(preferred_model)
+        # Online Gemma rotation is specifically between the two Gemma 4
+        # variants.  Other legacy/optional remote models remain single-model
+        # requests and are never silently substituted.
+        rotation_models = tuple(
+            model for model in ("gemma-4-26b-a4b-it", "gemma-4-31b-it")
+            if model in self.supported_models
+        )
+        if preferred in rotation_models:
+            return tuple(dict.fromkeys((preferred, *rotation_models)))
+        return (preferred,)
+
+    @staticmethod
+    def _safe_model_switch_error(exc: BaseException) -> bool:
+        if not isinstance(exc, error.HTTPError):
+            return False
+        # 429 is quota/rate exhaustion; 404/503 are explicit model availability
+        # failures.  Other statuses may represent auth, malformed requests, or
+        # provider-side uncertainty and must not replay against another model.
+        return getattr(exc, "code", None) in {404, 429, 503}
+
+    def _bounded_rate_limit_error(self, model_names: Sequence[str]) -> GemmaRateLimitError:
+        waits = [
+            wait
+            for model_name in model_names
+            if (wait := self._credential_retry_after(model_name)) is not None
+        ]
+        retry_after = min(waits) if waits else None
+        return GemmaRateLimitError(retry_after=retry_after)
+
+    @staticmethod
+    def _request_result(result: Any, requested_model: str) -> tuple[dict[str, Any], str]:
+        """Accept legacy injectable request doubles that return payload only."""
+        if isinstance(result, tuple) and len(result) == 2:
+            return result[0], str(result[1])
+        return result, requested_model
 
     def normalize_gemma_model(self, model_name: str | None) -> str:
         requested = (model_name or "").strip()
@@ -438,21 +697,28 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         spec = get_model_spec(model_name)
         return spec.timeout_seconds if spec is not None else 30
 
-    def _should_retry_request(self, exc: Exception) -> bool:
-        if isinstance(exc, error.HTTPError):
-            return exc.code in {429, 500, 503, 504}
-        return isinstance(exc, (TimeoutError, error.URLError))
+    @staticmethod
+    def _read_bounded_response(response: Any) -> bytes:
+        """Read at most the bounded remote response size."""
+        try:
+            raw_body = response.read(GEMMA_MAX_RESPONSE_BYTES + 1)
+        except TypeError:
+            # Small test doubles and a few compatible response wrappers expose
+            # read() without the optional size argument; cap after reading.
+            raw_body = response.read()
+        if not isinstance(raw_body, (bytes, bytearray)):
+            raise ValueError("invalid_gemma_response")
+        if len(raw_body) > GEMMA_MAX_RESPONSE_BYTES:
+            raise ValueError("gemma_response_too_large")
+        return bytes(raw_body)
 
     def _resolve_model(self) -> str:
         model = self.normalize_gemma_model(self.gemma_model)
         if self._can_call(model):
             return model
-        if self.auto_switch_enabled:
-            for candidate in self.supported_models:
-                if candidate == model:
-                    continue
-                if self._can_call(candidate):
-                    return candidate
+        for candidate in self._candidate_models(model):
+            if candidate != model and self._can_call(candidate):
+                return candidate
         return model
 
     def _generation_config(
@@ -466,6 +732,10 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         config: dict[str, Any] = {
             "maxOutputTokens": max_output_tokens,
         }
+        # Gemma 4 uses thinkingLevel. Other remote models have different
+        # thinkingConfig schemas (or do not accept this field at all).
+        if model_name in GEMMA_THINKING_LEVEL_MODELS:
+            config["thinkingConfig"] = {"thinkingLevel": "minimal"}
         if response_mime_type:
             config["responseMimeType"] = response_mime_type
         spec = get_model_spec(model_name)
@@ -476,45 +746,76 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                 "topK": 32,
             })
         return config
-    def _request(self, model_name: str, prompt: str, *, image_parts: Sequence[dict[str, Any]] | None = None, max_output_tokens: int = 1024, temperature: float = 0.2, response_mime_type: str = "text/plain") -> dict[str, Any]:
-        req_body = {
-            "contents": [
-                {
-                    "parts": ([*image_parts] if image_parts else []) + [{"text": prompt}],
-                }
-            ],
-            "generationConfig": self._generation_config(
-                model_name,
-                max_output_tokens=max_output_tokens,
-                temperature=temperature,
-                response_mime_type=response_mime_type,
-            ),
-        }
-        req = request.Request(
-            GOOGLE_API_ENDPOINT.format(model=model_name),
-            data=json.dumps(req_body).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.google_api_key,
-            },
-            method="POST",
-        )
-        timeout_seconds = self._request_timeout_seconds(model_name)
-        last_exc: Exception | None = None
-        for attempt in range(3):
+    def _request(
+        self,
+        model_name: str,
+        prompt: str,
+        *,
+        image_parts: Sequence[dict[str, Any]] | None = None,
+        max_output_tokens: int = 1024,
+        temperature: float = 0.2,
+        response_mime_type: str = "text/plain",
+        _return_model: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], str]:
+        candidates = self._candidate_models(model_name)
+        attempted: set[str] = set()
+        last_safe_error: BaseException | None = None
+        while True:
+            candidate = next((item for item in candidates if item not in attempted), None)
+            if candidate is None:
+                if last_safe_error is not None and len(candidates) == 1:
+                    raise last_safe_error
+                raise self._bounded_rate_limit_error(candidates) from last_safe_error
+            attempted.add(candidate)
             try:
-                self._record_call(model_name)
-                with request.urlopen(req, timeout=timeout_seconds) as response:
-                    return json.loads(response.read().decode("utf-8"))
-            except Exception as exc:
-                last_exc = exc
-                if attempt < 2 and self._should_retry_request(exc):
-                    time.sleep(0.8 * (attempt + 1))
-                    continue
+                lease = self._acquire_credential(candidate)
+            except CredentialUnavailable as exc:
+                last_safe_error = exc
+                continue
+            req_body = {
+                "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
+                "generationConfig": self._generation_config(
+                    candidate,
+                    max_output_tokens=max_output_tokens,
+                    temperature=temperature,
+                    response_mime_type=response_mime_type,
+                ),
+            }
+            try:
+                req = request.Request(
+                    GOOGLE_API_ENDPOINT.format(model=candidate),
+                    data=json.dumps(req_body).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "x-goog-api-key": lease.secret},
+                    method="POST",
+                )
+                self._record_call(candidate)
+                with request.urlopen(req, timeout=self._request_timeout_seconds(candidate)) as response:
+                    raw_body = self._read_bounded_response(response)
+                payload = json.loads(raw_body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                lease.release(outcome="provider_error")
+                raise ValueError("invalid_gemma_response") from None
+            except error.HTTPError as exc:
+                headers = getattr(exc, "headers", None)
+                retry_after = headers.get("Retry-After") if headers is not None else None
+                lease.release(status_code=getattr(exc, "code", None), retry_after=retry_after, error=exc)
+                if self._safe_model_switch_error(exc):
+                    last_safe_error = exc
+                    if any(item not in attempted for item in candidates):
+                        continue
+                    if len(candidates) > 1:
+                        raise self._bounded_rate_limit_error(candidates) from exc
                 raise
-        if last_exc is not None:
-            raise last_exc
-        raise RuntimeError("request_failed")
+            except (TimeoutError, error.URLError) as exc:
+                lease.release(error=exc, ambiguous=True)
+                raise
+            except Exception as exc:
+                lease.release(outcome="provider_error", error=exc)
+                if isinstance(exc, ValueError) and str(exc) in {"invalid_gemma_response", "gemma_response_too_large"}:
+                    raise
+                raise ValueError("gemma_response_error") from None
+            lease.release(outcome="success")
+            return (payload, candidate) if _return_model else payload
 
     def generate_structured_text(
         self,
@@ -527,11 +828,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         normalized_prompt = str(prompt or "").strip()
         if not normalized_prompt:
             raise ValueError("knowledge_prompt_empty")
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
         model_name = self.normalize_gemma_model(self.gemma_model)
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
         payload = self._request(
             model_name,
             normalized_prompt,
@@ -546,36 +847,77 @@ class GemmaTranslationProvider(KnowledgePromptContext):
 
     def _stream_request(self, model_name: str, prompt: str, *, image_parts=None, max_output_tokens: int = 1024, temperature: float = 0.2):
         """Generator: 以 SSE 串流方式逐段 yield 文字 chunk。"""
-        req_body = {
-            "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
-            "generationConfig": self._generation_config(
-                model_name,
-                max_output_tokens=max_output_tokens,
-                temperature=temperature,
-            ),
-        }
-        req = request.Request(
-            GOOGLE_STREAM_ENDPOINT.format(model=model_name),
-            data=json.dumps(req_body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "x-goog-api-key": self.google_api_key},
-            method="POST",
-        )
-        self._record_call(model_name)
-        with request.urlopen(req, timeout=30) as response:
-            for raw_line in response:
-                line = raw_line.decode("utf-8").strip()
-                if not line.startswith("data: "):
-                    continue
-                data_str = line[6:]
-                try:
-                    chunk_data = json.loads(data_str)
-                    parts = chunk_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
-                    for part in parts:
-                        text = part.get("text", "")
-                        if text:
-                            yield text
-                except (json.JSONDecodeError, IndexError, KeyError):
-                    pass
+        candidates = self._candidate_models(model_name)
+        attempted: set[str] = set()
+        last_safe_error: BaseException | None = None
+        while True:
+            candidate = next((item for item in candidates if item not in attempted), None)
+            if candidate is None:
+                if last_safe_error is not None and len(candidates) == 1:
+                    raise last_safe_error
+                raise self._bounded_rate_limit_error(candidates) from last_safe_error
+            attempted.add(candidate)
+            try:
+                lease = self._acquire_credential(candidate)
+            except CredentialUnavailable as exc:
+                last_safe_error = exc
+                continue
+            emitted = False
+            req_body = {
+                "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
+                "generationConfig": self._generation_config(
+                    candidate,
+                    max_output_tokens=max_output_tokens,
+                    temperature=temperature,
+                ),
+            }
+            try:
+                req = request.Request(
+                    GOOGLE_STREAM_ENDPOINT.format(model=candidate),
+                    data=json.dumps(req_body).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "x-goog-api-key": lease.secret},
+                    method="POST",
+                )
+                self._record_call(candidate)
+                with request.urlopen(req, timeout=self._request_timeout_seconds(candidate)) as response:
+                    for raw_line in response:
+                        line = raw_line.decode("utf-8").strip()
+                        if not line.startswith("data: "):
+                            continue
+                        try:
+                            chunk_data = json.loads(line[6:])
+                            parts = chunk_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
+                            for part in parts:
+                                text = part.get("text", "")
+                                if text:
+                                    emitted = True
+                                    yield text
+                        except (json.JSONDecodeError, IndexError, KeyError):
+                            pass
+                lease.release(outcome="success")
+                return
+            except GeneratorExit:
+                lease.release(ambiguous=True)
+                raise
+            except error.HTTPError as exc:
+                headers = getattr(exc, "headers", None)
+                retry_after = headers.get("Retry-After") if headers is not None else None
+                lease.release(status_code=getattr(exc, "code", None), retry_after=retry_after, error=exc)
+                # A stream that emitted anything is already externally visible;
+                # replaying it with another model would duplicate output.
+                if not emitted and self._safe_model_switch_error(exc):
+                    last_safe_error = exc
+                    if any(item not in attempted for item in candidates):
+                        continue
+                    if len(candidates) > 1:
+                        raise self._bounded_rate_limit_error(candidates) from exc
+                raise
+            except (TimeoutError, error.URLError) as exc:
+                lease.release(error=exc, ambiguous=True)
+                raise
+            except Exception as exc:
+                lease.release(error=exc, ambiguous=emitted)
+                raise
 
     def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
         """Generator: 串流翻譯，每次 yield 一個文字 chunk（打字機效果用）。"""
@@ -583,11 +925,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         if not normalized:
             return
         resolved_target = target_lang or self.target_lang
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
         model_name = self._resolve_model()
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
         # 快取命中時直接 yield 完整結果
         cache_key = ("gemma", model_name, normalized, resolved_target, self.gemma_prompt, self.knowledge_revision_token)
         cached = self._get_cached(cache_key)
@@ -614,11 +956,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         if not normalized:
             return TranslationResult(text="", provider=self.name, model=self.gemma_model)
         resolved_target = target_lang or self.target_lang
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
         model_name = self._resolve_model()
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
         cache_key = (
             "gemma",
             model_name,
@@ -630,12 +972,14 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         cached = self._get_cached(cache_key)
         if cached is not None:
             return TranslationResult(text=str(cached), provider=self.name, model=model_name, from_cache=True)
-        payload = self._request(
+        request_result = self._request(
             model_name,
             self._build_prompt(normalized, resolved_target),
             max_output_tokens=1024,
             temperature=0.2,
+            _return_model=True,
         )
+        payload, model_name = self._request_result(request_result, model_name)
         translated = clean_model_output_multiline(extract_gemma_text(payload))
         if not translated:
             raise ValueError("empty_gemma_response")
@@ -670,12 +1014,12 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             return []
         if not image_parts:
             raise ValueError("missing_image_context")
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
         resolved_target = target_lang or self.target_lang
         model_name = self._resolve_model()
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
         normalized_texts = tuple(clean_model_output(text).strip() if text else "" for text in texts)
         image_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
         cache_key = (
@@ -695,13 +1039,15 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                 for item in translated_items
             ]
 
-        payload = self._request(
+        request_result = self._request(
             model_name,
             self._build_multimodal_prompt(texts, resolved_target),
             image_parts=image_parts,
             max_output_tokens=2048,
             temperature=0.1,
+            _return_model=True,
         )
+        payload, model_name = self._request_result(request_result, model_name)
         raw_text = extract_gemma_text(payload)
         translated = parse_segmented_translation_json(raw_text, len(texts))
         if not translated:
@@ -724,7 +1070,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             raise ValueError("missing_image_context")
         if not hints:
             raise ValueError("missing_region_hints")
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
 
         resolved_target = target_lang or self.target_lang
@@ -744,21 +1090,23 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         allowed_ids = [hint["id"] for hint in hints]
         model_name = self._resolve_model()
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
         model_spec = get_model_spec(model_name)
         response_mime_type = (
             "application/json"
             if model_spec is None or model_spec.structured_json
             else "text/plain"
         )
-        payload = self._request(
+        request_result = self._request(
             model_name,
             prompt,
             image_parts=image_parts,
             max_output_tokens=2048,
             temperature=0.1,
             response_mime_type=response_mime_type,
+            _return_model=True,
         )
+        payload, model_name = self._request_result(request_result, model_name)
         results = parse_region_vision_response(
             extract_gemma_text(payload),
             allowed_ids=allowed_ids,
@@ -777,12 +1125,12 @@ class GemmaTranslationProvider(KnowledgePromptContext):
     ) -> TranslationResult:
         if not image_parts:
             raise ValueError("missing_image_context")
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
         resolved_target = target_lang or self.target_lang
         model_name = self._resolve_model()
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
 
         cache_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
         cache_key = (
@@ -814,6 +1162,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         last_raw_text = ""
         translated = ""
         payload = None
+        ambiguous_failure = False
         for attempt_index in range(3):
             retry_note = None
             if attempt_index >= 1 and last_raw_text:
@@ -829,14 +1178,16 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             evidence = self._knowledge_evidence_for_texts((source_text_hint or "",), max_chars=1_800)
             prompt = self._prepend_knowledge_evidence(prompt, evidence)
             try:
-                payload = self._request(
+                request_result = self._request(
                     model_name, prompt, image_parts=image_parts, max_output_tokens=2048,
                     temperature=0.0 if attempt_index else 0.1,
                     # gemma-3-27b-it does not support JSON mode for screenshot requests.
                     # Keep the prompt JSON-shaped, but let the model answer in plain text so
                     # the existing cleaner can extract JSON or fallback text safely.
                     response_mime_type="text/plain",
+                    _return_model=True,
                 )
+                payload, model_name = self._request_result(request_result, model_name)
             except error.HTTPError as exc:
                 body = ""
                 try:
@@ -847,16 +1198,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                     return self.translate(source_text_hint, target_lang=resolved_target)
                 if exc.code == 404 and source_text_hint:
                     break
-                if exc.code in {429, 500, 503, 504} and attempt_index < 2:
-                    time.sleep(0.8 * (attempt_index + 1))
-                    continue
                 raise
             except (TimeoutError, error.URLError):
+                ambiguous_failure = True
                 if source_text_hint:
                     break
-                if attempt_index < 2:
-                    time.sleep(0.8 * (attempt_index + 1))
-                    continue
                 raise
             last_raw_text = extract_gemma_text(payload)
             translated = clean_screenshot_translation_output(last_raw_text, target_lang=resolved_target)
@@ -871,19 +1217,22 @@ class GemmaTranslationProvider(KnowledgePromptContext):
             requested_provider = None
             fallback_reason = None
             if source_text_hint:
-                try:
-                    translated_result = self.translate(source_text_hint, target_lang=resolved_target)
-                    translated = translated_result.text if translated_result else ""
-                    actual_provider = translated_result.provider if translated_result else self.name
-                    requested_provider = (
-                        (translated_result.requested_provider or self.name)
-                        if translated_result else self.name
-                    )
-                    fallback_reason = (
-                        (translated_result.fallback_reason or "screenshot_fallback")
-                        if translated_result else "screenshot_fallback"
-                    )
-                except Exception:
+                if not ambiguous_failure:
+                    try:
+                        translated_result = self.translate(source_text_hint, target_lang=resolved_target)
+                        translated = translated_result.text if translated_result else ""
+                        actual_provider = translated_result.provider if translated_result else self.name
+                        requested_provider = (
+                            (translated_result.requested_provider or self.name)
+                            if translated_result else self.name
+                        )
+                        fallback_reason = (
+                            (translated_result.fallback_reason or "screenshot_fallback")
+                            if translated_result else "screenshot_fallback"
+                        )
+                    except Exception:
+                        pass
+                if not translated:
                     try:
                         translated = GoogleTranslator(source=detect_source_language(source_text_hint), target=resolved_target).translate(clean_model_output(source_text_hint)).strip()
                         actual_provider = "google"
@@ -929,11 +1278,11 @@ class GemmaTranslationProvider(KnowledgePromptContext):
     ) -> TranslationResult:
         if not image_parts:
             raise ValueError("missing_image_context")
-        if not self.google_api_key:
+        if not self.available():
             raise ValueError("missing_google_api_key")
         model_name = self._resolve_model()
         if not self._can_call(model_name):
-            raise ValueError("gemma_rate_limited")
+            raise self._bounded_rate_limit_error(self._candidate_models(model_name))
 
         cache_seed = json.dumps(image_parts, sort_keys=True, ensure_ascii=False)
         hint_seed = clean_model_output_multiline(source_text_hint or "").strip()
@@ -959,14 +1308,16 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         if hint_seed:
             prompt += f"\n\nOCR hint:\n{hint_seed[:1200]}"
 
-        payload = self._request(
+        request_result = self._request(
             model_name,
             prompt,
             image_parts=image_parts,
             max_output_tokens=2048,
             temperature=0.0,
             response_mime_type="text/plain",
+            _return_model=True,
         )
+        payload, model_name = self._request_result(request_result, model_name)
         raw_text = extract_gemma_text(payload)
         transcription = clean_model_output_multiline(raw_text).strip()
         if not transcription:

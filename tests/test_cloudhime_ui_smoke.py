@@ -119,6 +119,82 @@ def test_controller_settings_payload_includes_local_multimodal_config():
     assert payload["local_multimodal_timeout_seconds"] == 45
 
 
+def test_controller_provider_metadata_payload_excludes_all_secret_slots():
+    controller = Controller.__new__(Controller)
+    controller.worker = SimpleNamespace(
+        gemma_model="gemma-3-4b-it-local",
+        use_gemma_translation=False,
+        auto_threshold_enabled=False,
+        gemma_auto_switch_enabled=False,
+        google_api_key="primary-secret",
+        ocr_backend_chain=["windows"],
+        binary_threshold=100,
+    )
+    controller.gemma_prompt = "prompt"
+    controller.screenshot_gemma_prompt = "screenshot"
+    controller.auto_threshold_refresh_minutes = 10
+    controller.google_ocr_enabled = False
+    controller.random_scan_center_seconds = 10
+    controller.random_scan_jitter_percent = 20
+    controller.region_pass_through = False
+    controller.region_render_mode = "bubble"
+    controller.region_relief_offset_x = 0
+    controller.region_relief_offset_y = 0
+    controller.region_relief_font_pt = 18
+    controller.region_frame_opacity = 40
+    controller.scan_mode = "fullscreen"
+    controller.selected_region = None
+    controller.is_dark_mode = False
+    controller.theme_mode = "light"
+    controller.ui_language = "zh-TW"
+    controller.online_gemma_enabled = True
+    controller.google_api_key = "primary-secret"
+    controller.openai_enabled = True
+    controller.openai_reasoning_effort = "none"
+    controller.openai_timeout_seconds = 30
+    controller.provider_chain = ["gemma", "openai"]
+
+    payload = Controller.get_settings_payload(controller)
+
+    assert payload["schema_version"] == 7
+    assert "google_api_key_slots" not in payload
+    assert "primary-secret" not in json.dumps(payload)
+    assert "openai_api_key" not in payload
+
+
+def test_controller_applies_single_google_credential():
+    calls = []
+    controller = Controller.__new__(Controller)
+    controller.worker = SimpleNamespace(
+        set_google_api_key=lambda value: calls.append(value)
+    )
+    controller.google_api_key = "single-secret"
+
+    Controller._apply_google_credentials_to_worker(controller)
+
+    assert calls == ["single-secret"]
+
+
+def test_settings_revamp_keeps_legacy_three_column_shell(qtbot, monkeypatch):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    assert settings.minimumWidth() == 1400
+    assert settings.minimumHeight() == 780
+    assert not hasattr(settings, "settings_scroll_area")
+    assert not hasattr(settings, "settings_nav_buttons")
+    assert settings.card_translate.parent() is settings.translation_panel
+    controller.close_app()
+
+
 def test_controller_local_gemma_tuning_schedules_save():
     controller = Controller.__new__(Controller)
     calls = []

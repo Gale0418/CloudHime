@@ -10,6 +10,10 @@ class ThemeDefinition:
     label: str
     is_dark: bool
     colors: Mapping[str, str]
+    # Windows own-world display face for headings/brand.  Qt will fall through
+    # to the CJK family for glyphs that Bahnschrift does not contain.
+    display_font: str = "Bahnschrift SemiBold"
+    display_cjk_font: str = "Microsoft JhengHei UI"
 
     def __getitem__(self, item: str) -> str:
         return self.colors[item]
@@ -101,6 +105,60 @@ class ThemeDefinition:
             f" QPushButton:disabled {{ background-color: {self.control_disabled_bg}; color: {self.control_disabled_fg}; }}"
         )
 
+    def raised_button_qss(
+        self,
+        variant: str = "secondary",
+        radius: int = 8,
+        text_align: str = "center",
+    ) -> str:
+        """Theme-aware raised control with restrained, native Qt relief."""
+        variant = str(variant or "secondary").strip().lower()
+        palette = {
+            "primary": (
+                self.accent,
+                self.get("button_primary_top", self.accent),
+                self.get("button_primary_edge", self.control_checked),
+                self.checked_fg,
+                self.control_checked,
+            ),
+            "segmented": (
+                self.control_bg,
+                self.get("button_segmented_top", self.accent),
+                self.get("button_segmented_edge", self.control_checked),
+                self.control_fg,
+                self.control_hover,
+            ),
+            "secondary": (
+                self.control_bg,
+                self.get("button_secondary_top", self.border),
+                self.get("button_secondary_edge", self.border),
+                self.control_fg,
+                self.control_hover,
+            ),
+        }
+        background, highlight, lower_edge, foreground, hover_background = palette.get(
+            variant, palette["secondary"]
+        )
+        return (
+            f"QPushButton {{ background-color: {background}; color: {foreground}; "
+            f"border: 1px solid {lower_edge}; border-top-color: {highlight}; "
+            f"border-bottom: 2px solid {lower_edge}; border-radius: {int(radius)}px; "
+            f"padding: 6px 12px 4px; min-height: 32px; font-weight: 700; "
+            f"text-align: {text_align}; }}"
+            f" QPushButton:hover {{ background-color: {hover_background}; "
+            f"border-top-color: {highlight}; border-bottom-color: {self.accent}; }}"
+            f" QPushButton:pressed {{ background-color: {hover_background}; "
+            f"border-top: 2px solid {lower_edge}; border-bottom: 1px solid {highlight}; "
+            "padding-top: 7px; padding-bottom: 3px; }}"
+            f" QPushButton:focus {{ background-color: {background}; border: 2px solid {self.focus}; "
+            "padding: 5px 11px 3px; }}"
+            f" QPushButton:checked {{ background-color: {self.control_checked}; color: {self.checked_fg}; "
+            f"border-top-color: {highlight}; border-bottom-color: {lower_edge}; }}"
+            f" QPushButton:disabled {{ background-color: {self.control_disabled_bg}; "
+            f"color: {self.control_disabled_fg}; border: 1px solid {self.control_disabled_bg}; "
+            f"border-bottom: 1px solid {self.control_disabled_bg}; padding: 6px 12px 4px; }}"
+        )
+
     def combo_qss(self, radius: int = 8) -> str:
         return (
             f"QComboBox {{ background-color: {self.input_bg}; color: {self.text}; "
@@ -126,6 +184,31 @@ class ThemeDefinition:
 
 
 def _theme_colors(**kwargs) -> Dict[str, str]:
+    # Compatibility tokens used by the provider status panel.  Their defaults
+    # deliberately follow the legacy palette instead of introducing a second
+    # visual language for settings.
+    kwargs.setdefault("shell_text", kwargs.get("text", ""))
+    kwargs.setdefault("checked_fg", "#FFFFFF")
+    kwargs.setdefault("focus", kwargs.get("accent", ""))
+    kwargs.setdefault("operational", kwargs.get("charge_normal_fill", kwargs.get("accent", "")))
+    kwargs.setdefault("operational_soft", kwargs.get("charge_normal_bg", kwargs.get("accent_soft", "")))
+    kwargs.setdefault("readiness", kwargs["operational"])
+    kwargs.setdefault("readiness_soft", kwargs["operational_soft"])
+    kwargs.setdefault("loading", kwargs.get("charge_warning_fill", kwargs.get("accent", "")))
+    kwargs.setdefault("loading_soft", kwargs.get("charge_warning_bg", kwargs.get("accent_soft", "")))
+    kwargs.setdefault("quota", kwargs.get("charge_warning_fill", kwargs.get("accent", "")))
+    kwargs.setdefault("quota_soft", kwargs.get("charge_warning_bg", kwargs.get("accent_soft", "")))
+    kwargs.setdefault("error", kwargs.get("charge_danger_fill", kwargs.get("accent", "")))
+    kwargs.setdefault("error_soft", kwargs.get("charge_danger_bg", kwargs.get("accent_soft", "")))
+    for name in ("button_primary_top", "button_primary_edge", "button_secondary_top", "button_secondary_edge", "button_segmented_top", "button_segmented_edge"):
+        kwargs.setdefault(name, kwargs.get("border", kwargs.get("accent", "")))
+    kwargs.setdefault("provider_surface", kwargs.get("input_bg", ""))
+    kwargs.setdefault("provider_border", kwargs.get("border", ""))
+    kwargs.setdefault("provider_top_highlight", kwargs.get("border", ""))
+    kwargs.setdefault("provider_bottom_edge", kwargs.get("border", ""))
+    kwargs.setdefault("nested_model_surface", kwargs.get("input_bg", ""))
+    kwargs.setdefault("nested_model_border", kwargs.get("border", ""))
+    kwargs.setdefault("provider_metadata", kwargs.get("subtext", ""))
     return dict(kwargs)
 
 
@@ -151,12 +234,38 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             control_checked="#007AFF",
             control_disabled_fg="#8E8E93",
             control_disabled_bg="rgba(118, 118, 128, 10)",
+            checked_fg="#FFFFFF",
+            focus="#007AFF",
+            operational="#4FC3F7",
+            operational_soft="#E8F8FB",
+            quota="#F4C542",
+            quota_soft="#FFF4D6",
+            error="#E53935",
+            error_soft="#FDE8E8",
+            readiness="#007AFF",
+            readiness_soft="rgba(0, 122, 255, 30)",
+            loading="#F4C542",
+            loading_soft="#FFF4D6",
             danger_bg="#FF3B30",
             danger_hover="#FF453A",
             danger_fg="#FFFFFF",
             danger_checked="#D70015",
             header_bg="rgba(255, 255, 255, 120)",
             header_border="rgba(0, 0, 0, 10)",
+            settings_shell_bg="rgba(242, 242, 247, 235)",
+            settings_top_bg="#F2F2F7",
+            settings_nav_bg="rgba(255, 255, 255, 200)",
+            settings_card_bg="rgba(255, 255, 255, 240)",
+            settings_card_highlight="rgba(255, 255, 255, 255)",
+            settings_card_edge="rgba(0, 0, 0, 15)",
+            provider_surface="rgba(255, 255, 255, 220)",
+            provider_border="rgba(0, 0, 0, 26)",
+            provider_top_highlight="rgba(255, 255, 255, 245)",
+            provider_bottom_edge="rgba(0, 0, 0, 34)",
+            nested_model_surface="rgba(248, 248, 250, 220)",
+            nested_model_border="rgba(0, 0, 0, 18)",
+            provider_metadata="#6B6B72",
+            settings_fallback_bg="rgba(242, 242, 247, 235)",
             status_bg="rgba(255, 255, 255, 180)",
             status_border="rgba(0, 0, 0, 10)",
             status_text="#1C1C1E",
@@ -192,6 +301,7 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
         is_dark=True,
         colors=_theme_colors(
             shell_bg="rgba(28, 28, 30, 242)",
+            shell_text="#FFFFFF",
             shell_border="rgba(255, 255, 255, 15)",
             panel_bg="rgba(44, 44, 46, 230)",
             panel_border="rgba(255, 255, 255, 10)",
@@ -207,12 +317,44 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             control_checked="#0A84FF",
             control_disabled_fg="rgba(235, 235, 245, 100)",
             control_disabled_bg="rgba(118, 118, 128, 30)",
+            checked_fg="#FFFFFF",
+            button_primary_top="#7DE1EC",
+            button_primary_edge="#0E6677",
+            button_secondary_top="#2B5A70",
+            button_secondary_edge="#0E2B3B",
+            button_segmented_top="#7DE1EC",
+            button_segmented_edge="#0E6677",
+            focus="#7DE1EC",
+            operational="#4FC3F7",
+            operational_soft="#E8F8FB",
+            quota="#F4C542",
+            quota_soft="#FFF4D6",
+            error="#E53935",
+            error_soft="#FDE8E8",
+            readiness="#43C5D7",
+            readiness_soft="rgba(67, 197, 215, 34)",
+            loading="#F4C542",
+            loading_soft="#FFF4D6",
             danger_bg="#FF453A",
             danger_hover="#FF5E55",
             danger_fg="#FFFFFF",
             danger_checked="#D70015",
             header_bg="rgba(44, 44, 46, 120)",
             header_border="rgba(255, 255, 255, 15)",
+            settings_shell_bg="rgba(28, 28, 30, 242)",
+            settings_top_bg="#1C1C1E",
+            settings_nav_bg="rgba(118, 118, 128, 60)",
+            settings_card_bg="rgba(44, 44, 46, 230)",
+            settings_card_highlight="rgba(255, 255, 255, 255)",
+            settings_card_edge="rgba(255, 255, 255, 20)",
+            provider_surface="rgba(44, 44, 46, 210)",
+            provider_border="rgba(255, 255, 255, 34)",
+            provider_top_highlight="rgba(255, 255, 255, 58)",
+            provider_bottom_edge="rgba(0, 0, 0, 90)",
+            nested_model_surface="rgba(58, 58, 60, 160)",
+            nested_model_border="rgba(255, 255, 255, 24)",
+            provider_metadata="rgba(235, 235, 245, 185)",
+            settings_fallback_bg="rgba(28, 28, 30, 242)",
             status_bg="rgba(44, 44, 46, 180)",
             status_border="rgba(255, 255, 255, 15)",
             status_text="rgba(255, 255, 255, 220)",
@@ -248,6 +390,7 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
         is_dark=True,
         colors=_theme_colors(
             shell_bg="rgba(18, 18, 18, 248)",
+            shell_text="#FFFFFF",
             shell_border="#FFFFFF",
             panel_bg="rgba(32, 32, 32, 240)",
             panel_border="#FFFFFF",
@@ -263,12 +406,45 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             control_checked="#FFD400",
             control_disabled_fg="#B0B0B0",
             control_disabled_bg="#3A3A3A",
-            danger_bg="#C84A4A",
-            danger_hover="#D66A6A",
+            checked_fg="#FFFFFF",
+            button_primary_top="#FFFFFF",
+            button_primary_edge="#003B46",
+            button_secondary_top="#FFFFFF",
+            button_secondary_edge="#000000",
+            button_segmented_top="#FFFFFF",
+            button_segmented_edge="#003B46",
+            focus="#FFFFFF",
+            operational="#FFD400",
+            operational_soft="rgba(255, 212, 0, 56)",
+            quota="#FFD400",
+            quota_soft="#241B00",
+            error="#FF4D4D",
+            error_soft="#2B0008",
+            readiness="#FFD400",
+            readiness_soft="rgba(255, 212, 0, 45)",
+            loading="#FFD400",
+            loading_soft="#241B00",
+            danger_bg="#C74F4A",
+            danger_hover="#D9655F",
             danger_fg="#FFFFFF",
             danger_checked="#9E3434",
             header_bg="rgba(255, 212, 0, 0.16)",
             header_border="#FFFFFF",
+            # High contrast deliberately stays fully opaque and has no image.
+            settings_shell_bg="rgba(18, 18, 18, 248)",
+            settings_top_bg="#121212",
+            settings_nav_bg="#000000",
+            settings_card_bg="rgba(32, 32, 32, 240)",
+            settings_card_highlight="#FFFFFF",
+            settings_card_edge="#000000",
+            provider_surface="#202020",
+            provider_border="#FFFFFF",
+            provider_top_highlight="#FFFFFF",
+            provider_bottom_edge="#000000",
+            nested_model_surface="#000000",
+            nested_model_border="#FFFFFF",
+            provider_metadata="#E5E5E5",
+            settings_fallback_bg="rgba(18, 18, 18, 248)",
             status_bg="#000000",
             status_border="#FFFFFF",
             status_text="#FFFFFF",
@@ -420,12 +596,16 @@ def build_window_styles(
     base_qss.extend(
         [
             (
-                "QLineEdit, QComboBox, QSpinBox { "
+                "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit { "
                 f"background-color: {c['input_bg']}; color: {c['text']}; "
-                f"border: 1px solid {c['border']}; border-radius: 10px; padding: 7px 10px; "
+                f"border: 1px solid {c['border']}; border-radius: 10px; padding: 5px 10px; min-height: 32px; "
                 f"selection-background-color: {c['accent']}; }}"
             ),
-            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 2px solid {c['accent']}; }}",
+            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QPlainTextEdit:focus {{ border: 2px solid {c['focus']}; }}",
+            (
+                f"QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QPlainTextEdit:disabled {{ "
+                f"background-color: {c['control_disabled_bg']}; color: {c['control_disabled_fg']}; border-color: {c['control_disabled_bg']}; }}"
+            ),
             "QComboBox::drop-down { border: none; width: 22px; }",
             "QComboBox::down-arrow { image: none; }",
             "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }",
@@ -449,11 +629,17 @@ def build_window_styles(
             ),
             (
                 "QPushButton { "
-                f"padding: 7px 12px; border-radius: {control_radius}px; border: 1px solid {c['border']}; "
+                f"padding: 5px 12px; min-height: 32px; border-radius: {control_radius}px; border: 1px solid {c['border']}; "
                 f"background: {c['panel_bg']}; color: {c['text']}; }}"
             ),
             f"QPushButton:hover {{ border-color: {c['accent']}; }}",
+            f"QPushButton:focus {{ border: 2px solid {c['focus']}; }}",
             f"QPushButton:checked {{ background: {c['accent_soft']}; border-color: {c['accent']}; }}",
+            f"QPushButton:disabled {{ background: {c['control_disabled_bg']}; color: {c['control_disabled_fg']}; border-color: {c['control_disabled_bg']}; }}",
+            f"QWidget[status=\"ready\"], QWidget[state=\"ready\"], QWidget[readiness=\"ready\"], QWidget[status=\"readiness\"], QWidget[state=\"readiness\"], QWidget[readiness=\"readiness\"] {{ color: {c['readiness']}; background-color: {c['readiness_soft']}; border: 1px solid {c['readiness']}; border-radius: 6px; }}",
+            f"QWidget[status=\"loading\"], QWidget[state=\"loading\"], QWidget[readiness=\"loading\"] {{ color: {c['loading']}; background-color: {c['loading_soft']}; border: 1px solid {c['loading']}; border-radius: 6px; }}",
+            f"QWidget[status=\"error\"], QWidget[state=\"error\"], QWidget[readiness=\"error\"], QWidget[status=\"failed\"], QWidget[state=\"failed\"], QWidget[readiness=\"failed\"] {{ color: {c['error']}; background-color: {c['error_soft']}; border: 1px solid {c['error']}; border-radius: 6px; }}",
+            f"QWidget[status=\"quota\"], QWidget[state=\"quota\"], QWidget[readiness=\"quota\"], QWidget[status=\"cooldown\"], QWidget[state=\"cooldown\"], QWidget[readiness=\"cooldown\"] {{ color: {c['quota']}; background-color: {c['quota_soft']}; border: 1px solid {c['quota']}; border-radius: 6px; }}",
         ]
     )
     if title_line_height is None:
@@ -463,7 +649,7 @@ def build_window_styles(
         "frame": f"QFrame {{ background-color: {c['shell_bg']}; border: 2px solid {c['shell_border']}; border-radius: {frame_radius}px; }}",
         "header": f"QFrame {{ background-color: {c['header_bg']}; border: 1px solid {c['header_border']}; border-radius: {header_radius}px; }}",
         "subtle_card": f"QFrame {{ background-color: {c['panel_bg']}; border: 1px solid {c['panel_border']}; border-radius: {card_radius}px; }}",
-        "primary_card": f"QFrame {{ background-color: {c['panel_bg']}; border: 1.5px solid {c['accent']}; border-radius: {card_radius}px; }}",
+        "primary_card": f"QFrame {{ background-color: {c['panel_bg']}; border: 1px solid {c['accent']}; border-radius: {card_radius}px; }}",
         "title": f"font-size: {title_size}px; font-weight: 800; color: {c['text']}; background: transparent; border: none;",
         "subtitle": f"font-size: {subtitle_size}px; color: {c['subtext']}; background: transparent; border: none;",
         "label": f"font-size: {label_size}px; font-weight: 700; color: {c['text']};",
@@ -475,6 +661,8 @@ def build_window_styles(
         "button_fg": c["control_fg"],
         "button_hover": c["control_hover"],
         "button_checked": c["control_checked"],
+        "button_focus": c["focus"],
+        "checked_fg": c["checked_fg"],
         "button_disabled_fg": c["control_disabled_fg"],
         "button_disabled_bg": c["control_disabled_bg"],
         "danger_bg": c["danger_bg"],
@@ -490,19 +678,28 @@ def build_window_styles(
         "text": c["text"],
         "subtext": c["subtext"],
         "border": c["border"],
+        "focus": c["focus"],
+        "operational": c["operational"],
+        "quota": c["quota"],
+        "error": c["error"],
+        "readiness": c["readiness"],
+        "loading": c["loading"],
     }
     styles["button_qss"] = (
         f"QPushButton {{ background-color: {styles['button_bg']}; color: {styles['button_fg']}; "
-        f"border-radius: {control_radius}px; padding: 8px; font-weight: bold; border: none; }}"
+        f"border-radius: {control_radius}px; padding: 5px 12px; min-height: 32px; font-weight: bold; border: 1px solid {styles['border']}; }}"
         f" QPushButton:hover {{ background-color: {styles['button_hover']}; }}"
-        f" QPushButton:checked {{ background-color: {styles['button_checked']}; color: white; }}"
-        f" QPushButton:disabled {{ background-color: {styles['button_disabled_bg']}; color: {styles['button_disabled_fg']}; }}"
+        f" QPushButton:focus {{ border: 2px solid {styles['button_focus']}; }}"
+        f" QPushButton:checked {{ background-color: {styles['button_checked']}; color: {styles['checked_fg']}; border-color: {styles['button_checked']}; }}"
+        f" QPushButton:disabled {{ background-color: {styles['button_disabled_bg']}; color: {styles['button_disabled_fg']}; border-color: {styles['button_disabled_bg']}; }}"
     )
     styles["auto_button_qss"] = styles["button_qss"]
     styles["danger_button_qss"] = (
         f"QPushButton {{ background-color: {styles['danger_bg']}; color: {styles['danger_fg']}; "
-        f"border-radius: {control_radius}px; padding: 5px; border: none; }}"
+        f"border-radius: {control_radius}px; padding: 5px 12px; min-height: 32px; border: 1px solid {styles['danger_bg']}; }}"
         f" QPushButton:hover {{ background-color: {styles['danger_hover']}; }}"
+        f" QPushButton:focus {{ border: 2px solid {styles['focus']}; }}"
+        f" QPushButton:disabled {{ background-color: {styles['button_disabled_bg']}; color: {styles['button_disabled_fg']}; border-color: {styles['button_disabled_bg']}; }}"
     )
     styles["theme_button_qss"] = (
         f"QPushButton {{ background-color: transparent; color: {c['accent']}; border: none; font-size: 18px; }}"
@@ -527,7 +724,7 @@ def build_controller_styles(theme: ThemeDefinition) -> dict:
 
 
 def build_settings_styles(theme: ThemeDefinition) -> dict:
-    return build_window_styles(
+    styles = build_window_styles(
         theme,
         frame_radius=20,
         header_radius=18,
@@ -539,3 +736,14 @@ def build_settings_styles(theme: ThemeDefinition) -> dict:
         control_radius=10,
         scroll_area=True,
     )
+    styles.update(
+        {
+            "settings_shell_bg": theme.get("settings_shell_bg", theme.shell_bg),
+            "settings_top_bg": theme.get("settings_top_bg", theme.shell_bg),
+            "settings_nav_bg": theme.get("settings_nav_bg", theme.input_bg),
+            "settings_card_bg": theme.get("settings_card_bg", theme.panel_bg),
+            "settings_fallback_bg": theme.get("settings_fallback_bg", theme.shell_bg),
+            "settings_background_enabled": theme.key != "high_contrast",
+        }
+    )
+    return styles

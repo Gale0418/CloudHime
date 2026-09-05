@@ -46,3 +46,29 @@ def test_secret_store_tombstone_survives_secret_deletion(tmp_path):
     store.delete()
 
     assert store.legacy_sources_disabled() is True
+
+
+def test_secret_store_uses_generic_description_and_keeps_one_slot_per_path(monkeypatch, tmp_path):
+    captured = []
+
+    def fake_protect(value, description=""):
+        captured.append((value, description))
+        return b"ciphertext"
+
+    monkeypatch.setattr("secret_store._protect", fake_protect)
+    path = tmp_path / "openai_api_key.dpapi"
+    SecretStore(path).set("secret-value")
+
+    assert captured == [(b"secret-value", "CloudHime secret")]
+    assert path.read_bytes() == b"ciphertext"
+
+
+def test_secret_store_does_not_include_secret_in_protection_error(monkeypatch, tmp_path):
+    def fail_protect(_value, _description=""):
+        raise RuntimeError("secret-value")
+
+    monkeypatch.setattr("secret_store._protect", fail_protect)
+    with pytest.raises(SecretStoreError) as exc_info:
+        SecretStore(tmp_path / "secret.dpapi").set("secret-value")
+
+    assert "secret-value" not in str(exc_info.value)

@@ -1173,3 +1173,10 @@
 - 以現行 HEAD `7f64ec9` 重新執行 `tests/test_release_packaging.py`、`tests/test_msix_packaging.py` 與 `tests/test_ci_test_inventory.py`；排除已知會執行 local real-dist 600 秒 slow smoke 的 `real_release_dist_preflight_when_available` 後，結果為 `60 passed, 1 deselected in 57.60s`。
 - 未過濾全套曾在約 40 個 dot 後長時間沒有輸出，已 Ctrl+C exit `1`；這是 incomplete verification，不是 test failure，也不算 full suite pass。測試後只確認既有 Dreamsprite `llama-server.exe`，未留下 CloudHime server。
 - 判定：release／MSIX／CI static contract 維持綠燈；CH-T64 仍不能標 Done，因真正 frozen dist slow smoke、clean Windows、optional WACK 與 Partner Center Store submission 仍需各自證據。
+
+## 2026-08-30：CH-E11 線上 Provider 與全介面重構啟動決策
+
+- 使用者核准完整 Epic 地圖與 code-first 執行；範圍包含設定中心、控制器、狀態提示、翻譯氣泡及所有可互動介面，框選／擷取遮罩僅允許低風險視覺改善。
+- 保留既有 Local Gemma；新增使用單一 Google API key 的 Online Gemma 與 OpenAI Luna。Online Gemma 在 `gemma-4-26b-a4b-it`／`gemma-4-31b-it` 間依各自 rate／cooldown 選擇，不把模型變體當成額外 project quota。
+- Gemma 輪替只在明確 429／404／503 且沒有串流輸出時進行；timeout／URLError 不重播，其他錯誤、取消與已產生串流輸出不切換。所有 Gemma request 固定 `thinkingLevel=minimal`，Luna 固定 reasoning effort `none`。
+- 本輪路由為 Mission Center `council_full` 與 Codex Game Studios `team-ui`；研究波次唯讀，主代理是唯一整合者。Impeccable 以 Operate mode、code-first 執行，不加入產品 runtime dependency。

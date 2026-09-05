@@ -12,6 +12,9 @@ class SecretStoreError(RuntimeError):
     """Raised when a secret cannot be protected, restored, or persisted."""
 
 
+DEFAULT_SECRET_DESCRIPTION = "CloudHime secret"
+
+
 if os.name == "nt":
     class _DataBlob(ctypes.Structure):
         _fields_ = [
@@ -49,10 +52,12 @@ def _atomic_write(path: Path, payload: bytes, prefix: str) -> None:
                 os.unlink(temp_path)
             except OSError:
                 pass
-        raise SecretStoreError(f"could not write secret store: {exc}") from exc
+        # Do not expose arbitrary filesystem exception text: callers may use
+        # secret-derived paths or mocked exceptions containing secret values.
+        raise SecretStoreError("could not write secret store") from None
 
 
-def _protect(value: bytes) -> bytes:
+def _protect(value: bytes, description: str = DEFAULT_SECRET_DESCRIPTION) -> bytes:
     if os.name != "nt":
         raise SecretStoreError("Windows DPAPI is unavailable on this platform")
     crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
@@ -69,7 +74,8 @@ def _protect(value: bytes) -> bytes:
     local_free.restype = ctypes.c_void_p
     source, source_buffer = _blob_from_bytes(value)
     result = _DataBlob()
-    if not protect(ctypes.byref(source), "CloudHime Google API key", None, None, None, 0, ctypes.byref(result)):
+    description = str(description or DEFAULT_SECRET_DESCRIPTION).strip() or DEFAULT_SECRET_DESCRIPTION
+    if not protect(ctypes.byref(source), description, None, None, None, 0, ctypes.byref(result)):
         raise SecretStoreError(f"CryptProtectData failed: {ctypes.get_last_error()}")
     try:
         return _blob_bytes(result)
@@ -110,8 +116,14 @@ class SecretStore:
 
     _MIGRATION_MARKER = b"legacy-sources-disabled-v1\n"
 
-    def __init__(self, path: str | os.PathLike[str]):
+    def __init__(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        description: str = DEFAULT_SECRET_DESCRIPTION,
+    ):
         self.path = Path(path)
+        self.description = str(description or DEFAULT_SECRET_DESCRIPTION).strip() or DEFAULT_SECRET_DESCRIPTION
 
     @property
     def migration_marker_path(self) -> Path:
@@ -123,7 +135,7 @@ class SecretStore:
         except FileNotFoundError:
             return False
         except OSError as exc:
-            raise SecretStoreError(f"could not read secret migration state: {exc}") from exc
+            raise SecretStoreError("could not read secret migration state") from None
 
     def mark_legacy_sources_disabled(self) -> None:
         _atomic_write(
@@ -137,19 +149,29 @@ class SecretStore:
             encrypted = self.path.read_bytes()
         except FileNotFoundError:
             return ""
-        except OSError as exc:
-            raise SecretStoreError(f"could not read secret store: {exc}") from exc
+        except OSError:
+            raise SecretStoreError("could not read secret store") from None
         try:
             return _unprotect(encrypted).decode("utf-8")
-        except (OSError, UnicodeError, SecretStoreError) as exc:
-            raise SecretStoreError(f"could not read secret store: {exc}") from exc
+        except (OSError, UnicodeError, SecretStoreError):
+            raise SecretStoreError("could not read secret store") from None
 
     def set(self, value: str) -> None:
         normalized = str(value or "").strip()
         if not normalized:
             self.delete()
             return
-        encrypted = _protect(normalized.encode("utf-8"))
+        try:
+            encrypted = _protect(normalized.encode("utf-8"), description=self.description)
+        except SecretStoreError as exc:
+            # Preserve the established platform/DPAPI error category without
+            # forwarding arbitrary exception text that could contain a key.
+            detail = str(exc)
+            if detail.startswith(("Windows DPAPI is unavailable", "CryptProtectData failed:")):
+                raise SecretStoreError(detail) from None
+            raise SecretStoreError("could not protect secret") from None
+        except Exception:
+            raise SecretStoreError("could not protect secret") from None
         _atomic_write(self.path, encrypted, ".cloudhime-secret-")
 
     def delete(self) -> None:
@@ -157,5 +179,5 @@ class SecretStore:
             self.path.unlink()
         except FileNotFoundError:
             return
-        except OSError as exc:
-            raise SecretStoreError(f"could not remove secret store: {exc}") from exc
+        except OSError:
+            raise SecretStoreError("could not remove secret store") from None

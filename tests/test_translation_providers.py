@@ -12,6 +12,7 @@ from translation_providers import (
     classify_region_vision_failure,
 )
 from translation_helpers import build_gemma_prompt
+from provider_runtime import RuntimeCredentialPool
 
 
 def test_google_provider_does_not_expose_stream_translation():
@@ -396,7 +397,276 @@ def test_remote_request_sampling_fields_follow_model_capability(monkeypatch):
     assert "temperature" not in gemini_config
     assert "topP" not in gemini_config
     assert "topK" not in gemini_config
-    assert payloads[1]["generationConfig"]["temperature"] == 0.2
+    assert "thinkingConfig" not in gemini_config
+    gemma_config = payloads[1]["generationConfig"]
+    assert gemma_config["temperature"] == 0.2
+    assert gemma_config["thinkingConfig"] == {"thinkingLevel": "minimal"}
+
+
+def test_gemma_screenshot_ocr_reports_the_model_used_after_rotation():
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-4-26b-a4b-it",
+    )
+    provider._resolve_model = lambda: "gemma-4-26b-a4b-it"
+    provider._can_call = lambda _model: True
+    provider._request = lambda *_args, **_kwargs: (
+        {"candidates": [{"content": {"parts": [{"text": "原文"}]}}]},
+        "gemma-4-31b-it",
+    )
+
+    result = provider.transcribe_screenshot(
+        [{"inline_data": {"data": "ignored"}}]
+    )
+
+    assert result.text == "原文"
+    assert result.model == "gemma-4-31b-it"
+
+
+def test_gemma_remote_request_uses_leased_multi_key_and_makes_one_attempt(monkeypatch):
+    captured = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"candidates": []}'
+
+    def fake_urlopen(req, timeout):
+        captured.append(req.get_header("X-goog-api-key"))
+        return Response()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        google_api_keys=["secret-a", "secret-b"],
+        gemma_model="gemini-3.5-flash",
+    )
+
+    provider._request("gemini-3.5-flash", "hello")
+
+    assert captured == ["secret-a"]
+    assert all(item["active"] is False for item in provider._credential_pool.snapshot())
+    assert all("secret-" not in repr(item) for item in provider._credential_pool.snapshot())
+
+
+def test_gemma_update_config_migrates_first_key_and_keeps_model_states_independent():
+    provider = GemmaTranslationProvider(
+        google_api_keys=["secret-a", "secret-b"],
+        credential_metadata=[{"key_id": "a"}, {"key_id": "b"}],
+        gemma_model="gemma-4-26b-a4b-it",
+        supported_models=("gemma-4-26b-a4b-it", "gemma-4-31b-it"),
+    )
+
+    provider.update_config(
+        credential_metadata=[{"key_id": "a", "project_id": "project-a"}]
+    )
+
+    assert provider.google_api_key == "secret-a"
+    assert provider.google_api_keys == ("secret-a",)
+    snapshot = provider._credential_pool.snapshot()
+    assert {
+        (item["key_id"], item["model"])
+        for item in snapshot
+    } == {
+        ("a", "gemma-4-26b-a4b-it"),
+        ("a", "gemma-4-31b-it"),
+    }
+    assert all(item["project_id"] == "project-a" for item in snapshot)
+    assert all("secret-b" not in repr(item) for item in snapshot)
+
+    lease = provider._credential_pool.acquire(
+        "google", "gemma-4-26b-a4b-it", wait=False
+    )
+    lease.release(status_code=429, retry_after="60")
+    state_by_model = {item["model"]: item for item in provider._credential_pool.snapshot()}
+    assert state_by_model["gemma-4-26b-a4b-it"]["status"] == "cooldown"
+    assert state_by_model["gemma-4-31b-it"]["status"] == "ready"
+
+
+def test_gemma_invalid_json_releases_once_without_leaking_body(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size):
+            return b'{"private": "secret-a"'
+
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-test"},
+    ])
+    monkeypatch.setattr("translation_providers.request.urlopen", lambda *_args, **_kwargs: Response())
+    provider = GemmaTranslationProvider(credential_pool=pool, gemma_model="gemma-test", supported_models=("gemma-test",))
+
+    with pytest.raises(ValueError, match="invalid_gemma_response") as exc_info:
+        provider._request("gemma-test", "hello")
+
+    assert "secret-a" not in str(exc_info.value)
+    assert pool.snapshot()[0]["active"] is False
+    assert pool.snapshot()[0]["last_outcome"] == "provider_error"
+
+
+def test_gemma_oversized_response_is_bounded_and_released(monkeypatch):
+    read_sizes = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size):
+            read_sizes.append(size)
+            return b"x" * size
+
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-test"},
+    ])
+    monkeypatch.setattr("translation_providers.request.urlopen", lambda *_args, **_kwargs: Response())
+    provider = GemmaTranslationProvider(credential_pool=pool, gemma_model="gemma-test", supported_models=("gemma-test",))
+
+    with pytest.raises(ValueError, match="gemma_response_too_large"):
+        provider._request("gemma-test", "hello")
+
+    assert read_sizes == [4 * 1024 * 1024 + 1]
+    assert pool.snapshot()[0]["active"] is False
+    assert pool.snapshot()[0]["last_outcome"] == "provider_error"
+
+
+def test_gemma_429_rotates_to_the_other_model_with_the_same_key(monkeypatch):
+    calls = []
+    response = type("Response", (), {"read": lambda self: b"", "close": lambda self: None})()
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-26b-a4b-it", "project_id": "p"},
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-31b-it", "project_id": "p"},
+    ], rate_limit_cooldown=60)
+
+    def fake_urlopen(req, timeout):
+        calls.append((req.full_url, req.get_header("X-goog-api-key")))
+        if len(calls) == 1:
+            raise error.HTTPError(req.full_url, 429, "rate limited", {"Retry-After": "60"}, response)
+        return type(
+            "SuccessResponse",
+            (),
+            {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, *_args: False,
+                "read": lambda self: b'{"candidates": []}',
+            },
+        )()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        credential_pool=pool,
+        google_api_key="placeholder",
+        gemma_model="gemma-4-26b-a4b-it",
+        supported_models=("gemma-4-26b-a4b-it", "gemma-4-31b-it"),
+    )
+
+    provider._request("gemma-4-26b-a4b-it", "hello")
+
+    assert calls == [
+        ("https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent", "secret-a"),
+        ("https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent", "secret-a"),
+    ]
+    state_by_model = {item["model"]: item for item in pool.snapshot()}
+    assert state_by_model["gemma-4-26b-a4b-it"]["status"] == "cooldown"
+    assert state_by_model["gemma-4-31b-it"]["last_outcome"] == "success"
+
+
+def test_gemma_timeout_does_not_replay_against_the_other_model(monkeypatch):
+    calls = []
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-26b-a4b-it"},
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-31b-it"},
+    ])
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.full_url)
+        raise TimeoutError("private timeout")
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        credential_pool=pool,
+        gemma_model="gemma-4-26b-a4b-it",
+        supported_models=("gemma-4-26b-a4b-it", "gemma-4-31b-it"),
+    )
+
+    with pytest.raises(TimeoutError):
+        provider._request("gemma-4-26b-a4b-it", "hello")
+
+    assert calls == [
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent",
+    ]
+    state_by_model = {item["model"]: item for item in pool.snapshot()}
+    assert state_by_model["gemma-4-26b-a4b-it"]["last_outcome"] == "ambiguous"
+    assert state_by_model["gemma-4-31b-it"]["last_outcome"] is None
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_outcome"),
+    [(TimeoutError("private timeout"), "ambiguous"), (error.URLError("private transport"), "ambiguous")],
+)
+def test_gemma_remote_transport_failure_is_single_attempt_and_released(monkeypatch, failure, expected_outcome):
+    calls = []
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-test"},
+    ])
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.get_header("X-goog-api-key"))
+        raise failure
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(credential_pool=pool, gemma_model="gemma-test", supported_models=("gemma-test",))
+
+    with pytest.raises(type(failure)):
+        provider._request("gemma-test", "hello")
+
+    assert len(calls) == 1
+    assert pool.snapshot()[0]["active"] is False
+    assert pool.snapshot()[0]["last_outcome"] == expected_outcome
+
+
+def test_gemma_stream_partial_transport_failure_is_ambiguous_without_replay(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}\n'
+            raise error.URLError("private transport")
+
+    calls = []
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-test"},
+    ])
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.get_header("X-goog-api-key"))
+        return Response()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(credential_pool=pool, gemma_model="gemma-test", supported_models=("gemma-test",))
+    stream = provider.translate_stream("hello")
+
+    assert next(stream) == "partial"
+    with pytest.raises(error.URLError):
+        next(stream)
+    assert calls == ["secret-a"]
+    assert pool.snapshot()[0]["last_outcome"] == "ambiguous"
 
 
 

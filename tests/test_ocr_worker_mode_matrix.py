@@ -3416,11 +3416,14 @@ def test_build_screenshot_text_hint_uses_two_fast_consensus_variants():
 
     worker._recognize_with_backends = mock_recognize
 
-    img = np.zeros((100, 100, 3), dtype=np.uint8)
-    hint = worker.build_screenshot_text_hint(img)
+    try:
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        hint = worker.build_screenshot_text_hint(img)
 
-    assert recognized_count == 2
-    assert hint == "共通文字標籤"
+        assert recognized_count == 2
+        assert hint == "共通文字標籤"
+    finally:
+        worker.cleanup()
 
 def test_nonempty_low_confidence_ocr_uses_bounded_hybrid_rescue(monkeypatch, qtbot):
     from ocr_preprocess import BOUNDED_RESCUE_PREPROCESSES

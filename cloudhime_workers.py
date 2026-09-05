@@ -119,6 +119,12 @@ from translation_providers import (
 )
 from translation_contracts import TranslationResult
 from translation_orchestrator import TranslationOrchestrator
+from openai_translation_provider import (
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_OPENAI_REASONING_EFFORT,
+    DEFAULT_OPENAI_TIMEOUT_SECONDS,
+    OpenAITranslationProvider,
+)
 from local_vision_runtime import LocalVisionRuntime
 from local_runtime_profiles import resolve_runtime_profile
 from local_vision_assets import (
@@ -281,7 +287,21 @@ class OCRWorker(QObject):
     local_vision_status = Signal(str, str)
     japanese_rescue_status = Signal(str, str)
 
-    def __init__(self, local_runtime_coordinator=None):
+    def __init__(
+        self,
+        local_runtime_coordinator=None,
+        *,
+        google_api_key="",
+        google_api_keys=None,
+        google_credential_metadata=None,
+        google_api_key_metadata=None,
+        openai_api_key="",
+        openai_enabled=False,
+        openai_model=DEFAULT_OPENAI_MODEL,
+        openai_reasoning_effort=DEFAULT_OPENAI_REASONING_EFFORT,
+        openai_timeout_seconds=DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        provider_chain=(),
+    ):
         super().__init__()
         startup_log("OCRWorker.__init__ start")
         self._local_runtime_coordinator = local_runtime_coordinator
@@ -315,6 +335,7 @@ class OCRWorker(QObject):
         self.gemma_call_timestamps = {model_name: [] for model_name in SUPPORTED_REMOTE_MODEL_NAMES}
         self._translation_registry_batch_depth = 0
         self._translation_registry_batch_dirty = False
+        self._translation_registry_lock = threading.RLock()
         self._pending_gemma_prompt = ""
         self._last_local_vision_request_metrics = {}
         self.translation_target_lang = localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE)
@@ -342,7 +363,39 @@ class OCRWorker(QObject):
         self.local_multimodal_timeout_seconds = 20
         self.local_multimodal_cpu_only = False
         self.japanese_rescue_enabled = False
-        self.google_api_key = ""
+        # These settings are runtime-only.  Secrets are intentionally kept out
+        # of status payloads and diagnostics; the legacy singular key remains
+        # as a compatibility view of the first configured credential.
+        self.google_api_key = (google_api_key or "").strip()
+        self.google_api_keys = self._normalize_google_api_keys(google_api_keys)
+        if self.google_api_keys:
+            self.google_api_key = self._first_google_api_secret(self.google_api_keys)
+        initial_google_metadata = (
+            google_credential_metadata
+            if google_credential_metadata is not None
+            else google_api_key_metadata
+        )
+        self.google_credential_metadata = self._scrub_google_metadata(
+            initial_google_metadata or ()
+        )
+        self.google_api_key_metadata = deepcopy(self.google_credential_metadata)
+        self.openai_api_key = (openai_api_key or "").strip()
+        self.openai_enabled = bool(openai_enabled)
+        self.openai_model = (openai_model or DEFAULT_OPENAI_MODEL).strip() or DEFAULT_OPENAI_MODEL
+        self.openai_reasoning_effort = (
+            str(openai_reasoning_effort or DEFAULT_OPENAI_REASONING_EFFORT).strip().casefold()
+            or DEFAULT_OPENAI_REASONING_EFFORT
+        )
+        try:
+            self.openai_timeout_seconds = float(openai_timeout_seconds)
+        except (TypeError, ValueError):
+            self.openai_timeout_seconds = float(DEFAULT_OPENAI_TIMEOUT_SECONDS)
+        self.provider_chain = tuple(
+            str(provider).strip().casefold()
+            for provider in (provider_chain or ())
+            if str(provider).strip()
+        )
+        self.openai_translation_provider = None
         self.gemma_model = DEFAULT_GEMMA_MODEL
         self.active_gemma_model = self.gemma_model
         self.gemma_prompt = ""
@@ -719,9 +772,124 @@ class OCRWorker(QObject):
         else:
             logger.info("[OCR] No OCR backends available.")
 
+    @staticmethod
+    def _normalize_google_api_keys(api_keys):
+        """Normalize legacy collections to the singular Online Gemma key."""
+        if api_keys is None:
+            return ()
+        if isinstance(api_keys, str):
+            return (api_keys.strip(),) if api_keys.strip() else ()
+        if isinstance(api_keys, dict):
+            normalized = []
+            for key_id, value in api_keys.items():
+                if isinstance(value, str):
+                    value = value.strip()
+                elif isinstance(value, dict):
+                    value = deepcopy(value)
+                    if isinstance(value.get("secret"), str):
+                        value["secret"] = value["secret"].strip()
+                if value:
+                    if isinstance(value, dict):
+                        value.setdefault("key_id", str(key_id))
+                    else:
+                        value = {"key_id": str(key_id), "secret": value}
+                    normalized.append(value)
+                    break
+            return tuple(normalized)
+        try:
+            normalized = []
+            for item in api_keys:
+                candidate = deepcopy(item)
+                if isinstance(candidate, str):
+                    candidate = candidate.strip()
+                secret = (
+                    candidate.get("secret", candidate.get("api_key", ""))
+                    if isinstance(candidate, dict)
+                    else candidate
+                )
+                if isinstance(secret, str) and secret.strip():
+                    if isinstance(candidate, dict) and isinstance(candidate.get("secret"), str):
+                        candidate["secret"] = candidate["secret"].strip()
+                    normalized.append(candidate)
+                    break
+            return tuple(normalized)
+        except TypeError:
+            return ()
+
+    @staticmethod
+    def _first_google_api_secret(api_keys):
+        values = api_keys.values() if isinstance(api_keys, dict) else api_keys
+        for item in values or ():
+            if isinstance(item, dict):
+                item = item.get("secret", item.get("api_key", ""))
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+        return ""
+
+    @classmethod
+    def _scrub_google_metadata(cls, metadata):
+        """Retain only secret-free slot descriptors in worker-owned state."""
+        secret_fields = {
+            "secret",
+            "api_key",
+            "google_api_key",
+            "gemma_api_key",
+            "openai_api_key",
+        }
+        if isinstance(metadata, dict):
+            return {
+                key: cls._scrub_google_metadata(value)
+                for key, value in metadata.items()
+                if str(key).strip().casefold().replace("-", "_") not in secret_fields
+            }
+        if isinstance(metadata, (list, tuple)):
+            return tuple(cls._scrub_google_metadata(item) for item in metadata)
+        return metadata
+
+    @classmethod
+    def _normalize_google_metadata_for_provider(cls, metadata):
+        """Map UI slot/scope labels to Gemma provider credential descriptors."""
+        scrubbed = cls._scrub_google_metadata(metadata)
+        if scrubbed is None:
+            return ()
+        if isinstance(scrubbed, dict):
+            if "slot" in scrubbed or "key_id" in scrubbed:
+                items = [scrubbed]
+            else:
+                items = [
+                    dict(item, key_id=str(key_id))
+                    for key_id, item in scrubbed.items()
+                    if isinstance(item, dict)
+                ]
+        else:
+            try:
+                items = list(scrubbed)
+            except TypeError:
+                return ()
+        normalized = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            descriptor = dict(item)
+            if descriptor.get("key_id") is None and descriptor.get("slot") is not None:
+                descriptor["key_id"] = descriptor["slot"]
+            if descriptor.get("quota_scope") is None and descriptor.get("scope") is not None:
+                descriptor["quota_scope"] = descriptor["scope"]
+            normalized.append(descriptor)
+        return normalized
+
+    def _has_google_api_credentials(self):
+        return bool(
+            str(getattr(self, "google_api_key", "") or "").strip()
+            or getattr(self, "google_api_keys", ())
+        )
+
     def _build_translation_registry_config(self):
         return TranslationProviderRegistryConfig(
             google_api_key=self.google_api_key,
+            google_api_keys=getattr(self, "google_api_keys", ()),
+            google_credential_metadata=getattr(self, "google_credential_metadata", ()),
+            google_api_key_metadata=getattr(self, "google_api_key_metadata", ()),
             gemma_model=self.gemma_model,
             gemma_prompt=self.gemma_prompt,
             screenshot_gemma_prompt=self.screenshot_gemma_prompt,
@@ -734,9 +902,27 @@ class OCRWorker(QObject):
             local_multimodal_base_url=getattr(self, "local_multimodal_base_url", "http://127.0.0.1:8080/v1"),
             local_multimodal_model=getattr(self, "local_multimodal_model", "gemma-3-4b-it"),
             local_multimodal_timeout_seconds=getattr(self, "local_multimodal_timeout_seconds", 20),
+            openai_api_key=getattr(self, "openai_api_key", ""),
+            openai_enabled=bool(getattr(self, "openai_enabled", False)),
+            openai_model=getattr(self, "openai_model", DEFAULT_OPENAI_MODEL),
+            openai_reasoning_effort=getattr(
+                self, "openai_reasoning_effort", DEFAULT_OPENAI_REASONING_EFFORT
+            ),
+            openai_timeout_seconds=getattr(
+                self, "openai_timeout_seconds", DEFAULT_OPENAI_TIMEOUT_SECONDS
+            ),
+            provider_chain=getattr(self, "provider_chain", ()),
         )
 
     def _refresh_translation_registry(self):
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            self._refresh_translation_registry_locked()
+
+    def _refresh_translation_registry_locked(self):
         if self._translation_registry_batch_depth > 0:
             self._translation_registry_batch_dirty = True
             return
@@ -745,6 +931,11 @@ class OCRWorker(QObject):
             self.google_translation_provider.set_target_lang(config.target_lang)
             self.gemma_translation_provider.update_config(
                 google_api_key=config.google_api_key,
+                google_api_keys=config.google_api_keys or None,
+                credential_metadata=self._normalize_google_metadata_for_provider(
+                    config.google_credential_metadata
+                    or config.google_api_key_metadata
+                ) or None,
                 gemma_model=config.gemma_model,
                 gemma_prompt=config.gemma_prompt,
                 screenshot_gemma_prompt=config.screenshot_gemma_prompt,
@@ -807,11 +998,25 @@ class OCRWorker(QObject):
             else:
                 active_gemma = self.gemma_translation_provider
                 active_gemma.name = "gemma"
-            self.translation_registry = TranslationProviderRegistry([
+            providers = [
                 active_gemma,
                 self.google_translation_provider,
                 self.local_multimodal_provider,
-            ])
+            ]
+            self.openai_translation_provider = None
+            if config.openai_enabled and config.openai_api_key:
+                self.openai_translation_provider = OpenAITranslationProvider(
+                    openai_api_key=config.openai_api_key,
+                    model=config.openai_model,
+                    target_lang=config.target_lang,
+                    reasoning_effort=config.openai_reasoning_effort,
+                    timeout_seconds=config.openai_timeout_seconds,
+                )
+                providers.append(self.openai_translation_provider)
+            self.translation_registry = TranslationProviderRegistry(
+                providers,
+                provider_chain=config.provider_chain,
+            )
             if selected_local_model:
                 self.translation_registry.register("gemma", self.local_multimodal_provider)
             self.translation_registry_error_code = ""
@@ -1395,7 +1600,7 @@ class OCRWorker(QObject):
             getattr(self, "gemma_model", ""),
             getattr(self, "gemma_prompt", ""),
             getattr(self, "screenshot_gemma_prompt", ""),
-            bool(getattr(self, "google_api_key", "")),
+            bool(self._has_google_api_credentials()),
             bool(getattr(self, "local_multimodal_enabled", False)),
             getattr(self, "local_multimodal_base_url", ""),
             getattr(self, "local_multimodal_model", ""),
@@ -1425,15 +1630,30 @@ class OCRWorker(QObject):
         self._refresh_translation_registry()
 
     def begin_translation_registry_batch(self):
-        self._translation_registry_batch_depth += 1
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            self._translation_registry_batch_depth += 1
 
     def end_translation_registry_batch(self):
-        if self._translation_registry_batch_depth <= 0:
-            self._translation_registry_batch_depth = 0
-            return
-        self._translation_registry_batch_depth -= 1
-        if self._translation_registry_batch_depth == 0 and self._translation_registry_batch_dirty:
-            self._translation_registry_batch_dirty = False
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            if self._translation_registry_batch_depth <= 0:
+                self._translation_registry_batch_depth = 0
+                return
+            self._translation_registry_batch_depth -= 1
+            should_refresh = (
+                self._translation_registry_batch_depth == 0
+                and self._translation_registry_batch_dirty
+            )
+            if should_refresh:
+                self._translation_registry_batch_dirty = False
+        if should_refresh:
             self._refresh_translation_registry()
 
     def _get_translation_provider(self, provider_name):
@@ -1476,7 +1696,129 @@ class OCRWorker(QObject):
         return translation_tools.convert_to_trad(text, self.cc)
 
     def set_google_api_key(self, api_key):
-        self.google_api_key = (api_key or "").strip()
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            self.google_api_key = (api_key or "").strip()
+            # Legacy callers replace the active pool with one credential.  The
+            # multi-key setter below keeps this view synchronized in the opposite
+            # direction for old code that still reads ``google_api_key``.
+            self.google_api_keys = (self.google_api_key,) if self.google_api_key else ()
+            self.google_credential_metadata = ()
+            self.google_api_key_metadata = ()
+        self._refresh_translation_registry()
+
+    def set_google_api_keys(
+        self,
+        api_keys,
+        metadata=None,
+        google_api_key_metadata=None,
+    ):
+        """Update the runtime Google credential pool without persisting keys."""
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            normalized = self._normalize_google_api_keys(api_keys)
+            self.google_api_keys = normalized
+            self.google_api_key = self._first_google_api_secret(normalized)
+            metadata_value = (
+                google_api_key_metadata
+                if google_api_key_metadata is not None
+                else (
+                    getattr(self, "google_credential_metadata", ())
+                    if metadata is None
+                    else metadata
+                )
+            )
+            self.google_credential_metadata = self._scrub_google_metadata(
+                metadata_value or ()
+            )
+            self.google_api_key_metadata = deepcopy(self.google_credential_metadata)
+        self._refresh_translation_registry()
+
+    def set_google_credential_metadata(self, metadata):
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            self.google_credential_metadata = self._scrub_google_metadata(
+                metadata or ()
+            )
+            self.google_api_key_metadata = deepcopy(self.google_credential_metadata)
+        self._refresh_translation_registry()
+
+    def set_google_api_key_metadata(self, metadata):
+        """Compatibility alias for callers using the provider-facing name."""
+        self.set_google_credential_metadata(metadata)
+
+    def set_openai_api_key(self, api_key):
+        self.set_openai_config(api_key=api_key)
+
+    def set_openai_enabled(self, enabled):
+        self.set_openai_config(enabled=enabled)
+
+    def set_openai_config(
+        self,
+        *,
+        enabled=None,
+        api_key=None,
+        openai_api_key=None,
+        model=None,
+        reasoning_effort=None,
+        timeout_seconds=None,
+    ):
+        """Atomically apply OpenAI runtime settings, then refresh providers."""
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            if enabled is not None:
+                self.openai_enabled = bool(enabled)
+            effective_api_key = api_key if api_key is not None else openai_api_key
+            if effective_api_key is not None:
+                self.openai_api_key = (effective_api_key or "").strip()
+            if model is not None:
+                self.openai_model = (model or DEFAULT_OPENAI_MODEL).strip() or DEFAULT_OPENAI_MODEL
+            if reasoning_effort is not None:
+                self.openai_reasoning_effort = (
+                    str(reasoning_effort or DEFAULT_OPENAI_REASONING_EFFORT).strip().casefold()
+                    or DEFAULT_OPENAI_REASONING_EFFORT
+                )
+            if timeout_seconds is not None:
+                try:
+                    self.openai_timeout_seconds = float(timeout_seconds)
+                except (TypeError, ValueError):
+                    self.openai_timeout_seconds = float(DEFAULT_OPENAI_TIMEOUT_SECONDS)
+        self._refresh_translation_registry()
+
+    def set_openai_model(self, model):
+        self.set_openai_config(model=model)
+
+    def set_openai_reasoning_effort(self, reasoning_effort):
+        self.set_openai_config(reasoning_effort=reasoning_effort)
+
+    def set_openai_timeout_seconds(self, timeout_seconds):
+        self.set_openai_config(timeout_seconds=timeout_seconds)
+
+    def set_provider_chain(self, provider_chain):
+        if isinstance(provider_chain, str):
+            provider_chain = provider_chain.split(",")
+        lock = getattr(self, "_translation_registry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._translation_registry_lock = lock
+        with lock:
+            self.provider_chain = tuple(
+                str(provider).strip().casefold()
+                for provider in (provider_chain or ())
+                if str(provider).strip()
+            )
         self._refresh_translation_registry()
 
     def set_gemma_enabled(self, enabled):
@@ -1713,7 +2055,7 @@ class OCRWorker(QObject):
         spec = get_model_spec(model)
         return bool(
             self.use_gemma_translation
-            and self.google_api_key
+            and self._has_google_api_credentials()
             and spec is not None
             and spec.locality == "remote"
             and spec.multimodal
@@ -1780,7 +2122,7 @@ class OCRWorker(QObject):
 
     def get_other_gemma_model(self, model_name=None):
         model_name = self.normalize_gemma_model(model_name or self.gemma_model)
-        for candidate in SUPPORTED_REMOTE_MODEL_NAMES:
+        for candidate in ("gemma-4-26b-a4b-it", "gemma-4-31b-it"):
             if candidate != model_name:
                 return candidate
         return model_name
@@ -1793,13 +2135,12 @@ class OCRWorker(QObject):
         if self.can_call_gemma(preferred_model):
             self.active_gemma_model = preferred_model
             return preferred_model
-        if self.gemma_auto_switch_enabled:
-            for candidate in SUPPORTED_REMOTE_MODEL_NAMES:
-                if candidate == preferred_model:
-                    continue
-                if self.can_call_gemma(candidate):
-                    self.active_gemma_model = candidate
-                    return candidate
+        for candidate in ("gemma-4-26b-a4b-it", "gemma-4-31b-it"):
+            if candidate == preferred_model:
+                continue
+            if self.can_call_gemma(candidate):
+                self.active_gemma_model = candidate
+                return candidate
         self.active_gemma_model = preferred_model
         return preferred_model
 
@@ -2244,7 +2585,7 @@ class OCRWorker(QObject):
 
 
     def refine_merged_items_with_google_ocr(self, items, image_parts):
-        if not self.google_ocr_enabled or not self.google_api_key:
+        if not self.google_ocr_enabled or not self._has_google_api_credentials():
             return list(items)
         provider = self._get_translation_provider("gemma")
         if provider is None or not hasattr(provider, "transcribe_screenshot"):
@@ -2295,7 +2636,7 @@ class OCRWorker(QObject):
                 requested_provider=getattr(result, "requested_provider", None),
                 fallback_reason=getattr(result, "fallback_reason", None),
             )
-        if not self.google_api_key:
+        if not self._has_google_api_credentials():
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
         if not self.can_call_gemma(model_name):
@@ -2313,6 +2654,7 @@ class OCRWorker(QObject):
         req_body = {
             "contents": [{"parts": [{"text": effective_prompt}]}],
             "generationConfig": {
+                "thinkingConfig": {"thinkingLevel": "minimal"},
                 "temperature": 0.2,
                 "topP": 0.9,
                 "topK": 32,
@@ -2362,7 +2704,7 @@ class OCRWorker(QObject):
                 }
                 return json.dumps(translated_text, ensure_ascii=False)
             raise ValueError("empty_gemma_multimodal_response")
-        if not self.google_api_key:
+        if not self._has_google_api_credentials():
             raise ValueError("missing_google_api_key")
         if not image_parts:
             raise ValueError("missing_image_context")
@@ -2391,6 +2733,7 @@ class OCRWorker(QObject):
                 }]
             }],
             "generationConfig": {
+                "thinkingConfig": {"thinkingLevel": "minimal"},
                 "temperature": 0.1,
                 "topP": 0.9,
                 "topK": 32,
@@ -2506,7 +2849,7 @@ class OCRWorker(QObject):
                     fallback_reason=getattr(result, "fallback_reason", None),
                 )
             )
-        if not self.google_api_key:
+        if not self._has_google_api_credentials():
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
         if not self.can_call_gemma(model_name):
@@ -2530,6 +2873,7 @@ class OCRWorker(QObject):
                     "parts": [*image_parts, {"text": prompt}]
                 }],
                 "generationConfig": {
+                    "thinkingConfig": {"thinkingLevel": "minimal"},
                     "temperature": 0.0 if attempt_index else 0.1,
                     "topP": 0.9,
                     "topK": 32,
@@ -4282,7 +4626,7 @@ class OCRWorker(QObject):
         )
 
     def choose_threshold_with_llm(self, candidates):
-        if not self.google_api_key:
+        if not self._has_google_api_credentials():
             return None
         shortlist = []
         for candidate in candidates:
@@ -4313,6 +4657,7 @@ class OCRWorker(QObject):
                 }]
             }],
             "generationConfig": {
+                "thinkingConfig": {"thinkingLevel": "minimal"},
                 "temperature": 0.1,
                 "topP": 0.8,
                 "topK": 16,
@@ -4587,7 +4932,7 @@ class OCRWorker(QObject):
                 )
                 candidate_results.extend(local_results)
 
-        if self.auto_threshold_enabled and self.google_api_key and should_refresh_auto_threshold:
+        if self.auto_threshold_enabled and self._has_google_api_credentials() and should_refresh_auto_threshold:
             top_candidates = sorted(candidate_results, key=lambda item: item["score"], reverse=True)[:3]
             if len(top_candidates) >= 2:
                 if not silent: self._emit_scan_status("🧠 句子完整度複判中...")
@@ -5749,7 +6094,7 @@ class OCRWorker(QObject):
 
         fullscreen_vision_first_attempted = False
         _prefetch_image_parts = None
-        _use_google_ocr_refine = self.google_ocr_enabled and self.google_api_key and not self.has_any_multimodal_ai()
+        _use_google_ocr_refine = self.google_ocr_enabled and self._has_google_api_credentials() and not self.has_any_multimodal_ai()
         if _use_google_ocr_refine and self.scan_mode == SCAN_MODE_REGION:
             try:
                 _prefetch_image_parts = self.build_ai_image_parts(img)
