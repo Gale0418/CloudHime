@@ -292,3 +292,66 @@ def test_model_availability_snapshot_path_uses_appdata_companion():
     assert settings_store.model_availability_snapshot_path(paths) == (
         "D:\\CloudHime-appdata\\CloudHime\\model_availability_snapshot.json"
     )
+
+
+def test_normalize_settings_payload_migrates_v5_online_provider_metadata_idempotently():
+    source = {
+        "schema_version": 5,
+        "online_gemma_enabled": "yes",
+        "google_api_key_slots": [
+            {"slot": "primary", "enabled": 1, "label": "  Work  ", "scope": " project-a "},
+            {"slot": "secondary", "enabled": "no", "label": "Backup", "scope": "project-a"},
+        ],
+        "openai_enabled": "true",
+        "openai_model": "gpt-4o",
+        "openai_reasoning_effort": "high",
+        "openai_timeout_seconds": 999,
+        "provider_chain": [" GEMMA ", "openai", "gemma", "unknown"],
+    }
+
+    migrated = normalize_settings_payload(source, region_opacity=40)
+    again = normalize_settings_payload(migrated, region_opacity=40)
+
+    assert migrated == again
+    assert migrated["schema_version"] == 7
+    assert migrated["online_gemma_enabled"] is True
+    assert "google_api_key_slots" not in migrated
+    assert migrated["openai_enabled"] is True
+    assert migrated["openai_model"] == "gpt-5.6-luna"
+    assert migrated["openai_reasoning_effort"] == "none"
+    assert migrated["openai_timeout_seconds"] == 300
+    assert migrated["provider_chain"] == ["gemma", "openai"]
+
+
+def test_normalize_settings_payload_rejects_unsupported_luna_reasoning_effort():
+    normalized = normalize_settings_payload(
+        {"openai_reasoning_effort": "ultra"},
+        region_opacity=40,
+    )
+
+    assert normalized["openai_reasoning_effort"] == "none"
+
+
+def test_settings_normalization_and_save_scrub_known_secret_fields(tmp_path):
+    payload = {
+        "google_api_key": "primary-secret",
+        "google_api_key_2": "secondary-secret",
+        "openai_api_key": "openai-secret",
+        "nested": [{"google_api_key": "nested-secret"}],
+        "custom_api_key": "unknown-fields-remain-compatible",
+    }
+
+    normalized = normalize_settings_payload(payload, region_opacity=40)
+    assert "google_api_key" not in normalized
+    assert "google_api_key_2" not in normalized
+    assert "openai_api_key" not in normalized
+    assert normalized["nested"] == [{}]
+    assert normalized["custom_api_key"] == "unknown-fields-remain-compatible"
+
+    paths = create_settings_paths(str(tmp_path / "install"), str(tmp_path / "appdata"))
+    save_settings_data(paths, payload)
+    saved = json.loads((tmp_path / "appdata" / "CloudHime" / settings_store.SETTINGS_FILENAME).read_text(encoding="utf-8"))
+    assert "google_api_key" not in saved
+    assert "google_api_key_2" not in saved
+    assert "openai_api_key" not in saved
+    assert saved["custom_api_key"] == "unknown-fields-remain-compatible"

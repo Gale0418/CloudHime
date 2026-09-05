@@ -10,13 +10,53 @@ from typing import Any
 import localization
 
 
-SETTINGS_SCHEMA_VERSION = 5
+SETTINGS_SCHEMA_VERSION = 7
 SETTINGS_FILENAME = "cloudhime_settings.json"
 MODEL_AVAILABILITY_SNAPSHOT_FILENAME = "model_availability_snapshot.json"
 SETTINGS_APP_DIR = "CloudHime"
 RELIEF_OFFSET_MIN = -500
 RELIEF_OFFSET_MAX = 500
 ACTIVE_WORK_TITLE_MAX = 240
+
+ONLINE_GEMMA_ENABLED_KEY = "online_gemma_enabled"
+OPENAI_ENABLED_KEY = "openai_enabled"
+OPENAI_MODEL_KEY = "openai_model"
+OPENAI_REASONING_EFFORT_KEY = "openai_reasoning_effort"
+OPENAI_TIMEOUT_SECONDS_KEY = "openai_timeout_seconds"
+PROVIDER_CHAIN_KEY = "provider_chain"
+OPENAI_MODEL = "gpt-5.6-luna"
+DEFAULT_OPENAI_REASONING_EFFORT = "none"
+DEFAULT_OPENAI_TIMEOUT_SECONDS = 60
+OPENAI_TIMEOUT_MIN = 1
+OPENAI_TIMEOUT_MAX = 300
+DEFAULT_PROVIDER_CHAIN = ("gemma", "openai", "google")
+_KNOWN_PROVIDER_IDS = frozenset({"local_multimodal", "gemma", "openai", "google"})
+
+# These names are deliberately explicit.  Unknown fields remain forwards
+# compatible, while credentials from older versions can never be copied into
+# a new settings file by normalization or save.
+_SECRET_FIELD_NAMES = frozenset(
+    {
+        "google_api_key",
+        "google_api_key_1",
+        "google_api_key_2",
+        "google_api_key_primary",
+        "google_api_key_secondary",
+        "google_key",
+        "google_key_2",
+        "google_key_primary",
+        "google_key_secondary",
+        "gemma_api_key",
+        "gemini_api_key",
+        "openai_api_key",
+        "openai_api_key_2",
+        "openai_key",
+        "luna_api_key",
+        "api_key",
+        "api_key_google",
+        "api_key_openai",
+    }
+)
 
 GEMMA_MODEL_ALIASES = {
     "translategemma-4b-it-local": "gemma-3-4b-it-local",
@@ -70,7 +110,9 @@ def save_settings_data(paths: SettingsPaths, payload: dict[str, Any]) -> None:
     fd, temp_path = tempfile.mkstemp(dir=target_dir or None, prefix=".cloudhime-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fp:
-            json.dump(payload, fp, ensure_ascii=False, indent=2)
+            # Callers may pass a legacy payload directly.  Scrub at the final
+            # serialization boundary as a second line of defence.
+            json.dump(_scrub_secret_fields(payload), fp, ensure_ascii=False, indent=2)
             fp.flush()
             os.fsync(fp.fileno())
         os.replace(temp_path, target)
@@ -170,12 +212,62 @@ def coerce_bool(value: Any, fallback: bool = False) -> bool:
             return False
     return fallback
 
+
+def _is_secret_field(name: Any) -> bool:
+    if not isinstance(name, str):
+        return False
+    return name.strip().casefold().replace("-", "_") in _SECRET_FIELD_NAMES
+
+
+def _scrub_secret_fields(value: Any) -> Any:
+    """Copy JSON-like data while dropping known credential fields."""
+    if isinstance(value, dict):
+        return {
+            key: _scrub_secret_fields(item)
+            for key, item in value.items()
+            if not _is_secret_field(key)
+        }
+    if isinstance(value, list):
+        return [_scrub_secret_fields(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_secret_fields(item) for item in value)
+    return value
+
+
+def _bounded_text(value: Any, fallback: str = "", *, max_length: int = 128) -> str:
+    if not isinstance(value, str):
+        return fallback
+    return " ".join(value.split())[:max_length]
+
+
+def _normalize_provider_chain(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return list(DEFAULT_PROVIDER_CHAIN)
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        provider = item.strip().casefold()
+        if provider in _KNOWN_PROVIDER_IDS and provider not in result:
+            result.append(provider)
+    return result or list(DEFAULT_PROVIDER_CHAIN)
+
+
+def _clamp_openai_timeout(value: Any, fallback: int = DEFAULT_OPENAI_TIMEOUT_SECONDS) -> int:
+    try:
+        numeric = int(value)
+    except Exception:
+        numeric = int(fallback)
+    return max(OPENAI_TIMEOUT_MIN, min(OPENAI_TIMEOUT_MAX, numeric))
+
 def normalize_settings_payload(
     payload: dict[str, Any],
     region_opacity: int,
     ui_language: str | None = None,
 ) -> dict[str, Any]:
-    normalized = dict(payload)
+    normalized = _scrub_secret_fields(payload)
+    if not isinstance(normalized, dict):
+        normalized = {}
     normalized["schema_version"] = SETTINGS_SCHEMA_VERSION
     opacity = clamp_percent(region_opacity, 40)
     offset_x, offset_y = resolve_relief_offsets(normalized)
@@ -219,4 +311,35 @@ def normalize_settings_payload(
     normalized["local_multimodal_timeout_seconds"] = clamp_local_multimodal_timeout(
         normalized.get("local_multimodal_timeout_seconds", 20)
     )
+
+    # Provider credentials live in the independent DPAPI SecretStore.  The
+    # settings JSON intentionally contains no key or per-key metadata.
+    normalized[ONLINE_GEMMA_ENABLED_KEY] = coerce_bool(
+        normalized.get(ONLINE_GEMMA_ENABLED_KEY, normalized.get("gemma_enabled", False))
+    )
+    for legacy_key in (
+        "google_api_key_slots",
+        "google_key_slots",
+        "google_slots",
+        "google_api_key_metadata",
+        "google_credential_metadata",
+    ):
+        normalized.pop(legacy_key, None)
+    normalized[OPENAI_ENABLED_KEY] = coerce_bool(
+        normalized.get(OPENAI_ENABLED_KEY, normalized.get("luna_enabled", False))
+    )
+    # There is one supported Luna model in this contract.  Unknown/legacy
+    # model values fail closed to it rather than being sent to a provider.
+    normalized[OPENAI_MODEL_KEY] = OPENAI_MODEL
+    # Thinking is intentionally disabled for the fixed Luna integration.
+    # Normalize every historical effort to the single supported value.
+    normalized[OPENAI_REASONING_EFFORT_KEY] = "none"
+    normalized[OPENAI_TIMEOUT_SECONDS_KEY] = _clamp_openai_timeout(
+        normalized.get(
+            OPENAI_TIMEOUT_SECONDS_KEY,
+            normalized.get("luna_timeout_seconds", DEFAULT_OPENAI_TIMEOUT_SECONDS),
+        )
+    )
+    chain_value = normalized.get(PROVIDER_CHAIN_KEY, normalized.get("translation_provider_chain"))
+    normalized[PROVIDER_CHAIN_KEY] = _normalize_provider_chain(chain_value)
     return normalized

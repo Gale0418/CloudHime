@@ -37,12 +37,11 @@ except ImportError:
     logger.error("⚠️ 未安裝 opencc。")
 
 from PySide6.QtWidgets import (
-    QGraphicsDropShadowEffect,QApplication, QWidget, QLabel, QVBoxLayout, QMessageBox, QFileDialog,
+    QGraphicsDropShadowEffect, QApplication, QWidget, QLabel, QVBoxLayout, QMessageBox, QFileDialog,
                                QPushButton, QFrame, QHBoxLayout, QButtonGroup,
                                QSlider, QLineEdit, QCheckBox, QComboBox, QPlainTextEdit,
                                QSpinBox, QSizePolicy, QSplitter, QScrollArea,
-                               QGraphicsOpacityEffect,
-                               QGridLayout)
+                               QGraphicsOpacityEffect, QGridLayout)
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
                             QAbstractNativeEventFilter, QEvent)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase
@@ -137,6 +136,12 @@ GOOGLE_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{
 DEFAULT_GEMMA_MODEL = WORKER_DEFAULT_MODEL
 SETTINGS_PATHS = create_settings_paths(os.path.dirname(__file__))
 API_KEY_SECRET_PATH = appdata_companion_path(SETTINGS_PATHS, "google_api_key.dpapi")
+# Read this legacy location only during migration; no secondary credential is
+# exposed in the UI or retained in the runtime model.
+LEGACY_GOOGLE_API_KEY_SECONDARY_SECRET_PATH = appdata_companion_path(
+    SETTINGS_PATHS, "google_api_key_secondary.dpapi"
+)
+OPENAI_API_KEY_SECRET_PATH = appdata_companion_path(SETTINGS_PATHS, "openai_api_key.dpapi")
 APPDATA_ENV_PATH = appdata_companion_path(SETTINGS_PATHS, ".env")
 LEGACY_ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 UI_ERROR_LOG_PATH = appdata_companion_path(SETTINGS_PATHS, "cloudhime_ui_errors.log")
@@ -1148,6 +1153,7 @@ class StatusChargeBar(QWidget):
         painter.drawText(rect, Qt.AlignCenter, self.label or f"{self.progress}%")
         painter.end()
 
+
 class SettingsWindow(QWidget):
     def __init__(self, controller):
         super().__init__()
@@ -1184,8 +1190,8 @@ class SettingsWindow(QWidget):
         header_text_layout.addWidget(self.lbl_subtitle)
         header_row.addLayout(header_text_layout)
         header_row.addStretch()
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setFixedSize(28, 28)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.setFixedSize(56, 28)
         self.btn_close.setCursor(Qt.PointingHandCursor)
         self.btn_close.clicked.connect(self.hide)
         header_row.addWidget(self.btn_close)
@@ -1250,7 +1256,7 @@ class SettingsWindow(QWidget):
         self.lbl_api_key = QLabel("Google API KEY")
         advanced_translate_layout.addWidget(self.lbl_api_key)
         self.input_api_key = QLineEdit()
-        self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        self.input_api_key.setEchoMode(QLineEdit.Password)
         self.input_api_key.setPlaceholderText("輸入 Google API KEY")
         self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
         advanced_translate_layout.addWidget(self.input_api_key)
@@ -1725,7 +1731,8 @@ class SettingsWindow(QWidget):
         self.card_relief.setStyleSheet(theme.panel_qss("subtle", radius=16))
         self.card_appearance.setStyleSheet(theme.panel_qss("subtle", radius=16))
         self.advanced_translate_frame.setStyleSheet(f"QFrame {{ background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 12px; }}")
-        self.lbl_title.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {theme.text}; background: transparent; border: none;")
+        display_family = f'font-family: "{theme.display_font}", "{theme.display_cjk_font}";'
+        self.lbl_title.setStyleSheet(f"{display_family} font-size: 18px; font-weight: 600; color: {theme.text}; background: transparent; border: none;")
         self.lbl_subtitle.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")
         self.lbl_autosave.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_sync_state.setStyleSheet(f"color: {theme.text}; background-color: {theme.card_bg}; border: 1px solid {theme.border}; border-radius: 999px; padding: 4px 10px;")
@@ -1755,8 +1762,11 @@ class SettingsWindow(QWidget):
         self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
         spinbox_style = (
             f"QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
+            f"border-top-color: {settings_styles.get('settings_card_highlight', theme.border)}; "
+            f"border-bottom: 2px solid {settings_styles.get('settings_card_edge', theme.border)}; "
             f"border-radius: 8px; padding: 3px 8px; }} "
             f"QSpinBox:focus {{ border: 2px solid {theme.accent}; }} "
+            f"QSpinBox:disabled {{ background-color: {theme.control_disabled_bg}; color: {theme.control_disabled_fg}; border-color: {theme.control_disabled_bg}; }} "
             "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }"
         )
         self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
@@ -1844,13 +1854,14 @@ class SettingsWindowRevamp(QWidget):
         self.backdrop_panel = QFrame()
         self.backdrop_panel.setObjectName("settingsBackdropPanel")
         self.backdrop_panel.setAttribute(Qt.WA_StyledBackground, True)
-        
-        # Apple-style subtle drop shadow
+
+        # Apple-style subtle drop shadow from the legacy settings surface.
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(30)
         shadow.setColor(QColor(0, 0, 0, 60))
         shadow.setOffset(0, 10)
         self.backdrop_panel.setGraphicsEffect(shadow)
+
         backdrop = QVBoxLayout(self.backdrop_panel)
         backdrop.setContentsMargins(0, 0, 0, 0)
         backdrop.setSpacing(12)
@@ -2210,19 +2221,42 @@ class SettingsWindowRevamp(QWidget):
         body_grid.setColumnStretch(0, 1)
         body_grid.setColumnStretch(1, 1)
         body_grid.setColumnStretch(2, 1)
-        body_grid.setColumnStretch(3, 1)
+        # Preserve the legacy near-equal three-column composition.  Without a
+        # floor, the Translation card's flexible labels can collapse while the
+        # denser OCR/render cards claim the available width.
+        for column in range(3):
+            body_grid.setColumnMinimumWidth(column, 300)
         body_grid.setRowStretch(0, 1)
         body_grid.setRowStretch(1, 1)
 
-        self.card_translate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_ocr.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_region_render.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_relief.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # The legacy shell is intentionally three columns.  The modern
+        # TranslationSettingsPanel remains the source of provider/model state;
+        # only its host layout changes here.
+        for card in (self.translation_panel, self.card_ocr, self.card_region_render, self.card_relief):
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.translation_panel.setMinimumWidth(300)
+        self.card_ocr.setMinimumWidth(300)
+        self.card_region_render.setMinimumWidth(300)
+        self.card_relief.setMinimumWidth(300)
         body_grid.addWidget(self.translation_panel, 0, 0, 2, 1)
         body_grid.addWidget(self.card_ocr, 0, 1, 2, 1)
         body_grid.addWidget(self.card_region_render, 0, 2)
         body_grid.addWidget(self.card_relief, 1, 2)
-        main.addWidget(body)
+        # Keep the legacy three-column cluster compact and left-aligned so the
+        # character remains visible in the right-side safe area.  The host is
+        # full width; only the card cluster has a bounded width.
+        self.body_host = QWidget()
+        self.body_host.setObjectName("settingsBodyHost")
+        self.body_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        body_host_layout = QHBoxLayout(self.body_host)
+        body_host_layout.setContentsMargins(0, 0, 0, 0)
+        body_host_layout.setSpacing(0)
+        body.setMinimumWidth(928)
+        body.setMaximumWidth(1040)
+        body.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        body_host_layout.addWidget(body, 0, Qt.AlignLeft)
+        body_host_layout.addStretch(1)
+        main.addWidget(self.body_host)
 
         footer = QWidget()
         footer.setObjectName("settingsFooter")
@@ -2323,6 +2357,7 @@ class SettingsWindowRevamp(QWidget):
     def refresh_localized_texts(self):
         lang = self._current_ui_language()
         self.setWindowTitle(translation_tools.ui_text(lang, "settings_title"))
+        self.btn_export_history.setText(translation_tools.ui_text(lang, "settings_export_history"))
         self.lbl_page_title.setText("CloudHime")
         self.lbl_page_subtitle.setText(translation_tools.ui_text(lang, "settings_subtitle"))
         self.btn_close.setToolTip(translation_tools.ui_text(lang, "settings_close"))
@@ -2331,6 +2366,7 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_theme_mode.setToolTip(translation_tools.ui_text(lang, "settings_theme_mode"))
         self.lbl_ui_language.setText("🌐")
         self.lbl_ui_language.setToolTip(translation_tools.ui_text(lang, "settings_ui_language"))
+        self.lbl_knowledge_work.setText("📖")
         self.lbl_knowledge_work.setToolTip(translation_tools.ui_text(lang, "settings_knowledge_placeholder"))
         self.input_knowledge_title.setPlaceholderText(
             translation_tools.ui_text(lang, "settings_knowledge_placeholder")
@@ -2712,7 +2748,6 @@ class SettingsWindowRevamp(QWidget):
             theme.base_qss()
             + f"\nQWidget#settingsWindowRevamp {{ background: transparent; }}"
         )
-        import os
         bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
         bg_image_path = _resource_path(bg_image)
         self.backdrop_panel.setStyleSheet(
@@ -2720,19 +2755,23 @@ class SettingsWindowRevamp(QWidget):
             f"background-image: url('{bg_image_path}'); background-position: center; background-repeat: no-repeat; }}"
         )
         self.top_panel.setStyleSheet(
-            f"QWidget#settingsTopPanel {{ background: transparent; border: none; }}"
+            f"QWidget#settingsTopPanel {{ background-color: {theme.get('settings_top_bg', theme.header_bg)}; border: none; }}"
         )
         self.shell_panel.setStyleSheet(
             f"QFrame#settingsShellPanel {{ background: transparent; border: none; }}"
         )
         self.frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         self.ocr_backend_panel.update_theme(theme_mode)
-        self.card_translate.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {translation_border}; border-radius: 14px; }}")
+        self.card_translate.setStyleSheet(
+            f"QFrame#translationCardHost {{ background-color: {card_bg}; border: 1px solid {translation_border}; "
+            f"border-top-color: {theme.get('settings_card_highlight', translation_border)}; "
+            f"border-bottom: 2px solid {theme.get('settings_card_edge', translation_border)}; border-radius: 14px; }}"
+        )
         self.card_ocr.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {ocr_border}; border-radius: 14px; }}")
         self.card_region_render.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {render_border}; border-radius: 14px; }}")
         self.card_relief.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {render_border}; border-radius: 14px; }}")
         self.auto_scan_panel.setStyleSheet(theme.panel_qss("transparent"))
-        self.lbl_brand_icon.setStyleSheet(f"font-size: 24px; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 20px;")
+        self.lbl_brand_icon.setStyleSheet(f"background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 20px;")
         self.lbl_page_title.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
         self.lbl_page_subtitle.setStyleSheet(f"font-size: 14px; color: {theme.subtext}; background: transparent; border: none;")
         self.btn_close.setStyleSheet(
@@ -2806,7 +2845,11 @@ class SettingsWindowRevamp(QWidget):
         self._sync_theme_mode(theme.key)
         self._sync_render_mode()
         self.translation_panel.update_theme(theme_mode)
-        self.card_translate.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {translation_border}; border-radius: 14px; }}")
+        self.card_translate.setStyleSheet(
+            f"QFrame#translationCardHost {{ background-color: {card_bg}; border: 1px solid {translation_border}; "
+            f"border-top-color: {theme.get('settings_card_highlight', translation_border)}; "
+            f"border-bottom: 2px solid {theme.get('settings_card_edge', translation_border)}; border-radius: 14px; }}"
+        )
         self.lbl_translate.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {translation_border}; background: transparent; border: none;")
         footer_button_style = (
             f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
@@ -2838,14 +2881,30 @@ class SettingsWindowRevamp(QWidget):
         try:
             cache = getattr(self.controller.worker, "translation_cache", {})
             if not cache:
-                QMessageBox.information(self, "提示", "目前沒有翻譯歷史紀錄。")
+                lang = self._current_ui_language()
+                QMessageBox.information(self, translation_tools.ui_text(lang, "settings_export_history"), translation_tools.ui_text(lang, "settings_export_history_empty"))
                 return
-            path, _ = QFileDialog.getSaveFileName(self, "匯出翻譯歷史", "cloudhime_history.json", "JSON Files (*.json)")
+            lang = self._current_ui_language()
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                translation_tools.ui_text(lang, "settings_export_history_dialog"),
+                "cloudhime_history.json",
+                "JSON Files (*.json)",
+            )
             if path:
                 write_translation_history_export(path, cache)
-                QMessageBox.information(self, "成功", f"翻譯歷史已匯出至 {path}")
+                QMessageBox.information(
+                    self,
+                    translation_tools.ui_text(lang, "settings_export_history"),
+                    translation_tools.ui_text(lang, "settings_export_history_success", path=path),
+                )
         except Exception as exc:
-            QMessageBox.warning(self, "錯誤", f"匯出失敗: {exc}")
+            lang = self._current_ui_language()
+            QMessageBox.warning(
+                self,
+                translation_tools.ui_text(lang, "settings_export_history"),
+                translation_tools.ui_text(lang, "settings_export_history_failed", error=exc),
+            )
 
 class Controller(QWidget):
 
@@ -2925,7 +2984,28 @@ class Controller(QWidget):
         self.active_knowledge_pack = None
         self.knowledge_pack_store = KnowledgePackStore(create_knowledge_pack_paths(SETTINGS_PATHS))
         self.secret_store = SecretStore(API_KEY_SECRET_PATH)
+        self.openai_secret_store = SecretStore(
+            OPENAI_API_KEY_SECRET_PATH,
+            description="CloudHime OpenAI secret",
+        )
+        self.openai_api_key_store = self.openai_secret_store
+        # Controller attributes include provider metadata and runtime
+        # credential values. Secret values are kept in memory for runtime
+        # wiring and are never handed to settings_store.
+        self.google_api_key = ""
+        self.online_gemma_enabled = False
+        self.openai_api_key = ""
+        self.luna_api_key = ""
+        self.openai_enabled = False
+        self.luna_enabled = False
+        self.openai_model = "gpt-5.6-luna"
+        self.openai_reasoning_effort = "none"
+        self.openai_timeout_seconds = 60
+        self.luna_reasoning_effort = "none"
+        self.luna_timeout_seconds = 60
+        self.provider_chain = ()
         self.pending_api_key = None
+        self.pending_openai_api_key = None
         self.ui_language = localization.DEFAULT_UI_LANGUAGE
         self.cooldown_total_ms = 5000
         self.cooldown_end_time = 0.0
@@ -2955,6 +3035,9 @@ class Controller(QWidget):
         self.api_key_save_timer = QTimer(self)
         self.api_key_save_timer.setSingleShot(True)
         self.api_key_save_timer.timeout.connect(self._persist_pending_api_key)
+        self.openai_api_key_save_timer = QTimer(self)
+        self.openai_api_key_save_timer.setSingleShot(True)
+        self.openai_api_key_save_timer.timeout.connect(self._persist_pending_openai_api_key)
         self.gemma_prompt_timer = QTimer(self)
         self.gemma_prompt_timer.setSingleShot(True)
         self.gemma_prompt_timer.timeout.connect(self._apply_pending_gemma_prompt)
@@ -2975,11 +3058,12 @@ class Controller(QWidget):
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
-        font = QFont("Segoe UI Emoji", int(size * 0.7))
-        font.setStyleStrategy(QFont.PreferAntialias)
-        painter.setFont(font)
-        painter.setPen(QColor("#FFFFFF")) 
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "☁️")
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor("#FFFFFF"), 3))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(8, 28, 48, 23)
+        painter.drawEllipse(16, 16, 25, 25)
+        painter.drawEllipse(31, 20, 25, 27)
         painter.end()
         self.setWindowIcon(QIcon(pixmap))
 
@@ -2993,7 +3077,7 @@ class Controller(QWidget):
         inner_layout.setSpacing(6)
         
         title_bar = QHBoxLayout()
-        self.lbl_title = QLabel("☁️雲朵翻譯姬 v3.0")
+        self.lbl_title = QLabel("CloudHime v3.0")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         
         self.btn_min = QPushButton("－")
@@ -3002,8 +3086,8 @@ class Controller(QWidget):
         self.btn_min.clicked.connect(self.showMinimized)
         self.btn_min.setStyleSheet("background:transparent; color:#888; border:none; font-weight:900;")
         
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setFixedSize(24,24)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.setFixedSize(56, 28)
         self.btn_close.setCursor(Qt.PointingHandCursor)
         self.btn_close.clicked.connect(self.close_app)
         self.btn_close.setStyleSheet("background:transparent; color:#888; border:none; font-weight:900;")
@@ -3016,12 +3100,23 @@ class Controller(QWidget):
 
         status_row = QHBoxLayout()
         self.lbl_status = QLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
+        self.lbl_status.setObjectName("translationStatus")
+        self.lbl_status.setProperty("semanticRole", "translation-status")
+        self.lbl_status.setAccessibleName("翻譯狀態")
+        self.lbl_status.setAccessibleDescription("顯示目前擷取、翻譯與錯誤狀態")
         self.lbl_status.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_status.setWordWrap(True)
         self.lbl_status.setMinimumHeight(30)
         self.charge_bar = StatusChargeBar()
-        self.btn_theme = QPushButton("💡")
-        self.btn_theme.setFixedSize(30, 30)
+        self.charge_bar.setObjectName("translationQuotaCharge")
+        self.charge_bar.setProperty("semanticRole", "quota-usage")
+        self.charge_bar.setAccessibleName("翻譯額度狀態")
+        self.charge_bar.setAccessibleDescription("顯示已驗證的 Provider 使用量；不代表即時剩餘額度")
+        self.btn_theme = QPushButton("設定")
+        self.btn_theme.setObjectName("settingsButton")
+        self.btn_theme.setAccessibleName("開啟設定")
+        self.btn_theme.setAccessibleDescription("開啟設定中心")
+        self.btn_theme.setFixedSize(56, 30)
         self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_settings_window)
         status_row.addWidget(self.lbl_status)
@@ -3032,7 +3127,7 @@ class Controller(QWidget):
         ai_key_row = QHBoxLayout()
         self.input_api_key = QLineEdit()
         self.input_api_key.setPlaceholderText("Google API KEY")
-        self.input_api_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        self.input_api_key.setEchoMode(QLineEdit.Password)
         self.input_api_key.textChanged.connect(self.on_api_key_changed)
         ai_key_row.addWidget(self.input_api_key)
         inner_layout.addLayout(ai_key_row)
@@ -3070,7 +3165,7 @@ class Controller(QWidget):
         inner_layout.addLayout(scan_mode_row)
 
         btn_layout = QHBoxLayout()
-        self.btn_now = CooldownButton("⚡ 立即 (~)")
+        self.btn_now = CooldownButton("立即翻譯 (~)")
         self.btn_now.setCursor(Qt.PointingHandCursor)
         self.btn_now.clicked.connect(self.on_immediate_click)
         self.auto_group = QButtonGroup(self)
@@ -3082,7 +3177,7 @@ class Controller(QWidget):
         self.auto_group.addButton(self.btn_30)
         btn_layout.addWidget(self.btn_now)
         btn_layout.addWidget(self.btn_30)
-        self.btn_stop = QPushButton("⏹ 停止")
+        self.btn_stop = QPushButton("停止")
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.clicked.connect(self.stop_scan)
         btn_layout.addWidget(self.btn_stop)
@@ -3250,7 +3345,7 @@ class Controller(QWidget):
 
     def get_hotkey_button_text(self):
         label = getattr(self.hotkey_filter, "registered_label", None) or "~"
-        return f"⚡ {self._tr('controller.button.now', fallback='Translate Now')} ({label})"
+        return f"{self._tr('controller.button.now', fallback='Translate Now')} ({label})"
 
     def refresh_hotkey_button_text(self):
         if hasattr(self, "btn_now"):
@@ -3272,13 +3367,133 @@ class Controller(QWidget):
                 self.secret_store.mark_legacy_sources_disabled()
                 self.secret_store.delete()
         except SecretStoreError as exc:
-            logger.error("Failed to persist encrypted API key: %s", exc)
+            logger.error("Failed to persist encrypted API key: %s", type(exc).__name__)
             return False
         self.pending_api_key = None
         return True
 
+    def _persist_secret_value(self, store_attr, pending_attr):
+        pending = getattr(self, pending_attr, None)
+        if pending is None:
+            return True
+        store = getattr(self, store_attr, None)
+        if store is None:
+            return False
+        try:
+            if pending:
+                store.set(pending)
+            else:
+                store.delete()
+        except SecretStoreError as exc:
+            logger.error(
+                "Failed to persist encrypted provider secret (%s): %s",
+                pending_attr,
+                type(exc).__name__,
+            )
+            return False
+        setattr(self, pending_attr, None)
+        return True
+
+    def _persist_pending_openai_api_key(self):
+        return self._persist_secret_value(
+            "openai_secret_store", "pending_openai_api_key"
+        )
+
+    def _apply_google_credentials_to_worker(self):
+        worker = getattr(self, "worker", None)
+        if worker is None:
+            return
+        api_key = str(getattr(self, "google_api_key", "") or "").strip()
+        try:
+            setter = getattr(worker, "set_google_api_key", None)
+            if callable(setter):
+                setter(api_key)
+        except Exception as exc:
+            logger.warning("Google provider runtime update failed: %s", type(exc).__name__)
+
+    def on_online_gemma_enabled_changed(self, enabled):
+        self.online_gemma_enabled = bool(enabled)
+        self._refresh_translation_provider_health()
+        self.schedule_save_settings()
+
+    # Compatibility spelling used by early panel builds.
+    on_gemma_online_enabled_changed = on_online_gemma_enabled_changed
+
+    def on_luna_api_key_changed(self, text):
+        self.openai_api_key = str(text or "").strip()
+        self.luna_api_key = self.openai_api_key
+        self.pending_openai_api_key = self.openai_api_key
+        timer = getattr(self, "openai_api_key_save_timer", None)
+        if timer is not None:
+            timer.start(500)
+        self._apply_openai_config()
+        self._refresh_translation_provider_health()
+        self.schedule_save_settings()
+
+    on_openai_api_key_changed = on_luna_api_key_changed
+
+    def on_luna_enabled_changed(self, enabled):
+        self.openai_enabled = bool(enabled)
+        self.luna_enabled = self.openai_enabled
+        self._apply_openai_config()
+        self._refresh_translation_provider_health()
+        self.schedule_save_settings()
+
+    on_openai_enabled_changed = on_luna_enabled_changed
+
+    def on_luna_reasoning_changed(self, value):
+        self.openai_reasoning_effort = "none"
+        self.luna_reasoning_effort = "none"
+        self._apply_openai_config()
+        self.schedule_save_settings()
+
+    on_openai_reasoning_changed = on_luna_reasoning_changed
+
+    def on_luna_timeout_changed(self, value):
+        try:
+            self.openai_timeout_seconds = max(1, min(300, int(value)))
+        except (TypeError, ValueError):
+            self.openai_timeout_seconds = 60
+        self.luna_timeout_seconds = self.openai_timeout_seconds
+        self._apply_openai_config()
+        self.schedule_save_settings()
+
+    on_openai_timeout_changed = on_luna_timeout_changed
+
+    def _apply_openai_config(self):
+        worker = getattr(self, "worker", None)
+        if worker is None:
+            return
+        setter = getattr(worker, "set_openai_config", None)
+        try:
+            if callable(setter):
+                setter(
+                    enabled=bool(getattr(self, "openai_enabled", False)),
+                    api_key=str(getattr(self, "openai_api_key", "") or ""),
+                    model="gpt-5.6-luna",
+                    reasoning_effort="none",
+                    timeout_seconds=int(getattr(self, "openai_timeout_seconds", 60)),
+                )
+                return
+            for method_name, value in (
+                ("set_openai_api_key", getattr(self, "openai_api_key", "")),
+                ("set_openai_enabled", getattr(self, "openai_enabled", False)),
+                ("set_openai_reasoning_effort", "none"),
+                ("set_openai_timeout_seconds", getattr(self, "openai_timeout_seconds", 60)),
+            ):
+                method = getattr(worker, method_name, None)
+                if callable(method):
+                    method(value)
+        except Exception as exc:
+            logger.warning("OpenAI provider runtime update failed: %s", type(exc).__name__)
+
     def _tr(self, key, fallback=None, **params):
-        return localization.tr(key, self.ui_language, fallback=fallback, **params)
+        text = localization.tr(key, self.ui_language, fallback=fallback, **params)
+        # Keep the compact HUD legible with one consistent vector icon system;
+        # localized legacy strings may still carry emoji prefixes.
+        return str(text).translate(
+            {ord(char): None for char in "☁️🎨🌐📖⚡🎲⏹🖥🧩🖼💬💡⚠️♻️"}
+        )
 
     def _set_status_text(self, key, fallback=None, **params):
         if hasattr(self, "lbl_status"):
@@ -3526,8 +3741,18 @@ class Controller(QWidget):
             "binary_threshold": int(self.worker.binary_threshold),
             "ui_language": self.get_ui_language(),
             "active_work_title": getattr(self, "active_work_title", ""),
+            "online_gemma_enabled": bool(getattr(self, "online_gemma_enabled", False)),
+            "openai_enabled": bool(getattr(self, "openai_enabled", False)),
+            "openai_model": "gpt-5.6-luna",
+            "openai_reasoning_effort": "none",
+            "openai_timeout_seconds": int(getattr(self, "openai_timeout_seconds", 60)),
+            "provider_chain": list(getattr(self, "provider_chain", ()) or ()),
         }
-        return normalize_settings_payload(payload, int(self.region_frame_opacity), self.get_ui_language())
+        normalized = normalize_settings_payload(payload, int(self.region_frame_opacity), self.get_ui_language())
+        # settings_store normalizes old payloads with a compatibility default;
+        # runtime state is authoritative here so a missing chain stays opt-in.
+        normalized["provider_chain"] = list(getattr(self, "provider_chain", ()) or ())
+        return normalized
 
     def save_settings(self):
         try:
@@ -3549,13 +3774,28 @@ class Controller(QWidget):
     def load_settings(self):
         load_t0 = time.perf_counter()
         startup_log("Controller.load_settings start")
-        settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
+        raw_settings, loaded_from_path = load_settings_data(SETTINGS_PATHS)
+        raw_settings = raw_settings if isinstance(raw_settings, dict) else {}
+        settings = dict(raw_settings)
         settings = normalize_settings_payload(
             settings,
             resolve_region_opacity(settings, self.region_frame_opacity),
             resolve_ui_language(settings, self.ui_language),
         )
         self.settings_data = settings
+        # A missing chain is intentionally different from an explicit chain:
+        # OpenAI is never inserted into the runtime fallback implicitly.
+        raw_provider_chain = raw_settings.get(
+            "provider_chain", raw_settings.get("translation_provider_chain")
+        )
+        if isinstance(raw_provider_chain, (list, tuple)):
+            self.provider_chain = [
+                str(provider).strip().casefold()
+                for provider in raw_provider_chain
+                if str(provider).strip()
+            ]
+        else:
+            self.provider_chain = []
         self.active_work_title = str(settings.get("active_work_title", "") or "").strip()
         self._load_knowledge_pack_for_title(
             self.active_work_title,
@@ -3626,16 +3866,42 @@ class Controller(QWidget):
             self.region_relief_font_pt = safe_int(settings.get("region_relief_font_pt", self.region_relief_font_pt), self.region_relief_font_pt, MIN_BUBBLE_FONT_PT, 48)
             self.region_frame_opacity = resolve_region_opacity(settings, self.region_frame_opacity)
 
+            # The single Google credential is protected by DPAPI.  Legacy
+            # primary/secondary fields are migration-only and never persisted.
+            self.online_gemma_enabled = bool(settings.get("online_gemma_enabled", False))
+            self.openai_enabled = bool(settings.get("openai_enabled", False))
+            self.luna_enabled = self.openai_enabled
+            self.openai_model = str(settings.get("openai_model", "gpt-5.6-luna") or "gpt-5.6-luna")
+            self.openai_reasoning_effort = "none"
+            self.luna_reasoning_effort = self.openai_reasoning_effort
+            self.openai_timeout_seconds = safe_int(settings.get("openai_timeout_seconds", 60), 60, 1, 300)
+            self.luna_timeout_seconds = self.openai_timeout_seconds
+
             secret_api_key = ""
+            legacy_secondary_secret = ""
+            openai_api_key = ""
             legacy_sources_disabled = False
             try:
                 secret_api_key = self.secret_store.get()
             except SecretStoreError as exc:
                 logger.warning("Failed to read encrypted API key store: %s", exc)
+            if not secret_api_key:
+                try:
+                    legacy_secondary_secret = SecretStore(
+                        LEGACY_GOOGLE_API_KEY_SECONDARY_SECRET_PATH,
+                        description="CloudHime Google secondary secret",
+                    ).get()
+                except SecretStoreError as exc:
+                    logger.warning("Failed to read legacy secondary Google secret: %s", type(exc).__name__)
             try:
                 legacy_sources_disabled = self.secret_store.legacy_sources_disabled()
             except SecretStoreError as exc:
                 logger.warning("Failed to read API key migration state: %s", exc)
+
+            try:
+                openai_api_key = self.openai_secret_store.get()
+            except SecretStoreError as exc:
+                logger.warning("Failed to read OpenAI secret: %s", type(exc).__name__)
 
             process_api_key = str(os.getenv(API_KEY_ENV_VAR, "") or "").strip()
             legacy_api_key = ""
@@ -3644,15 +3910,36 @@ class Controller(QWidget):
                     (APPDATA_ENV_PATH, LEGACY_ENV_PATH)
                 )
             if not legacy_sources_disabled:
-                legacy_api_key = legacy_api_key or str(settings.get("google_api_key", "") or "").strip()
-            api_key = secret_api_key or process_api_key or legacy_api_key
+                # Preserve legacy ordering: primary/first key wins; secondary
+                # is considered only when the earlier fields are empty.
+                legacy_key_names = (
+                    "google_api_key_primary", "google_api_key_1", "google_key_primary",
+                    "google_api_key_secondary", "google_api_key_2", "google_key_secondary",
+                    "google_api_key", "google_key", "gemma_api_key",
+                )
+                legacy_api_key = legacy_api_key or next(
+                    (
+                        str(raw_settings.get(name, "") or "").strip()
+                        for name in legacy_key_names
+                        if str(raw_settings.get(name, "") or "").strip()
+                    ),
+                    "",
+                )
+            api_key = secret_api_key or legacy_secondary_secret or process_api_key or legacy_api_key
             if not secret_api_key and api_key:
                 try:
                     self.secret_store.set(api_key)
                     self.secret_store.mark_legacy_sources_disabled()
                 except SecretStoreError as exc:
                     logger.warning("Failed to migrate legacy API key to encrypted store: %s", exc)
-            self.worker.set_google_api_key(api_key)
+            self.google_api_key = api_key
+            self.openai_api_key = openai_api_key
+            self.luna_api_key = openai_api_key
+            self._apply_google_credentials_to_worker()
+            self._apply_openai_config()
+            provider_setter = getattr(self.worker, "set_provider_chain", None)
+            if callable(provider_setter):
+                provider_setter(self.provider_chain)
             if self.input_api_key.text() != api_key:
                 self.input_api_key.blockSignals(True)
                 self.input_api_key.setText(api_key)
@@ -3803,7 +4090,7 @@ class Controller(QWidget):
         self.schedule_save_settings()
 
     def get_random_scan_button_text(self):
-        return f"🎲 {int(self.random_scan_center_seconds)}s~"
+        return f"自動掃描 {int(self.random_scan_center_seconds)}s~"
 
     def update_random_scan_button_text(self):
         self.btn_30.setText(self.get_random_scan_button_text())
@@ -3846,15 +4133,15 @@ class Controller(QWidget):
 
     def update_mode_status_text(self):
         if self.scan_mode == SCAN_MODE_FULLSCREEN:
-            self._set_status_text("controller.mode.fullscreen", fallback="🖥 Mode: Full screen")
+            self._set_status_text("controller.mode.fullscreen", fallback="Mode: Full screen")
             return
 
         if self.region_render_mode == REGION_RENDER_RELIEF:
-            self._set_status_text("controller.mode.relief", fallback="🧩 Mode: Relief")
+            self._set_status_text("controller.mode.relief", fallback="Mode: Relief")
         elif self.region_render_mode == REGION_RENDER_SCREENSHOT:
-            self._set_status_text("controller.mode.screenshot", fallback="🖼 Mode: Screenshot")
+            self._set_status_text("controller.mode.screenshot", fallback="Mode: Screenshot")
         else:
-            self._set_status_text("controller.mode.bubble", fallback="💬 Mode: Bubble")
+            self._set_status_text("controller.mode.bubble", fallback="Mode: Bubble")
 
     def on_region_relief_settings_changed(self, offset_x, offset_y, font_pt, opacity):
         self.region_relief_offset_x = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(offset_x)))
@@ -3953,8 +4240,10 @@ class Controller(QWidget):
         self.schedule_save_settings()
 
     def on_api_key_changed(self, text):
-        self.worker.set_google_api_key(text)
-        self.pending_api_key = str(text or "").strip()
+        value = str(text or "").strip()
+        self.google_api_key = value
+        self.pending_api_key = value
+        self._apply_google_credentials_to_worker()
         if hasattr(self, "api_key_save_timer"):
             self.api_key_save_timer.start(500)
 
@@ -3973,6 +4262,9 @@ class Controller(QWidget):
         if self.settings_window is not None and hasattr(self.settings_window, "ocr_backend_panel"):
             self.settings_window.ocr_backend_panel.sync_from_controller()
         self.schedule_save_settings()
+
+    # Explicit Online Gemma spelling for the single-key settings contract.
+    on_google_api_key_changed = on_api_key_changed
 
     def on_ai_model_changed(self, index):
         model_name = self.cmb_ai_model.itemData(index)
@@ -4247,9 +4539,11 @@ class Controller(QWidget):
             self.settings_window.hide()
         else:
             self.settings_window.show()
-            self.settings_window.resize(1180, 740)
             try:
                 screen = QApplication.primaryScreen().availableGeometry()
+                width = min(1120, max(940, screen.width() - 32))
+                height = min(760, max(680, screen.height() - 28))
+                self.settings_window.resize(width, height)
                 x = screen.left() + max(0, (screen.width() - self.settings_window.width()) // 2)
                 y = screen.top() + max(0, (screen.height() - self.settings_window.height()) // 2)
                 self.settings_window.move(x, y)
@@ -4295,16 +4589,16 @@ class Controller(QWidget):
             self.begin_region_selection()
             return
         self.display_timer.stop()
-        self._set_status_text("controller.status.immediate_scanning", fallback="⚡ Scanning now...")
+        self._set_status_text("controller.status.immediate_scanning", fallback="Scanning now...")
         self.worker.last_auto_threshold_refresh_ms = 0.0
         self.trigger_scan_sequence()
         self.btn_now.setEnabled(False)
-        self.btn_now.setText(self._tr("controller.status.cold_down", fallback="⚡ Cooling down..."))
+        self.btn_now.setText(self._tr("controller.status.cold_down", fallback="Cooling down..."))
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = time.monotonic() + (self.cooldown_total_ms / 1000.0)
         self.cooldown_progress_timer.start()
         self.cooldown_timer.start(self.cooldown_total_ms)
-        self._set_status_text("controller.status.cold_down", fallback="⚡ Cooling down...")
+        self._set_status_text("controller.status.cold_down", fallback="Cooling down...")
 
     def reset_immediate_btn(self):
         self.cooldown_progress_timer.stop()
@@ -4319,7 +4613,7 @@ class Controller(QWidget):
                 return
             self.update_mode_status_text()
         elif "截圖" in status_text or "Screenshot" in status_text:
-            self._set_status_text("controller.status.capture_running", fallback="🖼 Screenshot translation running...")
+            self._set_status_text("controller.status.capture_running", fallback="Screenshot translation running...")
 
     def update_cooldown_progress(self):
         if self.cooldown_end_time <= 0:
@@ -4329,8 +4623,8 @@ class Controller(QWidget):
         progress = int(round((1.0 - (remaining / (self.cooldown_total_ms / 1000.0))) * 100))
         progress = max(0, min(100, progress))
         self.btn_now.set_cooldown_progress(progress)
-        self.btn_now.setText(f"⚡ {progress}%")
-        self._set_status_text("controller.status.cold_down", fallback="⚡ Cooling down...")
+        self.btn_now.setText(f"{progress}%")
+        self._set_status_text("controller.status.cold_down", fallback="Cooling down...")
 
     def start_auto_scan(self, checked=False, base_interval=None):
         if self.scan_mode == SCAN_MODE_REGION and not self.selected_region:
@@ -4599,7 +4893,8 @@ class Controller(QWidget):
     def update_frame_style(self):
         theme = resolve_theme(self.theme_mode)
         self.frame.setStyleSheet(theme.window_qss(radius=15, border_width=2))
-        self.lbl_title.setStyleSheet(f"color: {theme.text}; font-weight: bold; background: transparent; border: none;")
+        display_family = f'font-family: "{theme.display_font}", "{theme.display_cjk_font}";'
+        self.lbl_title.setStyleSheet(f"{display_family} color: {theme.text}; font-weight: 600; background: transparent; border: none;")
         self.lbl_status.setStyleSheet(f"color: {theme.text}; background-color: {theme.card_bg}; border: 1px solid {theme.border}; border-radius: 4px;")
         self.input_api_key.setStyleSheet(f"background-color: {theme.card_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 6px;")
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
@@ -4784,6 +5079,7 @@ class Controller(QWidget):
         if knowledge_worker is not None:
             knowledge_worker.wait_for_all(2.0)
         self._persist_pending_api_key()
+        self._persist_pending_openai_api_key()
         self.save_settings()
         self._shutdown_remote_model_availability()
         if hasattr(self, 'worker'):

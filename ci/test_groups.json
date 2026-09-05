@@ -28,7 +28,9 @@
         "tests/test_manga_cover_manifest.py",
         "tests/test_manga_repeated_run_evaluator.py",
         "tests/test_msix_packaging.py",
+        "tests/test_openai_translation_provider.py",
         "tests/test_provider_health.py",
+        "tests/test_provider_runtime.py",
         "tests/test_release_packaging.py",
         "tests/test_release_functional_smoke.py",
         "tests/test_release_smoke_orchestrator.py",
@@ -41,6 +43,7 @@
         "tests/test_translation_helpers.py",
         "tests/test_translation_orchestrator.py",
         "tests/test_translation_providers.py",
+        "tests/test_translation_registry_online.py",
         "tests/test_vision_region.py"
       ]
     },

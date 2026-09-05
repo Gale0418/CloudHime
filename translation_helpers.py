@@ -293,6 +293,26 @@ UI_TEXTS = {
         "zh-TW": "UI 語言",
         "en": "UI Language",
     },
+    "settings_export_history": {
+        "zh-TW": "匯出翻譯歷史",
+        "en": "Export translation history",
+    },
+    "settings_export_history_empty": {
+        "zh-TW": "目前沒有翻譯歷史紀錄。",
+        "en": "There is no translation history to export.",
+    },
+    "settings_export_history_dialog": {
+        "zh-TW": "匯出翻譯歷史",
+        "en": "Export translation history",
+    },
+    "settings_export_history_success": {
+        "zh-TW": "翻譯歷史已匯出至 {path}",
+        "en": "Translation history exported to {path}",
+    },
+    "settings_export_history_failed": {
+        "zh-TW": "匯出失敗：{error}",
+        "en": "Export failed: {error}",
+    },
     "translation_panel_title": {
         "zh-TW": "翻譯功能",
         "en": "Translation",
@@ -316,6 +336,14 @@ UI_TEXTS = {
     "translation_api_key_placeholder": {
         "zh-TW": "輸入 API KEY",
         "en": "Enter API key",
+    },
+    "translation_api_key_show": {
+        "zh-TW": "顯示",
+        "en": "Show",
+    },
+    "translation_api_key_hide": {
+        "zh-TW": "隱藏",
+        "en": "Hide",
     },
     "translation_ai_model": {
         "zh-TW": "AI 模型",
@@ -1092,7 +1120,6 @@ def get_translation_provider_priority(provider: Any) -> int:
 
 def should_replace_provider(old_provider: Any, new_provider: Any) -> bool:
     return get_translation_provider_priority(new_provider) >= get_translation_provider_priority(old_provider)
-
 
 
 

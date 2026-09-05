@@ -282,3 +282,29 @@
 - The package was unpacked with the same x64 `makeappx.exe` into a unique temporary directory. Strict recheck passed: manifest `Name=CloudHime`, `Publisher=CN=CloudHime Development`, `Version=0.1.0.0`; `393` unpacked files; extracted runtime manifest valid with `26` files; `0` GGUF/mmproj model files; temporary unpack directory removed.
 - A naive filename scan reported one `api-ms-win-crt-private-l1-1-0.dll`; this is a Windows CRT API shim, not private material. The only PEM was the public `certifi/cacert.pem` CA bundle. No `.env`, `.pfx`, `.key`, secret, or API-key material was found after those allowlist distinctions.
 - This is an unsigned development MSIX contract result only. CH-T52 installation requires an explicit owner-authorized short-lived `CN=CloudHime Development` certificate, x64 SignTool, Administrator/AppX deployment, activation, and cleanup. It must not be reported as Store identity or Store certification.
+
+## 2026-08-30：CH-T107 Prior Art 預註冊
+
+- Pre-search idea：在既有 TranslationProvider 契約外新增 provider capability 與 model-specific rate／cooldown state，讓 UI 只依狀態模型渲染，不直接驅動遠端實作。
+- 比較路徑：Adopt 現成 retry／quota library、Adapt 官方 API 契約、Learn 開源 provider router、或以現有小型架構 clean-room build。
+- 硬限制：不新增未經核准的 runtime dependency；不讀取或持久化 OWO.TXT；來源優先官方文件；GitHub 專案須記錄維護、授權、依賴與退出成本。
+
+### Representative screening
+
+| 候選 | 分類 | 採用洞見 | 授權／成本 |
+| --- | --- | --- | --- |
+| `openai/openai-python` | Learn | Responses、`output_text` 與同步／非同步 client 契約 | Apache-2.0；第一階段不加依賴 |
+| `googleapis/python-genai` | Learn | typed content/image adapter 與 API migration 警示 | Apache-2.0；即將有 major AFC 變更，先不採 |
+| `BerriAI/litellm` | Reject runtime | 可學 provider normalization、routing 與 virtual key 分層 | gateway／SDK 面積與營運成本超過桌面 app 需求 |
+| `pbakaus/impeccable` | Learn | Operate mode、方向契約、bounded visual QA | Apache-2.0；僅設計流程，不進 runtime |
+
+- Adopt／build：以既有 urllib 為 transport，新增 CloudHime 自有小型 model／quota runtime，讓單一 Google API key 在兩個 Gemma 模型間依各自 rate／cooldown 選擇；完整決策見 `docs/adr/001-online-provider-routing.md`。
+
+## 2026-08-30：CH-T107 專家收斂與基線
+
+- 三個 Luna 唯讀專家分別完成 API 架構、PyQt／遊戲 UX、資安／QA 審查；Antigravity 的 `gemini-3.6-flash-high` 唯讀研究亦已取回完成 marker。
+- 共識：採中央 runtime、provider adapters、單一 Google API key 的 DPAPI secret、非同步 UI 與故障注入；Online Gemma 使用 `gemma-4-26b-a4b-it`／`gemma-4-31b-it` 雙模型並保留 Local Gemma。
+- 否決：不從 key 或不保證存在的 header 猜 Google Project ID；Google 官方 limits per project 且 each model variation has its own rate limit，因此只按模型維護 cooldown。安全輪替限明確 429／404／503 且無串流輸出；timeout／URLError 不重播、不切換。
+- 契約基線：所有 Gemma 使用 `thinkingLevel=minimal`；Luna 使用 reasoning effort `none`。
+- 主代理可重現基線：`python -m pytest -q tests/test_secret_store.py tests/test_settings_store.py tests/test_translation_providers.py tests/test_translation_orchestrator.py tests/test_remote_model_availability_worker.py tests/test_cloudhime_workers.py tests/test_cloudhime_ui_smoke.py` → `229 passed in 3.32s`。
+- Mission Center CLI 相容性：`doctor` 與 `sync` 可解析新增 canonical rows，但 `transition CH-T107/CH-T108 ...` 仍回 `unknown_task`；保留錯誤證據，不手改 managed lifecycle summary。
