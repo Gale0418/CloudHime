@@ -340,8 +340,9 @@ def test_runtime_uses_per_launch_api_key_and_clears_it_on_stop(fake_assets):
     state = runtime.start()
 
     args = popen.calls[0]
-    key_index = args.index("--api-key")
-    assert args[key_index + 1] == "runtime-test-key"
+    assert "--api-key" not in args
+    assert "runtime-test-key" not in args
+    assert popen.kwargs_list[0]["env"]["LLAMA_API_KEY"] == "runtime-test-key"
     assert runtime.api_key == "runtime-test-key"
     assert "runtime-test-key" not in state.detail
 
@@ -952,8 +953,10 @@ def test_cpu_retry_uses_ngl_0(fake_assets):
     assert "-ngl" in cpu_args
     idx = cpu_args.index("-ngl")
     assert cpu_args[idx + 1] == "0"
-    assert popen.calls[0][popen.calls[0].index("--api-key") + 1] == "gpu-key"
-    assert cpu_args[cpu_args.index("--api-key") + 1] == "cpu-key"
+    assert "--api-key" not in popen.calls[0]
+    assert "--api-key" not in cpu_args
+    assert popen.kwargs_list[0]["env"]["LLAMA_API_KEY"] == "gpu-key"
+    assert popen.kwargs_list[1]["env"]["LLAMA_API_KEY"] == "cpu-key"
 
 
 def test_cuda_failure_then_cpu_also_fails_returns_failed(fake_assets):
@@ -1022,7 +1025,7 @@ def test_stop_kills_owned_process_when_terminate_times_out(fake_assets):
 
     assert state.name == "stopped"
     assert proc.terminate_calls == 1
-    assert proc.wait_calls == 1
+    assert proc.wait_calls == 2  # also reap after kill
     assert proc.kill_calls == 1
     assert runtime.owned_process is None
 

@@ -7,11 +7,13 @@ code can decide whether and how to retry the bounded errors emitted here.
 from __future__ import annotations
 
 import json
+import math
 import socket
 from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 from urllib import error, request
 
+from responses_contract import load_strict_json, require_complete_response
 from translation_contracts import TranslationResult
 from translation_helpers import clean_model_output_multiline, split_translated_lines
 from vision_region import (
@@ -60,12 +62,14 @@ class OpenAITranslationProvider:
         )
         try:
             timeout = float(timeout_seconds)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            timeout = DEFAULT_OPENAI_TIMEOUT_SECONDS
+        if not math.isfinite(timeout):
             timeout = DEFAULT_OPENAI_TIMEOUT_SECONDS
         self.timeout_seconds = max(0.1, min(timeout, 600.0))
         try:
             size_limit = int(max_response_bytes)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             size_limit = MAX_OPENAI_RESPONSE_BYTES
         self.max_response_bytes = max(1, min(size_limit, MAX_OPENAI_RESPONSE_BYTES))
 
@@ -92,12 +96,15 @@ class OpenAITranslationProvider:
             return "openai_http_5xx"
         return "openai_http_error"
 
-    def _read_response(self, response: Any) -> bytes:
+    def _read_response(
+        self, response: Any, *, cancel_predicate: Callable[[], bool] | None = None,
+    ) -> bytes:
         # Read in bounded chunks so a broken/malicious endpoint cannot exhaust
         # process memory before JSON validation gets a chance to run.
         chunks: list[bytes] = []
         remaining = self.max_response_bytes + 1
         while remaining > 0:
+            self._check_cancel(cancel_predicate)
             try:
                 chunk = response.read(min(64 * 1024, remaining))
             except TypeError:
@@ -110,6 +117,7 @@ class OpenAITranslationProvider:
                 chunk = chunk.encode("utf-8")
             chunks.append(bytes(chunk))
             remaining -= len(chunk)
+        self._check_cancel(cancel_predicate)
         body = b"".join(chunks)
         if len(body) > self.max_response_bytes:
             raise ValueError("openai_response_too_large")
@@ -135,17 +143,22 @@ class OpenAITranslationProvider:
         )
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = self._read_response(response)
+                body = self._read_response(response, cancel_predicate=cancel_predicate)
         except error.HTTPError as exc:
-            raise ValueError(self._http_error_token(getattr(exc, "code", None))) from None
+            token = self._http_error_token(getattr(exc, "code", None))
+            try:
+                exc.close()
+            except Exception:
+                pass
+            raise ValueError(token) from None
         except (TimeoutError, socket.timeout):
             raise ValueError("openai_timeout") from None
         except error.URLError:
             raise ValueError("openai_transport_error") from None
 
         try:
-            decoded = json.loads(body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            decoded = load_strict_json(body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, RecursionError):
             raise ValueError("openai_response_invalid_json") from None
         if not isinstance(decoded, dict):
             raise ValueError("openai_response_schema_invalid")
@@ -204,6 +217,7 @@ class OpenAITranslationProvider:
 
     @staticmethod
     def _extract_output_text(response: Mapping[str, Any]) -> str:
+        require_complete_response(response)
         direct = response.get("output_text")
         if isinstance(direct, str) and direct.strip():
             return direct
@@ -267,7 +281,8 @@ class OpenAITranslationProvider:
         if schema_type == "string":
             return isinstance(value, str)
         if schema_type == "number":
-            return isinstance(value, (int, float)) and not isinstance(value, bool)
+            return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and (not isinstance(value, float) or math.isfinite(value)))
         if schema_type == "integer":
             return isinstance(value, int) and not isinstance(value, bool)
         if schema_type == "boolean":
@@ -301,7 +316,7 @@ class OpenAITranslationProvider:
         text: str,
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         cancel_predicate: Callable[[], bool] | None = None,
     ) -> TranslationResult:
         normalized = clean_model_output_multiline(text).strip() if text else ""
@@ -324,7 +339,7 @@ class OpenAITranslationProvider:
         texts: Sequence[str],
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         cancel_predicate: Callable[[], bool] | None = None,
     ) -> list[TranslationResult]:
         normalized = [clean_model_output_multiline(text).strip() if text else "" for text in texts]
@@ -349,7 +364,7 @@ class OpenAITranslationProvider:
         texts: Sequence[str],
         image_parts: Sequence[Mapping[str, Any]],
         *,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         cancel_predicate: Callable[[], bool] | None = None,
     ) -> list[TranslationResult]:
         if not texts:
@@ -401,7 +416,7 @@ class OpenAITranslationProvider:
         self,
         image_parts: Sequence[Mapping[str, Any]],
         *,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         source_text_hint: str | None = None,
         debug_log: Callable[[str], None] | None = None,
         cancel_predicate: Callable[[], bool] | None = None,
@@ -430,7 +445,7 @@ class OpenAITranslationProvider:
         *,
         image_width: int,
         image_height: int,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         cancel_predicate: Callable[[], bool] | None = None,
     ) -> list[VisionRegionResult]:
         if not image_parts:
@@ -498,15 +513,18 @@ class OpenAITranslationProvider:
             raise ValueError("knowledge_prompt_empty")
         if schema is not None and not isinstance(schema, Mapping):
             raise ValueError("openai_schema_invalid")
-        format_spec: dict[str, Any] = {
-            "type": "json_schema",
-            "name": str(schema_name or "structured_response"),
-            "strict": True,
-            "schema": dict(schema) if schema is not None else {
-                "type": "object",
-                "additionalProperties": True,
-            },
-        }
+        validation_schema = dict(schema) if schema is not None else {"type": "object"}
+        if schema is None:
+            # An unconstrained object is JSON mode, not a valid strict schema.
+            format_spec: dict[str, Any] = {"type": "json_object"}
+            normalized_prompt += "\nReturn a JSON object."
+        else:
+            format_spec = {
+                "type": "json_schema",
+                "name": str(schema_name or "structured_response"),
+                "strict": True,
+                "schema": validation_schema,
+            }
         raw_text = self._complete(
             normalized_prompt,
             max_output_tokens=max(1, min(16384, int(max_output_tokens))),
@@ -516,10 +534,10 @@ class OpenAITranslationProvider:
         if not raw_text:
             raise ValueError("openai_empty_response")
         try:
-            decoded = json.loads(raw_text)
-        except json.JSONDecodeError:
+            decoded = load_strict_json(raw_text)
+        except (ValueError, RecursionError):
             raise ValueError("openai_response_schema_invalid") from None
-        if not self._matches_schema(decoded, format_spec["schema"]):
+        if not self._matches_schema(decoded, validation_schema):
             raise ValueError("openai_response_schema_invalid")
         return raw_text
 

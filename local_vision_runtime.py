@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from runtime_security import build_runtime_environment, iter_redacted_stderr, terminate_and_reap
+
 from local_vision_assets import (
     ASSET_MINIMUM_BYTES,
     ASSET_SHA256,
@@ -72,9 +74,9 @@ _CUDA_ERROR_KEYWORDS = (
     "cuda out of memory",
     "cuda error",
     "out of memory",
-    "vram",
-    "failed to load model",
-    "ggml_cuda_init",
+    "not enough vram",
+    "insufficient vram",
+    "vram allocation failed",
     "gpu initialization failed",
     "no cuda-capable device",
     "cuda driver version is insufficient",
@@ -254,8 +256,13 @@ class LocalVisionRuntime:
                 else self._profile
             )
             if self._state.name in ("ready", "starting"):
-                if requested_profile.name == self._profile.name:
+                proc = self._process
+                if requested_profile.name == self._profile.name and (
+                    self._state.name == "starting"
+                    or (proc is not None and proc.poll() is None)
+                ):
                     return self._state
+                # A cached ready state is not evidence that the child is alive.
                 self._stop_owned_process()
             self._profile = requested_profile
             self._cancel_event.clear()
@@ -378,14 +385,8 @@ class LocalVisionRuntime:
         self._api_key = ""
         try:
             api_key = str(self._api_key_factory() or "").strip()
+            launch_environment = build_runtime_environment(api_key)
         except Exception:
-            return VisionRuntimeState(
-                name="failed",
-                detail="api_key_generation_failed",
-                base_url="",
-                mode=mode,
-            )
-        if not api_key:
             return VisionRuntimeState(
                 name="failed",
                 detail="api_key_generation_failed",
@@ -399,7 +400,6 @@ class LocalVisionRuntime:
             "--host", "127.0.0.1",
             "--port", str(port),
             "--no-webui",
-            "--api-key", api_key,
             "-m", str(assets.model_path),
         ]
         if self._profile.requires_projector:
@@ -424,9 +424,11 @@ class LocalVisionRuntime:
                 encoding="utf-8",
                 errors="replace",
                 creationflags=creationflags,
+                env=launch_environment,
             )
         except Exception as exc:
-            detail = self._redact_secret(str(exc))
+            # Popen exceptions may contain arguments/environment; report only type.
+            detail = type(exc).__name__
             self._api_key = ""
             return VisionRuntimeState(
                 name="failed",
@@ -441,7 +443,7 @@ class LocalVisionRuntime:
             self._process = None
             self._api_key = ""
             return _STOPPED
-        state = self._wait_healthy(proc, port, mode, cancel_event=cancel_event)
+        state = self._wait_healthy(proc, port, mode, cancel_event=cancel_event, launch_key=api_key)
 
         # [FIX-3] 失敗時清理 process，確保不殘留
         if state.name != "ready" and self._process is proc:
@@ -452,7 +454,8 @@ class LocalVisionRuntime:
 
     # ── 內部：健康輪詢 ────────────────────────────────────────────────────────
 
-    def _wait_healthy(self, proc, port: int, mode: str, *, cancel_event=None) -> VisionRuntimeState:
+    def _wait_healthy(self, proc, port: int, mode: str, *, cancel_event=None,
+                      launch_key: str | None = None) -> VisionRuntimeState:
         """輪詢 /health 端點；process 提早退出則立即 failed。
 
         [FIX-1] stderr 由 daemon thread 消化，health loop 絕不在 caller thread
@@ -460,6 +463,8 @@ class LocalVisionRuntime:
         [FIX-4] urlopen response 以 try/finally 確保 close()。
         """
         health_url = f"http://127.0.0.1:{port}/health"
+        # Capture per-attempt identity; stop() clears the mutable runtime key.
+        launch_key = self._api_key if launch_key is None else launch_key
         stderr_lines = deque(maxlen=256)
         stderr_lock = threading.Lock()
         gpu_offload_layers = 0
@@ -468,8 +473,6 @@ class LocalVisionRuntime:
         def _snapshot_stderr() -> str:
             with stderr_lock:
                 snapshot = "".join(stderr_lines)
-            if self._api_key:
-                snapshot = snapshot.replace(self._api_key, "[REDACTED]")
             return snapshot[:_STDERR_MAX_CHARS]
 
         def _snapshot_gpu_offload() -> tuple[int, int]:
@@ -480,7 +483,7 @@ class LocalVisionRuntime:
         def _drain() -> None:
             nonlocal gpu_offload_layers, gpu_total_layers
             try:
-                for line in proc.stderr:  # type: ignore[union-attr]
+                for line in iter_redacted_stderr(proc.stderr, launch_key):
                     gpu_offload = _find_gpu_offload_layers(line)
                     with stderr_lock:
                         stderr_lines.append(line)
@@ -489,6 +492,15 @@ class LocalVisionRuntime:
                     self._report_line_progress(line)
             except Exception:
                 pass
+            finally:
+                # This thread owns the read lock; stop() must not close a pipe
+                # underneath a blocked read, even after the child has exited.
+                closer = getattr(proc.stderr, "close", None)
+                if callable(closer):
+                    try:
+                        closer()
+                    except Exception:
+                        pass
 
         drain_thread = threading.Thread(target=_drain, daemon=True)
         drain_thread.start()
@@ -615,31 +627,15 @@ class LocalVisionRuntime:
                 if exc.code == "asset_missing":
                     return f"{missing_code}: {path.name}"
                 return f"{exc.code}: {path.name} ({exc.detail})"
+            except OSError as exc:
+                return f"asset_unreadable: {path.name} ({type(exc).__name__})"
         return ""
 
     # ── 內部：process 清理 ────────────────────────────────────────────────────
 
     def _cleanup_process(self, proc) -> None:
-        """Terminate + wait；超時或 terminate 失敗後 force-kill。"""
-        if proc is None:
-            return
-        try:
-            proc.terminate()
-        except Exception:
-            # Windows process handles can reject terminate during teardown;
-            # still make a best-effort kill before returning.
-            try:
-                proc.kill()
-            except Exception:
-                pass
-            return
-        try:
-            proc.wait(timeout=_CLEANUP_WAIT_TIMEOUT)
-        except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
+        """Reap only the owned handle, including the forced-kill path."""
+        terminate_and_reap(proc, _CLEANUP_WAIT_TIMEOUT)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
