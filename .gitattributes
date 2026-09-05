@@ -1,0 +1,5 @@
+# Benchmark locks authenticate exact Git blob bytes, not platform newline forms.
+# Do not normalize these files on add/checkout or silently regenerate their hashes.
+/benchmarks/*.json -text
+/vision_scheduling_benchmark.py -text
+/translation_e2e_benchmark.py -text

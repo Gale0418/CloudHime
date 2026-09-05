@@ -44,7 +44,11 @@
         "tests/test_translation_orchestrator.py",
         "tests/test_translation_providers.py",
         "tests/test_translation_registry_online.py",
-        "tests/test_vision_region.py"
+        "tests/test_vision_region.py",
+        "tests/test_corpus_policy.py",
+        "tests/test_frame_metrics.py",
+        "tests/test_native_frame_metrics.py",
+        "tests/test_stabilization_contracts.py"
       ]
     },
     {

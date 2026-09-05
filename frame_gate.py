@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 
+from frame_metrics import frame_metrics
+
 
 @dataclass(frozen=True, slots=True)
 class FrameGateObservation:
@@ -46,9 +48,9 @@ class FrameGate:
                      or self._baseline_shape != shape or self._baseline_dtype != dtype)
             result = (self._observation("baseline", 0.0, 0.0, sampled)
                       if reset else self._compare(self._baseline, sampled))
-            snapshot = np.array(sampled, copy=True, order="C")
-            snapshot.setflags(write=False)
-            self._baseline = snapshot
+            # Advanced indexing in _sample already owns a detached snapshot.
+            sampled.setflags(write=False)
+            self._baseline = sampled
             self._baseline_context, self._baseline_shape, self._baseline_dtype = context_token, shape, dtype
             return result
 
@@ -79,8 +81,8 @@ class FrameGate:
     def _validate(frame: np.ndarray) -> np.ndarray:
         if not isinstance(frame, np.ndarray) or frame.ndim < 2:
             raise ValueError("frame must be a NumPy array with at least two dimensions")
-        if not frame.shape[0] or not frame.shape[1]:
-            raise ValueError("frame height and width must be non-zero")
+        if frame.size == 0:
+            raise ValueError("frame dimensions must be non-zero")
         if not (np.issubdtype(frame.dtype, np.number) or frame.dtype == np.bool_):
             raise ValueError("frame dtype must be numeric or boolean")
         return frame
@@ -91,23 +93,7 @@ class FrameGate:
         return np.ascontiguousarray(frame[rows[:, None], columns])
 
     def _compare(self, baseline: np.ndarray, current: np.ndarray) -> FrameGateObservation:
-        changed_values = current != baseline
-        changed = (
-            changed_values
-            if current.ndim == 2
-            else np.any(changed_values, axis=tuple(range(2, current.ndim)))
-        )
-        if np.issubdtype(current.dtype, np.integer) and current.dtype.itemsize > 4:
-            delta = np.abs(current.astype(object) - baseline.astype(object))
-        elif current.dtype.itemsize > 8:
-            delta = np.abs(current.astype(object) - baseline.astype(object))
-        elif np.issubdtype(current.dtype, np.complexfloating):
-            delta = np.abs(
-                current.astype(np.complex128) - baseline.astype(np.complex128)
-            )
-        else:
-            delta = np.abs(current.astype(np.float64) - baseline.astype(np.float64))
-        ratio, mean = float(np.mean(changed)), float(np.mean(delta))
+        ratio, mean = frame_metrics(baseline, current)
         classification = "identical" if ratio == 0.0 else (
             "near" if ratio <= self._near_changed_pixel_ratio and mean <= self._near_mean_absolute_delta else "changed")
         return self._observation(classification, ratio, mean, current)
