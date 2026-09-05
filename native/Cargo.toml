@@ -1,0 +1,17 @@
+[package]
+name = "cloudhime-native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98.1"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "cloudhime_native"
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+overflow-checks = true

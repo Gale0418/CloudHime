@@ -1,0 +1,183 @@
+{
+  "scope": "Synthetic CPU-only 64x64 RGB FrameGate.observe; not OCR/model latency or Rust performance",
+  "python": "3.13.5",
+  "numpy": "2.3.5",
+  "iterations_per_sample": 1000,
+  "warmup": 20,
+  "paired_orders": 2,
+  "repeats_per_order": 7,
+  "median_microseconds": {
+    "baseline": 176.867427,
+    "candidate": 158.3181015
+  },
+  "rows": [
+    {
+      "order": "baselinethencandidate",
+      "repeat": 0,
+      "implementation": "baseline",
+      "microseconds_per_observe": 193.452347
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 0,
+      "implementation": "candidate",
+      "microseconds_per_observe": 202.607177
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 1,
+      "implementation": "baseline",
+      "microseconds_per_observe": 198.286391
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 1,
+      "implementation": "candidate",
+      "microseconds_per_observe": 160.111595
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 2,
+      "implementation": "baseline",
+      "microseconds_per_observe": 174.847206
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 2,
+      "implementation": "candidate",
+      "microseconds_per_observe": 143.714498
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 3,
+      "implementation": "baseline",
+      "microseconds_per_observe": 156.949284
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 3,
+      "implementation": "candidate",
+      "microseconds_per_observe": 169.12683900000002
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 4,
+      "implementation": "baseline",
+      "microseconds_per_observe": 165.767502
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 4,
+      "implementation": "candidate",
+      "microseconds_per_observe": 148.492392
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 5,
+      "implementation": "baseline",
+      "microseconds_per_observe": 160.953021
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 5,
+      "implementation": "candidate",
+      "microseconds_per_observe": 142.033827
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 6,
+      "implementation": "baseline",
+      "microseconds_per_observe": 163.152029
+    },
+    {
+      "order": "baselinethencandidate",
+      "repeat": 6,
+      "implementation": "candidate",
+      "microseconds_per_observe": 150.439999
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 0,
+      "implementation": "candidate",
+      "microseconds_per_observe": 156.524608
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 0,
+      "implementation": "baseline",
+      "microseconds_per_observe": 160.34101500000003
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 1,
+      "implementation": "candidate",
+      "microseconds_per_observe": 142.20256099999997
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 1,
+      "implementation": "baseline",
+      "microseconds_per_observe": 161.087728
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 2,
+      "implementation": "candidate",
+      "microseconds_per_observe": 164.444426
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 2,
+      "implementation": "baseline",
+      "microseconds_per_observe": 189.289598
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 3,
+      "implementation": "candidate",
+      "microseconds_per_observe": 189.929587
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 3,
+      "implementation": "baseline",
+      "microseconds_per_observe": 400.561328
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 4,
+      "implementation": "candidate",
+      "microseconds_per_observe": 154.7996
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 4,
+      "implementation": "baseline",
+      "microseconds_per_observe": 178.88764799999998
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 5,
+      "implementation": "candidate",
+      "microseconds_per_observe": 161.068886
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 5,
+      "implementation": "baseline",
+      "microseconds_per_observe": 180.916408
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 6,
+      "implementation": "candidate",
+      "microseconds_per_observe": 163.215853
+    },
+    {
+      "order": "candidatethenbaseline",
+      "repeat": 6,
+      "implementation": "baseline",
+      "microseconds_per_observe": 203.53063200000003
+    }
+  ]
+}

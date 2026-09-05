@@ -1,56 +1,96 @@
-"""Shared safeguards for Qt UI tests.
+"""Keep native UI side effects isolated without importing Qt in core tests."""
+from __future__ import annotations
 
-Controller schedules its global-hotkey registration 500 ms after construction.
-Keeping these test doubles at session scope prevents a queued callback from
-outliving a function-scoped monkeypatch and touching the host OS (or opening a
-modal warning) after its originating test has finished.
-"""
+import sys
+from pathlib import Path
 
 import pytest
 
+from ci.corpus_policy import missing_files_for_test
 
-@pytest.fixture(scope="session", autouse=True)
-def _disable_native_hotkey_side_effects_for_tests():
-    """Keep delayed Controller hotkey callbacks harmless during pytest."""
-    import cloudhime_ui
 
-    hotkey_filter = cloudhime_ui.GlobalHotKeyFilter
-    original_register = hotkey_filter.register_hotkey
-    original_unregister = hotkey_filter.unregister_hotkey
-    original_warning = cloudhime_ui.QMessageBox.warning
-
-    hotkey_filter.register_hotkey = lambda self, hwnd: None
-    hotkey_filter.unregister_hotkey = lambda self, hwnd: None
-    cloudhime_ui.QMessageBox.warning = staticmethod(
-        lambda *args, **kwargs: cloudhime_ui.QMessageBox.StandardButton.NoButton
-    )
-    try:
-        yield
-    finally:
-        hotkey_filter.register_hotkey = original_register
-        hotkey_filter.unregister_hotkey = original_unregister
-        cloudhime_ui.QMessageBox.warning = original_warning
+@pytest.fixture(scope="session")
+def _qt_session_safety():
+    # Session lifetime is intentional: Controller queues a 500 ms callback.
+    patches = pytest.MonkeyPatch()
+    protected = set()
+    yield patches, protected
+    patches.undo()
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_controller_threads_after_ui_test(monkeypatch):
-    """Stop Controller-owned Qt threads even when qtbot only closes widgets."""
+def _disable_native_hotkey_side_effects_for_tests(request, _qt_session_safety):
+    """Only UI users load UI code; delayed callbacks retain session guards."""
+    ui = sys.modules.get("cloudhime_ui")
+    if ui is None and {"qtbot", "qapp"}.intersection(request.fixturenames):
+        import cloudhime_ui as ui
+    if ui is None:
+        return
+    patches, protected = _qt_session_safety
+    identity = (ui.GlobalHotKeyFilter, ui.QMessageBox)
+    if identity in protected:
+        return
+    patches.setattr(ui.GlobalHotKeyFilter, "register_hotkey", lambda self, hwnd: None)
+    patches.setattr(ui.GlobalHotKeyFilter, "unregister_hotkey", lambda self, hwnd: None)
+    patches.setattr(ui.QMessageBox, "warning", staticmethod(
+        lambda *args, **kwargs: ui.QMessageBox.StandardButton.NoButton
+    ))
+    protected.add(identity)
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_controller_threads_after_ui_test():
+    """Do not import Qt merely to clean up a test that never used it."""
     yield
-
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance()
+    widgets = sys.modules.get("PySide6.QtWidgets")
+    ui = sys.modules.get("cloudhime_ui")
+    if widgets is None or ui is None:
+        return
+    app = widgets.QApplication.instance()
     if app is None:
         return
-
-    import cloudhime_ui
-
     for widget in list(app.topLevelWidgets()):
-        if not isinstance(widget, cloudhime_ui.Controller):
-            continue
-        try:
-            widget.close_app()
-        except (RuntimeError, AttributeError):
-            # The Qt object may already have been deleted by qtbot.
-            continue
+        if isinstance(widget, ui.Controller):
+            try:
+                widget.close_app()
+            except (RuntimeError, AttributeError):
+                # qtbot may already have deleted the native object.
+                continue
     app.processEvents()
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--require-external-corpora", action="store_true", default=False,
+        help="Fail collection instead of skipping unavailable external-image tests.",
+    )
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "external_corpus: requires separately provisioned image evidence",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    root = Path(__file__).resolve().parents[1]
+    unavailable = []
+    for item in items:
+        try:
+            relative = item.path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            continue
+        name = getattr(item, "originalname", None) or item.name
+        node = relative + "::" + name
+        missing = missing_files_for_test(root, node)
+        if not missing:
+            continue
+        reason = "External corpus unavailable (not quality evidence): " + ", ".join(missing[:3])
+        if len(missing) > 3:
+            reason += f" (+{len(missing) - 3} more)"
+        unavailable.append(node + ": " + reason)
+        item.add_marker(pytest.mark.external_corpus)
+        if not config.getoption("--require-external-corpora"):
+            item.add_marker(pytest.mark.skip(reason=reason))
+    if unavailable and config.getoption("--require-external-corpora"):
+        raise pytest.UsageError("Required external corpus is missing:\n" + "\n".join(unavailable))

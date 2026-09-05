@@ -131,4 +131,3 @@ CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中�
   ```bash
   python speed_benchmark.py benchmarks/ocr_accuracy_cases.json
   ```
-111
