@@ -1,150 +1,134 @@
-# CloudHime 雲姬 ☁️
+# ☁️ 雲朵翻譯姬 (CloudHime)
+### Windows-native Screen OCR Translator
 
-[![CI](https://github.com/Gale0418/CloudHime/actions/workflows/ci.yml/badge.svg)](https://github.com/Gale0418/CloudHime/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D4.svg?logo=windows)](https://www.microsoft.com/windows)
-[![License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
+> 「雖然不完美，但這是我能給你最誠實的輔助了。」 ( ´・ω・`)a
 
-CloudHime is a Windows desktop OCR and translation assistant designed for fast, local-first screen translation workflows. It combines Windows capture, OCR, local multimodal inference, optional online translation providers, and overlay rendering in one desktop app.
+---
 
-> Project status: active development. Release packaging, local runtime verification, provider hardening, and Windows Store readiness are still being validated.
+## 📖 這是什麼？
 
-## ✨ Highlights
+**CloudHime** 是一個專為 Windows 打造的螢幕即時翻譯工具。它的誕生不是為了取代專業翻譯，而是為了讓你在面對「生肉」漫畫、遊戲 UI 或日文對話框時，不再感到那麼無助。
 
-- **Local-first translation** with managed `llama-server` runtime support.
-- **Screenshot and region translation** for text-heavy apps, games, manga, and desktop workflows.
-- **Multiple OCR paths** with Windows OCR, Japanese OCR rescue, and local multimodal Vision fallback.
-- **Online provider support** for Gemma and OpenAI-compatible translation paths.
-- **Provider health and fallback logic** with bounded retry/cooldown behavior.
-- **Translation overlays** rendered directly over captured screen regions.
-- **Persistent translation cache** to avoid unnecessary repeated work.
-- **Knowledge-pack support** for retrieval-assisted translation context.
-- **MSIX packaging and release validation** tooling for Windows distribution.
-- **Evidence-backed regression suite** covering OCR, runtime, UI, packaging, and benchmarks.
+### ✨ 核心特色
 
-## 🧭 Current Architecture
+- **Windows 原生支援**：預設使用 Windows OCR 引擎，輕量、快速且不需要額外安裝龐大的套件。
+- **靈活辨識**：支援「全螢幕掃描」與「區域框選」，哪裡不會點哪裡。
+- **多樣化翻譯**：內建 Google 翻譯與 Gemini AI 模式，支援繁體中文流暢輸出。
+- **按需擴充**：主程式保持極致輕量，只有在你需要時，才會導引安裝 Tesseract, EasyOCR 或 RapidOCR 等進階引擎。
 
-CloudHime is intentionally split into narrow modules around the runtime and translation pipeline:
+---
 
-```text
-Screen Capture
-    ↓
-OCR / Region Detection
-    ↓
-Translation Orchestrator
-    ├── Local Gemma / llama-server
-    ├── Online Gemma provider
-    └── OpenAI provider
-    ↓
-Translation Cache / Knowledge Context
-    ↓
-Overlay Rendering
-```
+## 🖼️ 實際畫面預覽
 
-Important implementation areas include:
+> (｀・ω・´)σ 總之先看圖，辨識效果好不好，圖片會說話。
 
-- `cloudhime_ui.py` — desktop controller and UI shell.
-- `cloudhime_workers.py` — capture/OCR/translation worker paths.
-- `translation_providers.py` — translation provider implementations.
-- `translation_registry.py` — provider registration and capability routing.
-- `provider_runtime.py` — provider health, cooldown, and runtime state.
-- `local_vision_runtime.py` — managed local `llama-server` lifecycle.
-- `exact_image_cache.py` / `persistent_translation_cache.py` — reuse and persistence layers.
-- `packaging/` — release, provenance, MSIX, and clean-machine validation.
+**1. 漫畫閱讀 (Manga)**  
+![Manga Example](https://pimg.1px.tw/blog/gale/album/101348418/848177067123312065.png)
 
-See [`DESIGN.md`](DESIGN.md) for the current UI design system and [`PRODUCT.md`](PRODUCT.md) for product-level decisions.
+**2. 遊戲介面 (UI)**  
+![Game UI Example](https://pimg.1px.tw/blog/gale/album/101348418/848177072458466684.png)
 
-## 🛠 Requirements
+**3. 遊戲內對話 (Dialogue)**  
+![Game Dialogue Example](https://pimg.1px.tw/blog/gale/album/101348418/848177076325617017.png)
 
-CloudHime targets **Windows x64** and currently uses Python 3.10 for the validated dependency locks.
+---
 
-Development dependencies are pinned in:
+## ⚠️ 誠實聲明 (ﾟ∀。)
 
-- `requirements-ci-lock-win-amd64-py310.txt`
-- `requirements-lock-win-amd64-py310.txt`
-- `requirements-build-win-amd64-py310.txt`
+在使用之前，請先讀過這幾點，免得你對它有不切實際的幻想：
 
-Install the CI/development environment with:
+1. **辨識率不是 100%**：背景太雜、字體太藝術、或是字太小，OCR 都會擺爛。這不是程式壞了，這是目前的科技瓶頸 (눈_눈)。
+2. **機器翻譯僅供參考**：不管是 Google 還是 Gemini，它們有時候會胡說八道，請發揮你的想像力來補足語境。
+3. **環境設定很重要**：螢幕縮放比 (DPI)、字體清晰度都會影響辨識。
 
-```powershell
-python -m pip install --upgrade pip
-python -m pip install --require-hashes -r requirements-ci-lock-win-amd64-py310.txt
-```
+---
 
-## ▶️ Running from Source
+## ⚙️ 運作流程
 
-From a configured Windows development environment:
+1. **擷取**：抓取指定區域的畫面。
+2. **辨識**：交給 Windows OCR 或你額外安裝的引擎處理。
+3. **翻譯**：依目前選用的模型，送往 Google API、Gemini API，或本地 Gemma / 本地多模態服務進行轉換。
+4. **顯示**：將結果以透明泡泡的形式貼回螢幕。
 
-```powershell
-python CloudHime.py
-```
+> 區域模式底下，系統會依情況自動做閥值掃描、影像放大、多 OCR 比對；若你選的是支援多模態的模型，則會直接以圖片理解流程為主。
 
-Some features require additional runtime/model assets. CloudHime validates managed runtime assets before attempting to launch local Vision inference.
+---
 
-## 🧪 Testing
+## 📦 如何開始？
 
-The canonical test inventory lives in [`ci/test_groups.json`](ci/test_groups.json). It separates the suite into:
+> **📝 目前專案狀態 (2026-06)：**
+> 專案正處於架構穩定化與防護網建置階段（已加入 GitHub Actions CI workflow 與基礎測試），部分進階 OCR 功能（如本地端字典修正）仍在整理中。
 
-- `core`
-- `ocr`
-- `runtime`
-- `ui`
-- `benchmarks`
+### 直接執行 (Release)
+如果你是下載打包好的版本，請直接執行 `dist/CloudHime/CloudHime.exe`。
+> `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
-Basic local syntax validation:
+### 從原始碼運行 (Source)
+1. 確保你有 Python 3.10+ 環境。
+2. 執行 `install.bat` 建立開發環境；本地 Gemma 模型與 projector 會由 CloudHime 在需要時下載、驗證並管理到使用者 AppData。
+3. 執行 `run.bat`
 
-```powershell
-python -m compileall -q -x '(^|[\\/])(\.venv|build|dist)([\\/]|$)' .
-```
+---
 
-Example targeted test:
+## 🛠️ 開發說明
 
-```powershell
-python -m pytest -q tests/test_translation_providers.py
-```
+- **打包**：使用 `build_exe.bat` 進行 PyInstaller 打包。
+- **擴充**：支援透過 `ocr_backend_installer.py` 動態安裝額外的 OCR 堆疊。
+- **隱私**：請勿將你的 `google_api_key` 或個人設定檔推送到公開倉庫。
 
-UI tests should normally run with the Qt offscreen backend:
+---
 
-```powershell
-$env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest -q tests/test_cloudhime_ui_smoke.py
-```
+## 📝 小結
 
-Benchmark locks intentionally fail closed if a locked dataset, artifact, or evaluation condition changes without an explicit review.
+CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中發現了 Bug，或者有更好的想法，歡迎回饋（雖然開發者可能正在忙著玩遊戲就是了）。
 
-## 📦 Packaging
+祝你能愉快地啃完那些想看很久的生肉！加油吧！(*´▽`*)
 
-CloudHime includes tooling for frozen Windows builds and MSIX packaging.
+## 最近更新 (Recent Notes)
 
-Relevant scripts include:
+- 新增截圖模式，流程更接近「直接把圖片交給 AI」的使用體驗。
+- 近期實測下，整體翻譯延遲大多受網路 API 影響；本機截圖與前處理通常落在約 0.5 到 1 秒。
+- Gemma 4 的翻譯品質雖然有亮點，但速度通常比 Gemma 3 慢一些，屬於目前模型特性。
 
-- `build_exe.bat`
-- `packaging/build_msix.ps1`
-- `packaging/verify_release_dist.ps1`
-- `packaging/test_clean_machine.ps1`
-- `packaging/test_msix_install.ps1`
+![UI Example](https://pbs.twimg.com/media/HH-L9b4aQAAy9Mm.jpg)
 
-Release packaging uses pinned dependency/runtime provenance and explicit validation gates. Synthetic fixtures and structural smokes are not treated as proof of production GPU or Store behavior.
+## 開發者導引 (Developer Guide)
 
-## 🔐 Security Notes
+本專案採用模組化架構，主要分為以下幾個核心層級：
 
-CloudHime attempts to keep credentials out of ordinary settings, logs, and diagnostic traces. Online provider secrets are handled separately from normal settings state, and diagnostic contracts intentionally retain bounded tokens rather than raw OCR text, prompts, image payloads, or credential values.
+- `CloudHime.py`: 應用程式的進入點（Entry Point），負責初始化 QApplication 並掛載主控台介面。
+- `cloudhime_core.py`: 核心業務邏輯層。包含獨立的文字處理、語言偵測、OCR 結果整併等不依賴 UI 的純函式與物件。
+- `cloudhime_workers.py`: 背景處理層。包含負責重度運算（如 `OCRWorker`）與外部 API 呼叫的 QRunnable / QThread 類別，避免阻塞主執行緒。
+- `cloudhime_ui.py`: 介面展示層。所有 PyQt / PySide6 的視覺元件（包含 `Controller`, `OverlayWindow`, `SettingsWindow` 等）皆定義於此。
 
-The project is still undergoing security hardening, including local runtime credential handling and release-distribution validation.
+### 如何執行測試
 
-## 📁 Mission Center
+專案使用 `pytest` 與 `pytest-qt` 進行單元測試與 UI 冒煙測試。目前本地 regression suite 為 `26 passed`，並已加入 GitHub Actions CI workflow。執行方式如下：
 
-Long-running engineering work is tracked under [`MissionCenter/`](MissionCenter/). The canonical task lifecycle source is:
+1. 確保已安裝測試相依套件：
+   ```bash
+   pip install pytest pytest-qt
+   ```
+2. 在專案根目錄下執行測試（CI / 無頭環境請加上 `QT_QPA_PLATFORM=offscreen`）：
+   ```bash
+   python -m pytest -q tests
+   ```
+   此指令會自動執行 `tests/` 目錄下的所有測試，確保核心邏輯與 UI 啟動正常。
 
-```text
-MissionCenter/tasks.md
-```
+### OCR 準確度基準
 
-Mission Center records task status, verification evidence, decisions, and remaining release risks. A task is not considered complete solely because an implementation exists; validation evidence must also be recorded.
+- `benchmarks/ocr_accuracy_cases.json` 目前收錄 25 個由 `example/` 截圖整理出的 seed benchmark case，涵蓋英文段落、介面標題、日文 / 中文短句與混合 UI 文本。
+- 可用以下指令重跑目前的 OCR 基準：
+  ```bash
+  python ocr_benchmark.py benchmarks/ocr_accuracy_cases.json
+  ```
+- 這份 seed dataset 的目的不是宣稱現在全部辨識都正確，而是讓後續 OCR 合併、字典修正與 fallback 微調都有固定對照組。
 
-## 📄 License
+### 速度基準
 
-CloudHime is licensed under the [Apache License 2.0](LICENSE).
-
-Third-party components and notices are documented in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+- `speed_benchmark.py` 會使用同一份 seed case，分段量測 OCR 後處理、翻譯 prompt / cache 準備，以及氣泡 render layout。
+- 可用以下指令重跑目前的本機速度基準：
+  ```bash
+  python speed_benchmark.py benchmarks/ocr_accuracy_cases.json
+  ```
 111
