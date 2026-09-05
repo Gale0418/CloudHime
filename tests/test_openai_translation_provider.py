@@ -95,7 +95,7 @@ def test_translate_batch_payload_disables_reasoning(monkeypatch):
 
 def test_multimodal_converts_gemini_inline_data_to_data_url(monkeypatch):
     captured = {}
-    install_response(monkeypatch, b'{"output":{"ignored":true},"output_text":"one\\ntwo"}', captured)
+    install_response(monkeypatch, b'{"output":[],"output_text":"one\\ntwo"}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
     results = provider.translate_multimodal(

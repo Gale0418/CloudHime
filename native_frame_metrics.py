@@ -73,6 +73,10 @@ def try_native_metrics(baseline: np.ndarray, current: np.ndarray) -> tuple[float
         status = loaded[1](left, right, pixels, channels, ctypes.byref(changed), ctypes.byref(delta))
     except (OSError, ctypes.ArgumentError):
         return None
-    if status != 0 or changed.value > pixels or delta.value > len(right) * 255:
+    # Every changed pixel contributes at least 1 and at most channels * 255.
+    # Check the relationship as well as individual caps: (0, positive_delta)
+    # must never become an "identical" observation after a broken ABI call.
+    if (status != 0 or changed.value > pixels
+            or not changed.value <= delta.value <= changed.value * channels * 255):
         return None
     return changed.value / pixels, delta.value / len(right)

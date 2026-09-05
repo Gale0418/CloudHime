@@ -48,7 +48,9 @@
         "tests/test_corpus_policy.py",
         "tests/test_frame_metrics.py",
         "tests/test_native_frame_metrics.py",
-        "tests/test_stabilization_contracts.py"
+        "tests/test_stabilization_contracts.py",
+        "tests/test_audit_boundaries.py",
+        "tests/test_responses_hardening.py"
       ]
     },
     {
@@ -78,7 +80,9 @@
         "tests/test_local_vision_integration.py",
         "tests/test_local_vision_runtime.py",
         "tests/test_vision_product_path_local_adapter.py",
-        "tests/test_managed_asset_store.py"
+        "tests/test_managed_asset_store.py",
+        "tests/test_runtime_hardening.py",
+        "tests/test_asset_stream_hardening.py"
       ]
     },
     {

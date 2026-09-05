@@ -7,6 +7,7 @@ exception messages.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import InitVar, dataclass, field
 from enum import Enum
 import math
@@ -15,6 +16,7 @@ from typing import Final
 
 
 MAX_TRACE_EVENTS: Final = 64
+MAX_DIAGNOSTIC_INPUT_LENGTH: Final = 4096
 MAX_DETAIL_LENGTH: Final = 256
 MAX_PROVIDER_LENGTH: Final = 128
 MAX_FALLBACK_REASON_LENGTH: Final = 160
@@ -76,18 +78,28 @@ def safe_exception_token(exception: BaseException | type[BaseException] | None) 
 
 
 def _safe_diagnostic(value: object, limit: int) -> str:
-    if value is None or value == "":
+    if value is None:
         return ""
-    text = str(value)
+    # Never invoke arbitrary payload __eq__/__str__ hooks in a diagnostic path.
+    if not isinstance(value, str) or len(value) > MAX_DIAGNOSTIC_INPUT_LENGTH:
+        return _REDACTED
+    text = value
+    if not text:
+        return ""
     if _SENSITIVE_VALUE.search(text) or not _SAFE_DIAGNOSTIC.fullmatch(text):
         return _REDACTED
     return text[:limit]
 
 
 def _safe_provider(value: object) -> str:
-    if value is None or value == "":
+    if value is None:
         return ""
-    text = str(value)
+    # Never invoke arbitrary payload __eq__/__str__ hooks in a diagnostic path.
+    if not isinstance(value, str) or len(value) > MAX_DIAGNOSTIC_INPUT_LENGTH:
+        return _REDACTED
+    text = value
+    if not text:
+        return ""
     if _SENSITIVE_VALUE.search(text) or not _SAFE_PROVIDER.fullmatch(text):
         return _REDACTED
     return text[:MAX_PROVIDER_LENGTH]
@@ -154,14 +166,14 @@ class ScanTraceEvent:
         )
         try:
             elapsed_ms = float(self.elapsed_ms)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             elapsed_ms = 0.0
         if not math.isfinite(elapsed_ms):
             elapsed_ms = 0.0
         object.__setattr__(self, "elapsed_ms", min(MAX_ELAPSED_MS, max(0.0, elapsed_ms)))
         try:
             item_count = int(self.item_count)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             item_count = 0
         object.__setattr__(self, "item_count", min(MAX_ITEM_COUNT, max(0, item_count)))
         object.__setattr__(self, "exception_token", safe_exception_token(exception))
@@ -175,12 +187,25 @@ class ScanTrace:
     dropped_events: int = 0
 
     def __post_init__(self) -> None:
-        events = tuple(self.events)
-        if any(not isinstance(event, ScanTraceEvent) for event in events):
-            raise TypeError("events must contain ScanTraceEvent values")
-        overflow = max(0, len(events) - MAX_TRACE_EVENTS)
-        object.__setattr__(self, "events", events[overflow:])
-        object.__setattr__(self, "dropped_events", max(0, int(self.dropped_events)) + overflow)
+        if isinstance(self.events, tuple):
+            # Normal append() traffic keeps the existing immutable tuple fast path.
+            if any(not isinstance(event, ScanTraceEvent) for event in self.events):
+                raise TypeError("events must contain ScanTraceEvent values")
+            overflow = max(0, len(self.events) - MAX_TRACE_EVENTS)
+            retained = self.events[overflow:]
+        else:
+            # Consume a finite iterable without materializing its entire history.
+            tail: deque[ScanTraceEvent] = deque(maxlen=MAX_TRACE_EVENTS)
+            count = 0
+            for event in self.events:
+                if not isinstance(event, ScanTraceEvent):
+                    raise TypeError("events must contain ScanTraceEvent values")
+                tail.append(event)
+                count += 1
+            overflow = max(0, count - MAX_TRACE_EVENTS)
+            retained = tuple(tail)
+        object.__setattr__(self, "events", retained)
+        object.__setattr__(self, "dropped_events", _non_negative_int(self.dropped_events) + overflow)
 
     def append(self, event: ScanTraceEvent) -> "ScanTrace":
         """Return a new trace, retaining the newest 64 events."""

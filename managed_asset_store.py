@@ -104,28 +104,31 @@ def download_managed_asset(
     open_fn = opener or _default_opener
     response = open_fn(req)
 
-    status = _response_status(response)
-    append = existing > 0 and status == 206
-    downloaded = existing if append else 0
-    mode = "ab" if append else "wb"
-    if byte_progress:
-        byte_progress(downloaded)
+    # Own the response before parsing headers, invoking callbacks, or opening
+    # the destination. Every one of those operations may raise.
+    with response:
+        status = _response_status(response)
+        append = existing > 0 and status == 206
+        downloaded = existing if append else 0
+        mode = "ab" if append else "wb"
+        if byte_progress:
+            byte_progress(downloaded)
 
-    with response, part.open(mode) as stream:
-        while True:
-            _raise_if_cancelled(cancel_event)
-            chunk = response.read(CHUNK_SIZE)
-            if not chunk:
-                break
-            _raise_if_cancelled(cancel_event)
-            if downloaded + len(chunk) > spec.size:
-                raise ValueError(
-                    f"asset response exceeds declared size: {spec.name}"
-                )
-            stream.write(chunk)
-            downloaded += len(chunk)
-            if byte_progress:
-                byte_progress(downloaded)
+        with part.open(mode) as stream:
+            while True:
+                _raise_if_cancelled(cancel_event)
+                chunk = response.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                _raise_if_cancelled(cancel_event)
+                if downloaded + len(chunk) > spec.size:
+                    raise ValueError(
+                        f"asset response exceeds declared size: {spec.name}"
+                    )
+                stream.write(chunk)
+                downloaded += len(chunk)
+                if byte_progress:
+                    byte_progress(downloaded)
 
     _raise_if_cancelled(cancel_event)
     if part.stat().st_size != spec.size or not verify_managed_asset(part, spec):

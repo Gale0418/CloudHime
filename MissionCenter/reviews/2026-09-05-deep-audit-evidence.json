@@ -1,0 +1,131 @@
+{
+  "base_commit": "8d5a7753dfdb06dd818ba789f946af1294aeabe0",
+  "recorded_at": "2026-09-05T23:39:41+08:00",
+  "scope": "Selected source files verified against GitHub blobs, not a complete clone or full-repository certification.",
+  "environment": {
+    "os": "Linux",
+    "python": "3.13.5",
+    "pyside6": false,
+    "rust_1_98_1": false,
+    "coderabbit": false
+  },
+  "validation": {
+    "selected_pytest": {
+      "passed": 234,
+      "skipped": 2,
+      "failed": 0,
+      "errors": 0,
+      "seconds": 3.42,
+      "note": "Elapsed time below is taken from the latest console log, not an end-to-end performance benchmark."
+    },
+    "console_summary": "234 passed, 2 skipped in 3.42s",
+    "syntax": "pass",
+    "git_diff_check": "pass",
+    "rust_gate": "BLOCKED: rustup and installed Rust 1.98.1 are required; nothing was downloaded."
+  },
+  "test_command": "python -m pytest -q tests/test_audit_boundaries.py tests/test_frame_metrics.py tests/test_native_frame_metrics.py tests/test_corpus_policy.py tests/test_stabilization_contracts.py tests/test_runtime_hardening.py tests/test_local_vision_runtime.py tests/test_responses_hardening.py tests/test_asset_stream_hardening.py",
+  "skipped": [
+    "tests/test_native_frame_metrics.py: compiled Rust differential test (library/toolchain unavailable)",
+    "tests/test_local_vision_runtime.py::test_windows_process_uses_create_no_window (Linux host)"
+  ],
+  "isolation": "New Responses-envelope tests stub unrelated text/region helpers. Runtime policy tests inject assets; the existing runtime suite additionally ran with real reconstructed asset validation and coordinator sources. No live model/API or translation-quality claim.",
+  "independent_review": {
+    "status": "NOT_RUN",
+    "approval": false,
+    "reason": "coderabbit CLI unavailable; curl installer failed (6) Could not resolve host: cli.coderabbit.ai. No independent agent dispatch tool available. Local tests/self-checks are not independent approval."
+  },
+  "whole_project_gate": "BLOCKED",
+  "ci_policy": "Do not trigger CI; publish with [skip ci].",
+  "dictionary_follow_up": {
+    "status": "reproduced-underlying-call",
+    "error_type": "PatternError",
+    "error": "bad escape \\U at position 2",
+    "scope": "Equivalent re.sub call from translation_helpers.apply_dictionary_pre_translation; not a full app run."
+  },
+  "candidate_files": [
+    {
+      "path": "ci/test_groups.json",
+      "bytes": 4354,
+      "git_blob_sha1": "d1ac33992068546cf3bb06db112ac42582c07b8e",
+      "sha256": "c52325b3d6ff6106c76059898d07085cbc6868c427faf266f7742040bc68cf69"
+    },
+    {
+      "path": "local_vision_runtime.py",
+      "bytes": 29430,
+      "git_blob_sha1": "85d3ed9db9d4c85519753ce773d3967b1678b402",
+      "sha256": "37e99883897dca9862fb34804dc48178148a3fb7ba0de29ad2c79bb192803ec1"
+    },
+    {
+      "path": "managed_asset_store.py",
+      "bytes": 8044,
+      "git_blob_sha1": "28e163a324e57bfb47dc645e688789aba1244534",
+      "sha256": "a8bd7405d25d9b142d82ab11d413eaa8c4f4eb1965a64b0fc4d5c65e634c5473"
+    },
+    {
+      "path": "native_frame_metrics.py",
+      "bytes": 3435,
+      "git_blob_sha1": "792bbffdf4a850d6566725ce2f939cd0038a3db4",
+      "sha256": "5095b0d622ef218585dc3288c198c5115c9908635b74d7d3da0555333da717f0"
+    },
+    {
+      "path": "openai_translation_provider.py",
+      "bytes": 23635,
+      "git_blob_sha1": "63555b68a0ce8223c8115c540d7d6d6ddf29598d",
+      "sha256": "d970a42bbfec5a033b3de6eedd884a34fb65f5901464a4afdf3ba483253824e5"
+    },
+    {
+      "path": "scan_pipeline.py",
+      "bytes": 7778,
+      "git_blob_sha1": "8a63a0dac6db289f5a78b8d6e108971fe78acd65",
+      "sha256": "2cbd7a7564597015a39b11dd09693cace34114f56546fec98b6eb50232b9c4d5"
+    },
+    {
+      "path": "responses_contract.py",
+      "bytes": 2375,
+      "git_blob_sha1": "2ce50c4b61a71ed1811c35bb21709350771fefe9",
+      "sha256": "cfae9e9fd21ce05c114c245b125d87f83d47d5c87b1580090c66ae21157c976a"
+    },
+    {
+      "path": "runtime_security.py",
+      "bytes": 3344,
+      "git_blob_sha1": "8c65c0b090aee7926691895bb154008b8fcb2abf",
+      "sha256": "e7b65b7d7241881222099e398b7621aab6db79553b88972cc62c3f539ae0992b"
+    },
+    {
+      "path": "tests/test_local_vision_runtime.py",
+      "bytes": 60733,
+      "git_blob_sha1": "679847e6102c1f9c2f02d77b9d6da12f3ad6057d",
+      "sha256": "1e1be0b30e435343ffb0c9827d9f285961dd34f1954bbfc95460b284fa31de9f"
+    },
+    {
+      "path": "tests/test_openai_translation_provider.py",
+      "bytes": 9251,
+      "git_blob_sha1": "10bebf3a5c47c94e27cb309c67c12cb1661d2283",
+      "sha256": "3a3a1afdb43ea89d8c148d96718ae10e3c0a2bf8e0504a3421affd0b4baf95a0"
+    },
+    {
+      "path": "tests/test_audit_boundaries.py",
+      "bytes": 3165,
+      "git_blob_sha1": "149613841bd1ac8d9cafa1dba8f6916926816ab8",
+      "sha256": "dd2db5521153deb60688a4be3bd0a159572a46ca41bf59bfd6090a9eb8b559c9"
+    },
+    {
+      "path": "tests/test_asset_stream_hardening.py",
+      "bytes": 2622,
+      "git_blob_sha1": "875c13ca2cfacfd1248c4b694aa685c5acc2de2d",
+      "sha256": "0813c4c9a66eb9aff3c1f3c34962f5293947e98dccd7d86ec1af4729a50b5902"
+    },
+    {
+      "path": "tests/test_responses_hardening.py",
+      "bytes": 9058,
+      "git_blob_sha1": "91bcfcf50a1aaf15a452b52c5432741b9eeec921",
+      "sha256": "37e4c899d0d469d3bf4b6ff0223deca23de25ce2bde8293f7aaa71ede41ef31c"
+    },
+    {
+      "path": "tests/test_runtime_hardening.py",
+      "bytes": 7751,
+      "git_blob_sha1": "47ba2662ac27948009996980ffc6a92dea87e2af",
+      "sha256": "8604c72eb83f651756e7f6583ee711efb710515523b15194bbbb72431aa6f272"
+    }
+  ]
+}
