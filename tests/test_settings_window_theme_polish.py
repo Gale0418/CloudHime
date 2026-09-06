@@ -37,6 +37,11 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         assert "background-repeat: no-repeat;" in backdrop_style
         assert f"color: {theme.text};" in settings.lbl_page_title.styleSheet()
         assert f"color: {theme.subtext};" in settings.lbl_page_subtitle.styleSheet()
+        export_style = settings.btn_export_history.styleSheet()
+        assert f"background-color: {theme.input_bg};" in export_style
+        assert f"border-color: {theme.accent};" in export_style
+        assert "QPushButton:focus" in export_style
+        assert "min-height: 32px" in export_style
         top_style = settings.top_panel.styleSheet()
         assert f"background-color: {theme.settings_top_bg};" in top_style
         assert "background: transparent" not in top_style

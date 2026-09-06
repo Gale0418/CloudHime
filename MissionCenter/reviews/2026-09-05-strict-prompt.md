@@ -8,7 +8,7 @@
 檢查重點：
 
 1. Rust 1.98.1 真實編譯、fmt、Clippy、Rust tests 與 Python/native 差異測試；未執行不得算通過。
-2. FFI 指標生命週期�immutable snapshots、通道分組、長度／輸出界限、ABI／DLL 搜尋面。
+2. FFI 指標生命週期、immutable snapshots、通道分組、長度／輸出界限、ABI／DLL 搜尋面。
 3. Python bool、複數、uint64、非連續陣列、空軸、呼叫者修改原圖、並發；`skip_ocr` 永遠 False。
 4. Qt 測試保護在跨測試延遲 callback 中仍有效，純核心測試不偷偷載入 GUI。
 5. 外部 corpus 的 skip 僅限具名測試；`--require-external-corpora` 必須 fail closed，資料缺失不能算品質證據。

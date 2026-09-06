@@ -279,6 +279,15 @@ def test_spec_filters_runtime_dependency_duplicates_from_analysis_binaries():
     assert "source_path.is_relative_to(runtime_source_dir)" in spec
     assert "destination_path.parts[0].casefold() != \"runtime\"" in spec
 
+def test_spec_filters_unrelated_root_icu_binaries_from_frozen_bundle():
+    root = Path(__file__).resolve().parents[1]
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+
+    assert "_is_conflicting_root_icu_binary" in spec
+    assert '"icuuc.dll"' in spec
+    assert 'name.startswith("icudt")' in spec
+    assert "and not _is_conflicting_root_icu_binary(entry)" in spec
+
 def test_source_bootstrap_does_not_require_external_model_service():
     root = Path(__file__).resolve().parents[1]
     install_script = (root / "install.ps1").read_text(encoding="utf-8")

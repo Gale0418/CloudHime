@@ -12,7 +12,7 @@
 - Python 以有界的 immutable bytes 保護外部讀取，不把可能有可寫別名的 NumPy view 借給 Rust。
 - 動態庫僅從本專案 `native/target/release/` 的固定檔名載入；不搜尋 PATH/CWD、不接受任意 DLL 路徑。
 - 不自動下載、編譯或在啟動時安裝依賴。錯誤／不相容／缺少動態庫回到既有 NumPy 路徑。
-- 不加入 WebView#��Tauri、PyO3 或新的 Windows 截圖、全域熱鍵與模型執行環境。
+- 不加入 WebView、Tauri、PyO3 或新的 Windows 截圖、全域熱鍵與模型執行環境。
 
 ## 已安裝工具鏈後，執行本地閘門
 
@@ -21,7 +21,7 @@ python native/verify.py
 ```
 
 此命令用 `rustup run 1.98.1`，沒有 `--install`；依序確認精確 compiler version、
-`cargo fmt --check`�Rust tests、Clippy、release build，最後執行真正動態庫對 NumPy 的差異測試。
+`cargo fmt --check`、Rust tests、Clippy、release build，最後執行真正動態庫對 NumPy 的差異測試。
 Cargo 的 test/build/clippy 使用 `--locked --offline`。工具鏈或組件缺少就明確失敗，不暗中補裝。
 第一次取得 Rust/rustfmt/clippy 是獨立的使用者環境設定，不包含在這個離線閘門中。
 

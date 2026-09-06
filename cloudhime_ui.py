@@ -2774,9 +2774,17 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_brand_icon.setStyleSheet(f"background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 20px;")
         self.lbl_page_title.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
         self.lbl_page_subtitle.setStyleSheet(f"font-size: 14px; color: {theme.subtext}; background: transparent; border: none;")
+        self.btn_export_history.setStyleSheet(
+            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
+            "border-radius: 8px; padding: 7px 12px; min-height: 32px; font-size: 13px; font-weight: 700; }}"
+            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
+            f"QPushButton:focus {{ border: 2px solid {theme.accent}; }}"
+            f"QPushButton:disabled {{ color: {theme.subtext}; background-color: {theme.control_disabled_bg}; border-color: {theme.border}; }}"
+        )
         self.btn_close.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.subtext}; border: none; font-size: 16px; font-weight: 900; }}"
             f"QPushButton:hover {{ background-color: {theme.accent_soft}; color: {theme.text}; border-radius: 15px; }}"
+            f"QPushButton:focus {{ border: 2px solid {theme.accent}; border-radius: 15px; }}"
         )
         self.lbl_ocr.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {ocr_border}; background: transparent; border: none;")
         self.lbl_ocr_hint.setStyleSheet(f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;")

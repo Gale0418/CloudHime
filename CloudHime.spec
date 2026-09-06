@@ -18,6 +18,18 @@ def _is_duplicate_runtime_binary(entry):
         and destination_path.parts[0].casefold() != "runtime"
     )
 
+
+def _is_conflicting_root_icu_binary(entry):
+    """Do not let unrelated Poppler ICU DLLs shadow Qt's Windows ICU imports."""
+    destination, *_ = entry
+    destination_path = PurePath(destination)
+    if len(destination_path.parts) != 1:
+        return False
+    name = destination_path.name.casefold()
+    return name in {"icuuc.dll", "icuin.dll", "icuio.dll", "icutu.dll"} or (
+        name.startswith("icudt") and name.endswith(".dll")
+    )
+
 ddgs_engine_hiddenimports = collect_submodules("ddgs.engines")
 japanese_ocr_hiddenimports = ["meikiocr", "meikiocr.ocr", "onnxruntime"]
 fake_useragent_datas = collect_data_files("fake_useragent")
@@ -40,6 +52,7 @@ a = Analysis(
 a.binaries = [
     entry for entry in a.binaries
     if not _is_duplicate_runtime_binary(entry)
+    and not _is_conflicting_root_icu_binary(entry)
 ]
 pyz = PYZ(a.pure)
 
