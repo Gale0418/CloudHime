@@ -3,7 +3,7 @@
 
 - 專案: CloudHime
 - 目標: 準確度優先、local-first，先收斂 Region Vision 偶發 fallback，再完成發行供應鏈與 clean-machine gate
-- 目前狀態: 1255/1454 estimated
+- 目前狀態: 1257/1454 estimated
 - 里程碑: CH-E11 線上 Provider 與全介面重構
 - 進度條: [#########-] 86%
 - 進行中任務:
