@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -107,8 +107,26 @@ class _ProviderDisclosure(QFrame):
         status = str(status or "Unverified")
         self.header.setText(f"{self.provider_name}  ·  {status}")
         self.capability_label.setText(self.capability)
+        self.capability_label.updateGeometry()
+        self.updateGeometry()
         self.header.setAccessibleName(f"{self.provider_name}: {status}")
         self.header.setAccessibleDescription(self.capability)
+
+    def _sync_capability_height(self):
+        width = self.capability_label.width()
+        if width <= 0 or not self.capability_label.wordWrap():
+            return
+        required_height = self.capability_label.heightForWidth(width)
+        if required_height > 0 and self.capability_label.minimumHeight() != required_height:
+            self.capability_label.setMinimumHeight(required_height)
+            self.updateGeometry()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # QScrollArea may assign the narrowed content width after the parent
+        # layout pass; refresh once the child geometry is settled so wrapped
+        # capability text cannot be clipped vertically.
+        QTimer.singleShot(0, self._sync_capability_height)
 
     def _set_expanded(self, expanded):
         expanded = bool(expanded)
@@ -181,7 +199,10 @@ class TranslationSettingsPanel(QWidget):
         self.translation_content = QWidget()
         self.translation_content.setObjectName("translationSettingsContent")
         self.translation_content.setMinimumWidth(0)
-        self.translation_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # Long provider summaries must not force the legacy card wider than its
+        # scroll viewport; labels and capabilities wrap within the available
+        # column instead.
+        self.translation_content.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         translate_layout = QVBoxLayout(self.translation_content)
         translate_layout.setContentsMargins(20, 16, 20, 18)
         translate_layout.setSpacing(10)

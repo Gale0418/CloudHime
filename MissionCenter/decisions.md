@@ -1180,3 +1180,11 @@
 - 保留既有 Local Gemma；新增使用單一 Google API key 的 Online Gemma 與 OpenAI Luna。Online Gemma 在 `gemma-4-26b-a4b-it`／`gemma-4-31b-it` 間依各自 rate／cooldown 選擇，不把模型變體當成額外 project quota。
 - Gemma 輪替只在明確 429／404／503 且沒有串流輸出時進行；timeout／URLError 不重播，其他錯誤、取消與已產生串流輸出不切換。所有 Gemma request 固定 `thinkingLevel=minimal`，Luna 固定 reasoning effort `none`。
 - 本輪路由為 Mission Center `council_full` 與 Codex Game Studios `team-ui`；研究波次唯讀，主代理是唯一整合者。Impeccable 以 Operate mode、code-first 執行，不加入產品 runtime dependency。
+
+## 2026-09-06：CH-T33 Optuna/TPE 採用評估決策
+
+- 既有 `hybrid_search_benchmark.py` 的離線搜尋空間為 4 種 preprocess × 3 種 scale × 7 種 threshold，共 84 個明確策略；已具 deterministic bounded selection 與明確的 best-result／pruning 規則。
+- CH-T30 的既有 1-case／5-case smoke 顯示 threshold／preprocess 的改善訊號有限，尚無證據顯示需要以 TPE／pruner 取代現有 bounded evaluator；CH-T30 與 CH-T31 依賴均已完成。
+- 決策：不加入 Optuna、Hyperopt 或 scikit-optimize，也不把任何 optimizer 納入產品 runtime／release requirements；保留現有零新增依賴的可重複 evaluator。
+- 成本取捨：導入第三方 optimizer 會增加 lockfile、安裝、PyInstaller／MSIX、授權與 supply-chain 維護面，現階段沒有可量化的品質或延遲收益抵銷成本。未來若搜尋空間顯著擴大，另建新任務重新以證據評估。
+- 驗證：`tests/test_hybrid_search_benchmark.py` `21 passed in 0.56s`；benchmark 與測試檔 `py_compile` 通過；requirements／lock 未出現 Optuna 相關套件。

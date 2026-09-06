@@ -4,6 +4,7 @@ import hashlib
 import io
 from pathlib import Path
 import shutil
+import sys
 from threading import Event
 
 import pytest
@@ -25,7 +26,14 @@ TEST_ROOT = Path(__file__).with_name("_japanese_ocr_assets_test_data")
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_test_root():
+def _cleanup_test_root(tmp_path, monkeypatch):
+    # Keep parallel CI groups isolated; a repository-level scratch directory
+    # allowed another pytest process to remove this module's fixtures mid-run.
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "TEST_ROOT",
+        tmp_path / "japanese_ocr_assets_test_data",
+    )
     yield
     shutil.rmtree(TEST_ROOT, ignore_errors=True)
 
