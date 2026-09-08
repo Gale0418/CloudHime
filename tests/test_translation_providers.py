@@ -583,6 +583,29 @@ def test_gemma_429_rotates_to_the_other_model_with_the_same_key(monkeypatch):
     assert state_by_model["gemma-4-31b-it"]["last_outcome"] == "success"
 
 
+def test_gemma_image_http500_is_not_replayed_or_rotated(monkeypatch):
+    calls = []
+    failure = error.HTTPError("https://example.invalid", 500, "internal", {}, None)
+
+    def fake_urlopen(req, timeout):
+        calls.append(json.loads(req.data))
+        raise failure
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key", gemma_enabled=True, auto_switch_enabled=True,
+        gemma_model="gemma-4-31b-it",
+        supported_models=("gemma-4-31b-it", "gemma-4-26b-a4b-it"),
+    )
+    with pytest.raises(error.HTTPError) as raised:
+        provider.translate_multimodal(
+            ["Good morning."], [{"inline_data": {"mime_type": "image/png", "data": "fixture"}}]
+        )
+    assert raised.value is failure
+    assert len(calls) == 1
+    assert calls[0]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
+
+
 def test_gemma_timeout_does_not_replay_against_the_other_model(monkeypatch):
     calls = []
     pool = RuntimeCredentialPool([

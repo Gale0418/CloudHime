@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T22",
+  "taskDigest": "9f8deaee0df4d6202ee364d93ade7810a87f9afd53f479cf5ca785975297d823",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t22-text-stream-render-ab-20260906.md",
+      "output/mission-center-evidence/ch-t22-stream-coalescing-mechanism-20260906.md",
+      "output/mission-center-evidence/ch-t22-ui-rerun-20260906.md",
+      "MissionCenter/tasks.md",
+      "MissionCenter/smoke-tests.md"
+    ]
+  },
+  "findings": []
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T49",
+  "taskDigest": "7614de31a1e86b6c9bd553f1cead79c3211c7a53e88ff432ba219ab02b054c72",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t49-coderabbit-rerun-20260906.md",
+      "MissionCenter/tasks.md",
+      "MissionCenter/smoke-tests.md",
+      "tests/test_settings_window_theme_polish.py",
+      "tests/test_settings_store.py",
+      "tests/test_cloudhime_ui_smoke.py",
+      "tests/test_knowledge_research_service.py"
+    ]
+  },
+  "findings": []
+}

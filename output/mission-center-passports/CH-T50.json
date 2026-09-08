@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T50",
+  "taskDigest": "5558837874dc9da16d92bb629ea159daa9bead10cae8ce8fa5c2ee096c9b9020",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t50-bundled-ddgs-closeout-20260906.md",
+      "MissionCenter/tasks.md",
+      "MissionCenter/smoke-tests.md",
+      "CloudHime.spec",
+      "packaging/verify_release_dist.ps1",
+      "packaging/test_clean_machine.ps1",
+      "THIRD_PARTY_NOTICES.md",
+      "tests/test_release_packaging.py",
+      "tests/test_msix_packaging.py"
+    ]
+  },
+  "findings": []
+}

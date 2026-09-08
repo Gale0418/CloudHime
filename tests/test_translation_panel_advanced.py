@@ -202,6 +202,18 @@ def test_translation_panel_local_model_needs_no_key_and_shows_managed_download(q
     assert not panel.input_api_key.hasFocus()
 
 
+def test_translation_panel_local_model_discloses_appdata_and_gemma_terms(qtbot):
+    controller = _health_controller(model_id="gemma-3-4b-it-local", ai_enabled=True)
+    panel = TranslationSettingsPanel(controller, [("Gemma Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    panel.sync_from_controller()
+    panel.update_ai_model_notes()
+
+    assert "AppData" in panel.lbl_ai_model_notes.text()
+    assert "https://ai.google.dev/gemma/terms" in panel.lbl_ai_model_notes.text()
+    assert panel.lbl_ai_model_notes.openExternalLinks()
+
+
 def test_translation_panel_reports_cpu_ready_as_slow_but_available(qtbot):
     state = SimpleNamespace(name="ready", detail="", mode="cpu")
     controller = _health_controller(

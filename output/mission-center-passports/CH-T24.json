@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T24",
+  "taskDigest": "e905b802e2797fca2e765b9570e192e21874bafe89124423d23585ccf1eaca17",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t24-appdata-msix-closeout-20260906.md",
+      "MissionCenter/tasks.md",
+      "MissionCenter/smoke-tests.md",
+      "tests/test_settings_store.py",
+      "packaging/test_msix_install.ps1",
+      "packaging/msix_install_helpers.ps1"
+    ]
+  },
+  "findings": []
+}

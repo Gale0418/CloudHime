@@ -289,8 +289,10 @@ def test_normalize_settings_payload_migrates_only_local_translategemma_alias():
 def test_model_availability_snapshot_path_uses_appdata_companion():
     paths = create_settings_paths("D:\\CloudHime-install", appdata_root="D:\\CloudHime-appdata")
 
-    assert settings_store.model_availability_snapshot_path(paths) == (
-        "D:\\CloudHime-appdata\\CloudHime\\model_availability_snapshot.json"
+    assert settings_store.model_availability_snapshot_path(paths) == os.path.join(
+        "D:\\CloudHime-appdata",
+        settings_store.SETTINGS_APP_DIR,
+        settings_store.MODEL_AVAILABILITY_SNAPSHOT_FILENAME,
     )
 
 

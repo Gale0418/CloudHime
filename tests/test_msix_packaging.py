@@ -935,6 +935,24 @@ def test_wack_wrapper_source_contract_and_parser():
         assert forbidden.lower() not in script.lower()
 
 
+def test_wack_report_parent_expression_runs_in_windows_powershell():
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("Windows PowerShell is required")
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "packaging" / "test_wack.ps1").read_text(encoding="utf-8")
+    expression = next(line for line in script.splitlines() if line.startswith("$reportParent ="))
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command",
+         "$ErrorActionPreference = 'Stop'; "
+         "$ReportOutputPath = 'C:\\reports [test]\\report.xml'; "
+         + expression + "; Write-Output $reportParent"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "C:\\reports [test]"
+
+
 def test_wack_core_bridge_forwards_explicit_parameter_set_arguments():
     root = Path(__file__).resolve().parents[1]
     script = (root / "packaging" / "test_wack.ps1").read_text(encoding="utf-8")

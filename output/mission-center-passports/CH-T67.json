@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T67",
+  "taskDigest": "05eeb04e77427e7690d1d11b320e6b774454ca6b16912cbbc2d14c829a3f2659",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t67-live-models-20260909.md",
+      "tests/test_remote_model_discovery.py",
+      "tests/test_remote_model_availability_worker.py",
+      "remote_model_discovery.py",
+      "MissionCenter/smoke-tests.md"
+    ]
+  },
+  "findings": []
+}

@@ -1716,6 +1716,7 @@ class SettingsWindow(QWidget):
 
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
+        settings_styles = build_settings_styles(theme)
         self.setStyleSheet(theme.base_qss())
         import os
         is_dark = theme.key != "light"

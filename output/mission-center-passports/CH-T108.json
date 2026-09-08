@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T108",
+  "taskDigest": "ff5a77f08addf2798d2cb97164c8f1a2da4d7ece4401a96d717643dda4068508",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t108-provider-contract-closeout-20260907.md",
+      "MissionCenter/tasks.md",
+      "MissionCenter/smoke-tests.md",
+      "secret_store.py",
+      "translation_registry.py",
+      "translation_providers.py",
+      "openai_translation_provider.py",
+      "translation_orchestrator.py",
+      "tests/test_secret_store.py",
+      "tests/test_translation_registry_online.py",
+      "tests/test_translation_providers.py",
+      "tests/test_openai_translation_provider.py",
+      "tests/test_translation_orchestrator.py"
+    ]
+  },
+  "findings": []
+}

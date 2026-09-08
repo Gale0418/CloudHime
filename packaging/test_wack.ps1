@@ -68,7 +68,7 @@ $ReportOutputPath = [System.IO.Path]::GetFullPath($ReportOutputPath)
 if ([System.IO.Path]::GetExtension($ReportOutputPath) -ine '.xml') {
     throw "Report output path must use the .xml extension: $ReportOutputPath"
 }
-$reportParent = Split-Path -LiteralPath $ReportOutputPath -Parent
+$reportParent = [System.IO.Path]::GetDirectoryName($ReportOutputPath)
 if (-not (Test-Path -LiteralPath $reportParent -PathType Container)) {
     throw "Report output parent does not exist: $reportParent"
 }

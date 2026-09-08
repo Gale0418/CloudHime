@@ -442,7 +442,9 @@ class TranslationSettingsPanel(QWidget):
         self.model_availability_row = model_availability_row
 
         self.lbl_ai_model_notes = QLabel("")
-        self.lbl_ai_model_notes.setWordWrap(False)
+        self.lbl_ai_model_notes.setWordWrap(True)
+        self.lbl_ai_model_notes.setTextFormat(Qt.RichText)
+        self.lbl_ai_model_notes.setOpenExternalLinks(True)
         self.lbl_ai_model_notes.setVisible(False)
         self.lbl_ai_model_notes.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         advanced_layout.addWidget(self.lbl_ai_model_notes)
@@ -1274,6 +1276,10 @@ class TranslationSettingsPanel(QWidget):
         model_name = (model_name or "").strip().lower()
         lang = self._ui_language()
         notes = {
+            "gemma-3-4b-it-local": {
+                "en": "Downloads to AppData. Read the <a href=\"https://ai.google.dev/gemma/terms\">Gemma Terms of Use</a> before enabling.",
+                "zh-TW": "模型會下載到 AppData。啟用前請閱讀 <a href=\"https://ai.google.dev/gemma/terms\">Gemma 使用條款</a>。",
+            },
             "gemma-3-27b-it": {
                 "en": "Best balance for screenshot translation.",
                 "zh-TW": "截圖翻譯的平衡首選。",
@@ -1299,7 +1305,7 @@ class TranslationSettingsPanel(QWidget):
         text = self._ai_model_note_text(current_model)
         self.lbl_ai_model_notes.setText(text)
         self.lbl_ai_model_notes.setVisible(bool(text))
-        self.lbl_ai_model_notes.setMaximumHeight(self.fontMetrics().height() + 6)
+        self.lbl_ai_model_notes.setMaximumHeight(self.fontMetrics().height() * 2 + 12)
 
     def refresh_localized_texts(self):
         lang = self._ui_language()
