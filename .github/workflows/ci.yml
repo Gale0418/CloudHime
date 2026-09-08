@@ -300,6 +300,13 @@ jobs:
           $dummyDist = Join-Path $env:RUNNER_TEMP "cloudhime-dummy-dist"
           $outputDir = Join-Path $env:RUNNER_TEMP "cloudhime-msix-output"
           $builder = Join-Path $env:GITHUB_WORKSPACE "packaging/build_msix.ps1"
+          # AUMID activation uses the normal Windows environment, not the isolated probe's.
+          # The strict environment probe has already passed in the preceding step.
+          $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          $activationProbe = Join-Path $env:GITHUB_WORKSPACE "ci/msix_activation_probe.cs"
+          $packageExe = Join-Path $dummyDist "CloudHime.exe"
+          & $csc /nologo /target:winexe /out:$packageExe $activationProbe
+          if ($LASTEXITCODE -ne 0) { throw "MSIX activation probe compilation failed." }
           Write-Host "Building package with $builder"
           pwsh -NoLogo -NoProfile -File $builder -DistDir $dummyDist -OutputDir $outputDir -Version 0.1.0.0 -Publisher "CN=CloudHime CI" -CreateUpload
           if ($LASTEXITCODE -ne 0) {

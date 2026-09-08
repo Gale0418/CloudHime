@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import hashlib
+import subprocess
 from pathlib import Path
 
 from benchmark_lock import load_lock, validate_benchmark_lock, validate_scheduling_result
@@ -43,6 +45,17 @@ def test_benchmark_lock_matches_current_manifests():
         "temporal_holdout",
     ]
     assert result["artifact_ids"] == ["vision_scheduling_benchmark", "translation_e2e_evaluator"]
+
+
+def test_benchmark_lock_matches_git_index_bytes():
+    """A locally correct CRLF file must not hide a different committed LF blob."""
+    lock = load_lock(LOCK_PATH)
+    for entry in lock["datasets"] + lock["artifacts"]:
+        result = subprocess.run(
+            ["git", "show", f":{entry['path']}"], cwd=PROJECT_ROOT,
+            capture_output=True, check=True,
+        )
+        assert hashlib.sha256(result.stdout).hexdigest() == entry["sha256"], entry["path"]
 
 
 def test_benchmark_lock_rejects_manifest_mutation(tmp_path):

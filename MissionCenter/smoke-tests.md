@@ -1,5 +1,7 @@
 # Smoke Tests
 
+2026-09-09 CH-T64 CI follow-up：5a35d77 的遠端 CI 未通過（benchmark Git blob 換行不符與誤用隔離環境探針）；修正後本地 benchmark 17 passed、MSIX 33 passed，CodeRabbit 5 檔 0 issues。遠端重驗尚待下一次 push，不能以本地結果替代。詳見 output/mission-center-evidence/ci-followup-20260909.md。
+
 | 日期 | 對應任務 ID | 測試名稱 | 測試方式 | 預期結果 | 實際結果 | 通過 / 失敗 | 類型 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-09 | CH-T64 | Fresh MSIX WACK | 新建 MSIX 的隔離簽章副本，正式 appcert wrapper | 新報告唯一 OVERALL_RESULT=PASS，測試程序與憑證／暫存清理 | wack-b7f5ca8271d943159d0a15bf2bb5fd45.xml 為 PASS；gate／appcert／TE 結束、測試憑證0、staging清除；原工具中斷故不宣稱 shell exit code | Pass | wack, fresh-msix, cleanup |

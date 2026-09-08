@@ -306,6 +306,28 @@ def test_ci_msix_fixture_uses_an_environment_probe_with_liveness_margin():
     assert "-LaunchWaitSeconds 3" in install
 
 
+def test_ci_uses_separate_msix_activation_probe(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    build = ci[ci.index("      - name: Build MSIX package"):]
+    assert 'ci/msix_activation_probe.cs' in build
+    assert build.index('/out:$packageExe $activationProbe') < build.index('-File $builder')
+    csc = Path(os.environ.get("WINDIR", "C:/Windows")) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+    if not csc.is_file():
+        pytest.skip("Windows C# compiler required for activation probe")
+    executable = tmp_path / "probe.exe"
+    subprocess.run([str(csc), "/nologo", "/target:winexe", f"/out:{executable}",
+                    str(root / "ci/msix_activation_probe.cs")], check=True, capture_output=True)
+    process = subprocess.Popen([str(executable)])
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            process.wait(timeout=3)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=10)
+
+
 def test_msix_cleanup_helper_retries_and_selects_newest_package():
     powershell = _powershell_executable()
     if not powershell:
