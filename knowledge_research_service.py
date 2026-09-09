@@ -65,7 +65,18 @@ class KnowledgeResearchService:
 
     def extract_candidate(self, draft: dict[str, Any], cancel_event: threading.Event) -> str:
         self._check_cancelled(cancel_event)
-        prompt = self._build_extraction_prompt(draft)
+        readable = [
+            source for source in draft.get("sources", [])
+            if isinstance(source, dict)
+            and source.get("status") == "read"
+            and isinstance(source.get("source_id"), str)
+            and source["source_id"].strip()
+            and isinstance(source.get("content"), str)
+            and source["content"].strip()
+        ]
+        if not readable:
+            raise ValueError("knowledge_research_no_readable_sources")
+        prompt = self._build_extraction_prompt({**draft, "sources": readable})
         self._check_cancelled(cancel_event)
         raw = self.model_provider.generate_structured_text(
             prompt,

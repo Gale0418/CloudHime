@@ -82,3 +82,25 @@ def test_service_checks_cancellation_before_each_stage():
 
     with pytest.raises(RuntimeError, match="cancelled"):
         service.build_research_draft("Work", cancel_event)
+
+
+@pytest.mark.parametrize("sources", [[], [{"status": "failed"}],
+                                     [{"status": "read", "source_id": "a", "content": "  "}],
+                                     [{"status": "read", "content": "facts"}]])
+def test_extraction_without_readable_evidence_does_not_call_model(sources):
+    model = FakeModel()
+    service = KnowledgeResearchService(google_api_key="unused", model_provider=model)
+    with pytest.raises(ValueError, match="knowledge_research_no_readable_sources"):
+        service.extract_candidate({"title": "Work", "sources": sources}, threading.Event())
+    assert model.prompts == []
+
+
+def test_extraction_excludes_malformed_sources_when_valid_evidence_exists():
+    model = FakeModel()
+    service = KnowledgeResearchService(google_api_key="unused", model_provider=model)
+    service.extract_candidate({"title": "Work", "sources": [
+        {"status": "read", "source_id": "valid", "content": "Verified public facts."},
+        {"status": "read", "content": "MALFORMED_UNCITED_CONTENT"},
+    ]}, threading.Event())
+    assert "Verified public facts." in model.prompts[0][0]
+    assert "MALFORMED_UNCITED_CONTENT" not in model.prompts[0][0]
