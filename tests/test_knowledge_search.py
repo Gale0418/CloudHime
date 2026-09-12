@@ -53,9 +53,14 @@ def test_jina_rejects_any_non_public_dns_result():
     with pytest.raises(ResearchProviderError, match="non-public"): JinaReaderProvider(dns_resolver=mixed_dns).read("https://example.com/article")
 def test_jina_composes_reader_url_and_respects_byte_limit():
     response, seen = FakeResponse(b"hello"), []
-    def opener(req, *, timeout): seen.append((req.full_url, timeout)); return response
+    def opener(req, *, timeout): seen.append((req.full_url, timeout, dict(req.header_items()))); return response
     text = JinaReaderProvider(timeout=2.5,max_bytes=5,opener=opener,dns_resolver=public_dns).read("HTTPS://Example.COM:443/a#fragment")
-    assert text == "hello"; assert seen == [("https://r.jina.ai/https://example.com/a",2.5)]; assert response.read_sizes == [6]
+    assert text == "hello"
+    assert seen[0][0:2] == ("https://r.jina.ai/https://example.com/a", 2.5)
+    assert seen[0][2]["X-max-tokens"] == "8000"
+    assert seen[0][2]["X-retain-links"] == "none"
+    assert seen[0][2]["X-remove-selector"] == "header, nav, footer, aside"
+    assert response.read_sizes == [6]
 def test_jina_rejects_oversized_response():
     with pytest.raises(ResearchProviderError, match="size limit"): JinaReaderProvider(max_bytes=3,opener=lambda *_args,**_kwargs: FakeResponse(b"abcd"),dns_resolver=public_dns).read("https://example.com")
 @pytest.mark.parametrize("failure,message", [(TimeoutError(),"timed out"),(urlerror.URLError("offline"),"request failed")])

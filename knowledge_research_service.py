@@ -1,19 +1,24 @@
 """Explicit, bounded DDGS/Jina/Gemma4 Knowledge Pack research service."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 import threading
 
 from knowledge_extraction import parse_extraction_response
 from knowledge_research_draft import build_research_draft
 from knowledge_search import DDGSSearchProvider, JinaReaderProvider
-from translation_providers import GemmaTranslationProvider
+from openai_translation_provider import DEFAULT_OPENAI_MODEL, OpenAITranslationProvider
+from translation_providers import GemmaTranslationProvider, SUPPORTED_GEMMA_MODEL_NAMES
 
 
 MAX_EXTRACT_SOURCE_CHARS = 8_000
 MAX_EXTRACT_PROMPT_CHARS = 60_000
 DEFAULT_RESEARCH_SOURCE_COUNT = 8
-DEFAULT_GEMMA4_MODEL = "gemma-4-31b-it"
+RESEARCH_GEMMA_MODEL_IDS = tuple(
+    model for model in SUPPORTED_GEMMA_MODEL_NAMES if model.startswith("gemma-4-")
+)
+RESEARCH_MODEL_IDS = (*RESEARCH_GEMMA_MODEL_IDS, DEFAULT_OPENAI_MODEL)
+DEFAULT_GEMMA4_MODEL = "gemma-4-26b-a4b-it"
 
 
 class KnowledgeResearchService:
@@ -22,20 +27,34 @@ class KnowledgeResearchService:
     def __init__(
         self,
         *,
-        google_api_key: str,
+        google_api_key: str = "",
+        openai_api_key: str = "",
         search_provider: Any | None = None,
         reader_provider: Any | None = None,
         model_provider: Any | None = None,
+        model_name: str = DEFAULT_GEMMA4_MODEL,
         max_sources: int = DEFAULT_RESEARCH_SOURCE_COUNT,
     ) -> None:
+        if model_name not in RESEARCH_MODEL_IDS:
+            raise ValueError("unsupported knowledge research model")
+        self.model_name = model_name
         self.search_provider = search_provider or DDGSSearchProvider(max_results=max_sources)
         self.reader_provider = reader_provider or JinaReaderProvider()
-        self.model_provider = model_provider or GemmaTranslationProvider(
-            google_api_key=google_api_key,
-            gemma_model=DEFAULT_GEMMA4_MODEL,
-            gemma_enabled=True,
-            auto_switch_enabled=False,
-        )
+        if model_provider is not None:
+            self.model_provider = model_provider
+        elif model_name in RESEARCH_GEMMA_MODEL_IDS:
+            self.model_provider = GemmaTranslationProvider(
+                google_api_key=google_api_key,
+                gemma_model=model_name,
+                gemma_enabled=True,
+                auto_switch_enabled=False,
+            )
+        else:
+            self.model_provider = OpenAITranslationProvider(
+                openai_api_key=openai_api_key,
+                model=model_name,
+                reasoning_effort="none",
+            )
         self.max_sources = max_sources
 
     class _CancellableReader:
@@ -52,12 +71,19 @@ class KnowledgeResearchService:
         if cancel_event.is_set():
             raise RuntimeError("knowledge_research_cancelled")
 
-    def build_research_draft(self, title: str, cancel_event: threading.Event) -> dict[str, Any]:
+    def build_research_draft(
+        self,
+        title: str,
+        cancel_event: threading.Event,
+        *,
+        source_urls: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
         self._check_cancelled(cancel_event)
         draft = build_research_draft(
             title,
             search_provider=self.search_provider,
             reader_provider=self._CancellableReader(self.reader_provider, cancel_event),
+            source_urls=source_urls,
             max_sources=self.max_sources,
         )
         self._check_cancelled(cancel_event)

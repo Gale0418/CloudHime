@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import re
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, Sequence
 
 from knowledge_search import ResearchProviderError, SearchProvider, SearchResult, normalize_http_url
 
@@ -44,6 +44,8 @@ class ResearchDraftSource:
     content: str = ""
     content_sha256: str = ""
     error: str = ""
+    origin: str = "search"
+    content_truncated: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +58,8 @@ class ResearchDraftSource:
             "content": self.content,
             "content_sha256": self.content_sha256,
             "error": self.error,
+            "origin": self.origin,
+            "content_truncated": self.content_truncated,
         }
 
 
@@ -102,6 +106,8 @@ def _failed_source(
     fetched_at: str,
     status: str,
     error: str,
+    *,
+    origin: str,
 ) -> ResearchDraftSource:
     def safe_metadata(value: Any) -> str:
         try:
@@ -117,6 +123,7 @@ def _failed_source(
         status=status,
         fetched_at=fetched_at,
         error=error,
+        origin=origin,
     )
 
 
@@ -126,6 +133,7 @@ def build_research_draft(
     search_provider: SearchProvider,
     reader_provider: ReaderProvider,
     query: str | None = None,
+    source_urls: Sequence[str] | None = None,
     max_sources: int = 8,
     now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -139,12 +147,28 @@ def build_research_draft(
     if isinstance(max_sources, bool) or not isinstance(max_sources, int) or not 0 < max_sources <= MAX_DRAFT_SOURCES:
         raise ValueError(f"max_sources must be between 1 and {MAX_DRAFT_SOURCES}")
 
-    try:
-        results = search_provider.search(normalized_query)
-    except ResearchProviderError as exc:
-        raise ResearchDraftError("Knowledge research search failed") from exc
-    except Exception as exc:
-        raise ResearchDraftError("Knowledge research search failed") from exc
+    if isinstance(source_urls, (str, bytes)):
+        raise ValueError("source_urls must be a sequence of URLs")
+    explicit_urls = tuple(source_urls or ())
+    source_mode = "explicit" if explicit_urls else "search"
+    if explicit_urls:
+        normalized_explicit_urls: list[str] = []
+        for raw_url in explicit_urls:
+            url = normalize_http_url(raw_url)
+            if url is None:
+                raise ResearchDraftValidationError("source url must be an HTTP(S) URL")
+            if url not in normalized_explicit_urls:
+                normalized_explicit_urls.append(url)
+        if len(normalized_explicit_urls) > max_sources:
+            raise ResearchDraftValidationError(f"at most {max_sources} source URLs are allowed")
+        results = tuple(SearchResult("", url, "") for url in normalized_explicit_urls)
+    else:
+        try:
+            results = search_provider.search(normalized_query)
+        except ResearchProviderError as exc:
+            raise ResearchDraftError("Knowledge research search failed") from exc
+        except Exception as exc:
+            raise ResearchDraftError("Knowledge research search failed") from exc
 
     fetched_at = _timestamp(now)
     sources: list[ResearchDraftSource] = []
@@ -153,7 +177,11 @@ def build_research_draft(
         if not isinstance(result, SearchResult):
             continue
         url = normalize_http_url(result.url)
-        if url is None or url in seen_urls:
+        if url is None:
+            if source_mode == "explicit":
+                raise ResearchDraftValidationError("source url must be an HTTP(S) URL")
+            continue
+        if url in seen_urls:
             continue
         seen_urls.add(url)
         if len(sources) >= max_sources:
@@ -162,10 +190,9 @@ def build_research_draft(
             content = reader_provider.read(url)
             if not isinstance(content, str) or not content.strip():
                 raise ResearchProviderError("empty reader response")
-            normalized_content = content.strip()
-            if len(normalized_content) > MAX_CONTENT_LENGTH:
-                sources.append(_failed_source(result, url, fetched_at, "rejected", "source_content_too_large"))
-                continue
+            full_content = content.strip()
+            content_truncated = len(full_content) > MAX_CONTENT_LENGTH
+            normalized_content = full_content[:MAX_CONTENT_LENGTH]
             sources.append(
                 ResearchDraftSource(
                     source_id=_source_id(url),
@@ -176,6 +203,8 @@ def build_research_draft(
                     fetched_at=fetched_at,
                     content=normalized_content,
                     content_sha256=_content_digest(normalized_content),
+                    origin=source_mode,
+                    content_truncated=content_truncated,
                 )
             )
         except Exception as exc:
@@ -186,6 +215,7 @@ def build_research_draft(
                     fetched_at,
                     "read_failed",
                     f"{type(exc).__name__}",
+                    origin=source_mode,
                 )
             )
 
@@ -194,6 +224,7 @@ def build_research_draft(
         "status": RESEARCH_DRAFT_STATUS,
         "title": normalized_title,
         "query": normalized_query,
+        "source_mode": source_mode,
         "created_at": fetched_at,
         "sources": [source.as_dict() for source in sources],
         "entries": [],
@@ -230,6 +261,12 @@ def _validate_source(value: Any) -> dict[str, Any]:
     if not isinstance(content_sha256, str):
         raise ResearchDraftValidationError("content_sha256 must be text")
     error = _clean_text(value.get("error", ""), "source error", 120)
+    origin = value.get("origin", "search")
+    if origin not in {"search", "explicit"}:
+        raise ResearchDraftValidationError("invalid source origin")
+    content_truncated = value.get("content_truncated", False)
+    if type(content_truncated) is not bool:
+        raise ResearchDraftValidationError("content_truncated must be boolean")
     if status == "read":
         if not content.strip() or not _SHA256_PATTERN.fullmatch(content_sha256):
             raise ResearchDraftValidationError("read source must include content and sha256")
@@ -242,6 +279,8 @@ def _validate_source(value: Any) -> dict[str, Any]:
             raise ResearchDraftValidationError("failed source cannot contain content")
         if not error:
             raise ResearchDraftValidationError("failed source must include an error")
+        if content_truncated:
+            raise ResearchDraftValidationError("failed source cannot be truncated content")
     return {
         "source_id": source_id,
         "url": url,
@@ -252,6 +291,8 @@ def _validate_source(value: Any) -> dict[str, Any]:
         "content": content,
         "content_sha256": content_sha256,
         "error": error,
+        "origin": origin,
+        "content_truncated": content_truncated,
     }
 
 
@@ -265,11 +306,16 @@ def validate_research_draft(value: Any) -> dict[str, Any]:
         raise ResearchDraftValidationError("only draft status is accepted")
     title = _clean_text(value.get("title"), "title", MAX_TITLE_LENGTH, required=True)
     query = _clean_text(value.get("query"), "query", MAX_QUERY_LENGTH, required=True)
+    source_mode = value.get("source_mode", "search")
+    if source_mode not in {"search", "explicit"}:
+        raise ResearchDraftValidationError("invalid source mode")
     created_at = _validate_timestamp(value.get("created_at"), "created_at")
     raw_sources = value.get("sources")
     if not isinstance(raw_sources, list) or len(raw_sources) > MAX_DRAFT_SOURCES:
         raise ResearchDraftValidationError("sources must be a bounded list")
     sources = [_validate_source(item) for item in raw_sources]
+    if any(item["origin"] != source_mode for item in sources):
+        raise ResearchDraftValidationError("source origin does not match source mode")
     source_ids = [item["source_id"] for item in sources]
     if len(set(source_ids)) != len(source_ids):
         raise ResearchDraftValidationError("duplicate research source")
@@ -283,6 +329,7 @@ def validate_research_draft(value: Any) -> dict[str, Any]:
         "status": RESEARCH_DRAFT_STATUS,
         "title": title,
         "query": query,
+        "source_mode": source_mode,
         "created_at": created_at,
         "sources": sources,
         "entries": [],

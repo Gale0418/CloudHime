@@ -67,6 +67,10 @@ TRANSLATION_CACHE_LIMIT = 512
 LOCAL_MULTIMODAL_BATCH_SIZE = 4
 LOCAL_MULTIMODAL_OCR_TEMPERATURE = 0.1
 LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY = 1.15
+# Full-page OCR can legitimately exceed the old 384-token cap. Keep the
+# budget bounded while allowing long Japanese pages to complete.
+LOCAL_MULTIMODAL_OCR_MAX_TOKENS = 768
+LOCAL_MULTIMODAL_OCR_RETRY_MAX_TOKENS = 1024
 LOCAL_MULTIMODAL_DEFAULT_OCR_PROMPT = (
     "You are a meticulous OCR engine.\n"
     "Transcribe every visible text line exactly as it appears in the image.\n"
@@ -773,6 +777,8 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                 last_safe_error = exc
                 continue
             req_body = {
+                # Gemma 4's current multimodal guidance places image content
+                # before the text instruction. Keep REST and SSE identical.
                 "contents": [{"parts": ([*image_parts] if image_parts else []) + [{"text": prompt}]}],
                 "generationConfig": self._generation_config(
                     candidate,
@@ -1780,16 +1786,22 @@ class LocalMultimodalProvider(KnowledgePromptContext):
                 "Use the image as the source of truth and return one final transcription."
                 f"\n\nOCR hint:\n{source_text_hint[:1200]}"
             )
-        raw_text = self._request_chat_completion(
-            self._build_chat_payload(
-                prompt=prompt,
-                image_parts=image_parts,
-                response_format="text",
-                max_tokens=384,
-                temperature=LOCAL_MULTIMODAL_OCR_TEMPERATURE,
-                repeat_penalty=LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY,
-            )
+        payload = self._build_chat_payload(
+            prompt=prompt,
+            image_parts=image_parts,
+            response_format="text",
+            max_tokens=LOCAL_MULTIMODAL_OCR_MAX_TOKENS,
+            temperature=LOCAL_MULTIMODAL_OCR_TEMPERATURE,
+            repeat_penalty=LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY,
         )
+        try:
+            raw_text = self._request_chat_completion(payload)
+        except ValueError as exc:
+            if str(exc) != "truncated_local_multimodal_response":
+                raise
+            retry_payload = dict(payload)
+            retry_payload["max_tokens"] = LOCAL_MULTIMODAL_OCR_RETRY_MAX_TOKENS
+            raw_text = self._request_chat_completion(retry_payload)
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
     def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:

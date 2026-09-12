@@ -5,11 +5,18 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import threading
 from typing import Any, Callable, Mapping
 
 
 PACKAGED_FUNCTIONAL_SMOKE_ENV = "CLOUDHIME_PACKAGED_FUNCTIONAL_SMOKE"
+PACKAGED_KNOWLEDGE_SMOKE_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_SMOKE"
 PACKAGED_SMOKE_RESULT_PATH_ENV = "CLOUDHIME_PACKAGED_SMOKE_RESULT_PATH"
+PACKAGED_KNOWLEDGE_TITLE_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_TITLE"
+PACKAGED_KNOWLEDGE_MODEL_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_MODEL"
+PACKAGED_KNOWLEDGE_SOURCE_URLS_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_SOURCE_URLS"
+PACKAGED_KNOWLEDGE_OPENAI_KEY_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_OPENAI_KEY"
+PACKAGED_KNOWLEDGE_GOOGLE_KEY_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_GOOGLE_KEY"
 PACKAGED_SMOKE_RUNTIME_DIR_ENV = "CLOUDHIME_PACKAGED_SMOKE_RUNTIME_DIR"
 PACKAGED_SMOKE_MODEL_PATH_ENV = "CLOUDHIME_PACKAGED_SMOKE_MODEL_PATH"
 PACKAGED_SMOKE_PROJECTOR_PATH_ENV = "CLOUDHIME_PACKAGED_SMOKE_PROJECTOR_PATH"
@@ -80,6 +87,56 @@ def _write_result(path: str, payload: Mapping[str, Any]) -> None:
     )
 
 
+def _run_knowledge_smoke(environment: Mapping[str, str]) -> dict[str, Any]:
+    """Exercise frozen Research dependencies while persisting only redacted counts."""
+    from knowledge_extraction import parse_extraction_response, validate_extraction_payload
+    from knowledge_research_service import KnowledgeResearchService
+
+    title = _env_text(environment, PACKAGED_KNOWLEDGE_TITLE_ENV)
+    model_name = _env_text(environment, PACKAGED_KNOWLEDGE_MODEL_ENV)
+    raw_urls = str(environment.get(PACKAGED_KNOWLEDGE_SOURCE_URLS_ENV, "") or "").strip()
+    source_urls = None
+    if raw_urls:
+        decoded = json.loads(raw_urls)
+        if not isinstance(decoded, list) or not all(isinstance(item, str) for item in decoded):
+            raise ValueError("invalid_packaged_knowledge_source_urls")
+        source_urls = decoded
+
+    service = KnowledgeResearchService(
+        google_api_key=str(environment.get(PACKAGED_KNOWLEDGE_GOOGLE_KEY_ENV, "") or ""),
+        openai_api_key=str(environment.get(PACKAGED_KNOWLEDGE_OPENAI_KEY_ENV, "") or ""),
+        model_name=model_name,
+    )
+    cancel_event = threading.Event()
+    draft = service.build_research_draft(
+        title,
+        cancel_event,
+        source_urls=source_urls,
+    )
+    raw = service.extract_candidate(draft, cancel_event)
+    allowed_source_ids = [
+        source.get("source_id", "")
+        for source in draft.get("sources", [])
+        if isinstance(source, dict) and source.get("status") == "read"
+    ]
+    candidate = validate_extraction_payload(
+        parse_extraction_response(raw),
+        allowed_source_ids=allowed_source_ids,
+        expected_title=title,
+    )
+    return {
+        "schema_version": 1,
+        "status": "passed",
+        "smoke_kind": "knowledge_research",
+        "source_mode": draft.get("source_mode", "search"),
+        "source_count": len(draft.get("sources", [])),
+        "readable_source_count": len(allowed_source_ids),
+        "alias_count": len(candidate["aliases"]),
+        "entry_count": len(candidate["entries"]),
+        "model_name": model_name,
+    }
+
+
 def run_packaged_functional_smoke(
     *,
     environ: Mapping[str, str] | None = None,
@@ -87,18 +144,25 @@ def run_packaged_functional_smoke(
 ) -> int | None:
     """Return an exit code when opted in, otherwise ``None`` for normal GUI startup."""
     environment = os.environ if environ is None else environ
-    if str(environment.get(PACKAGED_FUNCTIONAL_SMOKE_ENV, "")).strip() != "1":
+    vision_enabled = str(environment.get(PACKAGED_FUNCTIONAL_SMOKE_ENV, "")).strip() == "1"
+    knowledge_enabled = str(environment.get(PACKAGED_KNOWLEDGE_SMOKE_ENV, "")).strip() == "1"
+    if not vision_enabled and not knowledge_enabled:
         return None
 
     result_path = str(environment.get(PACKAGED_SMOKE_RESULT_PATH_ENV, "") or "").strip()
     try:
+        if not result_path:
+            raise ValueError("missing_packaged_smoke_result_path")
+        if vision_enabled and knowledge_enabled:
+            raise ValueError("conflicting_packaged_smoke_modes")
+        if knowledge_enabled:
+            _write_result(result_path, _run_knowledge_smoke(environment))
+            return 0
+
         runtime_dir = _env_text(environment, PACKAGED_SMOKE_RUNTIME_DIR_ENV)
         model_path = _env_text(environment, PACKAGED_SMOKE_MODEL_PATH_ENV)
         projector_path = _env_text(environment, PACKAGED_SMOKE_PROJECTOR_PATH_ENV)
         image_path = _env_text(environment, PACKAGED_SMOKE_IMAGE_PATH_ENV)
-        if not result_path:
-            raise ValueError("missing_packaged_smoke_result_path")
-
         if runner is None:
             from release_functional_smoke import run_release_smoke
 

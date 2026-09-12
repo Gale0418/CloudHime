@@ -403,6 +403,74 @@ def test_remote_request_sampling_fields_follow_model_capability(monkeypatch):
     assert gemma_config["thinkingConfig"] == {"thinkingLevel": "minimal"}
 
 
+def test_gemma_multimodal_request_places_image_before_text(monkeypatch):
+    payloads = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"candidates": []}'
+
+    def fake_urlopen(req, timeout):
+        payloads.append(json.loads(req.data.decode("utf-8")))
+        return Response()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-4-31b-it",
+    )
+
+    provider._request(
+        "gemma-4-31b-it",
+        "Caption this image.",
+        image_parts=[{"inline_data": {"mime_type": "image/png", "data": "encoded"}}],
+    )
+
+    parts = payloads[0]["contents"][0]["parts"]
+    assert parts[0]["inline_data"]["mime_type"] == "image/png"
+    assert parts[1] == {"text": "Caption this image."}
+
+
+def test_gemma_multimodal_stream_request_places_image_before_text(monkeypatch):
+    payloads = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}\n'
+
+    def fake_urlopen(req, timeout):
+        payloads.append(json.loads(req.data.decode("utf-8")))
+        return Response()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-4-31b-it",
+    )
+
+    assert list(provider._stream_request(
+        "gemma-4-31b-it",
+        "Caption this image.",
+        image_parts=[{"inline_data": {"mime_type": "image/png", "data": "encoded"}}],
+    )) == ["ok"]
+
+    parts = payloads[0]["contents"][0]["parts"]
+    assert parts[0]["inline_data"]["mime_type"] == "image/png"
+    assert parts[1] == {"text": "Caption this image."}
+
+
 def test_gemma_screenshot_ocr_reports_the_model_used_after_rotation():
     provider = GemmaTranslationProvider(
         google_api_key="test-key",
@@ -581,6 +649,122 @@ def test_gemma_429_rotates_to_the_other_model_with_the_same_key(monkeypatch):
     state_by_model = {item["model"]: item for item in pool.snapshot()}
     assert state_by_model["gemma-4-26b-a4b-it"]["status"] == "cooldown"
     assert state_by_model["gemma-4-31b-it"]["last_outcome"] == "success"
+
+
+@pytest.mark.parametrize("status_code", [404, 503])
+def test_gemma_explicit_model_availability_failures_rotate(status_code, monkeypatch):
+    calls = []
+    response = type("Response", (), {"read": lambda self: b"", "close": lambda self: None})()
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-26b-a4b-it"},
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-31b-it"},
+    ])
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.full_url)
+        if len(calls) == 1:
+            raise error.HTTPError(req.full_url, status_code, "model unavailable", {}, response)
+        return type(
+            "SuccessResponse",
+            (),
+            {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, *_args: False,
+                "read": lambda self: b'{"candidates": []}',
+            },
+        )()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        credential_pool=pool,
+        google_api_key="placeholder",
+        gemma_model="gemma-4-26b-a4b-it",
+        supported_models=("gemma-4-26b-a4b-it", "gemma-4-31b-it"),
+    )
+
+    provider._request("gemma-4-26b-a4b-it", "hello")
+
+    assert calls == [
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent",
+    ]
+
+
+@pytest.mark.parametrize("status_code", [404, 429, 503])
+def test_gemma_stream_explicit_failure_rotates_before_any_output(status_code, monkeypatch):
+    calls = []
+    response = type("Response", (), {"read": lambda self: b"", "close": lambda self: None})()
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-26b-a4b-it"},
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-31b-it"},
+    ])
+
+    class SuccessResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}\n'
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.full_url)
+        if len(calls) == 1:
+            raise error.HTTPError(req.full_url, status_code, "model unavailable", {}, response)
+        return SuccessResponse()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        credential_pool=pool,
+        gemma_model="gemma-4-26b-a4b-it",
+        supported_models=("gemma-4-26b-a4b-it", "gemma-4-31b-it"),
+    )
+
+    assert list(provider._stream_request("gemma-4-26b-a4b-it", "hello")) == ["ok"]
+    assert calls == [
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:streamGenerateContent?alt=sse",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:streamGenerateContent?alt=sse",
+    ]
+
+
+def test_gemma_stream_explicit_failure_after_output_does_not_replay(monkeypatch):
+    calls = []
+    pool = RuntimeCredentialPool([
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-26b-a4b-it"},
+        {"provider": "google", "key_id": "a", "secret": "secret-a", "model": "gemma-4-31b-it"},
+    ])
+
+    class PartialFailureResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}\n'
+            raise error.HTTPError("https://example.invalid", 503, "late failure", {}, None)
+
+    def fake_urlopen(req, timeout):
+        calls.append(req.full_url)
+        return PartialFailureResponse()
+
+    monkeypatch.setattr("translation_providers.request.urlopen", fake_urlopen)
+    provider = GemmaTranslationProvider(
+        credential_pool=pool,
+        gemma_model="gemma-4-26b-a4b-it",
+        supported_models=("gemma-4-26b-a4b-it", "gemma-4-31b-it"),
+    )
+    stream = provider._stream_request("gemma-4-26b-a4b-it", "hello")
+
+    assert next(stream) == "partial"
+    with pytest.raises(error.HTTPError):
+        next(stream)
+    assert calls == [
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:streamGenerateContent?alt=sse",
+    ]
 
 
 def test_gemma_image_http500_is_not_replayed_or_rotated(monkeypatch):

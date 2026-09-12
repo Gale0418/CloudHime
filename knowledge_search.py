@@ -72,15 +72,24 @@ class DDGSSearchProvider:
 
 class JinaReaderProvider:
     """Fetch a public HTTP(S) page through Jina Reader with size limits."""
-    def __init__(self, *, timeout: float = 15.0, max_bytes: int = 1_000_000, opener: Callable[..., Any] | None = None, dns_resolver: Callable[..., Any] | None = None) -> None:
+    def __init__(self, *, timeout: float = 15.0, max_bytes: int = 1_000_000, max_tokens: int = 8_000, opener: Callable[..., Any] | None = None, dns_resolver: Callable[..., Any] | None = None) -> None:
         if timeout <= 0: raise ValueError("timeout must be positive")
         if max_bytes <= 0: raise ValueError("max_bytes must be positive")
-        self.timeout, self.max_bytes = timeout, max_bytes
+        if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 500: raise ValueError("max_tokens must be at least 500")
+        self.timeout, self.max_bytes, self.max_tokens = timeout, max_bytes, max_tokens
         self._opener, self._dns_resolver = opener or request.urlopen, dns_resolver or socket.getaddrinfo
     def read(self, url: str) -> str:
         """Read a validated public URL through ``https://r.jina.ai/``."""
         target_url = self._validate_target(url)
-        reader_request = request.Request(f"https://r.jina.ai/{target_url}", headers={"Accept": "text/plain"})
+        reader_request = request.Request(
+            f"https://r.jina.ai/{target_url}",
+            headers={
+                "Accept": "text/plain",
+                "X-Max-Tokens": str(self.max_tokens),
+                "X-Retain-Links": "none",
+                "X-Remove-Selector": "header, nav, footer, aside",
+            },
+        )
         try:
             with self._opener(reader_request, timeout=self.timeout) as response:
                 if getattr(response, "status", None) is not None and response.status >= 400: raise ResearchProviderError("Jina Reader returned an error response.")

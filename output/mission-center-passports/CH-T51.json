@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T51",
+  "taskDigest": "59372354da516ae7ce730984d30d8e63e3f19898ce47c9beadf22925f1dc9fd1",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "output/mission-center-evidence/ch-t51-research-flow-20260913.md",
+      "MissionCenter/smoke-tests.md"
+    ]
+  },
+  "findings": [
+    {
+      "id": "CH-T51-CODERABBIT-DATE-CONTEXT",
+      "severity": "High",
+      "disposition": "rejected-with-counterevidence"
+    },
+    {
+      "id": "CH-T51-CODERABBIT-CONFLICTING-SMOKE-MODES",
+      "severity": "High",
+      "disposition": "fixed"
+    },
+    {
+      "id": "CH-T51-CODERABBIT-WIRING-ASSERTIONS",
+      "severity": "Low",
+      "disposition": "fixed"
+    }
+  ]
+}

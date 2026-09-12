@@ -428,6 +428,25 @@ def test_transcribe_screenshot_uses_ocr_sampling_profile():
     assert payloads[0]["repeat_penalty"] == pytest.approx(1.15)
 
 
+def test_transcribe_screenshot_retries_only_truncated_ocr_response():
+    provider = make_provider()
+    payloads = []
+
+    def fake_request(payload):
+        payloads.append(payload)
+        if len(payloads) == 1:
+            raise ValueError("truncated_local_multimodal_response")
+        return "complete OCR result"
+
+    provider._request_chat_completion = fake_request
+    result = provider.transcribe_screenshot(
+        [{"inline_data": {"mime_type": "image/png", "data": "abc"}}]
+    )
+
+    assert result.text == "complete OCR result"
+    assert [payload["max_tokens"] for payload in payloads] == [768, 1024]
+
+
 def test_translate_keeps_translation_sampling_profile():
     provider = make_provider()
     payloads = []
@@ -589,7 +608,7 @@ def test_local_multimodal_operations_bound_output_tokens():
     provider.transcribe_screenshot(image_parts)
     provider.translate_screenshot(image_parts, source_text_hint="原文")
 
-    assert [payload["max_tokens"] for payload in payloads] == [512, 1024, 1024, 1024, 1024, 1024, 384, 1024]
+    assert [payload["max_tokens"] for payload in payloads] == [512, 1024, 1024, 1024, 1024, 1024, 768, 1024]
 
 
 def test_local_screenshot_without_ocr_hint_uses_image_first_instruction():

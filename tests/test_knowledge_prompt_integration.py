@@ -5,6 +5,7 @@ import numpy as np
 from cloudhime_workers import OCRWorker
 from exact_image_cache import ExactImageCache
 from dev_local_gemma_provider import LocalGemmaProvider
+from knowledge_search import DDGSSearchProvider
 
 from translation_providers import (
     GemmaTranslationProvider,
@@ -58,6 +59,25 @@ def test_local_gemma_uses_evidence_and_revision_scoped_cache():
     assert second.from_cache is False
     assert len(provider._llm.prompts) == 2
     assert next(iter(provider._translation_cache))[-1] == "knowledge-pack:work:r2"
+
+
+def test_normal_translation_does_not_call_research_search(monkeypatch):
+    search_calls = []
+
+    def unexpected_search(_provider, query):
+        search_calls.append(query)
+        raise AssertionError("normal translation must not start Knowledge research")
+
+    monkeypatch.setattr(DDGSSearchProvider, "search", unexpected_search)
+    provider = LocalGemmaProvider(enabled=False)
+    provider.enabled = True
+    provider._llm = FakeLocalLlm()
+    provider.set_knowledge_pack(pack(1))
+
+    result = provider.translate("聖騎士")
+
+    assert result.text == "第一翻譯"
+    assert search_calls == []
 
 
 def test_gemma_api_prompt_uses_evidence_without_network_call():

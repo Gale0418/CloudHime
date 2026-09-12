@@ -77,16 +77,48 @@ def test_source_failures_are_retained_without_aborting_other_sources():
     assert draft["sources"][1]["error"] == "TimeoutError"
 
 
-def test_oversized_source_is_rejected_without_storing_content():
+def test_explicit_sources_bypass_search_and_keep_provenance():
+    first = "https://example.com/first"
+    second = "https://example.com/second"
+    search = FakeSearch(error=AssertionError("search must not run"))
+    reader = FakeReader({first: "one", second: "two"})
+
+    draft = build_research_draft(
+        "Work",
+        search_provider=search,
+        reader_provider=reader,
+        source_urls=[first, first, second],
+    )
+
+    assert search.queries == []
+    assert reader.urls == [first, second]
+    assert draft["source_mode"] == "explicit"
+    assert {item["origin"] for item in draft["sources"]} == {"explicit"}
+
+
+@pytest.mark.parametrize("source_urls", [["file:///secret"], ["http://"], "https://example.com"])
+def test_explicit_sources_reject_invalid_container_or_url(source_urls):
+    with pytest.raises((ValueError, ResearchDraftValidationError)):
+        build_research_draft(
+            "Work",
+            search_provider=FakeSearch(),
+            reader_provider=FakeReader(),
+            source_urls=source_urls,
+        )
+
+
+def test_oversized_source_is_bounded_and_marked_as_truncated():
     url = "https://example.com/large"
     search = FakeSearch([SearchResult("Large", url, "")])
     reader = FakeReader({url: "x" * (MAX_CONTENT_LENGTH + 1)})
 
     draft = build_research_draft("Work", search_provider=search, reader_provider=reader)
 
-    assert draft["sources"][0]["status"] == "rejected"
-    assert draft["sources"][0]["content"] == ""
-    assert draft["sources"][0]["error"] == "source_content_too_large"
+    source = draft["sources"][0]
+    assert source["status"] == "read"
+    assert len(source["content"]) == MAX_CONTENT_LENGTH
+    assert source["content_truncated"] is True
+    assert source["content_sha256"] == hashlib.sha256(source["content"].encode()).hexdigest()
 
 
 def test_search_failure_is_a_research_error():

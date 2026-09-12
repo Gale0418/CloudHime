@@ -687,7 +687,7 @@ def test_generation_invalidation_cancels_active_scan_and_rearms_auto_scan():
     controller.worker.set_scan_generation.assert_called_once_with(3)
     controller.schedule_next_scan.assert_called_once_with()
 
-def test_controller_promotes_knowledge_update_into_existing_pack_id():
+def test_controller_keeps_knowledge_result_as_candidate_until_confirmation():
     promoted = []
     emitted = []
     saved = {"pack_id": "existing-pack", "revision": 2}
@@ -711,6 +711,10 @@ def test_controller_promotes_knowledge_update_into_existing_pack_id():
     controller.knowledge_build_finished = SimpleNamespace(
         emit=lambda title, pack: emitted.append((title, pack))
     )
+    candidate_emitted = []
+    controller.knowledge_build_candidate_ready = SimpleNamespace(
+        emit=lambda title, result: candidate_emitted.append((title, result))
+    )
     controller._on_knowledge_build_error = Mock()
     result = SimpleNamespace(
         job_id="job",
@@ -719,12 +723,20 @@ def test_controller_promotes_knowledge_update_into_existing_pack_id():
 
     Controller._on_knowledge_build_finished(controller, result)
 
+    assert promoted == []
+    assert emitted == []
+    assert candidate_emitted == [("Princess Synergy", result)]
+    assert controller.knowledge_pending_result is result
+
+    assert Controller.confirm_knowledge_candidate(controller) is True
+
     assert promoted == [{"owner_confirmed": True, "pack_id": "existing-pack"}]
     assert emitted[0][1]["revision"] == 2
+    assert controller.knowledge_pending_result is None
     controller._on_knowledge_build_error.assert_not_called()
 
 
-def test_controller_new_knowledge_build_does_not_reuse_unrelated_pack_id():
+def test_controller_discarded_candidate_is_never_promoted():
     promoted = []
 
     class Builder:
@@ -738,12 +750,16 @@ def test_controller_new_knowledge_build_does_not_reuse_unrelated_pack_id():
     controller.knowledge_build_title = "New Work"
     controller.knowledge_pack_store = SimpleNamespace(get_pack=lambda *_args: None)
     controller.knowledge_build_finished = SimpleNamespace(emit=lambda *_args: None)
+    controller.knowledge_build_candidate_ready = SimpleNamespace(emit=lambda *_args: None)
     controller._on_knowledge_build_error = Mock()
     result = SimpleNamespace(job_id="job", research_draft={"title": "New Work"})
 
     Controller._on_knowledge_build_finished(controller, result)
 
-    assert promoted == [{"owner_confirmed": True, "pack_id": None}]
+    assert promoted == []
+    assert Controller.discard_knowledge_candidate(controller) is True
+    assert Controller.confirm_knowledge_candidate(controller) is False
+    assert promoted == []
     controller._on_knowledge_build_error.assert_not_called()
 
 def test_loading_new_pack_invalidates_scan_before_runtime_context_change():
@@ -892,6 +908,69 @@ def test_editing_work_title_only_refreshes_local_status_without_research():
     research.assert_not_called()
 
 
+def test_settings_candidate_dialog_requires_explicit_yes(monkeypatch):
+    import cloudhime_ui
+    from cloudhime_ui import SettingsWindowRevamp
+
+    confirm = Mock(return_value=True)
+    discard = Mock()
+    status = []
+    view = SimpleNamespace(
+        controller=SimpleNamespace(
+            confirm_knowledge_candidate=confirm,
+            discard_knowledge_candidate=discard,
+        ),
+        _finish_knowledge_build_ui=Mock(),
+        _current_ui_language=lambda: "en",
+        lbl_knowledge_status=SimpleNamespace(setText=status.append),
+    )
+    result = SimpleNamespace(
+        research_draft={"sources": [{"status": "read"}, {"status": "read_failed"}]},
+        candidate={"entries": [{"name": "A"}]},
+    )
+    monkeypatch.setattr(
+        cloudhime_ui.QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: cloudhime_ui.QMessageBox.Yes,
+    )
+
+    SettingsWindowRevamp.on_knowledge_build_candidate_ready(view, "Work", result)
+
+    confirm.assert_called_once_with()
+    discard.assert_not_called()
+    assert status == []
+
+
+def test_settings_candidate_dialog_no_discards_without_promotion(monkeypatch):
+    import cloudhime_ui
+    from cloudhime_ui import SettingsWindowRevamp
+
+    confirm = Mock(return_value=True)
+    discard = Mock(return_value=True)
+    status = []
+    view = SimpleNamespace(
+        controller=SimpleNamespace(
+            confirm_knowledge_candidate=confirm,
+            discard_knowledge_candidate=discard,
+        ),
+        _finish_knowledge_build_ui=Mock(),
+        _current_ui_language=lambda: "en",
+        lbl_knowledge_status=SimpleNamespace(setText=status.append),
+    )
+    result = SimpleNamespace(research_draft={"sources": []}, candidate={"entries": []})
+    monkeypatch.setattr(
+        cloudhime_ui.QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: cloudhime_ui.QMessageBox.No,
+    )
+
+    SettingsWindowRevamp.on_knowledge_build_candidate_ready(view, "Work", result)
+
+    confirm.assert_not_called()
+    discard.assert_called_once_with()
+    assert status == ["Candidate was not saved"]
+
+
 def test_explicit_research_remembers_existing_local_pack_id(monkeypatch):
     import cloudhime_ui
 
@@ -930,14 +1009,22 @@ def test_explicit_research_remembers_existing_local_pack_id(monkeypatch):
         "title": title,
     }
     controller.knowledge_build_progress = SimpleNamespace(emit=lambda *_args: None)
+    controller.knowledge_build_candidate_ready = SimpleNamespace(emit=lambda *_args: None)
     controller.knowledge_build_finished = SimpleNamespace(emit=lambda *_args: None)
     controller.knowledge_build_error = SimpleNamespace(emit=lambda *_args: None)
     controller.knowledge_build_cancelled = SimpleNamespace(emit=lambda *_args: None)
 
-    assert Controller.start_knowledge_research(controller, " Princess   Synergy ") is True
+    assert Controller.start_knowledge_research(
+        controller,
+        " Princess   Synergy ",
+        source_urls=("https://example.com/work",),
+        model_name="gemma-4-26b-a4b-it",
+    ) is True
 
     assert controller.knowledge_build_title == "Princess Synergy"
     assert controller.knowledge_build_pack_id == "existing-pack"
+    assert created[0].kwargs["research_builder"] is not None
+    assert controller.knowledge_build_service.kwargs["model_name"] == "gemma-4-26b-a4b-it"
     assert len(created) == 1
 
 

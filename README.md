@@ -56,8 +56,8 @@
 
 ## 📦 如何開始？
 
-> **📝 目前專案狀態 (2026-06)：**
-> 專案正處於架構穩定化與防護網建置階段（已加入 GitHub Actions CI workflow 與基礎測試），部分進階 OCR 功能（如本地端字典修正）仍在整理中。
+> **📝 目前專案狀態 (2026-09)：**
+> CH-E11 的 Online Gemma／Luna provider、設定中心、互動表面與回歸驗證已完成至 CH-T112；外部 Store、clean-machine、Research 與部分 OCR 授權 gate 仍維持 Review／Backlog，不把本機測試誤當成發行認證。
 
 ### 直接執行 (Release)
 如果你是下載打包好的版本，請直接執行 `dist/CloudHime/CloudHime.exe`。
@@ -103,7 +103,7 @@ CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中�
 
 ### 如何執行測試
 
-專案使用 `pytest` 與 `pytest-qt` 進行單元測試與 UI 冒煙測試。目前本地 regression suite 為 `26 passed`，並已加入 GitHub Actions CI workflow。執行方式如下：
+專案使用 `pytest` 與 `pytest-qt` 進行單元測試與 UI 冒煙測試；最新完整 inventory 為 `1455 passed, 6 skipped`，並已加入 GitHub Actions CI workflow。執行方式如下：
 
 1. 確保已安裝測試相依套件：
    ```bash
@@ -114,6 +114,13 @@ CloudHime 是為了讓閱讀更輕鬆而存在的。如果你在使用過程中�
    python -m pytest -q tests
    ```
    此指令會自動執行 `tests/` 目錄下的所有測試，確保核心邏輯與 UI 啟動正常。
+
+### Online Provider 驗證邊界
+
+- Online Gemma 使用同一把 API key，UI 只呈現遮罩與兩個模型狀態：`gemma-4-26b-a4b-it`、`gemma-4-31b-it`；Luna 支援文字與圖片請求。
+- Provider 只在明確的 404／429／503 且尚未產生串流輸出時輪替；timeout、網路錯誤與已輸出後的失敗不重播，避免重複計費或重複 side effect。
+- Live smoke 的憑證只能以暫時程序環境提供，禁止寫入 settings、log、截圖、passport 或 repository；外部 quota、Store／WACK、clean-machine 與 Research 仍是獨立 gate。
+- 可追溯證據：`output/mission-center-evidence/ch-t109-luna-vision-20260909.md`、`output/mission-center-evidence/ch-t110-ui-20260909.md`、`output/mission-center-evidence/ch-t112-regression-visual-20260909.md`。
 
 ### OCR 準確度基準
 

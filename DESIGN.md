@@ -241,6 +241,12 @@ Local Gemma、Online Gemma 與 Luna 是互不排斥的三個 provider disclosure
 
 透明 provider surface 只使用 1px theme-aware border、top highlight 與 2px bottom tonal edge 建立克制立體感；禁止 gradient、glow 與 heavy shadow。Nested model row 只借用 provider surface 的分層，不再套第二個完整 frame。Provider name 固定 13px bold；status／detail／capability 約 10–11px。Metadata 必須使用對比 token：Light `provider-metadata-light=#636366`、Dark `provider-metadata-dark=#E5E5EA`、High Contrast `provider-metadata-high-contrast=#FFFFFF`。
 
+### Provider QA Contract (2026-09)
+
+Online Gemma 的兩個 model row 共用單一 API key；UI 不保存或顯示明文 secret，狀態只表達 ready、rate、cooldown、error 與 capability。Gemma REST／SSE 的 multimodal payload 先放 inline image parts，再放文字 instruction；這是目前 provider contract 的穩定順序。只有 404／429／503 且尚未輸出內容時允許輪替，timeout／URLError 與已輸出後失敗維持 single-attempt。Luna 使用 `reasoning_effort=none`，Gemma 使用 `thinkingLevel=minimal`。
+
+本輪驗證：targeted provider／UI／controller slice `169 passed`，完整 `tests/` inventory `1455 passed, 6 skipped`；live evidence、視覺限制與未跑的 Store／WACK／clean-machine gate 見 `output/mission-center-evidence/ch-t112-regression-visual-20260909.md`。這些數字是可重跑的本機證據，不代表外部服務 quota 或商店認證。
+
 ### Header Band
 Header 是固定在背景前方、跨越整個 settings surface 寬度的 opaque band。Light 使用 `settings_top_bg=#F2F2F7`，Dark 使用 `settings_top_bg=#1C1C1E`；品牌、主題／語言控制、工作控制與 Close 不可被角色背景沖淡。
 

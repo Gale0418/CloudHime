@@ -108,7 +108,11 @@ from remote_model_discovery import (
 from local_runtime_coordinator import LocalVisionRuntimeCoordinator
 from knowledge_pack_store import KnowledgePackStore, create_knowledge_pack_paths
 from knowledge_builder_worker import KnowledgeBuildWorker
-from knowledge_research_service import KnowledgeResearchService
+from knowledge_research_service import (
+    DEFAULT_GEMMA4_MODEL,
+    RESEARCH_MODEL_IDS,
+    KnowledgeResearchService,
+)
 from secret_store import SecretStore, SecretStoreError
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
@@ -1841,6 +1845,7 @@ class SettingsWindowRevamp(QWidget):
         self._ai_requested = False
         self._knowledge_title_dirty = False
         self.controller.knowledge_build_progress.connect(self.on_knowledge_build_progress)
+        self.controller.knowledge_build_candidate_ready.connect(self.on_knowledge_build_candidate_ready)
         self.controller.knowledge_build_finished.connect(self.on_knowledge_build_finished)
         self.controller.knowledge_build_error.connect(self.on_knowledge_build_error)
         self.controller.knowledge_build_cancelled.connect(self.on_knowledge_build_cancelled)
@@ -1966,6 +1971,22 @@ class SettingsWindowRevamp(QWidget):
         chip_row.addWidget(knowledge_chip, 1)
         chip_row.addStretch()
         top.addLayout(chip_row)
+
+        knowledge_options_row = QHBoxLayout()
+        knowledge_options_row.setSpacing(8)
+        knowledge_options_row.addSpacing(24)
+        self.cmb_knowledge_model = QComboBox()
+        self.cmb_knowledge_model.setCursor(Qt.PointingHandCursor)
+        for model_id in RESEARCH_MODEL_IDS:
+            self.cmb_knowledge_model.addItem(model_id, model_id)
+        default_model_index = self.cmb_knowledge_model.findData(DEFAULT_GEMMA4_MODEL)
+        self.cmb_knowledge_model.setCurrentIndex(max(0, default_model_index))
+        self.cmb_knowledge_model.setMinimumWidth(190)
+        knowledge_options_row.addWidget(self.cmb_knowledge_model)
+        self.input_knowledge_sources = QLineEdit()
+        self.input_knowledge_sources.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        knowledge_options_row.addWidget(self.input_knowledge_sources, 1)
+        top.addLayout(knowledge_options_row)
 
         self.shell_panel = QFrame()
         self.shell_panel.setObjectName("settingsShellPanel")
@@ -2372,6 +2393,12 @@ class SettingsWindowRevamp(QWidget):
         self.input_knowledge_title.setPlaceholderText(
             translation_tools.ui_text(lang, "settings_knowledge_placeholder")
         )
+        self.cmb_knowledge_model.setToolTip(
+            translation_tools.ui_text(lang, "settings_knowledge_model_hint")
+        )
+        self.input_knowledge_sources.setPlaceholderText(
+            translation_tools.ui_text(lang, "settings_knowledge_sources_placeholder")
+        )
         if not self._knowledge_is_building():
             self.btn_knowledge_action.setText(self._knowledge_action_text())
             self._refresh_knowledge_status()
@@ -2490,9 +2517,13 @@ class SettingsWindowRevamp(QWidget):
         lang = self._current_ui_language()
         if self._knowledge_is_building():
             self.input_knowledge_title.setEnabled(False)
+            self.cmb_knowledge_model.setEnabled(False)
+            self.input_knowledge_sources.setEnabled(False)
             self.btn_knowledge_action.setEnabled(False)
             return
         self.input_knowledge_title.setEnabled(True)
+        self.cmb_knowledge_model.setEnabled(True)
+        self.input_knowledge_sources.setEnabled(True)
         pack = self._knowledge_pack_for_title(title)
         self.btn_knowledge_action.setEnabled(bool(title))
         self.btn_knowledge_action.setText(self._knowledge_action_text())
@@ -2517,6 +2548,8 @@ class SettingsWindowRevamp(QWidget):
         starter = getattr(self.controller, "start_knowledge_research", None)
         self.btn_knowledge_action.setProperty("knowledgeBuilding", True)
         self.input_knowledge_title.setEnabled(False)
+        self.cmb_knowledge_model.setEnabled(False)
+        self.input_knowledge_sources.setEnabled(False)
         self.btn_knowledge_action.setEnabled(False)
         self.btn_knowledge_action.setText(
             translation_tools.ui_text(self._current_ui_language(), "settings_knowledge_building")
@@ -2526,7 +2559,11 @@ class SettingsWindowRevamp(QWidget):
         )
         started = False
         try:
-            started = bool(starter(title)) if callable(starter) else False
+            source_urls = tuple(self.input_knowledge_sources.text().split())
+            model_name = str(self.cmb_knowledge_model.currentData() or DEFAULT_GEMMA4_MODEL)
+            started = bool(
+                starter(title, source_urls=source_urls, model_name=model_name)
+            ) if callable(starter) else False
         except Exception:
             started = False
         if not started:
@@ -2554,7 +2591,52 @@ class SettingsWindowRevamp(QWidget):
     def _finish_knowledge_build_ui(self):
         self.btn_knowledge_action.setProperty("knowledgeBuilding", False)
         self.input_knowledge_title.setEnabled(True)
+        self.cmb_knowledge_model.setEnabled(True)
+        self.input_knowledge_sources.setEnabled(True)
         self._refresh_knowledge_status()
+
+    def on_knowledge_build_candidate_ready(self, title, result):
+        self._finish_knowledge_build_ui()
+        draft = getattr(result, "research_draft", {})
+        candidate = getattr(result, "candidate", {})
+        sources = draft.get("sources", []) if isinstance(draft, dict) else []
+        readable_count = sum(
+            1 for source in sources
+            if isinstance(source, dict) and source.get("status") == "read"
+        )
+        entry_count = len(candidate.get("entries", [])) if isinstance(candidate, dict) else 0
+        conflict_count = len(candidate.get("conflicts", [])) if isinstance(candidate, dict) else 0
+        rejected_count = len(candidate.get("rejected", [])) if isinstance(candidate, dict) else 0
+        lang = self._current_ui_language()
+        answer = QMessageBox.question(
+            self,
+            translation_tools.ui_text(lang, "settings_knowledge_review_title"),
+            translation_tools.ui_text(
+                lang,
+                "settings_knowledge_review_message",
+                title=title,
+                sources=readable_count,
+                entries=entry_count,
+                conflicts=conflict_count,
+                rejected=rejected_count,
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            confirmer = getattr(self.controller, "confirm_knowledge_candidate", None)
+            if callable(confirmer) and confirmer():
+                return
+            self.lbl_knowledge_status.setText(
+                translation_tools.ui_text(lang, "settings_knowledge_failed")
+            )
+            return
+        discarder = getattr(self.controller, "discard_knowledge_candidate", None)
+        if callable(discarder):
+            discarder()
+        self.lbl_knowledge_status.setText(
+            translation_tools.ui_text(lang, "settings_knowledge_not_saved")
+        )
 
     def on_knowledge_build_finished(self, _title, _pack):
         self._finish_knowledge_build_ui()
@@ -2834,6 +2916,8 @@ class SettingsWindowRevamp(QWidget):
             f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 5px 8px; }}"
             f"QLineEdit:focus {{ border: 2px solid {theme.accent}; }}"
         )
+        self.input_knowledge_sources.setStyleSheet(self.input_knowledge_title.styleSheet())
+        self.cmb_knowledge_model.setStyleSheet(theme.combo_qss(radius=6))
         self.lbl_knowledge_status.setStyleSheet(
             f"color: {theme.subtext}; background: transparent; border: none; font-size: 11px;"
         )
@@ -2922,6 +3006,7 @@ class Controller(QWidget):
 
     request_scan = Signal()
     knowledge_build_progress = Signal(object)
+    knowledge_build_candidate_ready = Signal(str, object)
     knowledge_build_finished = Signal(str, object)
     knowledge_build_error = Signal(str, object)
     knowledge_build_cancelled = Signal(str)
@@ -2981,6 +3066,8 @@ class Controller(QWidget):
         self.knowledge_build_worker = None
         self.knowledge_build_service = None
         self.knowledge_build_title = ""
+        self.knowledge_build_pack_id = None
+        self.knowledge_pending_result = None
         self.local_vision_state = "stopped"
         self.local_vision_detail = ""
         self.japanese_ocr_rescue_enabled = False
@@ -3632,7 +3719,13 @@ class Controller(QWidget):
         self._load_knowledge_pack_for_title(normalized)
         return self.active_knowledge_pack
 
-    def start_knowledge_research(self, title):
+    def start_knowledge_research(
+        self,
+        title,
+        *,
+        source_urls=(),
+        model_name=DEFAULT_GEMMA4_MODEL,
+    ):
         """Start an explicit DDGS -> Jina -> Gemma4 candidate build."""
         normalized_title = " ".join(str(title or "").split())[:240]
         if not normalized_title:
@@ -3641,7 +3734,10 @@ class Controller(QWidget):
         if current_worker is not None and current_worker.is_running():
             return False
         api_key = str(getattr(self.worker, "google_api_key", "") or "").strip()
-        if not api_key:
+        openai_api_key = str(getattr(self, "openai_api_key", "") or "").strip()
+        if model_name.startswith("gemma-4-") and not api_key:
+            return False
+        if model_name.startswith("gpt-") and not openai_api_key:
             return False
         existing_pack = self.find_knowledge_pack(normalized_title)
         existing_pack_id = (
@@ -3652,12 +3748,15 @@ class Controller(QWidget):
         try:
             service = KnowledgeResearchService(
                 google_api_key=api_key,
+                openai_api_key=openai_api_key,
+                model_name=model_name,
                 max_sources=8,
             )
             builder = KnowledgeBuildWorker(
                 research_builder=lambda cancel_event: service.build_research_draft(
                     normalized_title,
                     cancel_event,
+                    source_urls=source_urls,
                 ),
                 extractor=lambda draft, cancel_event: service.extract_candidate(
                     draft,
@@ -3676,6 +3775,7 @@ class Controller(QWidget):
         self.knowledge_build_worker = builder
         self.knowledge_build_title = normalized_title
         self.knowledge_build_pack_id = existing_pack_id or None
+        self.knowledge_pending_result = None
         builder.start()
         return True
 
@@ -3684,31 +3784,42 @@ class Controller(QWidget):
         return bool(worker is not None and worker.cancel())
 
     def _on_knowledge_build_finished(self, result):
-        worker = getattr(self, "knowledge_build_worker", None)
-        if worker is None:
+        if getattr(self, "knowledge_build_worker", None) is None:
             return
+        self.knowledge_pending_result = result
+        draft = getattr(result, "research_draft", None)
+        draft = draft if isinstance(draft, dict) else {}
+        title = str(draft.get("title", "") or self.knowledge_build_title or "")
+        self.knowledge_build_candidate_ready.emit(title, result)
+
+    def confirm_knowledge_candidate(self):
+        worker = getattr(self, "knowledge_build_worker", None)
+        result = getattr(self, "knowledge_pending_result", None)
+        if worker is None or result is None:
+            return False
         try:
-            # The explicit Research button is the owner-confirmation action. The
-            # resulting pack remains non-active until the Settings Save action.
             saved = worker.promote(
                 result,
                 owner_confirmed=True,
                 pack_id=getattr(self, "knowledge_build_pack_id", None),
             )
             pack = self.knowledge_pack_store.get_pack(
-                saved.get("pack_id"),
-                saved.get("revision"),
+                saved.get("pack_id"), saved.get("revision")
             ) or saved
             draft = getattr(result, "research_draft", None)
             draft = draft if isinstance(draft, dict) else {}
-            title = str(
-                draft.get("title", "")
-                or getattr(self, "knowledge_build_title", "")
-                or ""
-            )
+            title = str(draft.get("title", "") or self.knowledge_build_title or "")
+            self.knowledge_pending_result = None
             self.knowledge_build_finished.emit(title, pack)
+            return True
         except Exception as exc:
-            self._on_knowledge_build_error(result.job_id, exc)
+            self._on_knowledge_build_error(getattr(result, "job_id", ""), exc)
+            return False
+
+    def discard_knowledge_candidate(self):
+        had_candidate = getattr(self, "knowledge_pending_result", None) is not None
+        self.knowledge_pending_result = None
+        return had_candidate
 
     def _on_knowledge_build_error(self, job_id, error):
         self.knowledge_build_error.emit(str(job_id), error)

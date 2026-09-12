@@ -158,6 +158,94 @@ def test_packaged_functional_smoke_is_noop_without_opt_in():
     assert packaged.run_packaged_functional_smoke(environ={}) is None
 
 
+def test_packaged_knowledge_smoke_writes_only_redacted_counts(tmp_path, monkeypatch):
+    import json
+    import packaged_functional_smoke as packaged
+
+    result_path = tmp_path / "knowledge-result.json"
+    captured = {}
+
+    class FakeService:
+        def __init__(self, **kwargs):
+            captured["init"] = kwargs
+
+        def build_research_draft(self, title, cancel_event, *, source_urls=None):
+            captured["title"] = title
+            captured["source_urls"] = source_urls
+            return {
+                "source_mode": "explicit",
+                "sources": [
+                    {"status": "read", "source_id": "0123456789abcdef", "content": "secret page"}
+                ],
+            }
+
+        def extract_candidate(self, draft, cancel_event):
+            return json.dumps({
+                "schema_version": 1,
+                "title": "閃刀姬",
+                "aliases": [],
+                "entries": [{
+                    "name": "零衣",
+                    "aliases": [],
+                    "kind": "character",
+                    "description": "secret model text",
+                    "confidence": 0.9,
+                    "source_ids": ["0123456789abcdef"],
+                }],
+            }, ensure_ascii=False)
+
+    import knowledge_research_service
+    monkeypatch.setattr(knowledge_research_service, "KnowledgeResearchService", FakeService)
+    environ = {
+        packaged.PACKAGED_KNOWLEDGE_SMOKE_ENV: "1",
+        packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
+        packaged.PACKAGED_KNOWLEDGE_TITLE_ENV: "閃刀姬",
+        packaged.PACKAGED_KNOWLEDGE_MODEL_ENV: "gpt-5.6-luna",
+        packaged.PACKAGED_KNOWLEDGE_SOURCE_URLS_ENV: json.dumps(["https://example.test/wiki"]),
+        packaged.PACKAGED_KNOWLEDGE_OPENAI_KEY_ENV: "sk-secret",
+    }
+
+    assert packaged.run_packaged_functional_smoke(environ=environ) == 0
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload == {
+        "alias_count": 0,
+        "entry_count": 1,
+        "model_name": "gpt-5.6-luna",
+        "readable_source_count": 1,
+        "schema_version": 1,
+        "smoke_kind": "knowledge_research",
+        "source_count": 1,
+        "source_mode": "explicit",
+        "status": "passed",
+    }
+    persisted = result_path.read_text(encoding="utf-8")
+    assert "sk-secret" not in persisted
+    assert "secret page" not in persisted
+    assert "secret model text" not in persisted
+    assert captured["source_urls"] == ["https://example.test/wiki"]
+    assert captured["init"]["model_name"] == "gpt-5.6-luna"
+    assert captured["init"]["openai_api_key"] == "sk-secret"
+
+
+def test_packaged_smoke_rejects_conflicting_modes(tmp_path):
+    import json
+    import packaged_functional_smoke as packaged
+
+    result_path = tmp_path / "conflicting-result.json"
+    environ = {
+        packaged.PACKAGED_FUNCTIONAL_SMOKE_ENV: "1",
+        packaged.PACKAGED_KNOWLEDGE_SMOKE_ENV: "1",
+        packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
+    }
+
+    assert packaged.run_packaged_functional_smoke(environ=environ) == 2
+    assert json.loads(result_path.read_text(encoding="utf-8")) == {
+        "error_code": "packaged_functional_smoke_failed",
+        "schema_version": 1,
+        "status": "failed",
+    }
+
+
 def test_packaged_functional_smoke_writes_redacted_success_summary(tmp_path):
     import json
     import packaged_functional_smoke as packaged

@@ -5,7 +5,9 @@ import threading
 import pytest
 
 from knowledge_research_service import (
+    DEFAULT_GEMMA4_MODEL,
     MAX_EXTRACT_PROMPT_CHARS,
+    RESEARCH_MODEL_IDS,
     KnowledgeResearchService,
 )
 from knowledge_search import SearchResult
@@ -82,6 +84,40 @@ def test_service_checks_cancellation_before_each_stage():
 
     with pytest.raises(RuntimeError, match="cancelled"):
         service.build_research_draft("Work", cancel_event)
+
+
+def test_service_forwards_explicit_sources_and_validates_model():
+    search = FakeSearch()
+    reader = FakeReader()
+    service = KnowledgeResearchService(
+        google_api_key="unused",
+        search_provider=search,
+        reader_provider=reader,
+        model_provider=FakeModel(),
+        model_name=DEFAULT_GEMMA4_MODEL,
+    )
+
+    draft = service.build_research_draft(
+        "Work",
+        threading.Event(),
+        source_urls=["https://example.com/work"],
+    )
+
+    assert draft["source_mode"] == "explicit"
+    with pytest.raises(ValueError, match="unsupported knowledge research model"):
+        KnowledgeResearchService(google_api_key="unused", model_name="gemini-unknown")
+    assert "gpt-5.6-luna" in RESEARCH_MODEL_IDS
+
+
+def test_service_can_select_existing_openai_structured_provider():
+    service = KnowledgeResearchService(
+        openai_api_key="openai-secret",
+        model_name="gpt-5.6-luna",
+    )
+
+    assert service.model_name == "gpt-5.6-luna"
+    assert service.model_provider.available() is True
+    assert "openai-secret" not in repr(service.model_provider)
 
 
 @pytest.mark.parametrize("sources", [[], [{"status": "failed"}],
