@@ -295,6 +295,7 @@ def test_production_and_ci_locks_keep_distinct_graphs():
         "pygments",
         "pytest",
         "pytest-qt",
+        "pyyaml",
         "tomli",
     }
 
