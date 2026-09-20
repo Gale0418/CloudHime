@@ -1,5 +1,9 @@
 # Smoke Tests
 
+2026-09-20 CH-T35 收尾：完成 3 位獨立評論者＋1 位裁定者，保留不同意見與兩項 Medium 處置；Rust critic 紀錄驗證 PASS，completion passport 與正式 `transition CH-T35 Done` 成功（operation `ch-t35-retirement-20260920-complete`）。僅代表 Meiki 退場完成，其他發行 gate 保留。詳見 reviews/2026-09-20-retirement-closeout.md；下方「暫維持 Review」是完成裁定前的歷史紀錄。
+
+2026-09-20 CH-T35 新發行包續驗：CI `67f7c78`／run `35504682314` success；provenance 隔離 bootstrap 修正後 31 tests passed、正式 38 components。fresh EXE dist verifier PASS（362 files／0 models）；PYZ 857 modules 無 Meiki／ONNX／已刪除模組，隔離 import 與 20 秒啟動 PASS。ZIP 全 362 payload 長度與 SHA-256 與 dist 相符；unsigned MSIX MakeAppx pack 成功、manifest／EXE hash／退場檔名檢查 PASS。使用者中斷後採逐檔驗證與 staging 重封裝恢復，不宣稱原 batch exit 0；未跑 MSIX 完整 unpack verifier、簽署安裝、WACK 或乾淨 VM。完整指令、雜湊與限制：reviews/2026-09-20-release-followup.md。獨立評論尚未裁定，T35 暫維持 Review。
+
 2026-09-20 CH-T35 退場：依主人明確指示移除 Meiki 補救功能、UI、下載／runtime、專屬 benchmark 與依賴；保留 Gemma／Windows OCR。完整 inventory 1421 passed／7 skipped／1 failed（舊 dependency graph 預期），修正後相關測試 226 passed in 20.01s；生產／CI 依賴契約 38／45 components PASS；CodeRabbit 32 檔、0 issues。新 EXE／MSIX 尚未重建，不宣稱 release gate；詳見 reviews/2026-09-20-meiki-retirement.md。
 
 2026-09-20 CH-T64 發行盤點：確認 main 8852eeb 遠端 benchmark 因未追蹤 example 圖片失敗；縮放測試改為合成 PNG 並涵蓋 160px 邊界，本機 benchmark 組 205 passed in 22.66s。CodeRabbit 0 issues；修正版 99230a8 遠端 CI run 35501512505 success，5 個測試組與 3 個 contract／inventory job 全通過，2 個 opt-in 真實發行 job skipped。詳見 reviews/2026-09-20-release-readiness.md。

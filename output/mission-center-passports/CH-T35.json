@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "artifactType": "completion-passport",
+  "taskId": "CH-T35",
+  "taskDigest": "d8b0a0415b5c7b1c31005f5381e9ada91e5db3818b11c8a122390f6c277beef4",
+  "status": "current",
+  "verification": {
+    "result": "pass",
+    "evidenceRefs": [
+      "MissionCenter/reviews/2026-09-20-meiki-retirement.md",
+      "MissionCenter/reviews/2026-09-20-release-followup.md",
+      "output/mission-center-critique/CH-T35-retirement-20260920.json",
+      "output/mission-center-critique/CH-T35-chair-counterevidence.md"
+    ]
+  },
+  "findings": [
+    {"id": "CACC-CH-T35-settings-migration-76114dad-1", "severity": "Medium", "disposition": "rejected-with-counterevidence"},
+    {"id": "CACC-CH-T35-notice-hardening-77f993db-1", "severity": "Medium", "disposition": "deferred"}
+  ]
+}

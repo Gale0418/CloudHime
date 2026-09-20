@@ -3,3 +3,5 @@
 /benchmarks/*.json -text
 /vision_scheduling_benchmark.py -text
 /translation_e2e_benchmark.py -text
+# Preserve exact bytes of this sealed, SHA-256-addressed review evidence.
+/output/mission-center-critique/CH-T35-* -text

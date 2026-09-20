@@ -1,0 +1,364 @@
+{
+  "schemaVersion": "1.0",
+  "route": "critic_full",
+  "taskId": "CH-T35",
+  "chairRecordLocator": "output/mission-center-critique/CH-T35-retirement-20260920.json",
+  "artifactManifest": [
+    {
+      "locator": "CloudHime.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "CloudHime.spec",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/decisions.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/progress.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-ci-yaml-followup.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-clean-windows-handoff.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-meiki-retirement.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-release-followup.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-release-readiness.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/smoke-tests.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/tasks.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "THIRD_PARTY_NOTICES.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "ci/test_groups.json",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "cloudhime_ui.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "cloudhime_workers.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "fullscreen_manga_benchmark.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "packaging/prepare_release_provenance.ps1",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "packaging/verify_release_dist.ps1",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements-ci-lock-win-amd64-py310.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements-ci.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements-lock-win-amd64-py310.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "settings_store.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_cloudhime_ui_smoke.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_cloudhime_workers.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_dependency_contract.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_knowledge_prompt_integration.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_msix_packaging.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "tests/test_ocr_worker_mode_matrix.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_release_packaging.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "tests/test_settings_store.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_stabilization_contracts.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_translation_panel_advanced.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_vision_smoke_benchmark.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "translation_helpers.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "translation_settings_panel.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "vision_product_path_local_adapter.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "vision_smoke_benchmark.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "dist/CloudHime.zip",
+      "sha256": "e6d17fc8bd7b7c18a864e721f880d5bc638be54f7097d995e9abea6fa1dbed91",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "dist/retire-20260920/out/CloudHime-0.1.0.0-x64.msix",
+      "sha256": "16d593b16c2f8f65c1f6ece0bf30ad8741a366ee1bba47c1612a634ce55ff004",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "dist/CloudHime/CloudHime.exe",
+      "sha256": "3f32e40a332db9542d3278dadceb815051d6d0321565b11552d85e98a0c32d9c",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "output/mission-center-critique/CH-T35-initial-runtime.md",
+      "sha256": "aa00021753e54aa6a29af7bb478772b37e4f1335ee000fbb36fb97517522e5fe",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "output/mission-center-critique/CH-T35-initial-settings.md",
+      "sha256": "51631a0d40f86ef38f6f4b7de2cf00a660a660afddfeb66b7599d0423eb1529e",
+      "laneId": "settings"
+    },
+    {
+      "locator": "output/mission-center-critique/CH-T35-initial-packaging.md",
+      "sha256": "2e7ef97f2246f27650ff6db42957e01d20a9b6f72c598499b11c614dcffa8e16",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "output/mission-center-critique/CH-T35-initial-arbiter.md",
+      "sha256": "b9011c87e6fb6a124637130a74f03e735a8a6a023e45ba7b97517abcf94821db",
+      "laneId": "settings"
+    },
+    {
+      "locator": "output/mission-center-critique/CH-T35-chair-counterevidence.md",
+      "sha256": "5341663e7b4fa4c5d7b9d38564001d23aaaac70a233bd83a5c2c095121760deb",
+      "laneId": "settings"
+    }
+  ],
+  "snapshots": [
+    {
+      "id": "retirement-20260920-6d232c9",
+      "revision": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "hash": "7323bc1856245b1848eca49f8869a5534f19761e92a389b9719120482634a106",
+      "evidenceLinks": [
+        "MissionCenter/reviews/2026-09-20-meiki-retirement.md",
+        "MissionCenter/reviews/2026-09-20-release-followup.md"
+      ]
+    }
+  ],
+  "authorization": {
+    "explicitApproval": true,
+    "approver": "Owner",
+    "approvalDate": "2026-09-20",
+    "scope": "3 critics plus separate arbiter; Luna/high; no history; initial and at most one delta"
+  },
+  "budgets": {
+    "total": 16000,
+    "perSeat": 4000,
+    "tool": 16,
+    "wallClock": 600
+  },
+  "critics": [
+    {
+      "id": "01a0be65-9ae5-75f1-bfc6-55bef270708e",
+      "name": "Planck",
+      "role": "runtime",
+      "laneIds": [
+        "runtime"
+      ]
+    },
+    {
+      "id": "01a0be65-9c3a-7d30-b155-f3f867e10f49",
+      "name": "Peirce",
+      "role": "settings",
+      "laneIds": [
+        "settings"
+      ]
+    },
+    {
+      "id": "01a0be65-9e33-7dc1-922f-49a0d6556366",
+      "name": "Bohr",
+      "role": "packaging",
+      "laneIds": [
+        "packaging"
+      ]
+    }
+  ],
+  "arbiter": {
+    "id": "01a0be69-0204-7781-89ee-c29f2caa344a",
+    "name": "Hypatia"
+  },
+  "outcome": "passed",
+  "lanes": [
+    {
+      "id": "runtime",
+      "kind": "retirement-source-and-evidence",
+      "required": true,
+      "seatId": "01a0be65-9ae5-75f1-bfc6-55bef270708e",
+      "evidenceLocator": "output/mission-center-critique/CH-T35-initial-runtime.md",
+      "coverageStatus": "covered"
+    },
+    {
+      "id": "settings",
+      "kind": "retirement-source-and-evidence",
+      "required": true,
+      "seatId": "01a0be65-9c3a-7d30-b155-f3f867e10f49",
+      "evidenceLocator": "output/mission-center-critique/CH-T35-initial-settings.md",
+      "coverageStatus": "covered"
+    },
+    {
+      "id": "packaging",
+      "kind": "retirement-source-and-evidence",
+      "required": true,
+      "seatId": "01a0be65-9e33-7dc1-922f-49a0d6556366",
+      "evidenceLocator": "output/mission-center-critique/CH-T35-initial-packaging.md",
+      "coverageStatus": "covered"
+    },
+    {
+      "id": "native-visual",
+      "kind": "visual",
+      "required": false,
+      "coverageStatus": "unknown",
+      "capabilityReason": "No native visual inspection; bounded source removal and existing UI tests only. No perceptual redesign claim."
+    },
+    {
+      "id": "store-clean-windows",
+      "kind": "release-certification",
+      "required": false,
+      "coverageStatus": "unknown",
+      "capabilityReason": "Outside T35 retirement; retained under T64/T53-T56. No pristine Windows/sign-install/WACK/Store claim."
+    }
+  ],
+  "smokePassedByCouncil": false,
+  "findings": [
+    {
+      "id": "CACC-CH-T35-settings-migration-76114dad-1",
+      "severity": "Medium",
+      "category": "settings-migration",
+      "observation": "Critic and arbiter treat lack of immediate startup rewrite as a persisted retired option. Chair preserves dissent but rejects blocker: close_app saves normalized payload; the option is ignored on load and excluded from future saves.",
+      "evidenceLocator": "cloudhime_ui.py:4176@6d232c99e80935add7f07e6f912220dc487a6745",
+      "reproOrReadPath": "cloudhime_ui.py:5136 -> save_settings:3874 -> get_settings_payload:3868 -> settings_store.py:299; output/mission-center-critique/CH-T35-chair-counterevidence.md",
+      "impact": "Old JSON may retain inert key until normal save/close; it cannot enable retired runtime. Forced termination/write failure may leave it inert on disk.",
+      "confidence": "High for inspected static path; no fresh end-to-end disk migration claim",
+      "unknown": "No unconditional startup rewrite or abnormal-termination disk cleanup guarantee",
+      "recommendation": "Preserve current read-only load and normal save/close migration; reopen if any active consumer or serializer reintroduces the key.",
+      "criticProposedDisposition": "fixed",
+      "counterEvidenceRefs": ["output/mission-center-critique/CH-T35-chair-counterevidence.md", "cloudhime_ui.py:5136"],
+      "chairFinalDisposition": "rejected-with-counterevidence"
+    },
+    {
+      "id": "CACC-CH-T35-notice-hardening-77f993db-1",
+      "severity": "Medium",
+      "category": "notice-hardening",
+      "observation": "Verifier requires current notice markers but does not deny retired Meiki strings. No current artifact residue found.",
+      "evidenceLocator": "packaging/verify_release_dist.ps1:259@6d232c99e80935add7f07e6f912220dc487a6745",
+      "reproOrReadPath": "Notice marker checks; source and ZIP/MSIX notice SHA256 6a5307f15fe5d8f0f8628c2743b6b7446e84b9351128bec0c4964a111beeebda",
+      "impact": "Future manually mixed/stale dist notice might pass marker-only checks, not an observed defect in reviewed artifacts.",
+      "confidence": "High for gap and current artifact comparison",
+      "unknown": "No future arbitrary-directory consistency guarantee",
+      "recommendation": "Defer generic source-to-artifact notice consistency hardening to T64 release supply-chain work; rerun current artifact check on future rebuilds.",
+      "criticProposedDisposition": "fixed",
+      "chairFinalDisposition": "deferred"
+    }
+  ]
+}

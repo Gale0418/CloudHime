@@ -1,0 +1,236 @@
+{
+  "taskId": "CH-T35",
+  "id": "retirement-20260920-6d232c9",
+  "revision": "6d232c99e80935add7f07e6f912220dc487a6745",
+  "baseRevision": "6c779a075bd7f231dc2914d0df145026524ba848",
+  "scope": "Meiki retirement only; preserve Gemma/Windows OCR. No accuracy promotion, pristine Windows, signing/WACK/Store certification claim.",
+  "platform": "Windows 10 Pro x64; Python 3.10 frozen app",
+  "capabilities": "Read-only source/evidence/archives. No native visual inspection or clean VM.",
+  "evidenceLinks": [
+    "MissionCenter/reviews/2026-09-20-meiki-retirement.md",
+    "MissionCenter/reviews/2026-09-20-release-followup.md"
+  ],
+  "authorization": {
+    "explicitApproval": true,
+    "approver": "Owner",
+    "date": "2026-09-20",
+    "route": "critic_full"
+  },
+  "budgets": {
+    "total": 16000,
+    "perSeat": 4000,
+    "tool": 16,
+    "toolsPerSeat": 4,
+    "wallClock": 600,
+    "deltaTotal": 8000,
+    "deltaTool": 8,
+    "deltaWallClock": 300
+  },
+  "artifactManifest": [
+    {
+      "locator": "CloudHime.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "CloudHime.spec",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/decisions.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/progress.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-ci-yaml-followup.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-clean-windows-handoff.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-meiki-retirement.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-release-followup.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/reviews/2026-09-20-release-readiness.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/smoke-tests.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "MissionCenter/tasks.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "THIRD_PARTY_NOTICES.md",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "ci/test_groups.json",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "cloudhime_ui.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "cloudhime_workers.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "fullscreen_manga_benchmark.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "packaging/prepare_release_provenance.ps1",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "packaging/verify_release_dist.ps1",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements-ci-lock-win-amd64-py310.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements-ci.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements-lock-win-amd64-py310.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "requirements.txt",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "settings_store.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_cloudhime_ui_smoke.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_cloudhime_workers.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_dependency_contract.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_knowledge_prompt_integration.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_msix_packaging.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "tests/test_ocr_worker_mode_matrix.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_release_packaging.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "tests/test_settings_store.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_stabilization_contracts.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "tests/test_translation_panel_advanced.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "tests/test_vision_smoke_benchmark.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "translation_helpers.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "translation_settings_panel.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "settings"
+    },
+    {
+      "locator": "vision_product_path_local_adapter.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "vision_smoke_benchmark.py",
+      "version": "6d232c99e80935add7f07e6f912220dc487a6745",
+      "laneId": "runtime"
+    },
+    {
+      "locator": "dist/CloudHime.zip",
+      "sha256": "e6d17fc8bd7b7c18a864e721f880d5bc638be54f7097d995e9abea6fa1dbed91",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "dist/retire-20260920/out/CloudHime-0.1.0.0-x64.msix",
+      "sha256": "16d593b16c2f8f65c1f6ece0bf30ad8741a366ee1bba47c1612a634ce55ff004",
+      "laneId": "packaging"
+    },
+    {
+      "locator": "dist/CloudHime/CloudHime.exe",
+      "sha256": "3f32e40a332db9542d3278dadceb815051d6d0321565b11552d85e98a0c32d9c",
+      "laneId": "runtime"
+    }
+  ]
+}
