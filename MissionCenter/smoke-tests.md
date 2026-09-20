@@ -1,5 +1,7 @@
 # Smoke Tests
 
+2026-09-20 CH-T64 真正 Sandbox bootstrap：Windows 10 Enterprise x64 build 19041，全新 profile，無 python／python3／py／pip／conda／ollama 命令。guest 本機副本 EXE hash 與 T35 artifact 一致，frozen import PASS、20 秒 launch PASS；owned Sandbox client／parent 已結束。網路／vGPU 禁用；不宣稱模型首次下載／續傳／handoff、GPU、視覺、MSIX 安裝／WACK 通過。Computer Use 擷取 `0x80004002`，accessibility 只有 Sandbox 外框，T64 維持 Review。證據 reviews/2026-09-20-sandbox-bootstrap.md、output/mission-center-evidence/sandbox-20260920/result.json。
+
 2026-09-20 CH-T35 收尾：完成 3 位獨立評論者＋1 位裁定者，保留不同意見與兩項 Medium 處置；Rust critic 紀錄驗證 PASS，completion passport 與正式 `transition CH-T35 Done` 成功（operation `ch-t35-retirement-20260920-complete`）。僅代表 Meiki 退場完成，其他發行 gate 保留。詳見 reviews/2026-09-20-retirement-closeout.md；下方「暫維持 Review」是完成裁定前的歷史紀錄。
 
 2026-09-20 CH-T35 新發行包續驗：CI `67f7c78`／run `35504682314` success；provenance 隔離 bootstrap 修正後 31 tests passed、正式 38 components。fresh EXE dist verifier PASS（362 files／0 models）；PYZ 857 modules 無 Meiki／ONNX／已刪除模組，隔離 import 與 20 秒啟動 PASS。ZIP 全 362 payload 長度與 SHA-256 與 dist 相符；unsigned MSIX MakeAppx pack 成功、manifest／EXE hash／退場檔名檢查 PASS。使用者中斷後採逐檔驗證與 staging 重封裝恢復，不宣稱原 batch exit 0；未跑 MSIX 完整 unpack verifier、簽署安裝、WACK 或乾淨 VM。完整指令、雜湊與限制：reviews/2026-09-20-release-followup.md。獨立評論尚未裁定，T35 暫維持 Review。

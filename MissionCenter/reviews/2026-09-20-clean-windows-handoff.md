@@ -1,6 +1,10 @@
 # CH-T64：乾淨 Windows 驗收交接
 
-## 目前邊界
+## 最新進度（2026-09-20 19:45）
+
+主人已授權啟用 Windows Sandbox 並自行重開機；真正 Sandbox 的 frozen import 與 20 秒啟動已通過，無 Python／pip／Conda／Ollama 命令，沒有既有 CloudHime profile。詳見 `2026-09-20-sandbox-bootstrap.md`。模型首次下載／取消／續傳／handoff 仍未完成；Computer Use 擷取介面不相容，UI 步驟需要人工協助或另行修復工具。以下是啟用前的歷史邊界，不再代表目前沒有 Sandbox。
+
+## 歷史邊界
 
 2026-09-20 主人確認沒有可用的乾淨 Windows 電腦／VM。本機未發現 Windows Sandbox 執行檔或 Hyper-V PowerShell 模組，執行環境不是管理員。未啟用系統功能、未要求重開機、未把環境隔離測試當作乾淨 Windows 驗收。
 

@@ -1,0 +1,15 @@
+<Configuration>
+  <vGPU>Disable</vGPU>
+  <Networking>Disable</Networking>
+  <ClipboardRedirection>Disable</ClipboardRedirection>
+  <AudioInput>Disable</AudioInput>
+  <VideoInput>Disable</VideoInput>
+  <PrinterRedirection>Disable</PrinterRedirection>
+  <MemoryInMB>8192</MemoryInMB>
+  <MappedFolders>
+    <MappedFolder><HostFolder>D:\MyGame\CloudHime\dist\CloudHime</HostFolder><SandboxFolder>C:\Release</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
+    <MappedFolder><HostFolder>D:\MyGame\CloudHime\.tmp\sandbox-20260920\input</HostFolder><SandboxFolder>C:\TestInput</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
+    <MappedFolder><HostFolder>D:\MyGame\CloudHime\.tmp\sandbox-20260920\output</HostFolder><SandboxFolder>C:\TestOutput</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
+  </MappedFolders>
+  <LogonCommand><Command>powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\TestInput\probe.ps1</Command></LogonCommand>
+</Configuration>

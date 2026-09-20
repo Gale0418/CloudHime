@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "stage": "complete",
+  "startedUtc": "2026-09-20T11:39:09.2195118Z",
+  "executableSha256": "3f32e40a332db9542d3278dadceb815051d6d0321565b11552d85e98a0c32d9c",
+  "checks": {
+    "launchOutput": [
+      "Clean-machine packaged launch passed: PID=1908, seconds=20"
+    ],
+    "initialCloudHimeProfile": false,
+    "importPassed": true,
+    "importOutput": [
+      "Clean-machine packaged functional smoke passed: PID=1624"
+    ],
+    "launchPassed": true,
+    "tools": [
+      {
+        "name": "python",
+        "paths": []
+      },
+      {
+        "name": "python3",
+        "paths": []
+      },
+      {
+        "name": "py",
+        "paths": []
+      },
+      {
+        "name": "pip",
+        "paths": []
+      },
+      {
+        "name": "conda",
+        "paths": []
+      },
+      {
+        "name": "ollama",
+        "paths": []
+      }
+    ]
+  },
+  "os": {
+    "caption": "Microsoft Windows 10 企業版",
+    "version": "10.0.19041",
+    "build": "19041",
+    "architecture": "64 位元"
+  },
+  "updatedUtc": "2026-09-20T11:44:57.7194784Z"
+}
