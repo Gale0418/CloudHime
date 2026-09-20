@@ -66,8 +66,18 @@ def test_group_cases_accepts_image_manifest_key() -> None:
     assert list(grouped) == ["example/manga.jpg"]
 
 
-def test_small_image_scale_upscales_short_fixture_only() -> None:
-    image_path = PROJECT_ROOT / "example" / "2026-04-30 20 47 05.png"
+@pytest.mark.parametrize("height, expected_height, expected_width", [
+    (95, 190, 1234),
+    (159, 318, 1234),
+    (160, 160, 617),
+])
+def test_small_image_scale_upscales_short_fixture_only(
+    tmp_path, height, expected_height, expected_width,
+) -> None:
+    image_path = tmp_path / "synthetic.png"
+    success, encoded = cv2.imencode(".png", np.zeros((height, 617, 3), dtype=np.uint8))
+    assert success
+    image_path.write_bytes(encoded.tobytes())
 
     baseline = image_parts(image_path)
     scaled = image_parts(image_path, small_image_scale=2.0)
@@ -76,8 +86,8 @@ def test_small_image_scale_upscales_short_fixture_only() -> None:
     baseline_image = cv2.imdecode(np.frombuffer(baseline_bytes, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
     scaled_image = cv2.imdecode(np.frombuffer(scaled_bytes, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
 
-    assert baseline_image.shape[:2] == (95, 617)
-    assert scaled_image.shape[:2] == (190, 1234)
+    assert baseline_image.shape[:2] == (height, 617)
+    assert scaled_image.shape[:2] == (expected_height, expected_width)
 
 def test_group_cases_deduplicates_same_image_requests() -> None:
     cases = [
