@@ -513,12 +513,14 @@ jobs:
 
       - name: Build frozen release
         shell: cmd
+        env:
+          CLOUDHIME_RELEASE_FLAVOR: light
         run: build_exe.bat
 
       - name: Verify frozen release dist
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File packaging\verify_release_dist.ps1 -DistDir dist\CloudHime
+          pwsh -NoLogo -NoProfile -File packaging\verify_release_dist.ps1 -DistDir dist\CloudHime -ModelBundle light
 
       - name: Run environment-isolated packaged launch smoke
         shell: pwsh

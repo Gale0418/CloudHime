@@ -28,5 +28,7 @@
 - ZIP-before-stage 變更後：release packaging／archive 31 passed；加入 MSIX upload ZIP64 後同組 32 passed；settings theme/layout 7 passed；MSIX builder 2 passed，PowerShell parser PASS。
 - 新 frozen build 完成（PyInstaller exit 0）：EXE SHA256 `531f7e845abaf40b120777d1110f511b1f15f9e3a0a58bfd0c0c4151847d891b`；light preflight 362 files／1,517,736,550 bytes／0 model files，frozen import smoke PASS（PID 15280，helper 已結束）。這不是實際模型推論。
 - CI 新測試 inventory 已補登；CI inventory＋release packaging 35 passed。第三方總說明更新為 full MSIX／light ZIP 的政策；封裝目錄的外部 notice 同步更新，EXE 不變。初版 light ZIP 因包含舊說明而不作最終產物，另建立 `CloudHime-light-final.zip`。
-- 完整模型 stage、MSIX 與乾淨 Sandbox 推論尚在進行，不能算 PASS。
+- 完整模型 stage exit 0；full preflight PASS：368 files／4,859,025,587 bytes／2 model files；兩個模型 exact size／SHA 與條款副本一致性通過。最終 light ZIP `python -m zipfile -t` PASS，無模型內容由 light staging／flavor gate 控制。
+- GitHub real-release-build 明確設定 `CLOUDHIME_RELEASE_FLAVOR: light`，preflight 也要求 light；CI／builder 11 passed。GitHub connector combined status 回傳空清單，不能當成最新 CI PASS；本機 gh 尚未登入，但 git push 已成功，不為此讀取外部金鑰。
+- MSIX 與乾淨 Sandbox 推論尚在進行，不能算 PASS。舊 Sandbox 關閉已向主人提出，等待回覆再啟動新的斷網實測。
 - T64 保持 Review；沒有建立 completion passport 或宣稱 Store／WACK 完成。
