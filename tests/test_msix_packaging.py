@@ -199,7 +199,6 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Refusing to modify an existing package" in install_smoke
 
 
-
 def test_msix_launch_liveness_rejects_exits_and_accepts_alive_processes():
     powershell = _powershell_executable()
     if not powershell:
@@ -239,7 +238,6 @@ foreach ($case in $cases) {{
         errors="replace",
     )
     assert result.returncode == 0, result.stdout + result.stderr
-
 
 
 def test_msix_activation_helper_uses_aumid_and_returns_the_activated_process():
@@ -794,47 +792,6 @@ def test_release_dist_preflight_rejects_incomplete_third_party_notices():
             _remove_release_fixture(powershell, temp_root)
 
 
-def test_release_dist_preflight_rejects_missing_japanese_ocr_notices():
-    powershell = _powershell_executable()
-    if not powershell:
-        pytest.skip("PowerShell is required for the release preflight script")
-
-    root = Path(__file__).resolve().parents[1]
-    script = root / "packaging" / "verify_release_dist.ps1"
-    temp_root = root / f".tmp-msix-japanese-notices-{uuid.uuid4().hex}"
-    fixture = temp_root / "CloudHime"
-    try:
-        _write_release_fixture(powershell, fixture)
-        notice_path = fixture / "_internal" / "THIRD_PARTY_NOTICES.md"
-        notice_path.write_text(
-            "\n".join(
-                (
-                    "## Knowledge research providers",
-                    "DDGS",
-                    "click",
-                    "primp",
-                    "lxml",
-                    "httpx",
-                    "fake-useragent",
-                    "certifi",
-                    "Jina Reader",
-                )
-            ),
-            encoding="utf-8",
-        )
-        result = subprocess.run(
-            [powershell, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(fixture)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        assert result.returncode != 0
-        assert "meikiocr" in (result.stdout + result.stderr).lower()
-    finally:
-        if temp_root.parent == root and temp_root.name.startswith(".tmp-msix-japanese-notices-"):
-            _remove_release_fixture(powershell, temp_root)
-
 def test_release_preflight_requires_self_contained_dependency_provenance_and_ci_unpacks_it():
     root = Path(__file__).resolve().parents[1]
     verifier = (root / "packaging" / "verify_release_dist.ps1").read_text(encoding="utf-8")
@@ -879,7 +836,6 @@ def test_release_preflight_rejects_missing_or_tampered_dependency_provenance():
     finally:
         if temp_root.parent == root and temp_root.name.startswith(".tmp-provenance-preflight-"):
             _remove_release_fixture(powershell, temp_root)
-
 
 
 def test_wack_wrapper_source_contract_and_parser():

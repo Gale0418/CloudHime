@@ -20,7 +20,7 @@ def test_normalize_settings_payload_applies_local_multimodal_defaults():
     assert normalized["local_multimodal_model"] == ""
     assert normalized["local_multimodal_timeout_seconds"] == 20
     assert normalized["local_multimodal_cpu_only"] is False
-    assert normalized["japanese_ocr_rescue_enabled"] is False
+    assert "japanese_ocr_rescue_enabled" not in normalized
 
 def test_normalize_settings_payload_preserves_cpu_only_preference():
     normalized = normalize_settings_payload({"local_multimodal_cpu_only": True}, region_opacity=40)
@@ -37,13 +37,13 @@ def test_normalize_settings_payload_sanitizes_local_multimodal_timeout():
     assert low["local_multimodal_timeout_seconds"] == 1
     assert high["local_multimodal_timeout_seconds"] == 300
 
-def test_normalize_settings_payload_preserves_japanese_rescue_opt_in():
+def test_normalize_settings_payload_discards_retired_japanese_rescue_opt_in():
     normalized = normalize_settings_payload(
         {"japanese_ocr_rescue_enabled": True},
         region_opacity=40,
     )
 
-    assert normalized["japanese_ocr_rescue_enabled"] is True
+    assert "japanese_ocr_rescue_enabled" not in normalized
 
 def test_registry_registers_local_multimodal():
     config = TranslationProviderRegistryConfig(
@@ -226,7 +226,7 @@ def test_normalize_settings_payload_coerces_boolean_values(value, expected):
     assert normalized["gemma_auto_switch_enabled"] is expected
     assert normalized["local_multimodal_enabled"] is expected
     assert normalized["local_multimodal_cpu_only"] is expected
-    assert normalized["japanese_ocr_rescue_enabled"] is expected
+    assert "japanese_ocr_rescue_enabled" not in normalized
     assert normalized["region_pass_through"] is expected
     assert normalized["is_dark_mode"] is expected
 

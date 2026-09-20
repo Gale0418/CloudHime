@@ -225,7 +225,7 @@ def test_region_one_pixel_change_repeats_ocr_even_when_text_is_same(monkeypatch,
         worker.cleanup()
 
 
-@pytest.mark.parametrize("change", ["offset", "target", "prompt", "region", "auto_switch", "rescue_ready"])
+@pytest.mark.parametrize("change", ["offset", "target", "prompt", "region", "auto_switch"])
 
 
 def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, change):
@@ -235,9 +235,6 @@ def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, ch
     _configure_region_cache_worker(worker, image)
     if change == "target":
         worker.translation_target_lang = "zh-TW"
-    elif change == "rescue_ready":
-        worker.japanese_rescue_enabled = True
-        worker.has_any_multimodal_ai = lambda: True
     worker.capture_scan_area = lambda: captures.pop(0)
     ocr = worker.run_ocr_with_best_threshold
     translate = Mock(return_value=(["Nihao"], ["google"]))
@@ -256,8 +253,6 @@ def test_region_same_image_context_change_is_a_cache_miss(monkeypatch, qtbot, ch
             worker.scan_region = (30, 10, image.shape[1], image.shape[0])
         elif change == "auto_switch":
             worker.gemma_auto_switch_enabled = not worker.gemma_auto_switch_enabled
-        elif change == "rescue_ready":
-            worker.japanese_rescue_runtime.state = workers_module.JapaneseOCRRuntimeState.ready
         worker.run_scan_once()
 
         assert ocr.call_count == 2

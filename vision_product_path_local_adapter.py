@@ -468,7 +468,6 @@ class ProductPathLocalSession:
             worker._local_vision_image_max_width = condition["vision_image_max_width"]
             worker.local_multimodal_timeout_seconds = 30
             worker.auto_threshold_enabled = False
-            worker.japanese_rescue_enabled = False
             # Product-path runs must prove local-only behavior; do not inherit
             # a host Google key into the benchmark fallback chain.
             worker.google_api_key = ""

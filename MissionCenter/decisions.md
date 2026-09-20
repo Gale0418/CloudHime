@@ -1188,3 +1188,11 @@
 - 決策：不加入 Optuna、Hyperopt 或 scikit-optimize，也不把任何 optimizer 納入產品 runtime／release requirements；保留現有零新增依賴的可重複 evaluator。
 - 成本取捨：導入第三方 optimizer 會增加 lockfile、安裝、PyInstaller／MSIX、授權與 supply-chain 維護面，現階段沒有可量化的品質或延遲收益抵銷成本。未來若搜尋空間顯著擴大，另建新任務重新以證據評估。
 - 驗證：`tests/test_hybrid_search_benchmark.py` `21 passed in 0.56s`；benchmark 與測試檔 `py_compile` 通過；requirements／lock 未出現 Optuna 相關套件。
+
+## 2026-09-20：CH-T35 Meiki 補救功能退場
+
+- 主人明確要求移除；取消原日文 OCR rescue 產品化方向，不把缺乏增益證據的選配功能繼續當作發行前置。
+- 保留 Gemma、Windows OCR 與非 Meiki 的既有 OCR 邏輯；移除專用 UI、下載、CPU runtime、複核、benchmark 開關及依賴。
+- T35 改以退場驗證追蹤；Review 只保留移除後新發行包驗證，不再等待作者授權答覆。既有歷史測試不冒充新版本證據。
+- GitHub issue #15 永久刪除被權限拒絕；已撤回標題／內文並關閉，可能仍有編輯歷史。三個本機 Meiki 模型已移至資源回收筒，可還原。
+- 詳細證據：reviews/2026-09-20-meiki-retirement.md。

@@ -58,10 +58,6 @@
       "test_files": [
         "tests/test_cloudhime_workers.py",
         "tests/test_frame_gate.py",
-        "tests/test_japanese_ocr_assets.py",
-        "tests/test_japanese_ocr_rescue.py",
-        "tests/test_japanese_ocr_runtime.py",
-        "tests/test_japanese_ocr_worker_integration.py",
         "tests/test_ocr_backend_thread_safety.py",
         "tests/test_ocr_refinement.py",
         "tests/test_ocr_text_processing.py",

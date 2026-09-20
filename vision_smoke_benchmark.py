@@ -17,14 +17,6 @@ from typing import Any, Mapping, Sequence
 import cv2
 import numpy as np
 
-from japanese_ocr_assets import resolve_japanese_ocr_assets
-from japanese_ocr_rescue import (
-    build_verification_hint,
-    decide_rescue_text,
-    is_usable_meiki_candidate,
-    rescue_gate,
-)
-from japanese_ocr_runtime import JapaneseOCRRuntime
 from local_vision_assets import VisionAssets, resolve_preferred_vision_assets
 from local_vision_runtime import LocalVisionRuntime
 from translation_providers import LocalMultimodalProvider
@@ -50,7 +42,6 @@ OCR_PROMPTS = {
         "Do not translate, correct, infer, or add text. Output only the original Japanese text."
     ),
 }
-
 
 
 def load_manifest(manifest_path: str | Path) -> dict[str, Any]:
@@ -190,63 +181,6 @@ def percentile(values: Sequence[float], quantile: float = 0.95) -> float:
     return ordered[index]
 
 
-def summarize_rescue_quality(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Compare final output only for cases with human ground truth."""
-
-    scored_results = [result for result in results if bool(result.get("quality_scored", True))]
-    improved_cases = 0
-    equal_cases = 0
-    regressions: list[dict[str, Any]] = []
-    for result in scored_results:
-        baseline_score = float(result["baseline_match_score"])
-        final_score = float(result["match_score"])
-        delta = final_score - baseline_score
-        if delta > 0.0:
-            improved_cases += 1
-        elif delta < 0.0:
-            regressions.append(
-                {
-                    "sample_source": str(result.get("sample_source") or ""),
-                    "baseline_match_score": baseline_score,
-                    "match_score": final_score,
-                    "delta": delta,
-                }
-            )
-        else:
-            equal_cases += 1
-    return {
-        "compared_cases": len(scored_results),
-        "quality_scored_cases": len(scored_results),
-        "quality_basis": quality_basis_for_results(results),
-        "improved_cases": improved_cases,
-        "equal_cases": equal_cases,
-        "regressed_cases": len(regressions),
-        "regressions": regressions,
-    }
-
-
-def evaluate_rescue_quality_gate(
-    results: Sequence[Mapping[str, Any]],
-    *,
-    complete: bool,
-    enabled: bool,
-    ground_truth_complete: bool = True,
-) -> dict[str, Any]:
-    """Require complete, fully labelled results before a rescue quality pass."""
-
-    summary = summarize_rescue_quality(results)
-    summary["complete"] = bool(complete)
-    summary["ground_truth_complete"] = bool(ground_truth_complete)
-    summary["passed"] = (
-        not enabled
-        or (
-            bool(complete)
-            and bool(ground_truth_complete)
-            and summary["regressed_cases"] == 0
-        )
-    )
-    return summary
-
 def summarize_anchor_coverage(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Report exact expected-anchor hits separately from fuzzy similarity."""
 
@@ -287,7 +221,6 @@ def run_smoke(
     small_image_scale: float = 1.0,
     prompt_mode: str = "baseline",
     ocr_hint: bool = False,
-    japanese_rescue: bool = False,
     model_name: str = DEFAULT_MODEL,
     assets: VisionAssets | None = None,
     image_root: str | Path | None = None,
@@ -333,8 +266,6 @@ def run_smoke(
     results: list[dict[str, Any]] = []
     image_results: list[dict[str, Any]] = []
     ocr_hint_worker = None
-    japanese_rescuer = None
-    rescue_startup_ms = 0.0
     try:
         state = runtime.start()
         startup_ms = (time.perf_counter() - startup_started) * 1000.0
@@ -350,14 +281,6 @@ def run_smoke(
             enabled=True,
             timeout_seconds=timeout_seconds,
         )
-        if japanese_rescue:
-            rescue_started = time.perf_counter()
-            japanese_rescuer = JapaneseOCRRuntime(resolve_japanese_ocr_assets())
-            if not japanese_rescuer.start():
-                detail = getattr(japanese_rescuer, "last_error", "")
-                suffix = f": {detail}" if detail else ""
-                raise RuntimeError(f"japanese OCR runtime failed to start{suffix}")
-            rescue_startup_ms = (time.perf_counter() - rescue_started) * 1000.0
         if ocr_hint:
             from cloudhime_workers import OCRWorker
             ocr_hint_worker = OCRWorker()
@@ -372,20 +295,6 @@ def run_smoke(
             image_encode_ms = 0.0
             model_request_ms = 0.0
             postprocess_ms = 0.0
-            meiki_ms = 0.0
-            rescue_request_ms = 0.0
-            rescue_triggered = False
-            rescue_adopted = False
-            rescue_decision_completed = False
-            rescue_candidate = ""
-            rescue_baseline = ""
-            rescue_second = ""
-            rescue_trusted_text = ""
-            rescue_first_similarity = None
-            rescue_second_similarity = None
-            rescue_shadow_actual = ""
-            rescue_error = ""
-            rescue_gate_reason = "disabled" if not japanese_rescue else "pending"
             try:
                 stage_started = time.perf_counter()
                 try:
@@ -412,65 +321,9 @@ def run_smoke(
                 stage_started = time.perf_counter()
                 try:
                     actual = result.text.strip()
-                    rescue_baseline = actual
-                    rescue_shadow_actual = rescue_baseline
                 finally:
                     postprocess_ms = (time.perf_counter() - stage_started) * 1000.0
 
-                if japanese_rescue:
-                    try:
-                        source_image = _load_color_image(image_path)
-                        if source_image is None:
-                            rescue_gate_reason = "image_unreadable"
-                        elif not rescue_gate(
-                            actual,
-                            image_width=source_image.shape[1],
-                            image_height=source_image.shape[0],
-                        ):
-                            rescue_gate_reason = "geometry_rejected"
-                        else:
-                            rescue_stage = time.perf_counter()
-                            candidate = japanese_rescuer.run(source_image)
-                            meiki_ms = (time.perf_counter() - rescue_stage) * 1000.0
-                            rescue_candidate = candidate.text
-                            if is_usable_meiki_candidate(candidate, actual):
-                                rescue_gate_reason = "verification_requested"
-                                rescue_triggered = True
-                                rescue_stage = time.perf_counter()
-                                try:
-                                    rescued = provider.transcribe_screenshot(
-                                        parts,
-                                        ocr_prompt=ocr_prompt,
-                                        source_text_hint=build_verification_hint(candidate),
-                                    ).text.strip()
-                                except Exception as exc:
-                                    rescue_error = f"{type(exc).__name__}: {exc}"
-                                    rescue_gate_reason = "verification_error"
-                                else:
-                                    decision_started = time.perf_counter()
-                                    decision = decide_rescue_text(actual, rescued, candidate)
-                                    postprocess_ms += (time.perf_counter() - decision_started) * 1000.0
-                                    rescue_second = rescued
-                                    rescue_trusted_text = str(getattr(decision, "trusted_text", "") or "")
-                                    rescue_first_similarity = getattr(decision, "first_similarity", None)
-                                    rescue_second_similarity = getattr(decision, "second_similarity", None)
-                                    actual = decision.selected_text
-                                    rescue_adopted = bool(decision.adopted)
-                                    rescue_decision_completed = True
-                                    rescue_gate_reason = (
-                                        "adopted" if rescue_adopted else "verification_rejected"
-                                    )
-                                    rescue_shadow_actual = (
-                                        rescue_second if rescue_adopted else rescue_candidate
-                                    )
-                                finally:
-                                    rescue_request_ms = (time.perf_counter() - rescue_stage) * 1000.0
-                                    model_request_ms += rescue_request_ms
-                            else:
-                                rescue_gate_reason = "candidate_unusable"
-                    except Exception as exc:
-                        rescue_error = f"{type(exc).__name__}: {exc}"
-                        rescue_gate_reason = "rescue_error"
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
             latency_ms = (time.perf_counter() - request_started) * 1000.0
@@ -479,25 +332,11 @@ def run_smoke(
                     "sample_source": sample_source,
                     "categories": sorted({str(case.get("category", "")) for case in image_cases}),
                     "actual": actual,
-                    "rescue_baseline": rescue_baseline,
-                    "rescue_second": rescue_second,
-                    "rescue_trusted_text": rescue_trusted_text,
-                    "rescue_first_similarity": rescue_first_similarity,
-                    "rescue_second_similarity": rescue_second_similarity,
-                    "rescue_shadow_actual": rescue_shadow_actual,
-                    "rescue_error": rescue_error,
-                    "rescue_gate_reason": rescue_gate_reason,
                     "latency_ms": latency_ms,
                     "hint_ms": hint_ms,
                     "image_encode_ms": image_encode_ms,
                     "model_request_ms": model_request_ms,
                     "postprocess_ms": postprocess_ms,
-                    "meiki_ms": meiki_ms,
-                    "rescue_request_ms": rescue_request_ms,
-                    "rescue_triggered": rescue_triggered,
-                    "rescue_adopted": rescue_adopted,
-                    "rescue_decision_completed": rescue_decision_completed,
-                    "rescue_candidate": rescue_candidate,
                     "ocr_hint": ocr_hint_text,
                     "error": error,
                 }
@@ -512,54 +351,29 @@ def run_smoke(
                         "expected": expected,
                         "quality_scored": quality_scored,
                         "quality_basis": "ground_truth" if quality_scored else "coverage_only",
-                        "baseline_actual": rescue_baseline,
-                        "baseline_match_score": score_match(rescue_baseline, case) if quality_scored else None,
-                        "shadow_actual": rescue_shadow_actual,
-                        "shadow_match_score": score_match(rescue_shadow_actual, case) if quality_scored else None,
                         "actual": actual,
                         "line_match": line_match(actual, case) if quality_scored else None,
                         "match_score": score_match(actual, case) if quality_scored else None,
                         "latency_ms": latency_ms,
                         "error": error,
-                        "rescue_error": rescue_error,
                     }
                 )
     finally:
         try:
             runtime.stop()
         finally:
-            try:
-                if ocr_hint_worker is not None:
-                    ocr_hint_worker.cleanup()
-            finally:
-                if japanese_rescuer is not None:
-                    japanese_rescuer.disable()
+            if ocr_hint_worker is not None:
+                ocr_hint_worker.cleanup()
     latencies = [float(result["latency_ms"]) for result in image_results]
     hint_latencies = [float(result["hint_ms"]) for result in image_results]
     encode_latencies = [float(result["image_encode_ms"]) for result in image_results]
     model_latencies = [float(result["model_request_ms"]) for result in image_results]
     postprocess_latencies = [float(result["postprocess_ms"]) for result in image_results]
-    meiki_latencies = [float(result["meiki_ms"]) for result in image_results]
-    rescue_latencies = [float(result["rescue_request_ms"]) for result in image_results]
     successful_cases = [result for result in results if result["actual"] and not result["error"]]
     successful_images = [result for result in image_results if result["actual"] and not result["error"]]
     request_success_cases = [result for result in results if not result["error"]]
     request_success_images = [result for result in image_results if not result["error"]]
     quality_scored_results = [result for result in results if bool(result.get("quality_scored", True))]
-    baseline_match_scores = [float(result["baseline_match_score"]) for result in quality_scored_results]
-    shadow_match_scores = [float(result["shadow_match_score"]) for result in quality_scored_results]
-    shadow_improved_cases = sum(
-        shadow > baseline
-        for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
-    )
-    shadow_equal_cases = sum(
-        shadow == baseline
-        for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
-    )
-    shadow_regressed_cases = sum(
-        shadow < baseline
-        for baseline, shadow in zip(baseline_match_scores, shadow_match_scores)
-    )
     runtime_mode = "cpu" if force_cpu else state.mode
     complete = (
         len(successful_images) == len(image_results)
@@ -570,13 +384,6 @@ def run_smoke(
         and bool(results)
     )
     quality_basis = quality_basis_for_results(results)
-    rescue_quality = evaluate_rescue_quality_gate(
-        results,
-        complete=complete,
-        enabled=japanese_rescue,
-        ground_truth_complete=ground_truth_complete,
-    )
-    rescue_quality_gate_passed = bool(rescue_quality["passed"])
     anchor_coverage = summarize_anchor_coverage(results)
     return {
         "manifest": str(manifest_path),
@@ -591,9 +398,7 @@ def run_smoke(
         "small_image_scale": max(1.0, float(small_image_scale)),
         "prompt_mode": prompt_mode,
         "ocr_hint": bool(ocr_hint),
-        "japanese_rescue": bool(japanese_rescue),
         "startup_ms": startup_ms,
-        "rescue_startup_ms": rescue_startup_ms,
         "image_count": len(image_results),
         "case_count": len(results),
         "successful_images": len(successful_images),
@@ -607,11 +412,6 @@ def run_smoke(
         "anchor_match_cases": anchor_coverage["anchor_match_cases"],
         "anchor_coverage": anchor_coverage["anchor_coverage"],
         "average_match_score": optional_mean([float(result["match_score"]) for result in quality_scored_results]),
-        "baseline_average_match_score": optional_mean(baseline_match_scores),
-        "shadow_average_match_score": optional_mean(shadow_match_scores),
-        "shadow_improved_cases": shadow_improved_cases,
-        "shadow_equal_cases": shadow_equal_cases,
-        "shadow_regressed_cases": shadow_regressed_cases,
         "average_latency_ms": mean(latencies),
         "p95_latency_ms": percentile(latencies),
         "average_hint_ms": mean(hint_latencies),
@@ -619,18 +419,6 @@ def run_smoke(
         "average_model_request_ms": mean(model_latencies),
         "p95_model_request_ms": percentile(model_latencies),
         "average_postprocess_ms": mean(postprocess_latencies),
-        "average_meiki_ms": mean(meiki_latencies),
-        "average_rescue_request_ms": mean(rescue_latencies),
-        "rescue_triggered_images": sum(bool(result["rescue_triggered"]) for result in image_results),
-        "rescue_adopted_images": sum(bool(result["rescue_adopted"]) for result in image_results),
-        "rescue_shadow_candidate_fallbacks": sum(
-            bool(result["rescue_triggered"])
-            and bool(result["rescue_decision_completed"])
-            and not bool(result["rescue_adopted"])
-            for result in image_results
-        ),
-        "rescue_quality": rescue_quality,
-        "rescue_quality_gate_passed": rescue_quality_gate_passed,
         "image_results": image_results,
         "results": results,
     }
@@ -697,10 +485,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--small-image-scale", type=float, default=1.0)
     parser.add_argument("--prompt-mode", choices=tuple(OCR_PROMPTS), default="baseline")
     parser.add_argument("--ocr-hint", action="store_true")
-    parser.add_argument("--japanese-rescue", action="store_true")
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--require-technical-coverage", action="store_true")
-    parser.add_argument("--require-rescue-no-regression", action="store_true")
     parser.add_argument(
         "--require-anchor-coverage",
         action="store_true",
@@ -738,7 +524,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         small_image_scale=args.small_image_scale,
         prompt_mode=args.prompt_mode,
         ocr_hint=args.ocr_hint,
-        japanese_rescue=args.japanese_rescue,
         assets=explicit_assets,
         image_root=args.image_root,
     )
@@ -747,10 +532,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     technical_ok = (
         not args.require_technical_coverage
         or _is_technical_coverage_complete(result)
-    )
-    rescue_ok = (
-        not args.require_rescue_no_regression
-        or bool(result.get("rescue_quality_gate_passed"))
     )
     anchor_coverage_ok = (
         not args.require_anchor_coverage
@@ -762,7 +543,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     result["anchor_coverage_gate_passed"] = bool(anchor_coverage_ok)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0 if complete_ok and technical_ok and rescue_ok and anchor_coverage_ok else 1
+        return 0 if complete_ok and technical_ok and anchor_coverage_ok else 1
 
     quality_case_count = int(result["ground_truth_case_count"])
     quality_line_match = (
@@ -783,8 +564,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"avg_latency_ms={result['average_latency_ms']:.1f} p95_latency_ms={result['p95_latency_ms']:.1f} "
         f"stages_ms=hint:{result['average_hint_ms']:.1f},encode:{result['average_image_encode_ms']:.1f},"
         f"model:{result['average_model_request_ms']:.1f},post:{result['average_postprocess_ms']:.1f},"
-        f"meiki:{result['average_meiki_ms']:.1f},rescue:{result['average_rescue_request_ms']:.1f} "
-        f"rescued={result['rescue_adopted_images']}/{result['image_count']}"
     )
     for item in result["results"]:
         item_line_match = _format_optional_score(item["line_match"], digits=0)
@@ -794,7 +573,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"line_match={item_line_match} match={item_match_score} "
             f"latency_ms={item['latency_ms']:.1f} actual={item['actual'] or item['error']}"
         )
-    return 0 if complete_ok and technical_ok and rescue_ok and anchor_coverage_ok else 1
+    return 0 if complete_ok and technical_ok and anchor_coverage_ok else 1
 
 if __name__ == "__main__":
     raise SystemExit(main())

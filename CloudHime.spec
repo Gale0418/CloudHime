@@ -31,7 +31,6 @@ def _is_conflicting_root_icu_binary(entry):
     )
 
 ddgs_engine_hiddenimports = collect_submodules("ddgs.engines")
-japanese_ocr_hiddenimports = ["meikiocr", "meikiocr.ocr", "onnxruntime"]
 fake_useragent_datas = collect_data_files("fake_useragent")
 certifi_datas = collect_data_files("certifi")
 
@@ -41,11 +40,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('assets', 'assets'), ('dictionary.json', '.'), ('LICENSE', '.'), ('THIRD_PARTY_NOTICES.md', '.'), ('build\\runtime', 'runtime'), ('build\\provenance', 'provenance'), ('packaging\\runtime_manifest.py', 'packaging'), *fake_useragent_datas, *certifi_datas],
-    hiddenimports=['winrt.windows.media.ocr', 'winrt.windows.globalization', 'winrt.windows.graphics.imaging', 'winrt.windows.storage.streams', 'ddgs', 'ddgs.ddgs', 'lxml.html', 'lxml.etree', *ddgs_engine_hiddenimports, *japanese_ocr_hiddenimports],
+    hiddenimports=['winrt.windows.media.ocr', 'winrt.windows.globalization', 'winrt.windows.graphics.imaging', 'winrt.windows.storage.streams', 'ddgs', 'ddgs.ddgs', 'lxml.html', 'lxml.etree', *ddgs_engine_hiddenimports],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['llama_cpp', '_llama_cpp', 'pytest', 'pytest-qt', 'pluggy', 'iniconfig', 'pygments', 'PyQt5', 'PyQt6', 'PySide2', 'easyocr', 'rapidocr', 'rapidocr_onnxruntime', 'pytesseract', 'torch', 'torchvision', 'pandas', 'scipy', 'matplotlib', 'IPython', 'tensorflow', 'keras', 'h5py', 'tensorboard', 'jax', 'jaxlib', 'jupyter', 'jupyter_core', 'jupyter_client', 'ipykernel', 'pydantic', 'pydantic_core'],
+    excludes=['meikiocr', 'onnxruntime', 'llama_cpp', '_llama_cpp', 'pytest', 'pytest-qt', 'pluggy', 'iniconfig', 'pygments', 'PyQt5', 'PyQt6', 'PySide2', 'easyocr', 'rapidocr', 'rapidocr_onnxruntime', 'pytesseract', 'torch', 'torchvision', 'pandas', 'scipy', 'matplotlib', 'IPython', 'tensorflow', 'keras', 'h5py', 'tensorboard', 'jax', 'jaxlib', 'jupyter', 'jupyter_core', 'jupyter_client', 'ipykernel', 'pydantic', 'pydantic_core'],
     noarchive=False,
     optimize=0,
 )

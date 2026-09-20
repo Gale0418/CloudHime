@@ -409,10 +409,6 @@ UI_TEXTS = {
         "zh-TW": "僅使用 CPU（較慢，不需獨顯）",
         "en": "CPU only (slower, no dedicated GPU required)",
     },
-    "translation_japanese_ocr_rescue_enabled": {
-        "zh-TW": "日文遊戲字幕精準 OCR（首次下載約 44 MiB）",
-        "en": "Accurate Japanese game subtitle OCR (about 44 MiB first download)",
-    },
     "translation_local_multimodal_base_url": {
         "zh-TW": "Base URL",
         "en": "Base URL",
@@ -1120,8 +1116,5 @@ def get_translation_provider_priority(provider: Any) -> int:
 
 def should_replace_provider(old_provider: Any, new_provider: Any) -> bool:
     return get_translation_provider_priority(new_provider) >= get_translation_provider_priority(old_provider)
-
-
-
 
 

@@ -290,6 +290,7 @@ def test_production_and_ci_locks_keep_distinct_graphs():
     assert set(production) < set(ci)
     assert set(ci) - set(production) == {
         "iniconfig",
+        "packaging",
         "pluggy",
         "pygments",
         "pytest",

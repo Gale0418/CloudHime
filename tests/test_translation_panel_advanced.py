@@ -74,6 +74,8 @@ def test_translation_panel_advanced_tuning_hidden(qtbot):
     panel.sync_from_controller()
     panel.set_translate_mode(True)
 
+    assert not hasattr(panel, "chk_japanese_ocr_rescue_enabled")
+
     assert not panel.btn_advanced_tuning.isHidden()
     assert panel.tuning_frame.isHidden()
     assert not panel.lbl_gemma_prompt.isHidden()

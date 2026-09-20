@@ -131,14 +131,6 @@ from local_vision_assets import (
     ensure_vision_model_assets,
     resolve_preferred_vision_assets,
 )
-from japanese_ocr_assets import resolve_japanese_ocr_assets
-from japanese_ocr_runtime import JapaneseOCRRuntime, JapaneseOCRRuntimeState
-from japanese_ocr_rescue import (
-    build_verification_hint,
-    decide_rescue_text,
-    is_usable_meiki_candidate,
-    rescue_gate,
-)
 from settings_store import (
     appdata_companion_path,
     create_settings_paths,
@@ -285,7 +277,6 @@ class OCRWorker(QObject):
     gemma_model_changed = Signal(str, str)
     local_model_status = Signal(str, str)
     local_vision_status = Signal(str, str)
-    japanese_rescue_status = Signal(str, str)
 
     def __init__(
         self,
@@ -362,7 +353,6 @@ class OCRWorker(QObject):
         self.local_multimodal_model = "gemma-3-4b-it"
         self.local_multimodal_timeout_seconds = 20
         self.local_multimodal_cpu_only = False
-        self.japanese_rescue_enabled = False
         # These settings are runtime-only.  Secrets are intentionally kept out
         # of status payloads and diagnostics; the legacy singular key remains
         # as a compatibility view of the first configured credential.
@@ -429,14 +419,6 @@ class OCRWorker(QObject):
         self._local_vision_cancel_event = threading.Event()
         self._local_vision_lifecycle_lock = threading.RLock()
         self._local_vision_lifecycle_generation = 0
-        self._japanese_rescue_executor = ThreadPoolExecutor(max_workers=1)
-        self._japanese_rescue_load_future = None
-        self.japanese_rescue_runtime = JapaneseOCRRuntime(
-            resolve_japanese_ocr_assets(),
-            progress_callback=lambda phase, progress: OCRWorker._emit_japanese_rescue_status(
-                self, "progress", f"{progress}|{phase}"
-            ),
-        )
         
         try:
             runtime_kwargs = {
@@ -1060,58 +1042,7 @@ class OCRWorker(QObject):
             if status in {"starting", "progress"}:
                 status = "loading"
             OCRWorker._emit_local_model_status(self, status, *details)
-    def _emit_japanese_rescue_status(self, *args):
-        try:
-            signal = getattr(self, "japanese_rescue_status", None)
-        except RuntimeError:
-            return
-        if signal is not None:
-            signal.emit(*args)
 
-    def request_japanese_rescue_start(self):
-        if not self.japanese_rescue_enabled:
-            return
-        runtime = getattr(self, "japanese_rescue_runtime", None)
-        if runtime is None:
-            OCRWorker._emit_japanese_rescue_status(self, "failed", "runtime_missing")
-            return
-        if runtime.state is JapaneseOCRRuntimeState.ready:
-            OCRWorker._emit_japanese_rescue_status(self, "ready", "")
-            return
-        pending = self._japanese_rescue_load_future
-        if pending is not None and not pending.done():
-            return
-        OCRWorker._emit_japanese_rescue_status(self, "starting", "")
-        try:
-            future = self._japanese_rescue_executor.submit(runtime.start)
-        except Exception as exc:
-            self._japanese_rescue_load_future = None
-            OCRWorker._emit_japanese_rescue_status(
-                self, "failed", f"{type(exc).__name__}: {exc}"
-            )
-            return
-        self._japanese_rescue_load_future = future
-        future.add_done_callback(lambda completed: OCRWorker._on_japanese_rescue_start_done(self, completed))
-
-    def _on_japanese_rescue_start_done(self, future):
-        if self._japanese_rescue_load_future is not future:
-            return
-        self._japanese_rescue_load_future = None
-        try:
-            ready = bool(future.result())
-        except Exception as exc:
-            OCRWorker._emit_japanese_rescue_status(self, "failed", f"{type(exc).__name__}: {exc}")
-            return
-        runtime = self.japanese_rescue_runtime
-        if ready:
-            OCRWorker._emit_japanese_rescue_status(self, "ready", "")
-        elif runtime.state is JapaneseOCRRuntimeState.disabled:
-            if bool(getattr(self, "japanese_rescue_enabled", False)):
-                self.request_japanese_rescue_start()
-            else:
-                OCRWorker._emit_japanese_rescue_status(self, "disabled", "")
-        else:
-            OCRWorker._emit_japanese_rescue_status(self, "failed", runtime.last_error)
 
     def _prepare_and_start_local_vision(self, *, start_generation=None):
         runtime = self.local_vision_runtime
@@ -1574,10 +1505,6 @@ class OCRWorker(QObject):
             for backend in getattr(self, "ocr_backends", ())
         )
         threshold_value = int(getattr(self, "binary_threshold", 100))
-        japanese_rescue_ready = (
-            getattr(getattr(self, "japanese_rescue_runtime", None), "state", None)
-            is JapaneseOCRRuntimeState.ready
-        )
 
         return (
             "exact-image-v1",
@@ -1593,8 +1520,6 @@ class OCRWorker(QObject):
             threshold_value,
             bool(getattr(self, "auto_threshold_enabled", False)),
             bool(getattr(self, "google_ocr_enabled", False)),
-            bool(getattr(self, "japanese_rescue_enabled", False)),
-            japanese_rescue_ready,
             bool(getattr(self, "use_gemma_translation", False)),
             bool(getattr(self, "gemma_auto_switch_enabled", False)),
             getattr(self, "gemma_model", ""),
@@ -1837,13 +1762,6 @@ class OCRWorker(QObject):
         self.active_gemma_model = self.gemma_model
         self._refresh_translation_registry()
 
-    def set_japanese_rescue_enabled(self, enabled):
-        self.japanese_rescue_enabled = bool(enabled)
-        if self.japanese_rescue_enabled:
-            self.request_japanese_rescue_start()
-        else:
-            self.japanese_rescue_runtime.disable()
-            OCRWorker._emit_japanese_rescue_status(self, "disabled", "")
 
     def _reconfigure_local_vision_runtime(self):
         runtime = getattr(self, "local_vision_runtime", None)
@@ -2225,11 +2143,6 @@ class OCRWorker(QObject):
             invalidate()
         if hasattr(self, '_bg_threshold_executor'):
             self._bg_threshold_executor.shutdown(wait=True)
-        if hasattr(self, 'japanese_rescue_runtime'):
-            self.japanese_rescue_enabled = False
-            self.japanese_rescue_runtime.disable()
-        if hasattr(self, '_japanese_rescue_executor'):
-            self._japanese_rescue_executor.shutdown(wait=True)
         local_provider = getattr(self, "local_multimodal_provider", None)
         if local_provider is not None:
             try:
@@ -2573,7 +2486,6 @@ class OCRWorker(QObject):
         return hint
 
 
-
     def log_ai_debug(self, message):
         from cloudhime_logging import log_ai_debug
         log_ai_debug(message)
@@ -2581,7 +2493,6 @@ class OCRWorker(QObject):
     def log_translation_debug(self, message):
         from cloudhime_logging import log_translation_debug
         log_translation_debug(message)
-
 
 
     def refine_merged_items_with_google_ocr(self, items, image_parts):
@@ -3820,7 +3731,6 @@ class OCRWorker(QObject):
         return value not in {"0", "false", "no", "off"}
 
 
-
     def fullscreen_crop_batch_admission_explicitly_enabled(self):
         override = getattr(self, "_local_fullscreen_crop_batch_admission_mode", None)
         if override is not None:
@@ -4975,42 +4885,6 @@ class OCRWorker(QObject):
             'h': y2 - y1,
         }]
 
-    def rescue_japanese_text(self, img, first_text, image_parts=None):
-        if not self.japanese_rescue_enabled or not first_text:
-            return first_text
-        runtime = getattr(self, "japanese_rescue_runtime", None)
-        height, width = img.shape[:2]
-        if (
-            runtime is None
-            or runtime.state is not JapaneseOCRRuntimeState.ready
-            or not rescue_gate(first_text, image_width=width, image_height=height)
-        ):
-            return first_text
-        try:
-            candidate = runtime.run(img)
-            if not is_usable_meiki_candidate(candidate, first_text):
-                return first_text
-            provider = self.local_multimodal_provider
-            if not provider.available():
-                return first_text
-            parts = image_parts or self.build_ai_image_parts(img)
-            second = provider.transcribe_screenshot(
-                parts,
-                source_text_hint=build_verification_hint(candidate),
-            ).text
-            decision = decide_rescue_text(first_text, second, candidate)
-            logger.info(
-                "[Japanese rescue] outcome=%s first_similarity=%.3f second_similarity=%.3f candidate_first=%.3f candidate_second=%.3f",
-                "adopted" if decision.adopted else "rejected",
-                decision.first_similarity,
-                decision.second_similarity,
-                decision.first_candidate_similarity,
-                decision.second_candidate_similarity,
-            )
-            return decision.selected_text
-        except Exception as exc:
-            logger.warning(f"[Japanese rescue] fallback to baseline: {type(exc).__name__}: {exc}")
-            return first_text
 
     def should_use_fullscreen_local_vision_first(self):
         if self.scan_mode != SCAN_MODE_FULLSCREEN:
@@ -6150,12 +6024,6 @@ class OCRWorker(QObject):
                 if local_vision_first
                 else self.build_screenshot_text_hint(img)
             )
-            if self.has_any_multimodal_ai() and screenshot_text_hint:
-                screenshot_text_hint = self.rescue_japanese_text(
-                    img,
-                    screenshot_text_hint,
-                    ai_image_parts,
-                )
             if not self.has_any_multimodal_ai():
                 if not screenshot_text_hint:
                     self._record_scan_event(
@@ -6789,15 +6657,6 @@ class OCRWorker(QObject):
         if self.auto_threshold_enabled:
             self._emit_scan_status(f"✨ 已選最佳閥值 {used_threshold}")
         current_combined_text = "\n".join(item['text'] for item in merged_items)
-        if (
-            self.scan_mode == SCAN_MODE_REGION
-            and len(merged_items) == 1
-            and self.has_any_multimodal_ai()
-        ):
-            rescued_text = self.rescue_japanese_text(img, current_combined_text, ai_image_parts)
-            if rescued_text != current_combined_text:
-                merged_items[0] = dict(merged_items[0], text=rescued_text)
-                current_combined_text = rescued_text
 
         current_provider = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
         final_results = []

@@ -3070,7 +3070,6 @@ class Controller(QWidget):
         self.knowledge_pending_result = None
         self.local_vision_state = "stopped"
         self.local_vision_detail = ""
-        self.japanese_ocr_rescue_enabled = False
         self.was_minimized = False
         self.scan_mode = SCAN_MODE_FULLSCREEN
         self.selected_region = None
@@ -3303,7 +3302,6 @@ class Controller(QWidget):
         self.worker.gemma_model_changed.connect(self.on_worker_gemma_model_changed)
         self.worker.local_model_status.connect(self.on_local_model_status)
         self.worker.local_vision_status.connect(self.on_local_vision_status)
-        self.worker.japanese_rescue_status.connect(self.on_japanese_rescue_status)
         self.ocr_thread.start()
         self._setup_remote_model_availability()
         
@@ -3845,7 +3843,6 @@ class Controller(QWidget):
             "local_multimodal_model": str(getattr(self.worker, "local_multimodal_model", getattr(self, "local_multimodal_model", "gemma-3-4b-it")) or "gemma-3-4b-it"),
             "local_multimodal_timeout_seconds": int(getattr(self.worker, "local_multimodal_timeout_seconds", getattr(self, "local_multimodal_timeout_seconds", 20))),
             "local_multimodal_cpu_only": bool(getattr(self.worker, "local_multimodal_cpu_only", getattr(self, "local_multimodal_cpu_only", False))),
-            "japanese_ocr_rescue_enabled": bool(getattr(self, "japanese_ocr_rescue_enabled", False)),
             "ocr_backend_chain": list(self.worker.ocr_backend_chain) if getattr(self.worker, "ocr_backend_chain", None) else None,
             "random_scan_center_seconds": int(self.random_scan_center_seconds),
             "random_scan_jitter_percent": int(self.random_scan_jitter_percent),
@@ -4111,10 +4108,6 @@ class Controller(QWidget):
                 model_name=self.local_multimodal_model,
                 timeout_seconds=self.local_multimodal_timeout_seconds,
                 cpu_only=bool(getattr(self, "local_multimodal_cpu_only", False)),
-            )
-            self.japanese_ocr_rescue_enabled = bool(settings.get("japanese_ocr_rescue_enabled", False))
-            self.worker.set_japanese_rescue_enabled(
-                self.japanese_ocr_rescue_enabled and self.local_multimodal_enabled
             )
 
             saved_theme_mode = str(settings.get("theme_mode", "") or "").strip()
@@ -4499,27 +4492,12 @@ class Controller(QWidget):
             timeout_seconds=self.local_multimodal_timeout_seconds,
             cpu_only=bool(getattr(self, "local_multimodal_cpu_only", False)),
         )
-        rescue_setter = getattr(self.worker, "set_japanese_rescue_enabled", None)
-        if callable(rescue_setter):
-            rescue_setter(
-                bool(getattr(self, "japanese_ocr_rescue_enabled", False))
-                and self.local_multimodal_enabled
-            )
         self.schedule_save_settings()
 
     def on_local_multimodal_enabled_changed(self, enabled):
         self.local_multimodal_enabled = bool(enabled)
         self._push_local_multimodal_config()
 
-    def on_japanese_ocr_rescue_enabled_changed(self, enabled):
-        self.japanese_ocr_rescue_enabled = bool(enabled)
-        rescue_setter = getattr(self.worker, "set_japanese_rescue_enabled", None)
-        if callable(rescue_setter):
-            rescue_setter(
-                bool(getattr(self, "japanese_ocr_rescue_enabled", False))
-                and self.local_multimodal_enabled
-            )
-        self.schedule_save_settings()
 
     def on_local_multimodal_base_url_changed(self, base_url):
         self.local_multimodal_base_url = str(base_url or "").strip().rstrip("/")
@@ -5147,51 +5125,6 @@ class Controller(QWidget):
 
         self.charge_bar.set_progress(0, bar_text)
         self.lbl_status.setText(status_text)
-    def on_japanese_rescue_status(self, state, detail=""):
-        state = str(state or "failed")
-        detail = str(detail or "")
-        if state == "disabled":
-            return
-        english = self.get_ui_language() == "en"
-        labels = {
-            "downloading": "Downloading Japanese OCR model" if english else "下載日文 OCR 模型",
-            "warming_up": "Warming up Japanese OCR" if english else "暖身日文 OCR",
-            "ready": "Japanese OCR ready" if english else "日文 OCR 已就緒",
-            "preparing": "Preparing Japanese OCR" if english else "準備日文 OCR",
-            "failed": "Japanese OCR failed" if english else "日文 OCR 啟動失敗",
-        }
-        theme = resolve_theme(self.theme_mode)
-        colors = build_charge_bar_colors(theme, "danger" if state == "failed" else "normal")
-        self.charge_bar.set_theme_colors(
-            colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"]
-        )
-        if state == "progress":
-            try:
-                progress_text, phase = detail.split("|", 1)
-                progress = max(0, min(100, int(progress_text)))
-            except (TypeError, ValueError):
-                progress, phase = 0, "downloading"
-            label = labels.get(phase, labels["preparing"])
-            self.charge_bar.set_progress(progress, f"{label} {progress}%")
-            self.lbl_status.setText(f"{label}... ({progress}%)" if progress < 100 else label)
-        elif state == "starting":
-            self.charge_bar.set_indeterminate(True, labels["preparing"])
-            self.lbl_status.setText(
-                "Preparing Japanese game subtitle OCR in the background..."
-                if english else "正在背景準備日文遊戲字幕 OCR..."
-            )
-        elif state == "ready":
-            self.charge_bar.set_progress(100, labels["ready"])
-            self.lbl_status.setText(
-                "Accurate Japanese game subtitle OCR is ready"
-                if english else "日文遊戲字幕精準 OCR 已就緒"
-            )
-        else:
-            self.charge_bar.set_progress(0, labels["failed"])
-            separator = ": " if english else "："
-            self.lbl_status.setText(
-                f"{labels['failed']}{separator}{detail}" if detail else labels["failed"]
-            )
 
     def close_app(self):
         self.cancel_knowledge_research()

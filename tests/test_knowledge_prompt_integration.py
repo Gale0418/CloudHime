@@ -147,8 +147,6 @@ def test_worker_pack_revision_is_in_exact_image_context_and_clears_memories():
     worker.binary_threshold = 100
     worker.auto_threshold_enabled = False
     worker.google_ocr_enabled = False
-    worker.japanese_rescue_enabled = False
-    worker.japanese_rescue_runtime = None
     worker.use_gemma_translation = True
     worker.gemma_auto_switch_enabled = False
     worker.gemma_model = "gemma-3-27b-it"

@@ -332,17 +332,26 @@ def test_release_bundle_includes_knowledge_search_dependency_and_notice():
     for dependency in ("click", "primp", "httpx", "fake-useragent", "certifi"):
         assert dependency in notices
 
-def test_release_preflight_requires_pinned_japanese_ocr_sources_and_license():
+def test_release_excludes_retired_meiki_dependencies():
     root = Path(__file__).resolve().parents[1]
-    verifier = (root / 'packaging' / 'verify_release_dist.ps1').read_text(encoding='utf-8')
-    required_markers = (
-        'https://github.com/rtr46/meikiocr',
-        'https://huggingface.co/rtr46/meiki.text.detect.v0',
-        'https://huggingface.co/rtr46/meiki.txt.recognition.v0',
-        'https://www.gnu.org/licenses/lgpl-3.0.html',
-    )
-    for marker in required_markers:
-        assert marker in verifier
+    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
+    excluded = spec.split("excludes=[", 1)[1].split("]", 1)[0]
+    hidden = spec.split("hiddenimports=[", 1)[1].split("]", 1)[0]
+    app_source = (root / "CloudHime.py").read_text(encoding="utf-8")
+    for name in ("meikiocr", "onnxruntime"):
+        assert repr(name) in excluded
+        assert name not in hidden
+        assert name not in app_source
+        for filename in (
+            "requirements.txt", "requirements-ci.txt",
+            "requirements-lock-win-amd64-py310.txt",
+            "requirements-ci-lock-win-amd64-py310.txt",
+        ):
+            assert name not in (root / filename).read_text(encoding="utf-8").lower()
+    for module in ("japanese_ocr_assets", "japanese_ocr_runtime", "japanese_ocr_rescue"):
+        assert not (root / f"{module}.py").exists()
+
+
 def test_release_build_runs_frozen_dependency_smoke_before_preflight():
     root = Path(__file__).resolve().parents[1]
     build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
@@ -355,8 +364,6 @@ def test_release_build_runs_frozen_dependency_smoke_before_preflight():
         "primp",
         "fake_useragent",
         "certifi",
-        "meikiocr.ocr",
-        "onnxruntime",
     )
     assert smoke_env in app_source
     assert "run_packaged_import_smoke" in app_source
@@ -483,15 +490,6 @@ def test_clean_machine_smoke_script_is_environment_isolated_and_exact_cleanup():
     assert "Conda" not in script
     assert "python.exe" not in script.lower()
 
-
-def test_release_spec_keeps_lazy_japanese_ocr_runtime_modules():
-    root = Path(__file__).resolve().parents[1]
-    spec = (root / "CloudHime.spec").read_text(encoding="utf-8")
-
-    hidden_imports = spec.split("japanese_ocr_hiddenimports = [", 1)[1].split("]", 1)[0]
-    for module_name in ("meikiocr", "meikiocr.ocr", "onnxruntime"):
-        assert f'"{module_name}"' in hidden_imports
-    assert "*japanese_ocr_hiddenimports" in spec
 
 def test_production_translation_provider_has_no_inprocess_llama_path():
     root = Path(__file__).resolve().parents[1]

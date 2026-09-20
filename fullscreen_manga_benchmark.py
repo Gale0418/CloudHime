@@ -112,7 +112,6 @@ def _configure_ocr_only_worker(
     worker.use_gemma_translation = False
     worker.gemma_auto_switch_enabled = False
     worker.local_multimodal_enabled = False
-    worker.japanese_rescue_enabled = False
 
 
 def _run_fullscreen_ocr(

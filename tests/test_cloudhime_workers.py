@@ -534,161 +534,6 @@ def test_local_gemma_model_id_selects_local_runtime():
     assert OCRWorker._is_local_model_active(worker) is True
 
 
-@pytest.mark.parametrize(
-    ("result", "runtime_state", "last_error", "expected"),
-    (
-        (True, workers_module.JapaneseOCRRuntimeState.ready, "", ("ready", "")),
-        (False, workers_module.JapaneseOCRRuntimeState.failed, "asset missing", ("failed", "asset missing")),
-        (False, workers_module.JapaneseOCRRuntimeState.disabled, "", ("disabled", "")),
-    ),
-)
-def test_japanese_rescue_callback_reports_terminal_status(
-    result, runtime_state, last_error, expected
-):
-    statuses = []
-    future = Future()
-    future.set_result(result)
-    worker = SimpleNamespace(
-        _japanese_rescue_load_future=future,
-        japanese_rescue_runtime=SimpleNamespace(
-            state=runtime_state,
-            last_error=last_error,
-        ),
-        japanese_rescue_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
-    )
-
-    OCRWorker._on_japanese_rescue_start_done(worker, future)
-
-    assert worker._japanese_rescue_load_future is None
-    assert statuses == [expected]
-
-
-def test_stale_japanese_rescue_callback_is_silent_and_preserves_new_future():
-    statuses = []
-    old_future = Future()
-    old_future.set_result(True)
-    new_future = Future()
-    worker = SimpleNamespace(
-        _japanese_rescue_load_future=new_future,
-        japanese_rescue_runtime=SimpleNamespace(
-            state=workers_module.JapaneseOCRRuntimeState.ready,
-            last_error="",
-        ),
-        japanese_rescue_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
-    )
-
-    OCRWorker._on_japanese_rescue_start_done(worker, old_future)
-
-    assert worker._japanese_rescue_load_future is new_future
-    assert statuses == []
-
-
-def test_enabled_japanese_rescue_restarts_after_cancelled_start():
-    statuses = []
-    restarts = []
-    future = Future()
-    future.set_result(False)
-    worker = SimpleNamespace(
-        _japanese_rescue_load_future=future,
-        japanese_rescue_enabled=True,
-        japanese_rescue_runtime=SimpleNamespace(
-            state=workers_module.JapaneseOCRRuntimeState.disabled,
-            last_error="",
-        ),
-        japanese_rescue_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
-        request_japanese_rescue_start=lambda: restarts.append("restart"),
-    )
-
-    OCRWorker._on_japanese_rescue_start_done(worker, future)
-
-    assert worker._japanese_rescue_load_future is None
-    assert restarts == ["restart"]
-    assert statuses == []
-
-def test_request_japanese_rescue_start_reports_executor_submit_failure():
-    statuses = []
-
-    class ClosedExecutor:
-        def submit(self, callback):
-            raise RuntimeError("executor closed")
-
-    old_future = Future()
-    old_future.set_result(False)
-    worker = SimpleNamespace(
-        japanese_rescue_enabled=True,
-        japanese_rescue_runtime=SimpleNamespace(
-            state=workers_module.JapaneseOCRRuntimeState.disabled,
-            start=lambda: True,
-        ),
-        _japanese_rescue_executor=ClosedExecutor(),
-        _japanese_rescue_load_future=old_future,
-        japanese_rescue_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
-    )
-
-    OCRWorker.request_japanese_rescue_start(worker)
-
-    assert worker._japanese_rescue_load_future is None
-    assert statuses == [
-        ("starting", ""),
-        ("failed", "RuntimeError: executor closed"),
-    ]
-
-
-def test_request_japanese_rescue_start_does_not_submit_duplicate_pending_future():
-    statuses = []
-    submitted = []
-    pending = Future()
-
-    class Executor:
-        def submit(self, callback):
-            submitted.append(callback)
-            return pending
-
-    worker = SimpleNamespace(
-        japanese_rescue_enabled=True,
-        japanese_rescue_runtime=SimpleNamespace(
-            state=workers_module.JapaneseOCRRuntimeState.starting,
-            start=lambda: True,
-        ),
-        _japanese_rescue_executor=Executor(),
-        _japanese_rescue_load_future=None,
-        japanese_rescue_status=SimpleNamespace(emit=lambda *args: statuses.append(args)),
-    )
-
-    OCRWorker.request_japanese_rescue_start(worker)
-    OCRWorker.request_japanese_rescue_start(worker)
-
-    assert len(submitted) == 1
-    assert worker._japanese_rescue_load_future is pending
-    assert statuses == [("starting", "")]
-
-
-def test_cleanup_disables_japanese_runtime_and_shuts_down_executor():
-    calls = []
-
-    class Runtime:
-        def disable(self):
-            calls.append("disable")
-
-    class Executor:
-        def shutdown(self, **kwargs):
-            calls.append(("shutdown", kwargs))
-
-    worker = SimpleNamespace(
-        japanese_rescue_runtime=Runtime(),
-        _japanese_rescue_executor=Executor(),
-        shutdown_local_vision_runtime=lambda: calls.append("vision"),
-    )
-
-    OCRWorker.cleanup(worker)
-
-    assert worker.japanese_rescue_enabled is False
-    assert calls == [
-        "disable",
-        ("shutdown", {"wait": True}),
-        "vision",
-    ]
-
 def test_translate_text_preferred_uses_local_ai_without_google_api_key():
     worker = make_worker_stub()
     worker.use_gemma_translation = True
@@ -1987,17 +1832,16 @@ def test_worker_initialization_has_no_embedded_provider_or_loader(monkeypatch):
             self._state = SimpleNamespace(name="stopped", detail="", base_url="")
             self.profile_name = "vision"
 
-    class JapaneseRuntime:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
     monkeypatch.setattr(workers_module, "LocalVisionRuntime", Runtime)
-    monkeypatch.setattr(workers_module, "JapaneseOCRRuntime", JapaneseRuntime)
 
     worker = OCRWorker()
 
     assert "LocalGemmaProvider" not in workers_module.__dict__
+    assert "JapaneseOCRRuntime" not in workers_module.__dict__
     for attribute in (
+        "japanese_rescue_runtime",
+        "japanese_rescue_enabled",
+        "_japanese_rescue_executor",
         "local_gemma_provider",
         "_local_model_executor",
         "_local_model_load_future",
@@ -2074,12 +1918,12 @@ def test_scan_status_notifies_bounded_product_observer_without_raw_message():
     assert observed == [("scan_status",), ("ocr_start",)]
 
 
+
+
 def test_cleanup_only_shuts_down_server_runtime():
     calls = []
     worker = SimpleNamespace(
         _bg_threshold_executor=SimpleNamespace(shutdown=lambda **kwargs: calls.append(("background", kwargs))),
-        japanese_rescue_runtime=SimpleNamespace(disable=lambda: calls.append(("japanese", {}))),
-        _japanese_rescue_executor=SimpleNamespace(shutdown=lambda **kwargs: calls.append(("japanese_executor", kwargs))),
         _local_vision_executor=SimpleNamespace(shutdown=lambda **kwargs: calls.append(("vision_executor", kwargs))),
         shutdown_local_vision_runtime=lambda: calls.append(("server", {})),
     )
@@ -2088,8 +1932,6 @@ def test_cleanup_only_shuts_down_server_runtime():
 
     assert calls == [
         ("background", {"wait": True}),
-        ("japanese", {}),
-        ("japanese_executor", {"wait": True}),
         ("server", {}),
         ("vision_executor", {"wait": True, "cancel_futures": True}),
     ]

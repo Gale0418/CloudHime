@@ -1,11 +1,13 @@
 # 2026-09-20 發行前盤點
 
+後續更新：主人已明確取消 Meiki 補救功能，CH-T35 改為退場驗證；本頁下方的 Meiki 授權／品質待辦屬退場決策前的盤點，不再是目前方向。詳見 reviews/2026-09-20-meiki-retirement.md。原發行包重建已中止，移除後的新包尚未建置。
+
 ## 剩餘工作
 
 Canonical tasks.md 尚有 7 個未完成子任務：CH-T35、CH-T64 為 Review；CH-T53～CH-T56 與 CH-T65 為 Backlog。進度摘要只展示前五項，不能視為完整待辦清單。
 
 - CH-T35：沿用既有 CPU provider 與跨 holdout no-regression 證據。兩個固定 Meiki 模型 revision 的上游 API 仍宣告 LGPL-3.0，列出的檔案為 ONNX、README 與推論程式；沒有在該清單看到 LICENSE 或訓練／編輯來源。這只是可觀測資料缺口，不是法律判定。公開發行前需完成来源確認；不以重新跑既有測試取代。
-- CH-T64：最新 main CI 失敗需先修復；9/13 frozen EXE 的建置早於最後的互斥 smoke flag 修正，因此下一份發行包須重建並驗證。既有本機環境隔離 smoke 不等同 pristine Windows VM。
+- CH-T64：8852eeb 的 CI 失敗已於 99230a8 修復並遠端通過；9/13 frozen EXE 的建置早於最後的互斥 smoke flag 修正及 Meiki 退場，因此下一份發行包須重建並驗證。既有本機環境隔離 smoke 不等同 pristine Windows VM。
 - CH-T53～CH-T56：依序取得正式 Store identity、建立套件、送審與更新驗證、文件收尾。使用者先前延後建立商店產品；本輪沒有建立產品或送審。
 - CH-T65：待發行門檻穩定後再評估新功能。
 - CH-T51 維持 Done；本輪不新增 Research 功能或重跑付費 API。

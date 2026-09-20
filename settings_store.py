@@ -295,7 +295,8 @@ def normalize_settings_payload(
     normalized["gemma_auto_switch_enabled"] = coerce_bool(normalized.get("gemma_auto_switch_enabled", False))
     normalized["local_multimodal_enabled"] = coerce_bool(normalized.get("local_multimodal_enabled", False))
     normalized["local_multimodal_cpu_only"] = coerce_bool(normalized.get("local_multimodal_cpu_only", False))
-    normalized["japanese_ocr_rescue_enabled"] = coerce_bool(normalized.get("japanese_ocr_rescue_enabled", False))
+    # Retired optional OCR backend: discard persisted opt-ins during migration.
+    normalized.pop("japanese_ocr_rescue_enabled", None)
     normalized["region_pass_through"] = coerce_bool(normalized.get("region_pass_through", False))
     normalized["is_dark_mode"] = coerce_bool(normalized.get("is_dark_mode", False))
     normalized["local_multimodal_base_url"] = str(normalized.get("local_multimodal_base_url", "http://127.0.0.1:8080/v1") or "http://127.0.0.1:8080/v1")

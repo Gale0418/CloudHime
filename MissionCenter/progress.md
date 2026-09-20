@@ -7,7 +7,7 @@
 - 里程碑: CH-E11 線上 Provider 與全介面重構
 - 進度條: [#########-] 93%
 - 進行中任務:
-  - CH-T35 日文遊戲 OCR rescue 產品化 (Review)
+  - CH-T35 Meiki 補救路徑退場（原產品化取消） (Review)
   - CH-T53 建立 Partner Center 產品身分 (Backlog)
   - CH-T54 對齊 Store 身分與送審套件 (Backlog)
   - CH-T55 Store submission preflight 與首次發佈 (Backlog)

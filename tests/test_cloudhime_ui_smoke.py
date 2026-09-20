@@ -330,26 +330,6 @@ def test_controller_local_vision_download_status_is_bilingual(qtbot):
         assert expected in messages[-1]
 
 
-def test_controller_japanese_rescue_status_is_bilingual(qtbot):
-    for language, expected in (
-        ("zh-TW", "下載日文 OCR 模型"),
-        ("en", "Downloading Japanese OCR model"),
-    ):
-        controller = Controller.__new__(Controller)
-        controller.ui_language = language
-        controller.theme_mode = "light"
-        controller.charge_bar = StatusChargeBar()
-        qtbot.addWidget(controller.charge_bar)
-        messages = []
-        controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
-
-        Controller.on_japanese_rescue_status(controller, "progress", "40|downloading")
-
-        assert controller.charge_bar.progress == 40
-        assert expected in controller.charge_bar.label
-        assert expected in messages[-1]
-
-
 def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypatch, tmp_path):
     import cloudhime_ui
 
