@@ -136,7 +136,7 @@
 
 ## 2026-09-20 完整離線包驗證
 
-- CH-T64 維持 Review：R4 frozen EXE 在全新 Windows Sandbox（斷網、vGPU 關閉、無外部 Python／Ollama、無 API Key）完成純 CPU 圖片功能呼叫 1/1，helper 正常清理；EXE SHA256 `005daa941e6aa6df54ebd28798a6317af2e3c763c5fdff2674d58266d95cb891`。修正唯讀安裝目錄 smoke 暫存、GPU 層數 0 parser，以及包內 C++ DLL 的子程序搜尋路徑；相關回歸 86 passed。正常 UI 本地選擇、最新 MSIX 安裝／簽章與 Store certification 仍獨立待驗，不宣稱全部 Done。詳細證據與失敗歷史：`reviews/2026-09-20-offline-bundle.md`。
+- CH-T64 維持 Review：R4 frozen EXE 在全新 Windows Sandbox（斷網、vGPU 關閉、無外部 Python／Ollama、無 API Key）完成純 CPU 圖片功能呼叫 1/1，helper 正常清理；EXE SHA256 `005daa941e6aa6df54ebd28798a6317af2e3c763c5fdff2674d58266d95cb891`。2026-09-21 對最新完整 MSIX 的隔離短效自簽 install／AUMID launch／uninstall gate PASS，原始 unsigned MSIX hash 前後一致且 package／憑證／stage／程序殘留為 0；同一 MSIX 的完整 WACK XML 為 `OVERALL_RESULT=PASS`、`PARTIAL_RUN=FALSE`。正常 UI 本地選擇仍待主人確認；Partner Center 帳號已完成，但 CloudHime 產品身分／正式 certification 由 T53～T55 獨立處理，不宣稱全部 Done。詳細證據與失敗歷史：`reviews/2026-09-20-offline-bundle.md`。
 - 發行政策：GitHub 不上傳模型或 `example/`；完整 MSIX 附 Gemma 3 4B 與 projector／條款，GitHub ZIP 維持輕量無模型。
 
 ## 0.3.1 遷移註記
