@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-CloudHime can optionally download model assets after the user enables the corresponding local feature. Downloaded model files are stored under the user's local application-data directory and are not part of the core MSIX package. CloudHime does not require or communicate with Ollama.
+CloudHime's full MSIX includes the pinned Gemma model and projector, with their terms and notices in `_internal/models`. The lightweight ZIP excludes these weights and can download them to the user's local application-data directory after the local feature is enabled. CloudHime does not require or communicate with Ollama.
 
 ## Gemma 3 4B model and multimodal projector
 
@@ -12,7 +12,7 @@ Gemma is provided under and subject to the Gemma Terms of Use found at https://a
 - Multimodal projector: `mmproj-model-f16.gguf`
 - Gemma prohibited-use restrictions and redistribution obligations apply to these assets.
 
-CloudHime downloads the pinned, unmodified model and projector files from the official `ggml-org` repository and verifies their exact sizes and SHA-256 digests before use.
+CloudHime uses the pinned, unmodified model and projector files from the official `ggml-org` repository and verifies their exact sizes and SHA-256 digests before use, whether bundled or downloaded.
 
 ## llama.cpp
 

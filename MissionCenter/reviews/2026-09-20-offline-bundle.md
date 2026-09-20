@@ -26,5 +26,7 @@
 - 隔離審查初次因 base branch 未指定而失敗；明確 `--base main` 後完成 9 檔審查，0 issues。本小時已呼叫三次，不再追加。後續 MSIX CreateUpload 的 ZIP64 連帶修正未受此輪 CodeRabbit 覆蓋，另以單元／builder 契約與 PowerShell parser 驗證。
 - 發行／MSIX／資產／UI／health 回歸：122 passed in 534.82s；後續依主人要求調整 ZIP-before-model-stage 順序，需再驗證受影響建置契約。
 - ZIP-before-stage 變更後：release packaging／archive 31 passed；加入 MSIX upload ZIP64 後同組 32 passed；settings theme/layout 7 passed；MSIX builder 2 passed，PowerShell parser PASS。
-- 新 frozen build、完整模型 stage、乾淨 Sandbox 推論尚在進行，不能算 PASS。
+- 新 frozen build 完成（PyInstaller exit 0）：EXE SHA256 `531f7e845abaf40b120777d1110f511b1f15f9e3a0a58bfd0c0c4151847d891b`；light preflight 362 files／1,517,736,550 bytes／0 model files，frozen import smoke PASS（PID 15280，helper 已結束）。這不是實際模型推論。
+- CI 新測試 inventory 已補登；CI inventory＋release packaging 35 passed。第三方總說明更新為 full MSIX／light ZIP 的政策；封裝目錄的外部 notice 同步更新，EXE 不變。初版 light ZIP 因包含舊說明而不作最終產物，另建立 `CloudHime-light-final.zip`。
+- 完整模型 stage、MSIX 與乾淨 Sandbox 推論尚在進行，不能算 PASS。
 - T64 保持 Review；沒有建立 completion passport 或宣稱 Store／WACK 完成。
