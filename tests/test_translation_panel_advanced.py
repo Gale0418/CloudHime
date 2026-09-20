@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QComboBox, QSizePolicy
 
 from translation_settings_panel import TranslationSettingsPanel
 from themes import resolve_theme
@@ -88,6 +88,38 @@ def test_explicit_local_selection_from_remote_without_key(qtbot):
     assert panel.btn_translate_ai.isChecked()
     assert panel.provider_disclosures["local_gemma"].header.isChecked()
     assert not controller.worker.google_api_key
+
+
+def test_explicit_local_selection_maps_model_id_when_combos_have_different_order(qtbot):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = False
+    controller.worker.google_api_key = ""
+    controller.cmb_ai_model = QComboBox()
+    controller.cmb_ai_model.addItem("Local", "gemma-3-4b-it-local")
+    controller.cmb_ai_model.addItem("Remote", "gemma-4-31b-it")
+    controller.cmb_ai_model.setCurrentIndex(1)
+
+    def select(index):
+        controller.cmb_ai_model.setCurrentIndex(index)
+        controller.worker.gemma_model = controller.cmb_ai_model.itemData(index)
+
+    controller.on_ai_model_changed = select
+    controller.toggle_ai_translation = lambda value: setattr(
+        controller.worker, "use_gemma_translation", value
+    )
+    panel = TranslationSettingsPanel(
+        controller,
+        [("Remote", "gemma-4-31b-it"), ("Local", "gemma-3-4b-it-local")],
+    )
+    qtbot.addWidget(panel)
+    panel.cmb_ai_model.setCurrentIndex(0)
+
+    panel.btn_use_local_gemma.click()
+
+    assert controller.worker.gemma_model == "gemma-3-4b-it-local"
+    assert controller.worker.use_gemma_translation
+    assert panel.btn_translate_ai.isChecked()
 
 
 def test_local_status_never_inherits_remote_key_requirement(qtbot):

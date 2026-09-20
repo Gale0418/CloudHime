@@ -1724,7 +1724,7 @@ class SettingsWindow(QWidget):
         self.setStyleSheet(theme.base_qss())
         import os
         is_dark = theme.key != "light"
-        bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
+        bg_image = "assets/bg_dark.png" if is_dark else "assets/bg_light.png"
         bg_image_path = _resource_path(bg_image)
         base_style = theme.window_qss(radius=20, border_width=2).strip().rstrip('}')
         style_with_bg = base_style + f" background-image: url('{bg_image_path}'); background-position: center; background-repeat: no-repeat; }}"
@@ -2831,7 +2831,7 @@ class SettingsWindowRevamp(QWidget):
             theme.base_qss()
             + f"\nQWidget#settingsWindowRevamp {{ background: transparent; }}"
         )
-        bg_image = "assets/bg_dark.jpg" if is_dark else "assets/bg_light.jpg"
+        bg_image = "assets/bg_dark.png" if is_dark else "assets/bg_light.png"
         bg_image_path = _resource_path(bg_image)
         self.backdrop_panel.setStyleSheet(
             f"QFrame#settingsBackdropPanel {{ background-color: {theme.shell_bg}; border: 2px solid {theme.shell_border}; border-radius: 20px; "
@@ -4070,9 +4070,14 @@ class Controller(QWidget):
             self.cmb_ai_model.setCurrentIndex(model_index)
             self.cmb_ai_model.blockSignals(False)
             self.worker.set_gemma_model(self.cmb_ai_model.itemData(model_index))
-            if self.settings_window is not None and self.settings_window.cmb_ai_model.currentIndex() != model_index:
+            settings_model_index = (
+                self.settings_window.cmb_ai_model.findData(model_name)
+                if self.settings_window is not None
+                else -1
+            )
+            if self.settings_window is not None and settings_model_index >= 0 and self.settings_window.cmb_ai_model.currentIndex() != settings_model_index:
                 self.settings_window.cmb_ai_model.blockSignals(True)
-                self.settings_window.cmb_ai_model.setCurrentIndex(model_index)
+                self.settings_window.cmb_ai_model.setCurrentIndex(settings_model_index)
                 self.settings_window.cmb_ai_model.blockSignals(False)
                 self.settings_window.update_translate_summary()
 
@@ -4386,10 +4391,12 @@ class Controller(QWidget):
             self.cmb_ai_model.blockSignals(True)
             self.cmb_ai_model.setCurrentIndex(index)
             self.cmb_ai_model.blockSignals(False)
-        if self.settings_window is not None and self.settings_window.cmb_ai_model.currentIndex() != index:
-            self.settings_window.cmb_ai_model.blockSignals(True)
-            self.settings_window.cmb_ai_model.setCurrentIndex(index)
-            self.settings_window.cmb_ai_model.blockSignals(False)
+        if self.settings_window is not None:
+            settings_index = self.settings_window.cmb_ai_model.findData(model_name)
+            if settings_index >= 0 and self.settings_window.cmb_ai_model.currentIndex() != settings_index:
+                self.settings_window.cmb_ai_model.blockSignals(True)
+                self.settings_window.cmb_ai_model.setCurrentIndex(settings_index)
+                self.settings_window.cmb_ai_model.blockSignals(False)
         if self.settings_window is not None:
             self.settings_window.update_translate_summary()
         self.schedule_save_settings()

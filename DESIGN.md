@@ -9,7 +9,7 @@ colors:
   light-subtext: "#8E8E93"
   light-border: "rgba(0, 0, 0, 15)"
   light-accent: "#007AFF"
-  settings-top-light: "#F2F2F7"
+  settings-top-light: "rgba(242, 242, 247, 224)"
   dark-shell: "rgba(28, 28, 30, 242)"
   dark-panel: "rgba(44, 44, 46, 230)"
   dark-input: "rgba(118, 118, 128, 60)"
@@ -17,7 +17,7 @@ colors:
   dark-subtext: "rgba(235, 235, 245, 150)"
   dark-border: "rgba(255, 255, 255, 20)"
   dark-accent: "#0A84FF"
-  settings-top-dark: "#1C1C1E"
+  settings-top-dark: "rgba(28, 28, 30, 224)"
   high-contrast-fallback: "rgba(18, 18, 18, 248)"
   high-contrast-accent: "#FFD400"
   provider-metadata-light: "#636366"
@@ -122,11 +122,11 @@ components:
 
 CloudHime 的 shipping UI 是 Windows 原生設定窗與全幅角色夢境的並置：角色與雲景提供 light／dark 的環境溫度，真正承載操作的是半透明、可讀、近等寬的三欄工作面。介面保持原版設定窗的密度與順序，讓使用者一眼找到 Translation、OCR、Rendering 與 Relief，而不是把設定改寫成另一套產品殼層。
 
-這個世界的辨識度來自全幅背景、固定的 opaque header band、固定 footer，以及柔和的面板與原生 Qt controls。Translation card 內部可以局部垂直捲動，容納 Local Gemma、Online Gemma 與 Luna 的設定；Online Gemma 使用同一把 API key，並在內部列出兩個實際模型。這份文件描述 Git 舊版復原後的 shipping surface，不採新版 navy dispatch、左側導覽或單欄工作面。
+這個世界的辨識度來自全幅背景、固定的霧面半透明 header band、固定 footer，以及柔和的面板與原生 Qt controls。Translation card 內部可以局部垂直捲動，容納 Local Gemma、Online Gemma 與 Luna 的設定；Online Gemma 使用同一把 API key，並在內部列出兩個實際模型。這份文件描述 Git 舊版復原後的 shipping surface，不採新版 navy dispatch、左側導覽或單欄工作面。
 
 **Key Characteristics:**
 - Wide fixed settings surface 搭配全幅 light／dark 角色背景，操作層維持半透明但可讀
-- Opaque header band 與固定 footer 維持全寬並保持在工作面前景
+- Frosted translucent header band 與固定 footer 維持全寬並保持在工作面前景
 - 透明 body host 左對齊，內容 cluster 寬度限制在 928–1040px
 - Translation／OCR／Rendering+Relief 三欄近等寬、每欄至少 300px、欄間距 14px
 - 右側保留角色 safe area（至少約 280px；1422px capture 實際約 419px）
@@ -158,8 +158,8 @@ Light 以 `#F2F2F7` 的冷霧 shell 和白色 panel 承載內容；Dark 以 `#1C
 - **Dark Panel** (`rgba(44, 44, 46, 230)`): Dark card／工作面。
 - **Dark Input** (`rgba(118, 118, 128, 60)`): Dark 欄位與次要 controls。
 - **Dark Text** (`rgba(255, 255, 255, 220)`)：Dark 主要文字；輔助文字使用 `rgba(235, 235, 245, 150)`。
-- **Settings Top Light** (`#F2F2F7`): Light opaque header band。
-- **Settings Top Dark** (`#1C1C1E`): Dark opaque header band。
+- **Settings Top Light** (`rgba(242, 242, 247, 224)`): Light 霧面半透明 header band。
+- **Settings Top Dark** (`rgba(28, 28, 30, 224)`): Dark 霧面半透明 header band。
 - **High-contrast Fallback** (`rgba(18, 18, 18, 248)`): 高對比或背景圖不可用時的操作底色；高對比 accent 為 `#FFD400`。
 
 ### Named Rules
@@ -248,7 +248,7 @@ Online Gemma 的兩個 model row 共用單一 API key；UI 不保存或顯示明
 本輪驗證：targeted provider／UI／controller slice `169 passed`，完整 `tests/` inventory `1455 passed, 6 skipped`；live evidence、視覺限制與未跑的 Store／WACK／clean-machine gate 見 `output/mission-center-evidence/ch-t112-regression-visual-20260909.md`。這些數字是可重跑的本機證據，不代表外部服務 quota 或商店認證。
 
 ### Header Band
-Header 是固定在背景前方、跨越整個 settings surface 寬度的 opaque band。Light 使用 `settings_top_bg=#F2F2F7`，Dark 使用 `settings_top_bg=#1C1C1E`；品牌、主題／語言控制、工作控制與 Close 不可被角色背景沖淡。
+Header 是固定在背景前方、跨越整個 settings surface 寬度的霧面半透明 band。Light 使用 `settings_top_bg=rgba(242, 242, 247, 224)`，Dark 使用 `settings_top_bg=rgba(28, 28, 30, 224)`；背景只應隱約透出，品牌、主題／語言控制、工作控制與 Close 仍須保持清楚。
 
 ### Fixed Footer
 Footer 固定在 Settings body 底部並跨越整個 surface 寬度，放 Reset defaults、Cancel 與 Save；Save 是唯一 primary action，其餘是次要 input-surface controls。Translation 內部 scroll 不得帶走 footer。
@@ -258,8 +258,8 @@ Footer 固定在 Settings body 底部並跨越整個 surface 寬度，放 Reset 
 ### Do:
 - **Do** 以 Git 舊版三欄結構呈現 Translation／OCR／Rendering+Relief，維持近等寬、每欄至少 300px 與 14px grid gap。
 - **Do** 讓透明 body host 左對齊，cluster 維持 928–1040px 寬，並在右側保留至少約 280px 角色 safe area（1422px capture 約 419px）。
-- **Do** 保留全幅 `assets/bg_light.jpg`／`assets/bg_dark.jpg` 角色背景，讓它只作 light／dark ambient backdrop。
-- **Do** 讓 header 使用現行 opaque `settings_top_bg`（Light `#F2F2F7`、Dark `#1C1C1E`），footer 保持固定且在前景。
+- **Do** 保留全幅 `assets/bg_light.png`／`assets/bg_dark.png` 偵探公主背景，讓中央低細節區只作 light／dark ambient backdrop。
+- **Do** 讓 header 使用現行霧面半透明 `settings_top_bg`（Light／Dark alpha 224），footer 保持固定且在前景；High Contrast 維持不透明。
 - **Do** 讓 Translation card 只在自身內容過長時垂直 scroll，容納 Online Gemma 單 key 雙模型與 Luna。
 - **Do** 將 Local Gemma、Online Gemma、Luna 視為可獨立展開的 disclosure；摘要只放 provider name、status 與可換行 capability，設定留在 body。
 - **Do** 保持 disclosure 收合為 UI session 狀態，支援 Space／Enter，收合後把焦點送回 header，refresh 不自動展開。

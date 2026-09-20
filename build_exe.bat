@@ -31,12 +31,12 @@ if not exist "runtime\llama-server.exe" (
   echo Missing runtime\llama-server.exe
   goto :failure
 )
-if not exist "assets\bg_dark.jpg" (
-  echo Missing assets\bg_dark.jpg
+if not exist "assets\bg_dark.png" (
+  echo Missing assets\bg_dark.png
   goto :failure
 )
-if not exist "assets\bg_light.jpg" (
-  echo Missing assets\bg_light.jpg
+if not exist "assets\bg_light.png" (
+  echo Missing assets\bg_light.png
   goto :failure
 )
 if not exist "assets\cloudhime_logo.png" (

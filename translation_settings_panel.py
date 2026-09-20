@@ -736,12 +736,21 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.setText(self._controller_secret("luna_api_key", "openai_api_key"))
         self.input_luna_api_key.blockSignals(False)
 
-    def on_use_local_gemma(self):
-        """先明確選本地模型，再啟用 AI，不沿用雲端金鑰門檻。"""
+    def _select_local_gemma(self):
+        """選取本地模型，並確保 controller 與面板即使原本同索引也會同步。"""
         index = self.cmb_ai_model.findData("gemma-3-4b-it-local")
         if index < 0:
+            return False
+        if self.cmb_ai_model.currentIndex() != index:
+            self.cmb_ai_model.setCurrentIndex(index)
+        elif (getattr(self.controller.worker, "gemma_model", "") or "").strip() not in LOCAL_MODEL_IDS:
+            self.on_ai_model_changed(index)
+        return (getattr(self.controller.worker, "gemma_model", "") or "").strip() in LOCAL_MODEL_IDS
+
+    def on_use_local_gemma(self):
+        """先明確選本地模型，再啟用 AI，不沿用雲端金鑰門檻。"""
+        if not self._select_local_gemma():
             return
-        self.cmb_ai_model.setCurrentIndex(index)
         self.on_translate_mode_clicked(True)
 
     def on_translate_mode_clicked(self, use_ai):
@@ -749,6 +758,8 @@ class TranslationSettingsPanel(QWidget):
         is_local_model = (getattr(self.controller.worker, "gemma_model", "") or "").strip() in LOCAL_MODEL_IDS
         self._ai_requested = bool(use_ai)
         if use_ai:
+            if not has_key and not is_local_model:
+                is_local_model = self._select_local_gemma()
             self._expand_provider_for_model(getattr(self.controller.worker, "gemma_model", ""))
             if has_key or is_local_model:
                 self.controller.toggle_ai_translation(True)
@@ -773,8 +784,15 @@ class TranslationSettingsPanel(QWidget):
         self._set_visibility_button_text()
 
     def on_ai_model_changed(self, index):
-        self.controller.on_ai_model_changed(index)
         model_id = str(self.cmb_ai_model.itemData(index) or "").strip().lower()
+        controller_combo = getattr(self.controller, "cmb_ai_model", None)
+        controller_index = index
+        find_data = getattr(controller_combo, "findData", None)
+        if callable(find_data):
+            matched_index = find_data(model_id)
+            if matched_index >= 0:
+                controller_index = matched_index
+        self.controller.on_ai_model_changed(controller_index)
         if self._ai_requested or self.btn_translate_ai.isChecked():
             self._expand_provider_for_model(model_id)
         if (
@@ -1547,8 +1565,18 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.setText(luna_secret)
         self.input_luna_api_key.blockSignals(False)
 
+        controller_combo = self.controller.cmb_ai_model
+        controller_index = controller_combo.currentIndex()
+        item_data = getattr(controller_combo, "itemData", None)
+        controller_model = item_data(controller_index) if callable(item_data) else None
+        panel_model_index = (
+            self.cmb_ai_model.findData(controller_model)
+            if controller_model is not None
+            else controller_index
+        )
         self.cmb_ai_model.blockSignals(True)
-        self.cmb_ai_model.setCurrentIndex(self.controller.cmb_ai_model.currentIndex())
+        if panel_model_index >= 0:
+            self.cmb_ai_model.setCurrentIndex(panel_model_index)
         self.cmb_ai_model.blockSignals(False)
         self.update_ai_model_notes()
 

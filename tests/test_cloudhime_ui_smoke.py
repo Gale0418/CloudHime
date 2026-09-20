@@ -10,9 +10,9 @@ from PySide6.QtCore import QTimer
 
 
 def test_resource_path_resolves_bundled_assets():
-    asset_path = Path(_resource_path("assets/bg_dark.jpg"))
+    asset_path = Path(_resource_path("assets/bg_dark.png"))
 
-    assert asset_path == (Path(__file__).resolve().parents[1] / "assets/bg_dark.jpg")
+    assert asset_path == (Path(__file__).resolve().parents[1] / "assets/bg_dark.png")
     assert asset_path.is_file()
 
 
@@ -192,6 +192,39 @@ def test_settings_revamp_keeps_legacy_three_column_shell(qtbot, monkeypatch):
     assert not hasattr(settings, "settings_scroll_area")
     assert not hasattr(settings, "settings_nav_buttons")
     assert settings.card_translate.parent() is settings.translation_panel
+    controller.close_app()
+
+
+def test_real_controller_ai_mode_defaults_to_local_gemma_without_key(qtbot, monkeypatch):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr("cloudhime_ui.SecretStore.get", lambda self: "", raising=False)
+    monkeypatch.setattr("cloudhime_ui.SecretStore.legacy_sources_disabled", lambda self: True, raising=False)
+    monkeypatch.delenv("CLOUDHIME_GOOGLE_API_KEY", raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("cloudhime_workers.OCRWorker.request_local_vision_start", lambda self: None, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    panel = settings.translation_panel
+
+    assert not controller.worker.google_api_key
+    assert controller.worker.gemma_model != "gemma-3-4b-it-local"
+
+    panel.btn_translate_ai.click()
+    qtbot.wait(100)
+
+    assert controller.worker.gemma_model == "gemma-3-4b-it-local"
+    assert controller.worker.use_gemma_translation
+    assert controller.btn_ai_mode.isChecked()
+    assert panel.btn_translate_ai.isChecked()
+    assert panel.cmb_ai_model.currentData() == "gemma-3-4b-it-local"
     controller.close_app()
 
 

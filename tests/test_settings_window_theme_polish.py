@@ -29,7 +29,7 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         theme = resolve_theme(mode)
 
         backdrop_style = settings.backdrop_panel.styleSheet()
-        expected_background = "bg_dark.jpg" if mode != "light" else "bg_light.jpg"
+        expected_background = "bg_dark.png" if mode != "light" else "bg_light.png"
         assert f"background-color: {theme.shell_bg};" in backdrop_style
         assert "background-image: url(" in backdrop_style
         assert expected_background in backdrop_style
@@ -45,8 +45,16 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         top_style = settings.top_panel.styleSheet()
         assert f"background-color: {theme.settings_top_bg};" in top_style
         assert "background: transparent" not in top_style
-        assert QColor(theme.settings_top_bg).isValid()
-        assert QColor(theme.settings_top_bg).alpha() == 255
+        if mode == "high_contrast":
+            assert QColor(theme.settings_top_bg).isValid()
+            assert QColor(theme.settings_top_bg).alpha() == 255
+        else:
+            expected_top_bg = (
+                "rgba(28, 28, 30, 224)"
+                if mode == "dark"
+                else "rgba(242, 242, 247, 224)"
+            )
+            assert theme.settings_top_bg == expected_top_bg
         assert settings.btn_close.text() == "✕"
         assert settings.top_panel.objectName() == "settingsTopPanel"
         assert settings.shell_panel.objectName() == "settingsShellPanel"
@@ -270,8 +278,8 @@ def test_settings_top_surface_supports_shell_text():
     light = resolve_theme("light")
     dark = resolve_theme("dark")
     assert light.settings_top_bg != light.settings_nav_bg
-    assert QColor(light.settings_top_bg).alpha() == 255
-    assert dark.settings_top_bg
+    assert light.settings_top_bg == "rgba(242, 242, 247, 224)"
+    assert dark.settings_top_bg == "rgba(28, 28, 30, 224)"
 
 
 def test_dispatch_board_charge_bar_semantics():
