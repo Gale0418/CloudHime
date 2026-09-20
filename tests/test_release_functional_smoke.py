@@ -92,6 +92,12 @@ def test_release_smoke_passes_explicit_assets_and_image_to_benchmark(monkeypatch
         }
 
     monkeypatch.setattr(smoke, "run_smoke", fake_run)
+    original_mkdir = Path.mkdir
+    def readonly_install_mkdir(path, *args, **kwargs):
+        if path.parent == smoke.PROJECT_ROOT:
+            raise PermissionError("Read-only installation directory")
+        return original_mkdir(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "mkdir", readonly_install_mkdir)
     result = smoke.run_release_smoke(
         runtime,
         model,
@@ -107,6 +113,8 @@ def test_release_smoke_passes_explicit_assets_and_image_to_benchmark(monkeypatch
     manifest = captured["manifest"]
     assert manifest["evaluation_mode"] == "technical_coverage"
     assert manifest["cases"][0]["sample_source"] == str(image)
+    assert captured["manifest_path"].parent.parent != smoke.PROJECT_ROOT
+    assert not captured["manifest_path"].parent.exists()
 
 
 def test_functional_complete_rejects_missing_image_results() -> None:

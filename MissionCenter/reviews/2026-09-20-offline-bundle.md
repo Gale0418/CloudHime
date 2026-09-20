@@ -30,5 +30,7 @@
 - CI 新測試 inventory 已補登；CI inventory＋release packaging 35 passed。第三方總說明更新為 full MSIX／light ZIP 的政策；封裝目錄的外部 notice 同步更新，EXE 不變。初版 light ZIP 因包含舊說明而不作最終產物，另建立 `CloudHime-light-final.zip`。
 - 完整模型 stage exit 0；full preflight PASS：368 files／4,859,025,587 bytes／2 model files；兩個模型 exact size／SHA 與條款副本一致性通過。最終 light ZIP `python -m zipfile -t` PASS，無模型內容由 light staging／flavor gate 控制。
 - GitHub real-release-build 明確設定 `CLOUDHIME_RELEASE_FLAVOR: light`，preflight 也要求 light；CI／builder 11 passed。GitHub connector combined status 回傳空清單，不能當成最新 CI PASS；本機 gh 尚未登入，但 git push 已成功，不為此讀取外部金鑰。
-- MSIX 與乾淨 Sandbox 推論尚在進行，不能算 PASS。舊 Sandbox 關閉已向主人提出，等待回覆再啟動新的斷網實測。
+- 首版完整 MSIX：MakeAppx exit 0，3,916,963,934 bytes／371 entries；兩個模型 entry 大小正確，EXE SHA 與 notices 一致。工具提示 GGUF 超過建議的 2GB（warning，不是失敗）。建置 staging 已清理。未簽章，未宣稱安裝／WACK／Store PASS。
+- 首輪斷網 Sandbox：fresh profile、外部 Python／pip／Conda／Ollama 均不存在；EXE SHA 正確，但 functional smoke exit 2，故 FAIL。程式沒有進入正常 UI；結果保留於 `.tmp/sandbox-offline-20260920/output`。
+- 後續 TDD 重現驗收程式在唯讀 installation root 建立暫存 manifest 會 PermissionError；改用隔離 TEMP，release functional／orchestrator 14 passed。此修正需新 frozen EXE 重測；不能把首輪 VM 失敗直接改判 PASS，也不能把首版 MSIX 當成已包含後續修正。
 - T64 保持 Review；沒有建立 completion passport 或宣稱 Store／WACK 完成。

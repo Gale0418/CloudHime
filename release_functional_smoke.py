@@ -9,7 +9,6 @@ import json
 import shutil
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -144,8 +143,8 @@ def run_release_smoke(
 ) -> dict[str, Any]:
     image = Path(image_path).expanduser().resolve()
     assets = validate_release_inputs(runtime_dir, model_path, projector_path, image)
-    temporary = PROJECT_ROOT / f".tmp-release-functional-{uuid.uuid4().hex}"
-    temporary.mkdir()
+    # MSIX 與唯讀掛載目錄不能寫入；使用呼叫者隔離的 TEMP。
+    temporary = Path(tempfile.mkdtemp(prefix="cloudhime-release-functional-"))
     try:
         manifest_path = temporary / "functional-smoke.json"
         manifest_path.write_text(
