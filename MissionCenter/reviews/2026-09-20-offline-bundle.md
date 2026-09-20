@@ -36,3 +36,6 @@
 - T64 保持 Review；沒有建立 completion passport 或宣稱 Store／WACK 完成。
 - R2 斷網 Sandbox 仍 exit 2；進一步確認 `CLOUDHIME_PACKAGED_SMOKE_GPU_LAYERS=0` 被正整數 parser 拒絕。僅 GPU 層數改為允許 0，負數仍拒絕；timeout 的 0 仍拒絕。functional／orchestrator 14 passed（1.38 秒）。此為驗收入口修正，不代表模型已完成推論。
 - R3 EXE 重建 exit 0，SHA256 `5816ccd65e0eec0481ab7b2625393b0c8bd2d970502d305b394e5dc93f4ba68f`；未改變的 runtime／模型／資料使用硬連結組裝，EXE 獨立複製，舊版產物未覆寫。最新純 CPU／斷網驗收進行中，證據目錄 `.tmp/sandbox-offline-20260920-r3/output`。R1 MSIX 不含 R2／R3 的 smoke 修正，不當作最新最終包。
+- R3 最終 FAIL，且 helper 回報 descendant cleanup 失敗；依重試閘門停止封裝、轉低成本原生啟動診斷。R3 ZIP 可讀、362 entries／0 model files／EXE SHA 正確，但不是功能驗收通過的發行包。
+- 全新斷網 VM 直接執行同一份 `llama-server --version`：system-only PATH exit `-1073741515`（0xC0000135）；加入包內 `_internal/PySide6` 與 `_internal` 後 exit 0，回報 9968／1d1d9a9ed。證據 `.tmp/sandbox-dll-diagnostic/output/diagnosis.json`，無模型推論、无 API Key。PE imports 確認 MSVCP140 相依，而該 DLL 在 PySide6 子目錄。
+- 修正 owned helper 的 child PATH，在 Windows frozen 環境加入包內 PySide6 CRT 路徑，不修改父程序／系統 PATH，也不使用 process-wide SetDllDirectory。參考 PyInstaller 官方 https://pyinstaller.org/en/latest/common-issues-and-pitfalls.html 。runtime hardening／local runtime／functional smoke 86 passed（1.95 秒）；尚待 R4 frozen 驗證，未宣稱完整离線翻譯通過。

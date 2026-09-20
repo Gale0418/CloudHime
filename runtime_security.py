@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 import os
+from pathlib import Path
 import re
+import sys
 from typing import Any
 
 MAX_STDERR_LINE_CHARS = 4096
@@ -24,6 +26,17 @@ def build_runtime_environment(key: str, inherited: Mapping[str, str] | None = No
     environment = {name: value for name, value in source.items()
                    if not name.upper().startswith("LLAMA_")}
     environment["LLAMA_API_KEY"] = key
+    # PyInstaller puts the C++ runtime beside Qt, not in its top-level DLL
+    # directory. Add it only for our helper; never change the parent PATH or
+    # process-wide SetDllDirectory state.
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if sys.platform == "win32" and getattr(sys, "frozen", False) and bundle_root:
+        root = Path(bundle_root).resolve()
+        qt_dir = (root / "PySide6").resolve()
+        if qt_dir.parent == root and (qt_dir / "MSVCP140.dll").is_file():
+            path_key = next((name for name in environment if name.upper() == "PATH"), "PATH")
+            existing = environment.get(path_key, "")
+            environment[path_key] = str(qt_dir) + (";" + existing if existing else "")
     return environment
 
 

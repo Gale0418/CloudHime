@@ -18,6 +18,34 @@ import pytest
 SECRET = "test-owned-session-key"
 
 
+def test_frozen_helper_finds_bundled_crt_without_changing_parent(tmp_path, monkeypatch):
+    import runtime_security as security
+
+    qt = tmp_path / "PySide6"
+    qt.mkdir()
+    (qt / "MSVCP140.dll").write_bytes(b"fixture")
+    monkeypatch.setattr(security.sys, "platform", "win32")
+    monkeypatch.setattr(security.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(security.sys, "_MEIPASS", str(tmp_path), raising=False)
+    inherited = {"Path": "C:\\Windows\\System32", "LLAMA_LOG_FILE": "untrusted.log"}
+    result = security.build_runtime_environment(SECRET, inherited)
+    assert result["Path"] == str(qt.resolve()) + ";C:\\Windows\\System32"
+    assert "PATH" not in result
+    assert "LLAMA_LOG_FILE" not in result
+    assert inherited == {"Path": "C:\\Windows\\System32", "LLAMA_LOG_FILE": "untrusted.log"}
+    monkeypatch.setattr(security.sys, "frozen", False)
+    assert security.build_runtime_environment(SECRET, inherited)["Path"] == inherited["Path"]
+
+
+def test_frozen_helper_does_not_add_missing_crt_directory(tmp_path, monkeypatch):
+    import runtime_security as security
+
+    monkeypatch.setattr(security.sys, "platform", "win32")
+    monkeypatch.setattr(security.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(security.sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert "PATH" not in security.build_runtime_environment(SECRET, {})
+
+
 @pytest.fixture
 def runtime_module(monkeypatch):
     assets = ModuleType("local_vision_assets")
