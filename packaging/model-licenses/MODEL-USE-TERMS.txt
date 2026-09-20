@@ -1,0 +1,14 @@
+CloudHime bundled Gemma model terms
+
+Use and redistribution of the bundled Gemma model and its derivatives are
+subject to the accompanying GEMMA-TERMS.html. As a condition of use and
+redistribution, you must comply with Section 3.2 of those terms, including the
+Gemma Prohibited Use Policy supplied in GEMMA-PROHIBITED-USE.html and applicable
+laws. These restrictions form part of the terms governing the bundled model.
+You must pass along the required agreement, notice, and use restrictions when
+redistributing the model. CloudHime's source-code license does not replace or
+override the model terms. No endorsement by Google is implied.
+
+隨附 Gemma 模型與衍生模型的使用及再散布須遵守隨附的 Gemma 條款，
+包括第 3.2 節、禁止使用政策與適用法令。這些限制是隨附模型使用條款的一部分。
+再散布時須保留必要條款、告知與使用限制；CloudHime 原始碼授權不取代模型條款。

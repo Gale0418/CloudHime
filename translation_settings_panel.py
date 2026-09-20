@@ -538,6 +538,18 @@ class TranslationSettingsPanel(QWidget):
         local_layout = self.provider_disclosures["local_gemma"].body_layout
         online_layout = self.provider_disclosures["online_gemma"].body_layout
 
+        self.btn_use_local_gemma = QPushButton()
+        self.btn_use_local_gemma.setObjectName("useLocalGemma")
+        self.btn_use_local_gemma.clicked.connect(self.on_use_local_gemma)
+        self.btn_use_local_gemma.setEnabled(
+            self.cmb_ai_model.findData("gemma-3-4b-it-local") >= 0
+        )
+        local_layout.addWidget(self.btn_use_local_gemma)
+        self.lbl_local_model_terms = QLabel()
+        self.lbl_local_model_terms.setWordWrap(True)
+        self.lbl_local_model_terms.setOpenExternalLinks(True)
+        local_layout.addWidget(self.lbl_local_model_terms)
+
         # Local Gemma owns prompt and tuning controls; the existing frame and
         # widget identities stay unchanged for controller integrations.
         for widget in (
@@ -723,6 +735,14 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.blockSignals(True)
         self.input_luna_api_key.setText(self._controller_secret("luna_api_key", "openai_api_key"))
         self.input_luna_api_key.blockSignals(False)
+
+    def on_use_local_gemma(self):
+        """先明確選本地模型，再啟用 AI，不沿用雲端金鑰門檻。"""
+        index = self.cmb_ai_model.findData("gemma-3-4b-it-local")
+        if index < 0:
+            return
+        self.cmb_ai_model.setCurrentIndex(index)
+        self.on_translate_mode_clicked(True)
 
     def on_translate_mode_clicked(self, use_ai):
         has_key = bool(self.controller.worker.google_api_key.strip())
@@ -1138,7 +1158,7 @@ class TranslationSettingsPanel(QWidget):
         cooldown = "Cooldown" if is_en else "冷卻中"
         using = "Using" if is_en else "使用中"
         local_not_applicable = "Local status" if is_en else "本地狀態"
-        health = self._provider_health()
+        health = self._provider_health(local_only=True)
         local_ready = str(health.code).startswith("local_ready")
         local_status = ready if local_ready else (local_not_applicable if health.code == "google_ready" else needs_setup)
         self._set_provider_row(
@@ -1270,8 +1290,8 @@ class TranslationSettingsPanel(QWidget):
         lang = self._ui_language()
         notes = {
             "gemma-3-4b-it-local": {
-                "en": "Downloads to AppData. Read the <a href=\"https://ai.google.dev/gemma/terms\">Gemma Terms of Use</a> before enabling.",
-                "zh-TW": "模型會下載到 AppData。啟用前請閱讀 <a href=\"https://ai.google.dev/gemma/terms\">Gemma 使用條款</a>。",
+                "en": "Full edition includes the model; light edition downloads to AppData. Read the <a href=\"https://ai.google.dev/gemma/terms\">Gemma Terms of Use</a> before enabling.",
+                "zh-TW": "完整包內附模型；輕量包下載至 AppData。啟用前請閱讀 <a href=\"https://ai.google.dev/gemma/terms\">Gemma 使用條款</a>。",
             },
             "gemma-3-27b-it": {
                 "en": "Best balance for screenshot translation.",
@@ -1335,6 +1355,10 @@ class TranslationSettingsPanel(QWidget):
         self.spin_luna_timeout.setSuffix(" sec" if is_en else " 秒")
         self.cmb_luna_reasoning.setItemText(0, "Off" if is_en else "關閉")
         self.lbl_ai_model.setText(translation_tools.ui_text(lang, "translation_ai_model"))
+        self.btn_use_local_gemma.setText(
+            "Use local Gemma 3 4B" if is_en else "使用本地 Gemma 3 4B"
+        )
+        self.lbl_local_model_terms.setText(self._ai_model_note_text("gemma-3-4b-it-local"))
         self._refresh_model_availability_text()
         self.lbl_gemma_prompt.setText(translation_tools.ui_text(lang, "translation_gemma_prompt"))
         self.input_gemma_prompt.setPlaceholderText(
@@ -1380,10 +1404,13 @@ class TranslationSettingsPanel(QWidget):
     def set_translate_advanced_visible(self, visible):
         self.advanced_translate_frame.setVisible(True)
 
-    def _provider_health(self):
+    def _provider_health(self, *, local_only=False):
         worker = self.controller.worker
         model_id = str(self.cmb_ai_model.currentData() or "") if self.cmb_ai_model.count() else ""
         model_label = self.cmb_ai_model.currentText() if self.cmb_ai_model.count() else "AI"
+        if local_only:
+            model_id = "gemma-3-4b-it-local"
+            model_label = "Gemma 3 4B (Local)"
         runtime = getattr(worker, "local_vision_runtime", None)
         runtime_state = getattr(runtime, "_state", None)
         runtime_name = str(getattr(runtime_state, "name", "") or "")
@@ -1416,8 +1443,8 @@ class TranslationSettingsPanel(QWidget):
 
         return assess_provider_health(
             ui_language=self._ui_language(),
-            ai_requested=bool(self._ai_requested),
-            ai_enabled=bool(self.btn_translate_ai.isChecked()),
+            ai_requested=local_only or bool(self._ai_requested),
+            ai_enabled=local_only or bool(self.btn_translate_ai.isChecked()),
             model_id=model_id,
             model_label=model_label,
             has_api_key=bool(self.input_api_key.text().strip() or getattr(worker, "google_api_key", "").strip()),

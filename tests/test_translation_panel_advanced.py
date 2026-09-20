@@ -65,6 +65,43 @@ class DummyController:
         return "default prompt"
 
 
+def test_explicit_local_selection_from_remote_without_key(qtbot):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = False
+    controller.worker.google_api_key = ""
+    selected = [0]
+    controller.cmb_ai_model = SimpleNamespace(currentIndex=lambda: selected[0])
+    models = [("Remote", "gemma-4-31b-it"), ("Local", "gemma-3-4b-it-local")]
+    def select(index):
+        selected[0] = index
+        controller.worker.gemma_model = models[index][1]
+    controller.on_ai_model_changed = select
+    controller.toggle_ai_translation = lambda value: setattr(
+        controller.worker, "use_gemma_translation", value
+    )
+    panel = TranslationSettingsPanel(controller, models)
+    qtbot.addWidget(panel)
+    panel.btn_use_local_gemma.click()
+    assert selected[0] == 1
+    assert controller.worker.use_gemma_translation
+    assert panel.btn_translate_ai.isChecked()
+    assert panel.provider_disclosures["local_gemma"].header.isChecked()
+    assert not controller.worker.google_api_key
+
+
+def test_local_status_never_inherits_remote_key_requirement(qtbot):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+    panel._ai_requested = True
+    panel.update_provider_status_rows()
+    assert panel._provider_health().code == "remote_key_required"
+    assert panel._provider_health(local_only=True).code != "remote_key_required"
+    assert not panel.btn_use_local_gemma.isEnabled()
+
+
 def test_translation_panel_advanced_tuning_hidden(qtbot):
     controller = DummyController()
     panel = TranslationSettingsPanel(controller, supported_ai_models=[("Gemma Test", "gemma-test")])

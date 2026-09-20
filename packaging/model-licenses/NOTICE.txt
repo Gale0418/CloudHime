@@ -1,0 +1,8 @@
+Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms
+
+Model: Google Gemma 3 4B IT, GGUF conversion/quantization by ggml-org.
+Source: https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF
+Revision: ab31416aceb30cd095cb34cc27eea120940964e4
+CloudHime distributes these weights unchanged from that revision.
+GEMMA-TERMS.html and GEMMA-PROHIBITED-USE.html are official document snapshots
+retrieved on 2026-09-20. They apply to the model, not to all CloudHime source code.

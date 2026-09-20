@@ -12,6 +12,10 @@ set "ZIP_FILE=dist\%APP_NAME%.zip"
 set "RUNTIME_STAGE=build\runtime"
 set "BUILD_EXIT_CODE=0"
 set "PYTHON=py -3.10-64"
+rem Full offline release is the default. Set CLOUDHIME_RELEASE_FLAVOR=light to omit models.
+if not defined CLOUDHIME_RELEASE_FLAVOR set "CLOUDHIME_RELEASE_FLAVOR=full"
+if not "%CLOUDHIME_RELEASE_FLAVOR%"=="full" if not "%CLOUDHIME_RELEASE_FLAVOR%"=="light" goto :failure
+if not defined CLOUDHIME_MODEL_SOURCE set "CLOUDHIME_MODEL_SOURCE=%LOCALAPPDATA%\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a"
 set "BUILD_REQUIREMENTS=requirements-build-win-amd64-py310.txt"
 %PYTHON% -c "import platform, sys; ok = sys.implementation.name == 'cpython' and sys.version_info[:2] == (3, 10) and sys.platform == 'win32' and platform.machine().lower() in ('amd64', 'x86_64'); sys.exit('Python 3.10 x64 is required for the production release build.') if not ok else None"
 if errorlevel 1 (
@@ -139,18 +143,24 @@ if errorlevel 1 (
   goto :failure
 )
 set "CLOUDHIME_PACKAGED_IMPORT_SMOKE="
-powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -ModelBundle light
 if errorlevel 1 (
   echo Release preflight failed.
   goto :failure
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Compress-Archive -Path 'dist\%APP_NAME%\*' -DestinationPath 'dist\%APP_NAME%.zip' -Force"
+rem GitHub ZIP never contains weights. Stage models only AFTER this archive is complete.
+%PYTHON% packaging\release_archive.py zip --dist "%DIST_DIR%" --output "%ZIP_FILE%" --flavor light
 if errorlevel 1 (
   goto :failure
 )
 
+if "%CLOUDHIME_RELEASE_FLAVOR%"=="full" (
+  %PYTHON% packaging\release_archive.py stage --dist "%DIST_DIR%" --source "%CLOUDHIME_MODEL_SOURCE%"
+  if errorlevel 1 goto :failure
+  powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -ModelBundle full
+  if errorlevel 1 goto :failure
+)
 goto :cleanup
 
 :failure

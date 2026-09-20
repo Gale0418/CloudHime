@@ -6,6 +6,8 @@ param(
     [string]$ExpectedIdentityName = "CloudHime",
     [string]$ExpectedPublisher = "",
     [string]$PythonPath = "python",
+    [ValidateSet("auto", "light", "full")]
+    [string]$ModelBundle = "auto",
     [ValidateSet("x64")]
     [string]$ExpectedArchitecture = "x64"
 )
@@ -514,10 +516,8 @@ if ($signingMaterial.Count -gt 0) {
 $unexpectedModels = @($files | Where-Object {
     $_.Name -match "(?i)\.gguf($|\.)" -or $_.Name -like "mmproj*"
 })
-if ($unexpectedModels.Count -gt 0) {
-    $names = $unexpectedModels | Select-Object -ExpandProperty FullName
-    throw "Release dist must not bundle model/projector files; move them to managed AppData. Found: $($names -join ', ')"
-}
+& $PythonPath (Join-Path $PSScriptRoot "release_archive.py") verify --dist $dist --flavor $ModelBundle
+if ($LASTEXITCODE -ne 0) { throw "Release model bundle verification failed." }
 
 $bytes = ($files | Measure-Object -Property Length -Sum).Sum
 [pscustomobject]@{
@@ -528,5 +528,5 @@ $bytes = ($files | Measure-Object -Property Length -Sum).Sum
     RuntimeRoot = $runtimeRoot
     FileCount = $files.Count
     Bytes = [int64]$bytes
-    ModelFiles = 0
+    ModelFiles = $unexpectedModels.Count
 }

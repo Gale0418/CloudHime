@@ -1,0 +1,30 @@
+# T64：本地入口與完整離線包
+
+## 範圍與決策
+
+主人核准以 Gemma **3 4B IT Q4_K_M** 完整離線包為主要發行方式，並確認模型散布條款；線上 Gemma 4 不變，不進行本地模型升級。模型加 projector 共 3,341,008,960 bytes，不進 Git。
+
+乾淨 Sandbox 的使用者截圖重現：預設雲端模型無 Key 時，Gemma AI 按鈕切回 Google Translate；Local Gemma 狀態卡也誤顯示雲端 Key 提示。修正為獨立的本地選用按鈕與本地 health 評估，不取消雲端 Key 檢查。
+
+## 多角度檢查與研究
+
+- UX：本地入口不應藏在 Online Gemma 內；保留單一 canonical 模型選擇狀態，明確按鈕先選本地再啟用。
+- Runtime：沿用 `resolve_preferred_vision_assets` 的隨包路徑與 SHA 驗證，不增加另一套 runtime／模型快取，不把隨包權重再複製到 AppData。
+- 發行：新增 flavor-aware 模型 gate；full 要求兩個固定資產與條款，light 拒絕模型，auto 仍驗證任何出現的模型。ZIP 改用標準庫 ZIP64，無新依賴。
+- 更新：模型未變可保留同一路徑；尚未實作／宣稱自動差異更新器。
+- 授權：依 https://ai.google.dev/gemma/terms 第 3 節，附官方條款／政策副本、Notice、使用限制。官方 HTML 快照取得日 2026-09-20；不得用 CloudHime 原始碼授權取代模型條款。
+- 標準庫依據：https://docs.python.org/3/library/zipfile.html ，並透過 GitHub connector 查閱 python/cpython 的 `Doc/library/zipfile.rst`；採用 ZIP64 公開介面，不複製實作。
+- 平台限制：https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases ：單一 release asset 必須小於 2 GiB。主人進一步明確指定 GitHub 不上傳模型、只有 MSIX 內含模型，因此 ZIP 固定 light，封裝後才 stage full dist；不做分卷。
+
+這是 Codex 的跨領域檢查，不是虛構專家投票。Antigravity 唯讀委派 request `ch-offline-ui-review-20260920` 因 RPC session unavailable、agy 缺少模型 effort 而失敗，未取得審查結果，未宣稱 Gemini 驗證。
+
+## 本輪證據
+
+- `python -m pytest tests/test_release_archive.py tests/test_translation_panel_advanced.py tests/test_provider_health.py -q -p no:cacheprovider`：41 passed（5.50 秒）；QT_QPA_PLATFORM=offscreen。
+- 新增測試涵蓋雲端預設／無 Key 切本地、本地狀態隔離、缺模型、損壞 hash、缺條款、多餘模型、ZIP64 與既有 ZIP 不覆寫。
+- CodeRabbit 首輪 1 minor：README 舊模型排除說明與新政策矛盾，已修；首輪未覆蓋新模組，因此另以 9 檔隔離目錄補查。
+- 隔離審查初次因 base branch 未指定而失敗；明確 `--base main` 後完成 9 檔審查，0 issues。本小時已呼叫三次，不再追加。後續 MSIX CreateUpload 的 ZIP64 連帶修正未受此輪 CodeRabbit 覆蓋，另以單元／builder 契約與 PowerShell parser 驗證。
+- 發行／MSIX／資產／UI／health 回歸：122 passed in 534.82s；後續依主人要求調整 ZIP-before-model-stage 順序，需再驗證受影響建置契約。
+- ZIP-before-stage 變更後：release packaging／archive 31 passed；加入 MSIX upload ZIP64 後同組 32 passed；settings theme/layout 7 passed；MSIX builder 2 passed，PowerShell parser PASS。
+- 新 frozen build、完整模型 stage、乾淨 Sandbox 推論尚在進行，不能算 PASS。
+- T64 保持 Review；沒有建立 completion passport 或宣稱 Store／WACK 完成。

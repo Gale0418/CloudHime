@@ -1,0 +1,9 @@
+reviews:
+  path_filters:
+    - "!example/**"
+    - "!models/**"
+    - "!runtime/**"
+    - "!build/**"
+    - "!dist/**"
+    - "!output/**"
+    - "!packaging/model-licenses/*.html"

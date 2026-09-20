@@ -6,7 +6,11 @@
 
 makeappx.exe 由 Windows SDK 提供。預設開發 Publisher 只適合本機驗證；送 Partner Center 前必須使用已保留的 Store identity／publisher 參數。Store MSIX 上傳與 Microsoft re-signing 仍需在 Partner Center 完成。此 Builder 目前只產生 x64 套件，因為發行 runtime 內含 x64 的 llama/ggml/CUDA 二進位檔；未來新增其他架構時，必須先提供對應 runtime 與 CI 契約。
 
-模型與 projector 不放進 MSIX；CloudHime 會將受管模型下載到使用者 AppData，並驗證版本與 SHA-256。THIRD_PARTY_NOTICES.md 與 LICENSE 會由 PyInstaller release bundle 隨包提供。
+完整離線包為預設，固定附帶 Gemma 3 4B IT Q4_K_M 與 projector（合計 3,341,008,960 bytes）。建置從 `CLOUDHIME_MODEL_SOURCE` 指定目錄取得已下載的模型；未指定時使用目前使用者 AppData 的 `CloudHime/models/gemma-3-4b-it/ggml-org-ab31416a`。模型缺少或大小／SHA-256 不符時停止，不會自動下載或悄悄改成輕量包。
+
+模型放在 `_internal/models`，執行時直接讀取，完整性 receipt 仍寫在使用者 AppData。隨附 `NOTICE.txt`、模型使用條款與官方條款／禁止使用政策副本。`CLOUDHIME_RELEASE_FLAVOR=light` 可明確建立不附模型的輕量包；此時沿用受管 AppData 下載路徑。MSIX 會沿用輸入 dist 的模型種類，真正 Store／乾淨機驗收仍須另做。
+
+GitHub ZIP 永遠不含模型：先驗證輕量 dist 並用 Python 標準庫 ZIP64 封裝 ZIP，再將模型加入 MSIX 用的 dist 並重新驗證 full。模型不進 Git、GitHub 附件或 EXE，也不做分卷。模型版本不變時可保留 `_internal/models`，但目前沒有宣稱已實作自動差異更新器。THIRD_PARTY_NOTICES.md 與 LICENSE 由 PyInstaller release bundle 隨包提供。
 
 CreateUpload also produces a manually assembled .msixupload archive containing the MSIX. Public symbols are optional and are not included by this builder yet.
 
@@ -23,7 +27,7 @@ CreateUpload also produces a manually assembled .msixupload archive containing t
 
     pwsh -File packaging/build_msix.ps1 -DistDir dist/CloudHime -PreflightOnly
 
-這個檢查會確認啟動檔、主 logo、44x44 / 50x50 / 150x150 MSIX 圖示、字典、授權 notices、llama/ggml runtime 與敏感檔案規則，也會拒絕把 GGUF、projector、簽章材料或已生成的 MSIX 檔案帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
+這個檢查會確認啟動檔、主 logo、44x44 / 50x50 / 150x150 MSIX 圖示、字典、授權 notices、llama/ggml runtime 與敏感檔案規則。`-ModelBundle full` 要求固定的 GGUF／projector 路徑、大小、SHA-256 與模型條款；`light` 拒絕模型；預設 `auto` 依有無模型選擇並完整驗證，絕不接受缺一檔的完整包。簽章材料與已生成的 MSIX 仍禁止帶進套件。它不會修改 dist，不取代 makeappx、簽章、WACK 或乾淨 Windows 安裝測試。
 
 MakeAppx 解包後，請只對已解包根目錄使用 `verify_release_dist.ps1 -UnpackedMsix`。此模式仍驗證 payload provenance，且僅容許根目錄的 `AppxManifest.xml`／`AppxBlockMap.xml`；預設 manifest 必須是 CloudHime、具 `CN=` publisher 並為 x64。可用 `-ExpectedIdentityName`、`-ExpectedPublisher` 與 `-ExpectedArchitecture` 覆寫這些期望值；提供 `-ExpectedPublisher` 時，會與 manifest publisher 做大小寫敏感的精確比對，未提供時則只要求 publisher 以 `CN=` 開頭。其他位置的 metadata、額外 `.msix`／`.appx` 與任何簽章材料仍會 fail-closed。
 

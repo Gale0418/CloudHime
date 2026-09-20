@@ -412,9 +412,13 @@ def test_release_build_runs_preflight_before_creating_zip():
 
     pyinstaller_index = build_script.index("%PYTHON% -m PyInstaller --noconfirm --clean CloudHime.spec")
     preflight_index = build_script.index("packaging\\verify_release_dist.ps1")
-    zip_index = build_script.index("Compress-Archive")
+    zip_index = build_script.index("packaging\\release_archive.py zip")
     assert pyinstaller_index < preflight_index < zip_index
     assert "Release preflight failed." in build_script[preflight_index:zip_index]
+    stage_index = build_script.index("packaging\\release_archive.py stage")
+    assert zip_index < stage_index
+    assert '--flavor light' in build_script[zip_index:stage_index]
+    assert '-ModelBundle full' in build_script[stage_index:]
 
 
 def test_release_build_stages_dependency_provenance_before_pyinstaller_and_specs_it():

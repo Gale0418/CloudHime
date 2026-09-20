@@ -214,7 +214,7 @@ try {
     }
 
     if ($CreateUpload) {
-        Compress-Archive -LiteralPath $package -DestinationPath $uploadZip -Force
+        & python (Join-Path $PSScriptRoot "release_archive.py") zip-upload --source $package --output $uploadZip
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to create MSIX upload archive"
         }

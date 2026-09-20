@@ -585,7 +585,7 @@ def test_release_dist_preflight_validates_a_realistic_bundle():
             logo_path.write_bytes(valid_logo)
 
         invalid_cases = (
-            (fixture / "models.gguf", b"must stay in AppData", "AppData"),
+            (fixture / "models.gguf", b"unexpected model", "model bundle verification failed"),
             (fixture / ".env.production", b"must stay out of the package", "secrets"),
             (fixture / "dev-signing.pfx", b"must stay in package", "signing material"),
             (fixture / "_internal" / "_llama_cpp.cp310-win_amd64.pyd", b"binding", "in-process llama"),
