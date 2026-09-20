@@ -1,6 +1,6 @@
 # Smoke Tests
 
-2026-09-20 CH-T64 發行盤點：確認 main 8852eeb 遠端 benchmark 因未追蹤 example 圖片失敗；縮放測試改為合成 PNG 並涵蓋 160px 邊界，本機 benchmark 組 205 passed in 22.66s。修正版遠端結果待核對，詳見 reviews/2026-09-20-release-readiness.md。
+2026-09-20 CH-T64 發行盤點：確認 main 8852eeb 遠端 benchmark 因未追蹤 example 圖片失敗；縮放測試改為合成 PNG 並涵蓋 160px 邊界，本機 benchmark 組 205 passed in 22.66s。CodeRabbit 0 issues；修正版 99230a8 遠端 CI run 35501512505 success，5 個測試組與 3 個 contract／inventory job 全通過，2 個 opt-in 真實發行 job skipped。詳見 reviews/2026-09-20-release-readiness.md。
 
 2026-09-09 T35／T51 follow-up：121 項 Knowledge／Japanese OCR 測試通過；零可讀來源禁止呼叫模型，混合清單排除不完整來源。真實第一方頁讀取成功，但 Gemma 31B 抽取 HTTP 500；Meiki 固定模型卡 LGPL-3.0 已核對，完整來源／發佈 gate 尚未核實。兩項維持 Review，詳見 output/mission-center-evidence/ch-t35-t51-followup-20260909.md。
 

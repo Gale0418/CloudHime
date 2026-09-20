@@ -19,7 +19,7 @@ Canonical tasks.md 尚有 7 個未完成子任務：CH-T35、CH-T64 為 Review�
 - 修正：以暫存合成 PNG 驗證尺寸轉換，涵蓋 95、159、160px 高度；保留實際編碼、縮放與解碼路徑。
 - 本機整個 benchmark 組：205 passed in 22.66s。此為單元契約驗證，不宣稱真實 OCR 品質。
 - CodeRabbit 本輪一次審查完成，0 issues；沒有傳送 example 圖片。
-- 遠端修正版 CI 結果待 push 後核對。
+- 修正版 99230a8 遠端 CI：https://github.com/Gale0418/CloudHime/actions/runs/35501512505 ，conclusion=success；5 個測試組與 3 個 contract／inventory job 全通過。2 個 opt-in 真實發行 job 未啟動，仍為 skipped。
 
 ## 上游核對
 
