@@ -5,4 +5,4 @@
 - 修正：requirements-ci.txt 明確固定 PyYAML 6.0.3，CI hash lock 恢復相同已知 wheel hash；production requirements／lock 不加入 PyYAML。CI-only graph regression 納入 pyyaml。
 - 驗證：tests/test_dependency_contract.py 21 passed in 0.30s；pip 26.2.1 對 CI lock 的 require-hashes dry-run 成功；dependency_contract 46 components PASS。
 - CodeRabbit：獨立 snapshot 僅兩個手寫變更檔（requirements-ci.txt、tests/test_dependency_contract.py），排除 lock／圖檔／產物；完成、0 issues、exit 0。
-- 後續：推送修正版後確認遠端 CI；不把本機原本已安裝 yaml 當成乾淨環境證據。
+- 遠端驗證：commit `8893c6b` 的 [GitHub Actions run 35504262766](https://github.com/Gale0418/CloudHime/actions/runs/35504262766) 已完成，conclusion=`success`。不把本機原本已安裝 yaml 當成乾淨環境證據；此 CI 成功亦不代表 opt-in 發行／乾淨 Windows 實機 gate 已執行。

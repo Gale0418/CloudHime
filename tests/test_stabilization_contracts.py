@@ -36,6 +36,16 @@ def test_msix_installs_only_hash_pinned_contract_tooling_before_fixture():
     assert lines[0] == "packaging==26.3 --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
 
 
+def test_release_provenance_bootstraps_validator_after_production_report():
+    script = (ROOT / "packaging/prepare_release_provenance.ps1").read_text(encoding="utf-8")
+    install = '& $venvPython -m pip install --require-hashes -r (Join-Path $repoRoot "ci\\requirements-contract.txt")'
+    assert script.index("--report $report") < script.index("-m pip check") < script.index(install)
+    assert script.index(install) < script.index('dependency_contract.py") validate')
+    assert 'throw "Provenance contract tooling installation failed."' in script
+    install_line = next(line for line in script.splitlines() if install in line)
+    assert "--report" not in install_line
+
+
 def test_existing_workflow_triggers_and_manual_release_gates_are_preserved():
     config = workflow()
     assert set(config["on"]) == {"push", "pull_request", "workflow_dispatch"}

@@ -58,6 +58,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Production hash-lock installation failed." }
     & $venvPython -m pip check
     if ($LASTEXITCODE -ne 0) { throw "Production pip check failed." }
+    # Capture/check the production graph before adding validator-only tooling.
+    # Do not include this install in the production report or shipped SBOM.
+    & $venvPython -m pip install --require-hashes -r (Join-Path $repoRoot "ci\requirements-contract.txt")
+    if ($LASTEXITCODE -ne 0) { throw "Provenance contract tooling installation failed." }
     & $venvPython (Join-Path $repoRoot "packaging\dependency_contract.py") validate --report $report --requirements (Join-Path $repoRoot "requirements-lock-win-amd64-py310.txt") --direct-requirements (Join-Path $repoRoot "requirements.txt") --lock (Join-Path $repoRoot "requirements-lock-win-amd64-py310.txt") --sbom-output $sbom
     if ($LASTEXITCODE -ne 0) { throw "Production dependency contract validation failed." }
     if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
