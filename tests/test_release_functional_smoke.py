@@ -294,6 +294,20 @@ def test_packaged_functional_smoke_writes_redacted_success_summary(tmp_path):
     assert "不要寫入結果的原文" not in result_path.read_text(encoding="utf-8")
     assert captured["kwargs"]["require_gpu"] is True
 
+    # CPU-only sandbox explicitly sets zero GPU layers; positive-only parsing
+    # must remain in force for timeouts and context size, not this field.
+    environ[packaged.PACKAGED_SMOKE_REQUIRE_GPU_ENV] = "0"
+    environ[packaged.PACKAGED_SMOKE_FORCE_CPU_ENV] = "1"
+    environ[packaged.PACKAGED_SMOKE_GPU_LAYERS_ENV] = "0"
+    assert packaged.run_packaged_functional_smoke(environ=environ, runner=fake_runner) == 0
+    assert captured["kwargs"]["gpu_layers"] == 0
+    assert captured["kwargs"]["force_cpu"] is True
+    environ[packaged.PACKAGED_SMOKE_GPU_LAYERS_ENV] = "-1"
+    assert packaged.run_packaged_functional_smoke(environ=environ, runner=fake_runner) == 2
+    environ[packaged.PACKAGED_SMOKE_GPU_LAYERS_ENV] = "0"
+    environ[packaged.PACKAGED_SMOKE_TIMEOUT_ENV] = "0"
+    assert packaged.run_packaged_functional_smoke(environ=environ, runner=fake_runner) == 2
+
 
 def test_packaged_functional_smoke_writes_fail_closed_result(tmp_path):
     import json

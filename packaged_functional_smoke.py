@@ -41,12 +41,12 @@ def _env_bool(environ: Mapping[str, str], name: str) -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
-def _env_int(environ: Mapping[str, str], name: str, default: int) -> int:
+def _env_int(environ: Mapping[str, str], name: str, default: int, *, minimum: int = 1) -> int:
     value = str(environ.get(name, "") or "").strip()
     if not value:
         return default
     parsed = int(value)
-    if parsed < 1:
+    if parsed < minimum:
         raise ValueError(f"invalid_{name.lower()}")
     return parsed
 
@@ -179,7 +179,7 @@ def run_packaged_functional_smoke(
                 environment, PACKAGED_SMOKE_STARTUP_TIMEOUT_ENV, 90
             ),
             context_size=_env_int(environment, PACKAGED_SMOKE_CONTEXT_SIZE_ENV, 4096),
-            gpu_layers=_env_int(environment, PACKAGED_SMOKE_GPU_LAYERS_ENV, 999),
+            gpu_layers=_env_int(environment, PACKAGED_SMOKE_GPU_LAYERS_ENV, 999, minimum=0),
         )
         _write_result(result_path, _summary(result))
         return 0

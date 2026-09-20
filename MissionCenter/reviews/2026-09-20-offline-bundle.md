@@ -34,3 +34,5 @@
 - 首輪斷網 Sandbox：fresh profile、外部 Python／pip／Conda／Ollama 均不存在；EXE SHA 正確，但 functional smoke exit 2，故 FAIL。程式沒有進入正常 UI；結果保留於 `.tmp/sandbox-offline-20260920/output`。
 - 後續 TDD 重現驗收程式在唯讀 installation root 建立暫存 manifest 會 PermissionError；改用隔離 TEMP，release functional／orchestrator 14 passed。此修正需新 frozen EXE 重測；不能把首輪 VM 失敗直接改判 PASS，也不能把首版 MSIX 當成已包含後續修正。
 - T64 保持 Review；沒有建立 completion passport 或宣稱 Store／WACK 完成。
+- R2 斷網 Sandbox 仍 exit 2；進一步確認 `CLOUDHIME_PACKAGED_SMOKE_GPU_LAYERS=0` 被正整數 parser 拒絕。僅 GPU 層數改為允許 0，負數仍拒絕；timeout 的 0 仍拒絕。functional／orchestrator 14 passed（1.38 秒）。此為驗收入口修正，不代表模型已完成推論。
+- R3 EXE 重建 exit 0，SHA256 `5816ccd65e0eec0481ab7b2625393b0c8bd2d970502d305b394e5dc93f4ba68f`；未改變的 runtime／模型／資料使用硬連結組裝，EXE 獨立複製，舊版產物未覆寫。最新純 CPU／斷網驗收進行中，證據目錄 `.tmp/sandbox-offline-20260920-r3/output`。R1 MSIX 不含 R2／R3 的 smoke 修正，不當作最新最終包。
