@@ -446,7 +446,8 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_ai_model_notes.setTextFormat(Qt.RichText)
         self.lbl_ai_model_notes.setOpenExternalLinks(True)
         self.lbl_ai_model_notes.setVisible(False)
-        self.lbl_ai_model_notes.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.lbl_ai_model_notes.setMinimumWidth(0)
+        self.lbl_ai_model_notes.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         advanced_layout.addWidget(self.lbl_ai_model_notes)
 
         self.lbl_gemma_prompt = QLabel("")
@@ -1336,7 +1337,6 @@ class TranslationSettingsPanel(QWidget):
         text = self._ai_model_note_text(current_model)
         self.lbl_ai_model_notes.setText(text)
         self.lbl_ai_model_notes.setVisible(bool(text))
-        self.lbl_ai_model_notes.setMaximumHeight(self.fontMetrics().height() * 2 + 12)
 
     def refresh_localized_texts(self):
         lang = self._ui_language()

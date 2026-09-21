@@ -47,6 +47,16 @@ def test_corrupt_source_is_rejected_before_copy(bundle):
     assert not (dist / "_internal/models").exists()
 
 
+def test_uppercase_manifest_sha256_is_accepted(bundle):
+    dist, source = bundle
+    for spec in archive.GEMMA_ASSET_MANIFEST:
+        spec.sha256 = spec.sha256.upper()
+
+    archive.stage_models(dist, source)
+
+    assert archive.verify_models(dist, "full") == 2
+
+
 def test_missing_terms_and_extra_model_fail_closed(bundle):
     dist, source = bundle
     archive.stage_models(dist, source)

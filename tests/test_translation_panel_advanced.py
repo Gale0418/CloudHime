@@ -285,6 +285,25 @@ def test_translation_panel_local_model_discloses_appdata_and_gemma_terms(qtbot):
     assert panel.lbl_ai_model_notes.openExternalLinks()
 
 
+def test_translation_panel_model_note_wraps_without_clipping_terms_link(qtbot):
+    controller = _health_controller(model_id="gemma-3-4b-it-local", ai_enabled=True)
+    panel = TranslationSettingsPanel(controller, [("Gemma Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.sync_from_controller()
+
+    # Exercise the narrow-card geometry that wraps the rich-text terms link
+    # onto multiple lines instead of relying on the panel's default width.
+    notes = panel.lbl_ai_model_notes
+    notes.setMaximumWidth(220)
+    panel._advanced_layout.activate()
+    qtbot.wait(10)
+
+    assert notes.heightForWidth(notes.width()) <= notes.height()
+    assert notes.maximumHeight() >= notes.heightForWidth(notes.width())
+    assert "Gemma Terms of Use" in notes.text()
+
+
 def test_translation_panel_reports_cpu_ready_as_slow_but_available(qtbot):
     state = SimpleNamespace(name="ready", detail="", mode="cpu")
     controller = _health_controller(

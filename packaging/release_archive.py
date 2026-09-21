@@ -26,7 +26,7 @@ def sha256(path):
 def check_model(path, spec):
     if path.is_symlink() or not path.is_file() or path.stat().st_size != spec.size:
         raise ValueError(f"Model size/type mismatch: {path}")
-    if sha256(path) != spec.sha256:
+    if sha256(path) != spec.sha256.lower():
         raise ValueError(f"Model SHA256 mismatch: {path}")
 
 

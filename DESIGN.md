@@ -137,7 +137,7 @@ Shipping artifacts 是 `cloudhime_ui.py`、`translation_settings_panel.py` 與 `
 
 ## Colors
 
-Light 以 `#F2F2F7` 的冷霧 shell 和白色 panel 承載內容；Dark 以 `#1C1C1E` 的不透明 top band、深色 shell 與半透明 graphite panel 保持夜間對比。藍色只作互動與選取焦點，琥珀與紅色只作等待／錯誤語意。
+Light 以 `#F2F2F7` 的冷霧 shell 和白色 panel 承載內容；Dark 以 `rgba(28, 28, 30, 224)` 的霧面半透明 top band、深色 shell 與半透明 graphite panel 保持夜間對比。藍色只作互動與選取焦點，琥珀與紅色只作等待／錯誤語意。
 
 ### Primary
 - **System Blue Light** (`#007AFF`): Light 主按鈕、選取、focus 與可互動的狀態標記。
