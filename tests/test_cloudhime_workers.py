@@ -1765,7 +1765,7 @@ def test_worker_openai_registry_respects_enabled_flag_without_secret_repr():
     worker = OCRWorker(
         openai_api_key="openai-secret",
         openai_enabled=True,
-        openai_model="gpt-5.6-luna",
+        openai_model="gpt-6-luna",
         openai_reasoning_effort="high",
         openai_timeout_seconds=17,
     )

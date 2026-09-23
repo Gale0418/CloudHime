@@ -1,6 +1,6 @@
 ---
 name: CloudHime
-description: Windows 原生 OCR 與即時翻譯的三欄夢幻設定介面視覺系統
+description: Windows 原生 OCR 與即時翻譯的天宮書房雙介面視覺系統
 colors:
   light-shell: "rgba(242, 242, 247, 235)"
   light-panel: "rgba(255, 255, 255, 240)"
@@ -9,6 +9,7 @@ colors:
   light-subtext: "#8E8E93"
   light-border: "rgba(0, 0, 0, 15)"
   light-accent: "#007AFF"
+  celestial-primary-light: "#7052D6"
   settings-top-light: "rgba(242, 242, 247, 224)"
   dark-shell: "rgba(28, 28, 30, 242)"
   dark-panel: "rgba(44, 44, 46, 230)"
@@ -17,13 +18,15 @@ colors:
   dark-subtext: "rgba(235, 235, 245, 150)"
   dark-border: "rgba(255, 255, 255, 20)"
   dark-accent: "#0A84FF"
+  celestial-primary-dark: "#AD9AFF"
   settings-top-dark: "rgba(28, 28, 30, 224)"
-  high-contrast-fallback: "rgba(18, 18, 18, 248)"
+  high-contrast-fallback: "#121212"
   high-contrast-accent: "#FFD400"
   provider-metadata-light: "#636366"
   provider-metadata-dark: "#E5E5EA"
   provider-metadata-high-contrast: "#FFFFFF"
   on-accent: "#FFFFFF"
+  on-accent-dark: "#121212"
   cooldown-amber: "#F4C542"
   error-red: "#E53935"
 typography:
@@ -76,14 +79,14 @@ spacing:
   shell-horizontal: "22px"
 components:
   button-primary-light:
-    backgroundColor: "{colors.light-accent}"
+    backgroundColor: "{colors.celestial-primary-light}"
     textColor: "{colors.on-accent}"
     rounded: "{rounded.nested}"
     padding: "10px 18px"
     height: "32px"
   button-primary-dark:
-    backgroundColor: "{colors.dark-accent}"
-    textColor: "{colors.on-accent}"
+    backgroundColor: "{colors.celestial-primary-dark}"
+    textColor: "{colors.on-accent-dark}"
     rounded: "{rounded.nested}"
     padding: "10px 18px"
     height: "32px"
@@ -115,6 +118,14 @@ components:
 ---
 
 # Design System: CloudHime
+
+## Current shipping direction (2026-09-23)
+
+使用者核准的「天宮書房」概念取代下方記錄的舊版三欄設定頁。小主介面只承擔狀態、全螢幕／區域、立即翻譯、自動掃描、停止與設定入口；「立即翻譯」是最醒目的主要動作。設定窗以四個原生分頁分工：翻譯引擎、擷取與顯示、作品研究、外觀。既有控制器、訊號、Save／Cancel 行為與高對比模式不能因重排而消失。
+
+設定窗左側是可捲動的工作區，右側是獨立的偵探公主插畫；內容不疊在人物上。白晝使用珍珠白與紫色主操作，星夜使用深藍紫與相同的角色構圖，右側插畫取自 `assets/bg_light.png`／`assets/bg_dark.png`；高對比模式不顯示插畫，操作層維持不透明。狀態、API Key 提示與焦點必須在兩種主題下都清楚可讀。翻譯引擎為單選路由，不能只切換外觀而不切換實際 Provider。
+
+主要實作為 `celestial_ui.py`、`cloudhime_ui.py`、`translation_settings_panel.py` 與 `themes.py`。下方的三欄、全幅背景與藍色 accent 規則保留作為舊版歷史紀錄，若與本節衝突，以本節及現行產品行為為準；不應用舊版「禁止插畫側欄」規則否定已核准的新設計。
 
 ## Overview
 
@@ -160,7 +171,7 @@ Light 以 `#F2F2F7` 的冷霧 shell 和白色 panel 承載內容；Dark 以 `rgb
 - **Dark Text** (`rgba(255, 255, 255, 220)`)：Dark 主要文字；輔助文字使用 `rgba(235, 235, 245, 150)`。
 - **Settings Top Light** (`rgba(242, 242, 247, 224)`): Light 霧面半透明 header band。
 - **Settings Top Dark** (`rgba(28, 28, 30, 224)`): Dark 霧面半透明 header band。
-- **High-contrast Fallback** (`rgba(18, 18, 18, 248)`): 高對比或背景圖不可用時的操作底色；高對比 accent 為 `#FFD400`。
+- **High-contrast Fallback** (`#121212`): 高對比或背景圖不可用時的操作底色；高對比 accent 為 `#FFD400`。
 
 ### Named Rules
 

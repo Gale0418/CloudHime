@@ -71,7 +71,7 @@ def test_registry_registers_openai_only_when_explicitly_enabled():
         TranslationProviderRegistryConfig(
             openai_api_key="openai-key",
             openai_enabled=True,
-            openai_model="gpt-5.6-luna",
+            openai_model="gpt-6-luna",
             openai_reasoning_effort="high",
             openai_timeout_seconds=17,
             provider_chain=("openai", "gemma", "google"),
@@ -79,7 +79,7 @@ def test_registry_registers_openai_only_when_explicitly_enabled():
     )
 
     assert disabled.get("openai") is None
-    assert enabled.get("openai").model == "gpt-5.6-luna"
+    assert enabled.get("openai").model == "gpt-6-luna"
     assert enabled.get("openai").reasoning_effort == "none"
     assert enabled.get("openai").timeout_seconds == 17
     assert [provider.name for provider in enabled.resolve_chain()] == ["openai", "google"]

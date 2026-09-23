@@ -1,15 +1,18 @@
 import io
 import json
 import socket
+from types import SimpleNamespace
 from urllib import error
 
 import pytest
 
 import openai_translation_provider as provider_module
+from cloudhime_workers import OCRWorker
 from openai_translation_provider import (
     OpenAIRequestCancelled,
     OpenAITranslationProvider,
 )
+from translation_contracts import TranslationResult
 
 
 class FakeResponse:
@@ -43,7 +46,7 @@ def test_provider_defaults_are_redacted_and_available():
     provider = OpenAITranslationProvider(openai_api_key="super-secret")
 
     assert provider.name == "openai"
-    assert provider.model == "gpt-5.6-luna"
+    assert provider.model == "gpt-6-luna"
     assert provider.available() is True
     assert "super-secret" not in repr(provider)
 
@@ -73,7 +76,7 @@ def test_translate_posts_responses_payload_and_parses_output_text(monkeypatch):
     assert captured["request"].full_url == "https://api.openai.com/v1/responses"
     assert captured["request"].get_header("Authorization") == "Bearer secret-key"
     assert captured["timeout"] == 17
-    assert payload["model"] == "gpt-5.6-luna"
+    assert payload["model"] == "gpt-6-luna"
     assert payload["store"] is False
     assert payload["reasoning"] == {"effort": "none"}
     assert payload["input"][0]["content"][0]["type"] == "input_text"
@@ -91,6 +94,22 @@ def test_translate_batch_payload_disables_reasoning(monkeypatch):
     payload = json.loads(captured["request"].data.decode("utf-8"))
     assert payload["reasoning"] == {"effort": "none"}
     assert [result.text for result in results] == ["one", "two"]
+
+
+@pytest.mark.parametrize(
+    ("target_lang", "instruction"),
+    [("en", "natural English"), ("zh-TW", "natural Traditional Chinese used in Taiwan"), ("ja", "natural Japanese")],
+)
+def test_translation_prompt_keeps_selected_output_language(monkeypatch, target_lang, instruction):
+    captured = {}
+    install_response(monkeypatch, b'{"output_text":"translated"}', captured)
+    provider = OpenAITranslationProvider(openai_api_key="secret")
+
+    provider.translate("Translate this into another language", target_lang=target_lang)
+
+    payload = json.loads(captured["request"].data.decode("utf-8"))
+    prompt = payload["input"][0]["content"][0]["text"]
+    assert f"Every output line must be in {instruction}" in prompt
 
 
 def test_multimodal_converts_gemini_inline_data_to_data_url(monkeypatch):
@@ -234,3 +253,136 @@ def test_response_body_limit_and_cancellation_are_fail_closed(monkeypatch):
     monkeypatch.setattr(provider_module.request, "urlopen", response_then_cancel)
     with pytest.raises(OpenAIRequestCancelled):
         provider.translate("hello", cancel_predicate=lambda: cancelled["value"])
+
+
+class FakeWorkerProvider:
+    def __init__(self, name, available=True):
+        self.name = name
+        self._available = available
+        self.text_calls = 0
+        self.screenshot_calls = 0
+
+    def available(self):
+        return self._available
+
+    def translate(self, text, **_kwargs):
+        self.text_calls += 1
+        return TranslationResult(
+            text=f"{self.name}:{text}",
+            provider=self.name,
+            model="gpt-6-luna" if self.name == "openai" else "gemma-4-31b-it",
+        )
+
+    def translate_screenshot(self, _image_parts, **_kwargs):
+        self.screenshot_calls += 1
+        return TranslationResult(
+            text=f"{self.name}:screenshot",
+            provider=self.name,
+            model="gpt-6-luna" if self.name == "openai" else "gemma-4-31b-it",
+        )
+
+    def translate_multimodal(self, texts, _image_parts, **_kwargs):
+        return [
+            TranslationResult(
+                text=f"{self.name}:{text}",
+                provider=self.name,
+                model="gpt-6-luna" if self.name == "openai" else "gemma-4-31b-it",
+            )
+            for text in texts
+        ]
+
+
+def make_routing_worker(provider_chain, providers):
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.provider_chain = tuple(provider_chain)
+    worker.translation_registry = SimpleNamespace(
+        get=lambda name: providers.get(str(name).strip().casefold())
+    )
+    worker.use_gemma_translation = True
+    worker.google_api_key = "fake-google-key"
+    worker.google_api_keys = ()
+    worker.gemma_model = "gemma-4-31b-it"
+    worker.active_gemma_model = worker.gemma_model
+    worker.local_multimodal_enabled = False
+    worker.local_multimodal_model = ""
+    worker.translation_target_lang = "zh-TW"
+    worker.scan_mode = "region"
+    worker.region_render_mode = "screenshot"
+    worker.convert_to_trad = lambda text: text
+    worker.sync_gemma_call_timestamps_from_provider = lambda _provider: None
+    worker.log_ai_debug = lambda _message: None
+    worker._clear_translation_memories = lambda: None
+    return worker
+
+
+def test_worker_openai_chain_routes_text_and_screenshot_to_openai():
+    openai = FakeWorkerProvider("openai")
+    gemma = FakeWorkerProvider("gemma")
+    worker = make_routing_worker(
+        ("openai",),
+        {"openai": openai, "gemma": gemma},
+    )
+    worker.google_api_key = ""
+
+    assert worker._get_translation_provider("gemma") is openai
+    assert worker.has_ai_text_provider() is True
+    assert worker.has_remote_multimodal_ai() is True
+    assert worker.resolve_multimodal_provider_name() == "openai"
+    assert worker.get_current_ai_provider() == "openai"
+    assert worker._is_local_model_active() is False
+
+    assert OCRWorker.translate_text_gemma(worker, "hello") == "openai:hello"
+    assert OCRWorker.translate_screenshot_gemma(worker, [{"inline_data": {"data": "fake"}}]) == "openai:screenshot"
+    assert openai.text_calls == 1
+    assert openai.screenshot_calls == 1
+    assert gemma.text_calls == 0
+    assert gemma.screenshot_calls == 0
+
+
+def test_worker_openai_chain_does_not_fall_back_to_gemma_without_openai():
+    openai = FakeWorkerProvider("openai", available=False)
+    gemma = FakeWorkerProvider("gemma")
+    worker = make_routing_worker(
+        ("openai",),
+        {"openai": openai, "gemma": gemma},
+    )
+
+    assert worker._get_translation_provider("gemma") is None
+    assert worker.has_ai_text_provider() is False
+    assert worker.has_remote_multimodal_ai() is False
+    assert worker.resolve_multimodal_provider_name() is None
+    assert worker.get_current_ai_provider() == "google"
+    assert worker._is_local_model_active() is False
+    with pytest.raises(ValueError, match="translation_provider_unavailable"):
+        OCRWorker.translate_screenshot_gemma(worker, [{"inline_data": {"data": "fake"}}])
+    assert gemma.screenshot_calls == 0
+
+
+def test_worker_gemma_chain_restores_gemma_and_cache_fingerprint_changes():
+    gemma = FakeWorkerProvider("gemma")
+    worker = make_routing_worker(
+        ("gemma", "google"),
+        {"gemma": gemma},
+    )
+
+    assert worker._get_translation_provider("gemma") is gemma
+    assert worker.has_ai_text_provider() is True
+    assert worker.get_current_ai_provider() == "gemma"
+    assert worker.resolve_multimodal_provider_name() == "gemma"
+
+    worker.gemma_model = "gemma-3-4b-it-local"
+    worker.active_gemma_model = worker.gemma_model
+    assert worker._is_local_model_active() is True
+    worker.provider_chain = ("openai",)
+    assert worker._is_local_model_active() is False
+
+    worker.provider_chain = ("openai",)
+    worker.openai_enabled = True
+    worker.openai_api_key = "fake-openai-key"
+    openai_context = OCRWorker._exact_image_cache_context(worker, 0, 0)
+    openai_key = OCRWorker._build_persistent_translation_cache_key(worker, "hello", "openai")
+    worker.provider_chain = ("gemma", "google")
+    gemma_context = OCRWorker._exact_image_cache_context(worker, 0, 0)
+    gemma_key = OCRWorker._build_persistent_translation_cache_key(worker, "hello", "gemma")
+    assert openai_context != gemma_context
+    assert openai_key != gemma_key

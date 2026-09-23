@@ -106,16 +106,16 @@ def test_service_forwards_explicit_sources_and_validates_model():
     assert draft["source_mode"] == "explicit"
     with pytest.raises(ValueError, match="unsupported knowledge research model"):
         KnowledgeResearchService(google_api_key="unused", model_name="gemini-unknown")
-    assert "gpt-5.6-luna" in RESEARCH_MODEL_IDS
+    assert "gpt-6-luna" in RESEARCH_MODEL_IDS
 
 
 def test_service_can_select_existing_openai_structured_provider():
     service = KnowledgeResearchService(
         openai_api_key="openai-secret",
-        model_name="gpt-5.6-luna",
+        model_name="gpt-6-luna",
     )
 
-    assert service.model_name == "gpt-5.6-luna"
+    assert service.model_name == "gpt-6-luna"
     assert service.model_provider.available() is True
     assert "openai-secret" not in repr(service.model_provider)
 

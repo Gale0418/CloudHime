@@ -18,6 +18,7 @@
   <Resources>
     <Resource Language="en-US" />
     <Resource Language="zh-TW" />
+    <Resource Language="ja-JP" />
   </Resources>
   <Dependencies>
     <TargetDeviceFamily

@@ -180,12 +180,9 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     startup_log("QApplication created")
-    system_font = QFontDatabase.systemFont(QFontDatabase.GeneralFont)
-    system_font.setPointSize(10)
-    system_font.setStyleHint(QFont.SansSerif)
-    system_font.setHintingPreference(QFont.PreferDefaultHinting)
-    app.setFont(system_font)
-    startup_log("font ready", system_font.family())
+    from ui_fonts import apply_ui_font
+
+    startup_log("font ready", apply_ui_font("zh-TW", app))
     
     overlay = OverlayWindow()
     startup_log("OverlayWindow created")

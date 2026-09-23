@@ -149,9 +149,9 @@ class ThemeDefinition:
             f"border-top-color: {highlight}; border-bottom-color: {self.accent}; }}"
             f" QPushButton:pressed {{ background-color: {hover_background}; "
             f"border-top: 2px solid {lower_edge}; border-bottom: 1px solid {highlight}; "
-            "padding-top: 7px; padding-bottom: 3px; }}"
+            "padding-top: 7px; padding-bottom: 3px; }"
             f" QPushButton:focus {{ background-color: {background}; border: 2px solid {self.focus}; "
-            "padding: 5px 11px 3px; }}"
+            "padding: 5px 11px 3px; }"
             f" QPushButton:checked {{ background-color: {self.control_checked}; color: {self.checked_fg}; "
             f"border-top-color: {highlight}; border-bottom-color: {lower_edge}; }}"
             f" QPushButton:disabled {{ background-color: {self.control_disabled_bg}; "
@@ -389,10 +389,10 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
         label="高對比模式",
         is_dark=True,
         colors=_theme_colors(
-            shell_bg="rgba(18, 18, 18, 248)",
+            shell_bg="#121212",
             shell_text="#FFFFFF",
             shell_border="#FFFFFF",
-            panel_bg="rgba(32, 32, 32, 240)",
+            panel_bg="#202020",
             panel_border="#FFFFFF",
             text="#FFFFFF",
             subtext="#E5E5E5",
@@ -431,10 +431,10 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             header_bg="rgba(255, 212, 0, 0.16)",
             header_border="#FFFFFF",
             # High contrast deliberately stays fully opaque and has no image.
-            settings_shell_bg="rgba(18, 18, 18, 248)",
+            settings_shell_bg="#121212",
             settings_top_bg="#121212",
             settings_nav_bg="#000000",
-            settings_card_bg="rgba(32, 32, 32, 240)",
+            settings_card_bg="#202020",
             settings_card_highlight="#FFFFFF",
             settings_card_edge="#000000",
             provider_surface="#202020",
@@ -444,7 +444,7 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             nested_model_surface="#000000",
             nested_model_border="#FFFFFF",
             provider_metadata="#E5E5E5",
-            settings_fallback_bg="rgba(18, 18, 18, 248)",
+            settings_fallback_bg="#121212",
             status_bg="#000000",
             status_border="#FFFFFF",
             status_text="#FFFFFF",

@@ -319,7 +319,7 @@ def test_normalize_settings_payload_migrates_v5_online_provider_metadata_idempot
     assert migrated["online_gemma_enabled"] is True
     assert "google_api_key_slots" not in migrated
     assert migrated["openai_enabled"] is True
-    assert migrated["openai_model"] == "gpt-5.6-luna"
+    assert migrated["openai_model"] == "gpt-6-luna"
     assert migrated["openai_reasoning_effort"] == "none"
     assert migrated["openai_timeout_seconds"] == 300
     assert migrated["provider_chain"] == ["gemma", "openai"]
@@ -357,3 +357,9 @@ def test_settings_normalization_and_save_scrub_known_secret_fields(tmp_path):
     assert "google_api_key_2" not in saved
     assert "openai_api_key" not in saved
     assert saved["custom_api_key"] == "unknown-fields-remain-compatible"
+
+
+def test_japanese_ui_language_is_persisted_as_canonical_locale():
+    normalized = normalize_settings_payload({"ui_language": "ja-JP"}, region_opacity=40)
+
+    assert normalized["ui_language"] == "ja"

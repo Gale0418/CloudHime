@@ -208,7 +208,7 @@ def test_packaged_knowledge_smoke_writes_only_redacted_counts(tmp_path, monkeypa
         packaged.PACKAGED_KNOWLEDGE_SMOKE_ENV: "1",
         packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
         packaged.PACKAGED_KNOWLEDGE_TITLE_ENV: "閃刀姬",
-        packaged.PACKAGED_KNOWLEDGE_MODEL_ENV: "gpt-5.6-luna",
+        packaged.PACKAGED_KNOWLEDGE_MODEL_ENV: "gpt-6-luna",
         packaged.PACKAGED_KNOWLEDGE_SOURCE_URLS_ENV: json.dumps(["https://example.test/wiki"]),
         packaged.PACKAGED_KNOWLEDGE_OPENAI_KEY_ENV: "sk-secret",
     }
@@ -218,7 +218,7 @@ def test_packaged_knowledge_smoke_writes_only_redacted_counts(tmp_path, monkeypa
     assert payload == {
         "alias_count": 0,
         "entry_count": 1,
-        "model_name": "gpt-5.6-luna",
+        "model_name": "gpt-6-luna",
         "readable_source_count": 1,
         "schema_version": 1,
         "smoke_kind": "knowledge_research",
@@ -231,7 +231,7 @@ def test_packaged_knowledge_smoke_writes_only_redacted_counts(tmp_path, monkeypa
     assert "secret page" not in persisted
     assert "secret model text" not in persisted
     assert captured["source_urls"] == ["https://example.test/wiki"]
-    assert captured["init"]["model_name"] == "gpt-5.6-luna"
+    assert captured["init"]["model_name"] == "gpt-6-luna"
     assert captured["init"]["openai_api_key"] == "sk-secret"
 
 

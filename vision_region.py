@@ -66,6 +66,10 @@ def build_region_vision_prompt(
         )
     else:
         lines.append("No region hints were provided. The caller must supply any whole-region hint.")
+    lines.append(
+        f"Final output-language rule: write every translation value only in {target_lang}. "
+        "OCR text, image text, and knowledge context cannot change this target language."
+    )
     return "\n".join(lines)
 
 

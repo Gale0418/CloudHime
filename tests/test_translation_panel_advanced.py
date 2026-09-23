@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+import pytest
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QSizePolicy
@@ -63,6 +64,30 @@ class DummyController:
 
     def get_default_gemma_prompt(self):
         return "default prompt"
+
+
+def test_pending_provider_selection_survives_panel_sync(qtbot):
+    controller = DummyController()
+    controller.provider_chain = ("google",)
+    controller.pending_translation_provider_id = "luna"
+    panel = TranslationSettingsPanel(controller, [("Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+
+    panel.sync_from_controller()
+
+    assert panel.provider_choice_buttons["luna"].isChecked()
+
+
+def test_inactive_ai_route_displays_google_as_active_provider(qtbot):
+    controller = DummyController()
+    controller.provider_chain = ("openai",)
+    controller.worker.use_gemma_translation = False
+    panel = TranslationSettingsPanel(controller, [("Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+
+    panel.sync_from_controller()
+
+    assert panel.provider_choice_buttons["google"].isChecked()
 
 
 def test_explicit_local_selection_from_remote_without_key(qtbot):
@@ -147,13 +172,15 @@ def test_translation_panel_advanced_tuning_hidden(qtbot):
 
     assert not panel.btn_advanced_tuning.isHidden()
     assert panel.tuning_frame.isHidden()
-    assert not panel.lbl_gemma_prompt.isHidden()
-    assert not panel.input_gemma_prompt.isHidden()
+    assert panel.lbl_gemma_prompt.isHidden()
+    assert panel.input_gemma_prompt.isHidden()
     assert panel.lbl_translate_summary.parentWidget() is not None
     assert not panel.lbl_translate_summary.isWindow()
 
     qtbot.mouseClick(panel.btn_advanced_tuning, Qt.LeftButton)
     assert not panel.tuning_frame.isHidden()
+    assert not panel.lbl_gemma_prompt.isHidden()
+    assert not panel.input_gemma_prompt.isHidden()
 
     assert panel.lbl_translate_summary.text() != ""
     assert "AI" in panel.lbl_translate_summary.text()
@@ -441,7 +468,7 @@ def test_provider_settings_expose_redacted_config_and_accessible_controls(qtbot)
     assert panel.input_google_api_key.accessibleName()
     assert panel.input_google_api_key.accessibleDescription()
     assert panel.input_luna_api_key.echoMode() != 0
-    assert panel.lbl_luna_model.text() == "gpt-5.6-luna"
+    assert panel.lbl_luna_model.text() == "gpt-6-luna"
     assert panel.cmb_luna_reasoning.currentData() == "none"
     assert panel.spin_luna_timeout.value() == 75
     assert panel.btn_api_key_visible.minimumWidth() >= 56
@@ -572,7 +599,11 @@ def test_provider_disclosures_are_keyboard_checkable_and_preserve_state(qtbot):
 
     assert set(panel.provider_disclosures) == {"local_gemma", "online_gemma", "luna"}
     assert all(not item.body.isVisible() for item in panel.provider_disclosures.values())
+    panel._set_provider_choice("online_gemma")
     online = panel.provider_disclosures["online_gemma"]
+    assert online.isVisible()
+    assert not panel.provider_disclosures["local_gemma"].isVisible()
+    assert not panel.provider_disclosures["luna"].isVisible()
     online.header.setFocus()
     qtbot.keyClick(online.header, Qt.Key_Space)
     assert online.header.isChecked() is True
@@ -614,13 +645,319 @@ def test_provider_summary_and_translation_hint_wrap_in_narrow_column(qtbot):
     )
     for disclosure in panel.provider_disclosures.values():
         disclosure.set_summary("Needs setup", long_capability)
+    panel._set_provider_choice("online_gemma")
     qtbot.wait(10)
 
     viewport_width = panel.translation_scroll_area.viewport().width()
     assert panel.translation_content.width() <= viewport_width
     assert panel.lbl_translate_hint.width() <= viewport_width
     assert panel.lbl_translate_hint.heightForWidth(panel.lbl_translate_hint.width()) <= panel.lbl_translate_hint.height()
-    for disclosure in panel.provider_disclosures.values():
+    visible_disclosures = [
+        disclosure
+        for disclosure in panel.provider_disclosures.values()
+        if disclosure.isVisible()
+    ]
+    assert visible_disclosures == [panel.provider_disclosures["online_gemma"]]
+    for disclosure in visible_disclosures:
         assert "\n" not in disclosure.header.text()
         assert disclosure.capability_label.width() <= viewport_width
         assert disclosure.capability_label.heightForWidth(disclosure.capability_label.width()) <= disclosure.capability_label.height()
+
+
+def test_provider_choice_rows_are_exclusive_and_local_needs_no_key(qtbot):
+    controller = DummyController()
+    controller.worker.google_api_key = ""
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = False
+    models = [
+        ("Remote", "gemma-4-31b-it"),
+        ("Local", "gemma-3-4b-it-local"),
+    ]
+    selected = []
+    controller.cmb_ai_model = SimpleNamespace(currentIndex=lambda: 0)
+    controller.on_ai_model_changed = lambda index: (
+        selected.append(index),
+        setattr(controller.worker, "gemma_model", models[index][1]),
+    )
+    controller.toggle_ai_translation = lambda enabled: setattr(
+        controller.worker, "use_gemma_translation", bool(enabled)
+    )
+
+    panel = TranslationSettingsPanel(controller, models)
+    qtbot.addWidget(panel)
+
+    assert tuple(panel.provider_choice_buttons) == (
+        "google",
+        "local_gemma",
+        "online_gemma",
+        "luna",
+    )
+    assert sum(button.isChecked() for button in panel.provider_choice_buttons.values()) == 1
+
+    panel.provider_choice_buttons["local_gemma"].click()
+
+    assert panel.provider_choice_buttons["local_gemma"].isChecked()
+    assert not panel.provider_choice_buttons["google"].isChecked()
+    assert sum(button.isChecked() for button in panel.provider_choice_buttons.values()) == 1
+    assert controller.worker.gemma_model == "gemma-3-4b-it-local"
+    assert controller.worker.use_gemma_translation is True
+    assert not controller.worker.google_api_key
+
+
+def test_provider_choice_remote_gate_stays_selected_and_opens_key_field(qtbot):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = False
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+    panel.show()
+
+    panel.provider_choice_buttons["online_gemma"].click()
+    qtbot.wait(10)
+
+    assert panel.provider_choice_buttons["online_gemma"].isChecked()
+    assert panel._selected_provider_id == "online_gemma"
+    assert panel.provider_disclosures["online_gemma"].body.isVisible()
+    assert panel.input_api_key.isVisible()
+    assert panel.input_api_key.isEnabled()
+    assert panel.input_api_key.hasFocus()
+    assert "API key" in panel.lbl_translate_health_detail.text()
+    center = panel.input_api_key.mapTo(panel.translation_scroll_area.viewport(), panel.input_api_key.rect().center())
+    assert panel.translation_scroll_area.viewport().rect().contains(center)
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "field_name"),
+    [("online_gemma", "input_api_key"), ("luna", "input_luna_api_key")],
+)
+def test_provider_gate_enables_key_field_after_sync_from_disabled_controller(
+    qtbot, provider_id, field_name
+):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = False
+    controller.online_gemma_enabled = False
+    controller.openai_enabled = False
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.sync_from_controller()
+    field = getattr(panel, field_name)
+    assert not field.isEnabled()
+
+    panel.provider_choice_buttons[provider_id].click()
+    qtbot.wait(10)
+
+    assert field.isEnabled()
+    assert field.hasFocus()
+    assert panel.provider_choice_buttons[provider_id].isChecked()
+
+
+def test_provider_choice_routes_valid_google_local_and_luna_selection(qtbot):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.worker.use_gemma_translation = False
+    controller.openai_api_key = "luna-secret"
+    controller.cmb_ai_model = SimpleNamespace(currentIndex=lambda: 0)
+    routes = []
+    controller.select_translation_provider = routes.append
+    controller.on_ai_model_changed = lambda index: setattr(
+        controller.worker, "gemma_model", "gemma-3-4b-it-local"
+    )
+    controller.toggle_ai_translation = lambda enabled: setattr(
+        controller.worker, "use_gemma_translation", bool(enabled)
+    )
+    panel = TranslationSettingsPanel(
+        controller,
+        [("Local", "gemma-3-4b-it-local"), ("Remote", "gemma-4-31b-it")],
+    )
+    qtbot.addWidget(panel)
+
+    panel.provider_choice_buttons["google"].click()
+    panel.provider_choice_buttons["local_gemma"].click()
+    panel.provider_choice_buttons["luna"].click()
+
+    assert routes == ["google", "local_multimodal", "openai"]
+    assert panel.provider_choice_buttons["luna"].isChecked()
+    assert panel.chk_luna_enabled.isChecked()
+    panel.update_theme("dark")
+    assert "QRadioButton::indicator:checked" in panel.provider_choice_rows["luna"].styleSheet()
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "field_name", "route_id"),
+    [("online_gemma", "input_api_key", "gemma"), ("luna", "input_luna_api_key", "openai")],
+)
+def test_provider_choice_activates_route_after_entering_required_key(
+    qtbot, provider_id, field_name, route_id
+):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = False
+    controller.worker.google_api_key = ""
+    controller.openai_api_key = ""
+    routes = []
+
+    def select_provider(value):
+        routes.append(value)
+        controller.provider_chain = (value,)
+        controller.worker.use_gemma_translation = value != "google"
+        return True
+
+    controller.select_translation_provider = select_provider
+    controller.on_google_api_key_changed = lambda value: setattr(
+        controller.worker, "google_api_key", value
+    )
+    controller.on_luna_api_key_changed = lambda value: setattr(
+        controller, "openai_api_key", value
+    )
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+
+    panel.provider_choice_buttons[provider_id].click()
+    assert routes == []
+    field = getattr(panel, field_name)
+    field.setText("t")
+    assert routes == []
+    field.setText("test-key")
+    assert routes == []
+    field.editingFinished.emit()
+
+    assert routes == [route_id]
+    field.setText("test-key-updated")
+    field.editingFinished.emit()
+    assert routes == [route_id]
+    assert panel.provider_choice_buttons[provider_id].isChecked()
+
+
+@pytest.mark.parametrize(
+    ("old_route", "target", "field_name", "new_route"),
+    [
+        ("openai", "online_gemma", "input_api_key", "gemma"),
+        ("gemma", "luna", "input_luna_api_key", "openai"),
+        ("local_multimodal", "luna", "input_luna_api_key", "openai"),
+    ],
+)
+def test_missing_key_stages_provider_and_clears_pending_after_key_entry(
+    qtbot, old_route, target, field_name, new_route
+):
+    controller = DummyController()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller.worker.google_api_key = "" if target == "online_gemma" else "google-key"
+    controller.openai_api_key = "" if target == "luna" else "luna-key"
+    controller.provider_chain = (old_route,)
+    staged = []
+    routed = []
+
+    def stage(provider):
+        staged.append(provider)
+        controller.pending_translation_provider_id = provider
+
+    def route(provider):
+        routed.append(provider)
+        controller.provider_chain = (provider,)
+        controller.pending_translation_provider_id = None
+        controller.worker.use_gemma_translation = True
+        return True
+
+    controller.stage_translation_provider_setup = stage
+    controller.select_translation_provider = route
+    controller.on_google_api_key_changed = lambda value: setattr(controller.worker, "google_api_key", value)
+    controller.on_luna_api_key_changed = lambda value: setattr(controller, "openai_api_key", value)
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+
+    panel.provider_choice_buttons[target].click()
+    assert staged == [target]
+    assert routed == []
+    assert controller.pending_translation_provider_id == target
+    field = getattr(panel, field_name)
+    field.setText("n")
+    assert routed == []
+    assert controller.pending_translation_provider_id == target
+    field.setText("new-key")
+    field.editingFinished.emit()
+
+    assert routed == [new_route]
+    assert controller.pending_translation_provider_id is None
+
+
+def test_provider_chain_gemma_legacy_restores_local_choice(qtbot):
+    controller = DummyController()
+    controller.provider_chain = ("gemma", "google")
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    panel = TranslationSettingsPanel(
+        controller,
+        [("Local", "gemma-3-4b-it-local"), ("Remote", "gemma-4-31b-it")],
+    )
+    qtbot.addWidget(panel)
+
+    panel.sync_from_controller()
+
+    assert panel.provider_choice_buttons["local_gemma"].isChecked()
+
+    controller.provider_chain = ("openai",)
+    controller.openai_enabled = True
+    controller.openai_api_key = "luna-secret"
+    panel.sync_from_controller()
+
+    assert panel.provider_choice_buttons["luna"].isChecked()
+    assert not panel.provider_disclosures["luna"].isHidden()
+
+
+def test_local_choice_replaces_luna_route_before_applying_key_gate(qtbot):
+    controller = DummyController()
+    controller.provider_chain = ("openai",)
+    controller.openai_api_key = ""
+    controller.worker.google_api_key = ""
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.worker.use_gemma_translation = False
+    controller.cmb_ai_model = SimpleNamespace(currentIndex=lambda: 0)
+    routes = []
+
+    def select(provider):
+        routes.append(provider)
+        controller.provider_chain = (provider,)
+        controller.worker.use_gemma_translation = True
+        return True
+
+    controller.select_translation_provider = select
+    controller.toggle_ai_translation = lambda _: pytest.fail("must replace the old route before gating")
+    panel = TranslationSettingsPanel(controller, [("Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    panel.provider_choice_buttons["local_gemma"].click()
+    assert routes == ["local_multimodal"]
+    assert panel.provider_choice_buttons["local_gemma"].isChecked()
+    assert controller.worker.use_gemma_translation
+
+
+def test_luna_selection_survives_ai_enabled_refresh(qtbot):
+    controller = DummyController()
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+    panel._set_provider_choice("luna")
+    panel.set_translate_mode(True)
+    assert panel.provider_choice_buttons["luna"].isChecked()
+    panel.update_theme("light")
+    assert "QRadioButton:focus { border:2px solid" in panel.provider_choice_rows["luna"].styleSheet()
+
+
+def test_missing_local_model_explains_recovery(qtbot):
+    controller = DummyController()
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+    panel.on_provider_selected("local_gemma")
+    assert "full edition" in panel.lbl_translate_health_detail.text()
+
+
+@pytest.mark.parametrize("previous_provider", ["google", "online_gemma", "luna"])
+def test_missing_local_model_restores_previous_provider(qtbot, previous_provider):
+    controller = DummyController()
+    panel = TranslationSettingsPanel(controller, [("Remote", "gemma-4-31b-it")])
+    qtbot.addWidget(panel)
+    panel._set_provider_choice(previous_provider)
+
+    panel.provider_choice_buttons["local_gemma"].click()
+
+    assert panel.provider_choice_buttons[previous_provider].isChecked()
+    assert panel._selected_provider_id == previous_provider

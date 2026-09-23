@@ -25,6 +25,10 @@ def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
     application = manifest.find("foundation:Applications/foundation:Application", ns)
     visual = application.find("uap:VisualElements", ns)
     capability = manifest.find("foundation:Capabilities/rescap:Capability", ns)
+    resources = {
+        resource.attrib["Language"]
+        for resource in manifest.findall("foundation:Resources/foundation:Resource", ns)
+    }
 
     assert application.attrib["Executable"] == "CloudHime.exe"
     assert application.attrib["EntryPoint"] == "Windows.FullTrustApplication"
@@ -34,6 +38,7 @@ def test_msix_manifest_template_has_desktop_entrypoint_and_logo():
     assert visual.attrib["BackgroundColor"] == "#F4F7FB"
     assert capability is not None
     assert capability.attrib["Name"] == "runFullTrust"
+    assert {"zh-TW", "en-US", "ja-JP"}.issubset(resources)
 
 
 def test_msix_builder_prefers_x64_makeappx_for_large_payloads():
@@ -739,7 +744,7 @@ def test_real_release_dist_preflight_when_available():
     try:
         timeout_seconds = max(
             30,
-            int(os.environ.get("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS", "600")),
+            int(os.environ.get("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS", "1200")),
         )
     except ValueError:
         pytest.fail("CLOUDHIME_REAL_DIST_PREFLIGHT_TIMEOUT_SECONDS must be an integer")

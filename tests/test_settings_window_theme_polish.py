@@ -1,6 +1,6 @@
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QGridLayout
+from PySide6.QtWidgets import QScrollArea, QStackedWidget, QTabBar
 
 from CloudHime import Controller, OverlayWindow
 from themes import resolve_theme
@@ -29,12 +29,12 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         theme = resolve_theme(mode)
 
         backdrop_style = settings.backdrop_panel.styleSheet()
-        expected_background = "bg_dark.png" if mode != "light" else "bg_light.png"
-        assert f"background-color: {theme.shell_bg};" in backdrop_style
-        assert "background-image: url(" in backdrop_style
-        assert expected_background in backdrop_style
-        assert "background-position: center;" in backdrop_style
-        assert "background-repeat: no-repeat;" in backdrop_style
+        expected_surface = (
+            "#121212" if mode == "high_contrast"
+            else "#23263D" if mode == "dark"
+            else "#F8F7FD"
+        )
+        assert f"background:{expected_surface};" in backdrop_style
         assert f"color: {theme.text};" in settings.lbl_page_title.styleSheet()
         assert f"color: {theme.subtext};" in settings.lbl_page_subtitle.styleSheet()
         export_style = settings.btn_export_history.styleSheet()
@@ -59,26 +59,11 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         assert settings.top_panel.objectName() == "settingsTopPanel"
         assert settings.shell_panel.objectName() == "settingsShellPanel"
 
-        expected_card_bg = (
-            "rgba(18, 31, 46, 168)" if mode != "light" else "rgba(255, 255, 255, 214)"
-        )
-        expected_borders = (
-            ("#3D8DFF", "#41B96F", "#8D5CF6")
-            if mode != "light"
-            else ("#5AA7F7", "#50B86F", "#8D65D8")
-        )
-        cards = (
-            (settings.card_translate, expected_borders[0]),
-            (settings.card_ocr, expected_borders[1]),
-            (settings.card_region_render, expected_borders[2]),
-            (settings.card_relief, expected_borders[2]),
-        )
-        for card, border in cards:
-            style = card.styleSheet()
-            assert f"background-color: {expected_card_bg};" in style
-            assert f"border: 1px solid {border};" in style
-            assert "border-left" not in style.lower()
-            assert "border-right" not in style.lower()
+        tab_style = settings.settings_tabs.styleSheet()
+        assert f"color:{theme.text};" in tab_style
+        assert "QTabBar::tab:selected" in tab_style
+        assert "QTabBar::tab:focus" in tab_style
+        assert settings.princess_portrait.isVisible() is (mode != "high_contrast")
 
         assert settings.lbl_random_scan_summary.styleSheet() == theme.pill_qss("accent")
         assert settings.lbl_auto_threshold_refresh_summary.styleSheet() == theme.pill_qss("accent")
@@ -88,7 +73,7 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
     window.close_app()
 
 
-def test_settings_window_keeps_legacy_three_column_shell_and_footer(qtbot, monkeypatch):
+def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch):
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
@@ -103,33 +88,162 @@ def test_settings_window_keeps_legacy_three_column_shell_and_footer(qtbot, monke
     settings = controller.settings_window
     qtbot.wait(10)
 
-    body = settings.translation_panel.parentWidget()
-    assert body is settings.card_ocr.parentWidget()
-    assert body is settings.card_region_render.parentWidget()
-    assert body is settings.card_relief.parentWidget()
-    body_grid = body.layout()
-    assert isinstance(body_grid, QGridLayout)
-    assert body_grid.columnCount() == 3
-    expected_positions = {
-        settings.translation_panel: (0, 0, 2, 1),
-        settings.card_ocr: (0, 1, 2, 1),
-        settings.card_region_render: (0, 2, 1, 1),
-        settings.card_relief: (1, 2, 1, 1),
-    }
-    for widget, expected in expected_positions.items():
-        index = body_grid.indexOf(widget)
-        assert index >= 0
-        row, column, row_span, column_span = body_grid.getItemPosition(index)
-        assert (row, column, row_span, column_span) == expected
+    settings.show()
+    assert settings.minimumWidth() == 900
+    assert settings.minimumHeight() == 620
+    assert isinstance(settings.settings_tabs, QTabBar)
+    assert settings.settings_tabs.count() == 4
+    assert isinstance(settings.settings_pages, QStackedWidget)
+    assert settings.settings_pages.count() == 4
+    assert [settings.settings_tabs.tabText(index) for index in range(4)] == [
+        "Translation",
+        "Capture & display",
+        "Work research",
+        "Appearance",
+    ]
+
+    translation_page = settings.settings_pages.widget(0)
+    capture_page = settings.settings_pages.widget(1)
+    research_page = settings.settings_pages.widget(2)
+    appearance_page = settings.settings_pages.widget(3)
+    assert translation_page.isAncestorOf(settings.translation_panel)
+    for control in (settings.card_ocr, settings.card_region_render, settings.card_relief):
+        assert capture_page.isAncestorOf(control)
+    for control in (settings.research_heading, settings.cmb_knowledge_model, settings.input_knowledge_sources):
+        assert research_page.isAncestorOf(control)
+    assert settings.research_title_label.buddy() is settings.input_knowledge_title
+    assert settings.research_model_label.buddy() is settings.cmb_knowledge_model
+    assert settings.research_source_label.buddy() is settings.input_knowledge_sources
+    assert settings.research_model_label.text() == "Research model"
+    assert settings.research_source_label.text() == "Public source URLs (optional)"
+    for control in (settings.appearance_heading, settings.cmb_theme_mode_chip, settings.cmb_ui_language_chip):
+        assert appearance_page.isAncestorOf(control)
 
     footer = settings.btn_save.parentWidget()
     assert footer.objectName() == "settingsFooter"
     assert settings.btn_reset_defaults.parentWidget() is footer
     assert settings.btn_cancel.parentWidget() is footer
     assert settings.btn_save.parentWidget() is footer
-    assert settings.btn_reset_defaults.text().startswith("↻")
+    assert settings.btn_reset_defaults.text() == "Reset to Defaults"
     assert settings.btn_cancel.text()
-    assert settings.btn_save.text().startswith("✓")
+    assert settings.btn_save.text() == "Save"
+    assert settings.frame.layout().indexOf(footer) >= 0
+    for index in range(settings.settings_tabs.count()):
+        settings.settings_tabs.setCurrentIndex(index)
+        qtbot.wait(5)
+        assert settings.settings_pages.currentIndex() == index
+        assert settings.settings_pages.currentWidget().isVisible()
+        assert footer.isVisible()
+        for page_index in range(settings.settings_pages.count()):
+            if page_index != index:
+                assert not settings.settings_pages.widget(page_index).isVisible()
+    controller.close_app()
+    assert controller._close_app_started
+    controller.close_app()  # repeated shutdown must not touch deleted Qt objects
+
+
+def test_capture_prompt_toggle_sync_save_and_minimum_layout(qtbot, monkeypatch):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    settings.show()
+    settings.settings_tabs.setCurrentIndex(1)
+    qtbot.wait(10)
+
+    toggle = settings.screenshot_prompt_toggle
+    body = settings.screenshot_prompt_body
+    prompt = settings.input_screenshot_gemma_prompt
+    assert not toggle.isChecked()
+    assert not body.isVisible()
+    assert body.isAncestorOf(prompt)
+
+    toggle.click()
+    qtbot.wait(10)
+    assert toggle.isChecked()
+    assert body.isVisible()
+    assert prompt.isVisible()
+
+    existing_prompt = "Keep named spells and character titles unchanged."
+    controller.screenshot_gemma_prompt = existing_prompt
+    settings.sync_from_controller()
+    assert body.isVisible()
+    assert prompt.toPlainText() == existing_prompt
+
+    footer = settings.btn_save.parentWidget()
+    settings.resize(900, 620)
+    qtbot.wait(20)
+    assert settings.width() >= 900
+    assert settings.height() >= 620
+    assert settings.settings_tabs.isVisible()
+    assert settings.settings_tabs.count() == 4
+    assert footer.isVisible()
+    assert all(
+        settings.settings_tabs.rect().contains(settings.settings_tabs.tabRect(index))
+        for index in range(settings.settings_tabs.count())
+    )
+    scroll_areas = settings.findChildren(QScrollArea)
+    assert scroll_areas
+    assert all(scroll.horizontalScrollBar().maximum() == 0 for scroll in scroll_areas)
+
+    saved_values = []
+    controller.save_settings = lambda: saved_values.append(controller.screenshot_gemma_prompt) or True
+    settings.btn_save.click()
+    assert saved_values == [existing_prompt]
+    controller.close_app()
+
+
+def test_settings_language_tabs_and_high_contrast_disable_portrait(qtbot, monkeypatch):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    settings.show()
+
+    controller.set_ui_language("zh-TW", persist=False, refresh=False)
+    assert [settings.settings_tabs.tabText(index) for index in range(4)] == [
+        "翻譯引擎",
+        "擷取與顯示",
+        "作品研究",
+        "外觀",
+    ]
+
+    controller.set_ui_language("ja-JP", persist=False, refresh=False)
+    assert controller.get_ui_language() == "ja"
+    assert [settings.settings_tabs.tabText(index) for index in range(4)] == [
+        "翻訳",
+        "キャプチャと表示",
+        "作品リサーチ",
+        "外観",
+    ]
+    assert settings.cmb_ui_language_chip.currentData() == "ja"
+    assert settings.translation_panel.lbl_translate.text() == "翻訳"
+
+    settings.update_theme("high_contrast")
+    assert not settings.princess_portrait.isVisible()
+    assert "background:#121212;" in settings.backdrop_panel.styleSheet()
+    assert "background-image" not in settings.backdrop_panel.styleSheet()
+    high_contrast = resolve_theme("high_contrast")
+    assert high_contrast.settings_shell_bg == "#121212"
+    assert high_contrast.settings_card_bg == "#202020"
+    assert high_contrast.settings_fallback_bg == "#121212"
+    assert settings.settings_tabs.isEnabled()
     controller.close_app()
 
 
@@ -166,7 +280,7 @@ def test_settings_translation_entry_uses_one_gemma_key_and_fixed_luna_thinking(q
     )
     assert "api_key" not in provider_config["online_gemma"]
 
-    assert panel.lbl_luna_model.text() == "gpt-5.6-luna"
+    assert panel.lbl_luna_model.text() == "gpt-6-luna"
     assert panel.cmb_luna_reasoning.count() == 1
     assert panel.cmb_luna_reasoning.currentData() == "none"
     assert panel.cmb_luna_reasoning.isEnabled() is False
@@ -176,8 +290,8 @@ def test_settings_translation_entry_uses_one_gemma_key_and_fixed_luna_thinking(q
     controller.close_app()
 
 
-def test_translation_provider_controls_remain_reachable_in_legacy_shell(qtbot, monkeypatch):
-    """The legacy 1422x800 shell scrolls only the Translation card contents."""
+def test_translation_provider_controls_remain_reachable_in_translation_page(qtbot, monkeypatch):
+    """Each selected provider remains reachable without showing duplicate settings."""
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
@@ -190,7 +304,7 @@ def test_translation_provider_controls_remain_reachable_in_legacy_shell(qtbot, m
     qtbot.addWidget(controller)
     controller.toggle_settings_window()
     settings = controller.settings_window
-    settings.resize(1422, 800)
+    settings.resize(1120, 760)
     settings.show()
     qtbot.wait(20)
 
@@ -200,37 +314,22 @@ def test_translation_provider_controls_remain_reachable_in_legacy_shell(qtbot, m
     assert panel.online_provider_frame.height() > 0
     assert panel.luna_provider_frame.height() > 0
     assert all(not disclosure.body.isVisible() for disclosure in panel.provider_disclosures.values())
-    qtbot.mouseClick(panel.provider_headers["online_gemma"], Qt.LeftButton)
-    panel.provider_headers["luna"].setFocus()
-    qtbot.keyClick(panel.provider_headers["luna"], Qt.Key_Space)
-    panel.provider_headers["local_gemma"].setFocus()
-    qtbot.keyClick(panel.provider_headers["local_gemma"], Qt.Key_Return)
-    qtbot.wait(10)
-    assert all(disclosure.body.isVisible() for disclosure in panel.provider_disclosures.values())
+    for provider_id in ("local_gemma", "online_gemma", "luna"):
+        panel._set_provider_choice(provider_id)
+        header = panel.provider_headers[provider_id]
+        scroll.ensureWidgetVisible(header)
+        header.setFocus()
+        qtbot.keyClick(header, Qt.Key_Return)
+        qtbot.wait(10)
+        assert panel.provider_disclosures[provider_id].body.isVisible()
+        assert all(not disclosure.isVisible() for key, disclosure in panel.provider_disclosures.items() if key != provider_id)
     assert panel.translation_content.height() > scroll.viewport().height()
     assert scroll.verticalScrollBar().maximum() > 0
 
-    body_host = settings.body_host
-    body = panel.parentWidget()
-    assert body_host.objectName() == "settingsBodyHost"
-    assert body.parentWidget() is body_host
-    assert body_host.layout().indexOf(body) >= 0
-    for size in ((1422, 800), (1400, 780)):
-        settings.resize(*size)
-        qtbot.wait(10)
-        widths = (
-            settings.translation_panel.width(),
-            settings.card_ocr.width(),
-            settings.card_region_render.width(),
-        )
-        assert body.width() <= 1040
-        assert body.width() >= 928
-        assert body.geometry().left() == 0
-        assert body_host.width() - body.width() >= 280
-        assert all(300 <= width <= 360 for width in widths)
-        assert max(widths) - min(widths) <= 20
     footer = settings.btn_save.parentWidget()
-    assert footer.width() >= body_host.width() - 2
+    assert settings.settings_pages.widget(0).isAncestorOf(panel)
+    assert footer.objectName() == "settingsFooter"
+    assert settings.frame.layout().indexOf(footer) >= 0
 
     scroll.ensureWidgetVisible(panel.input_luna_api_key)
     qtbot.wait(10)
@@ -255,6 +354,7 @@ def test_raised_button_tokens_cover_settings_states_without_effects():
         assert all(theme.get(name) for name in token_names)
         for variant in ("primary", "secondary", "segmented"):
             style = theme.raised_button_qss(variant)
+            assert style.count("{") == style.count("}")
             assert "border-top-color:" in style
             assert "border-bottom: 2px solid" in style
             assert "QPushButton:hover" in style

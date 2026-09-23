@@ -23,14 +23,14 @@ CloudHime 的核心不是獨立翻譯頁面，而是把 Windows 螢幕擷取、�
 - 主要環境是 Windows 桌面、遊戲全螢幕／視窗、漫畫閱讀器與一般應用程式。
 - 核心流程為全螢幕或區域擷取、OCR／直接 Vision、翻譯、透明泡泡或浮離文字顯示。
 - 設定與模型資產位於使用者 AppData；發行目標包含 PyInstaller 與 MSIX／Microsoft Store。
-- UI 需要支援繁體中文與英文、明暗主題、Windows 高 DPI 與不阻塞主執行緒的背景工作。
+- UI 需要支援繁體中文、英文與日文、明暗主題、Windows 高 DPI 與不阻塞主執行緒的背景工作。
 
 ## Capabilities and Constraints
 
 - 保留 Windows OCR、可選 OCR backend、本機 Gemma 文字與本機 llama-server 多模態路徑。
 - 線上翻譯提供 Online Gemma 與 OpenAI Luna；兩者都需要文字與圖片輸入能力。
 - Online Gemma 僅使用一把 Google API key，提供 `gemma-4-26b-a4b-it` 與 `gemma-4-31b-it`；依各模型獨立的 rate／cooldown 狀態選擇與輪替，不把模型變體當成額外 project quota。
-- 所有 Gemma request 固定使用 `thinkingLevel=minimal`；Luna request 固定使用 reasoning effort `none`，UI 與一般設定不得覆寫。
+- 所有 Gemma request 固定使用 `thinkingLevel=minimal`；GPT-6 Luna (`gpt-6-luna`) request 固定使用 reasoning effort `none`，UI 與一般設定不得覆寫。
 - API Key 不得寫入一般設定、原始碼、MissionCenter、測試產物或日誌；Windows 上使用 DPAPI 保護。
 - Provider 失敗、取消、逾時、429、認證失敗與內容拒絕必須維持可辨識的語意；模型輪替只允許明確 429／404／503 且尚未產生串流輸出時進行，timeout／URLError 不得重播。
 - 框選與畫面擷取屬效能敏感路徑；本次只允許低風險視覺改善，不重寫其幾何、透明度與排程行為。

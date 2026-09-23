@@ -4,7 +4,7 @@ from typing import Any
 
 
 DEFAULT_UI_LANGUAGE = "en"
-SUPPORTED_UI_LANGUAGES = ("en", "zh-TW")
+SUPPORTED_UI_LANGUAGES = ("en", "zh-TW", "ja")
 
 _LANGUAGE_ALIASES = {
     "zh": "zh-TW",
@@ -15,6 +15,9 @@ _LANGUAGE_ALIASES = {
     "en": "en",
     "en-us": "en",
     "en-gb": "en",
+    "ja": "ja",
+    "ja-jp": "ja",
+    "jp": "ja",
 }
 
 _TRANSLATIONS: dict[str, dict[str, str]] = {
@@ -168,6 +171,81 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "worker.status.translation_failed": "⚠️ Translation failed",
         "worker.status.no_text": "No text detected",
     },
+    "ja": {
+        "settings_title": "設定",
+        "settings_subtitle": "翻訳、OCR、外観、スキャン動作を管理します。",
+        "settings_close": "閉じる",
+        "settings_theme_mode": "テーマ",
+        "settings_ui_language": "表示言語",
+        "settings_knowledge_placeholder": "ゲームまたは漫画のタイトルを入力",
+        "settings_knowledge_research": "この作品を調べる",
+        "settings_knowledge_update": "ナレッジを更新",
+        "settings_knowledge_building": "調査中…",
+        "settings_knowledge_progress": "調査中… {percent}%",
+        "settings_knowledge_ready": "✓ ナレッジパックを作成しました",
+        "settings_knowledge_missing": "未作成",
+        "settings_knowledge_unavailable": "調査機能はまだ設定されていません",
+        "settings_knowledge_failed": "作成に失敗しました。他の設定は引き続き利用できます",
+        "settings_knowledge_model_hint": "調査・抽出に使うモデルを選択",
+        "settings_knowledge_sources_placeholder": "任意：公開ソースの URL を空白区切りで入力。空欄の場合は自動検索します",
+        "settings_knowledge_review_title": "調査候補を確認",
+        "settings_knowledge_review_message": "{title}\n\n{sources} 件のソースを読み込み、{entries} 件の項目を抽出しました。矛盾する {conflicts} 件と、信頼度が低い、または無効な {rejected} 件は除外しました。この候補を未有効のナレッジパックとして保存しますか？",
+        "settings_knowledge_not_saved": "候補は保存されませんでした",
+        "settings_save_failed": "設定を保存できませんでした",
+        "controller.window_title": "CloudHime",
+        "controller.title": "☁️ CloudHime v3.0",
+        "controller.placeholder.google_api_key": "Google API KEY",
+        "controller.button.ai_translation": "AI 翻訳",
+        "controller.button.fullscreen": "全画面",
+        "controller.button.region": "範囲",
+        "controller.button.stop": "停止",
+        "controller.button.random_scan_prefix": "ランダム",
+        "controller.button.now": "今すぐ翻訳",
+        "controller.tooltip.settings": "設定",
+        "controller.status.ready": "待機中です (*´▽`*)",
+        "controller.status.ai_model_ready": "AI モデル：{model}",
+        "controller.status.auto_scanning": "{prefix} 自動スキャン中",
+        "controller.status.auto_stopped": "⏸ 自動スキャン停止中",
+        "controller.status.immediate_scanning": "⚡ スキャン中...",
+        "controller.status.need_api_key": "先に Google API キーを入力してください",
+        "controller.status.need_region": "先にスキャン範囲を設定してください",
+        "controller.status.region_ready": "スキャン範囲を設定しました：{size}",
+        "controller.status.capture_running": "🖼 スクリーンショットを翻訳中...",
+        "controller.status.cold_down": "⚡ クールダウン中...",
+        "controller.status.ai_model_auto_switch": "AI モデルを自動切替：{old_label} → {new_label}",
+        "controller.status.ai_model_full_switch": "{current} は上限に達しました。次回は {backup} に切り替えます",
+        "controller.status.ai_model_full_google": "{current} は上限 {limit}/{limit} に達しました。Google に切り替えます",
+        "controller.mode.fullscreen": "🖥 モード：全画面",
+        "controller.mode.relief": "🧩 モード：浮き彫り",
+        "controller.mode.screenshot": "🖼 モード：スクリーンショット",
+        "controller.mode.bubble": "💬 モード：吹き出し",
+        "controller.mode.scan_fullscreen": "全画面",
+        "controller.mode.scan_region": "範囲",
+        "worker.status.threshold_tuning": "🔎 しきい値を微調整中...",
+        "worker.status.sentence_recheck": "🧠 文の完全性を再確認中...",
+        "worker.status.no_ocr_backend": "❌ 利用可能な OCR バックエンドがありません",
+        "worker.status.capture_failed": "❌ 画面のキャプチャに失敗しました：{error}",
+        "worker.status.screenshot_requires_ai": "❌ スクリーンショットモードには Gemma AI と Google API キーが必要です",
+        "worker.status.screenshot_translating": "🖼 スクリーンショットを翻訳中...",
+        "worker.status.screenshot_failed": "❌ スクリーンショットの翻訳に失敗しました：{error}",
+        "worker.status.screen_static": "♻️ 画面に変化はありません",
+        "worker.status.screenshot_done": "✅ スクリーンショットの翻訳が完了しました",
+        "worker.status.smart_crop": "🧭 スマート切り抜きを解析中...",
+        "worker.status.scanning_translating": "🔍 スキャンして翻訳中...",
+        "worker.status.recognition_error": "❌ 認識エラー",
+        "worker.status.crop_retry_full": "🧭 スマート切り抜きの結果が少ないため、画面全体で再試行します...",
+        "worker.status.crop_retry_rotate": "選択範囲に文字が見つかりません。回転して再試行しています...",
+        "worker.status.crop_retry_zoom": "選択範囲に文字が見つかりません。範囲を広げるか、角度を変えてください。",
+        "worker.status.comic_retry": "📚 漫画ページの分割を再試行中...",
+        "worker.status.best_threshold": "✨ 最適なしきい値を選択しました：{threshold}",
+        "worker.status.ai_big_translation": "🧠 AI で大きな画像を翻訳中...",
+        "worker.status.google_translation": "🌐 Google で翻訳中...",
+        "worker.status.batch_translate": "{icon} {prefix} {count} 件をまとめて翻訳中...",
+        "worker.status.segment_progress": "{icon} {prefix} {current}/{total}",
+        "worker.status.translation_done": "✅ 翻訳が完了しました",
+        "worker.status.translation_failed": "⚠️ 翻訳に失敗しました",
+        "worker.status.no_text": "文字が検出されませんでした",
+    },
 }
 
 
@@ -182,6 +260,8 @@ def normalize_ui_language(language: Any, fallback: str = DEFAULT_UI_LANGUAGE) ->
         return "zh-TW"
     if normalized.lower().startswith("en"):
         return "en"
+    if normalized.lower().startswith("ja"):
+        return "ja"
     return fallback
 
 
@@ -190,11 +270,12 @@ def get_translation_target_lang(ui_language: Any, fallback: str = DEFAULT_UI_LAN
     # 如果UI是英文，翻譯目標設為英文
     if normalized == "en":
         return "en"
+    if normalized == "ja":
+        return "ja"
     # 如果UI是中文，翻譯目標設為繁體中文
     elif normalized == "zh-TW":
         return "zh-TW"
-    # 其他情況使用預設
-    return normalized
+    return "zh-TW"
 
 
 def fallback_text(value: Any, fallback: Any = "") -> str:

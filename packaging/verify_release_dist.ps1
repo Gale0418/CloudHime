@@ -51,6 +51,7 @@ $provenanceRoot = Join-Path $dist "_internal\provenance"
 if ($LASTEXITCODE -ne 0) {
     throw "Release dist dependency provenance verification failed."
 }
+Write-Verbose "Dependency provenance verified."
 
 $runtimeFiles = @(
     "llama-server.exe",
@@ -214,7 +215,8 @@ function Find-PngWithDimensions {
         }
     }
     return $null
-}$executable = Join-Path $dist "CloudHime.exe"
+}
+$executable = Join-Path $dist "CloudHime.exe"
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Release dist is missing CloudHime.exe"
 }
@@ -241,6 +243,7 @@ foreach ($logoSize in @(44, 50, 150)) {
     }
     $logoRelativePaths[$logoSize] = $logoPath
 }
+Write-Verbose "Release logos verified."
 
 foreach ($requiredFile in @("dictionary.json", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
     $relativePath = Find-NonEmptyFile @($requiredFile, "_internal\$requiredFile")
@@ -366,6 +369,7 @@ foreach ($entry in $manifestEntries) {
     if ($actualHash -ine $expectedHash) {
         throw "Release dist runtime manifest hash or size mismatch: $relative"
     }
+    Write-Verbose "Runtime digest verified: $relative"
 }
 $actualRuntimeFiles = @(Get-ChildItem -LiteralPath $runtimeRoot -Recurse -File |
     Where-Object { $_.FullName -ine $manifestPath } |
@@ -419,6 +423,7 @@ if (Test-Path -LiteralPath $runtimeSourcePath -PathType Leaf) {
 }
 
 $files = @(Get-ChildItem -LiteralPath $dist -Recurse -File)
+Write-Verbose "Release file inventory collected: $($files.Count) files."
 $inProcessLlamaBindings = @($files | Where-Object {
     $relativePath = $_.FullName.Substring($dist.Length).TrimStart("\", "/")
     $pathParts = @($relativePath -split "[\\/]")
@@ -518,6 +523,7 @@ $unexpectedModels = @($files | Where-Object {
 })
 & $PythonPath (Join-Path $PSScriptRoot "release_archive.py") verify --dist $dist --flavor $ModelBundle
 if ($LASTEXITCODE -ne 0) { throw "Release model bundle verification failed." }
+Write-Verbose "Release model bundle verified."
 
 $bytes = ($files | Measure-Object -Property Length -Sum).Sum
 [pscustomobject]@{

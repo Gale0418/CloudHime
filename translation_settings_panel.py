@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLayout,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QToolButton,
     QSizePolicy,
     QScrollArea,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 import translation_helpers as translation_tools
+from openai_translation_provider import DEFAULT_OPENAI_MODEL
 from provider_health import LOCAL_MODEL_IDS, assess_provider_health
 from remote_model_discovery import (
     DISCOVERY_STATUS_INVALID_KEY,
@@ -155,12 +157,65 @@ class _ProviderDisclosure(QFrame):
         return bool(self.header.isChecked())
 
 
+class _ProviderChoiceRow(QFrame):
+    """A compact, keyboard-friendly single-selection provider row."""
+
+    def __init__(self, provider_id, provider_name, description, parent=None):
+        super().__init__(parent)
+        self.provider_id = str(provider_id)
+        self.setObjectName(f"providerChoiceRow_{self.provider_id}")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        self.radio = QRadioButton()
+        self.radio.setObjectName(f"providerChoice_{self.provider_id}")
+        self.radio.setFocusPolicy(Qt.StrongFocus)
+        self.radio.setCursor(Qt.PointingHandCursor)
+        self.radio.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        layout.addWidget(self.radio, 0, Qt.AlignTop)
+
+        copy_layout = QVBoxLayout()
+        copy_layout.setContentsMargins(0, 0, 0, 0)
+        copy_layout.setSpacing(1)
+        self.name_label = QLabel(str(provider_name))
+        self.name_label.setObjectName(f"providerChoiceName_{self.provider_id}")
+        self.name_label.setMinimumWidth(0)
+        self.name_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.detail_label = QLabel(str(description))
+        self.detail_label.setObjectName(f"providerChoiceDetail_{self.provider_id}")
+        self.detail_label.setWordWrap(True)
+        self.detail_label.setMinimumWidth(0)
+        self.detail_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        copy_layout.addWidget(self.name_label)
+        copy_layout.addWidget(self.detail_label)
+        layout.addLayout(copy_layout, 1)
+
+        self.status_label = QLabel()
+        self.status_label.setObjectName(f"providerChoiceStatus_{self.provider_id}")
+        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.status_label.setMinimumWidth(0)
+        self.status_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        layout.addWidget(self.status_label, 0, Qt.AlignTop)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.radio.click()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class TranslationSettingsPanel(QWidget):
     def __init__(self, controller, supported_ai_models, parent=None):
         super().__init__(parent)
         self.controller = controller
         self.supported_ai_models = list(supported_ai_models or [])
         self._ai_requested = False
+        self._selected_provider_id = "google"
         self.model_availability_result = ModelDiscoveryResult(
             status=DISCOVERY_STATUS_NO_KEY,
             error_code="no_key",
@@ -213,10 +268,11 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_icon = QLabel("文")
         self.lbl_translate_icon.setFixedSize(46, 46)
         self.lbl_translate_icon.setAlignment(Qt.AlignCenter)
+        self.lbl_translate_icon.hide()
         self.lbl_translate = QLabel("")
-        self.lbl_translate.setMinimumHeight(46)
+        self.lbl_translate.setMinimumHeight(32)
         self.lbl_translate.setMinimumWidth(0)
-        self.lbl_translate.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.lbl_translate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.lbl_translate.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_translate_hint = QLabel("")
         self.lbl_translate_hint.setWordWrap(True)
@@ -240,7 +296,6 @@ class TranslationSettingsPanel(QWidget):
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(12)
-        header_row.addWidget(self.lbl_translate_icon)
         header_row.addWidget(self.lbl_translate)
         header_row.addStretch()
         translate_layout.addLayout(header_row)
@@ -349,31 +404,53 @@ class TranslationSettingsPanel(QWidget):
                 row_layout.addWidget(self.online_gemma_models_frame)
         self.provider_rows = self.provider_status_rows
 
+        # Keep the historical two-button attributes as hidden compatibility
+        # controls.  The visible selection surface is the four-provider group
+        # below; cloudhime_ui.py still uses these legacy attributes as its
+        # bool-based controller contract.
         self.translate_mode_group = QButtonGroup(self)
         self.translate_mode_group.setExclusive(True)
+        self.btn_translate_google = QPushButton(self)
+        self.btn_translate_google.setObjectName("legacyTranslateGoogle")
+        self.btn_translate_google.setCheckable(True)
+        self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
+        self.translate_mode_group.addButton(self.btn_translate_google)
+        self.btn_translate_ai = QPushButton(self)
+        self.btn_translate_ai.setObjectName("legacyTranslateAI")
+        self.btn_translate_ai.setCheckable(True)
+        self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
+        self.translate_mode_group.addButton(self.btn_translate_ai)
+        self.btn_translate_google.hide()
+        self.btn_translate_ai.hide()
 
         mode_buttons = QWidget()
         self.mode_buttons = mode_buttons
-        mode_buttons_layout = QHBoxLayout(mode_buttons)
-        mode_buttons_layout.setContentsMargins(3, 3, 3, 3)
-        mode_buttons_layout.setSpacing(3)
-
-        self.btn_translate_google = QPushButton("")
-        self.btn_translate_google.setCheckable(True)
-        self.btn_translate_google.setCursor(Qt.PointingHandCursor)
-        self.btn_translate_google.clicked.connect(lambda: self.on_translate_mode_clicked(False))
-        self.translate_mode_group.addButton(self.btn_translate_google)
-        self.btn_translate_google.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        self.btn_translate_ai = QPushButton("")
-        self.btn_translate_ai.setCheckable(True)
-        self.btn_translate_ai.setCursor(Qt.PointingHandCursor)
-        self.btn_translate_ai.clicked.connect(lambda: self.on_translate_mode_clicked(True))
-        self.translate_mode_group.addButton(self.btn_translate_ai)
-        self.btn_translate_ai.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        mode_buttons_layout.addWidget(self.btn_translate_google)
-        mode_buttons_layout.addWidget(self.btn_translate_ai)
+        mode_buttons.setObjectName("providerChoiceRows")
+        mode_buttons_layout = QVBoxLayout(mode_buttons)
+        mode_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        mode_buttons_layout.setSpacing(6)
+        self.provider_choice_group = QButtonGroup(self)
+        self.provider_choice_group.setExclusive(True)
+        self.provider_choice_rows = {}
+        self.provider_choice_buttons = {}
+        provider_choices = (
+            ("google", "Google 翻譯", "不需 API Key"),
+            ("local_gemma", "本機 Gemma", "本地模型・不需雲端金鑰"),
+            ("online_gemma", "線上 Gemma", "單一 Key・雙 Gemma 模型"),
+            ("luna", "Luna", "文字＋圖片輸入・需要 Luna Key"),
+        )
+        for provider_id, provider_name, description in provider_choices:
+            row = _ProviderChoiceRow(provider_id, provider_name, description, mode_buttons)
+            self.provider_choice_rows[provider_id] = row
+            self.provider_choice_buttons[provider_id] = row.radio
+            self.provider_choice_group.addButton(row.radio)
+            row.radio.clicked.connect(
+                lambda checked, selected_id=provider_id: (
+                    self.on_provider_selected(selected_id) if checked else None
+                )
+            )
+            mode_buttons_layout.addWidget(row)
+        self._set_provider_choice("google")
         translate_layout.addWidget(self.lbl_translate_mode)
         translate_layout.addWidget(mode_buttons)
 
@@ -398,6 +475,7 @@ class TranslationSettingsPanel(QWidget):
         self.input_api_key.setPlaceholderText("")
         self.input_api_key.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
+        self.input_api_key.editingFinished.connect(self.on_api_key_editing_finished)
         api_key_row = QHBoxLayout()
         api_key_row.setContentsMargins(0, 0, 0, 0)
         api_key_row.setSpacing(6)
@@ -457,9 +535,11 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.setTabChangesFocus(True)
         self.input_gemma_prompt.setMinimumHeight(122)
         self.input_gemma_prompt.textChanged.connect(self.on_gemma_prompt_changed)
+        self.lbl_gemma_prompt.setVisible(False)
+        self.input_gemma_prompt.setVisible(False)
         advanced_layout.addWidget(self.input_gemma_prompt)
 
-        self.btn_advanced_tuning = QPushButton("⚙ Advanced Local Tuning")
+        self.btn_advanced_tuning = QPushButton("⚙ Advanced prompt & tuning")
         self.btn_advanced_tuning.setCheckable(True)
         self.btn_advanced_tuning.setCursor(Qt.PointingHandCursor)
         self.btn_advanced_tuning.clicked.connect(self.on_advanced_tuning_toggled)
@@ -639,10 +719,11 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.setObjectName("inputLunaApiKey")
         self.input_luna_api_key.setEchoMode(QLineEdit.Password)
         self.input_luna_api_key.textChanged.connect(self.on_luna_api_key_changed)
+        self.input_luna_api_key.editingFinished.connect(self.on_luna_api_key_editing_finished)
         luna_layout.addWidget(self.input_luna_api_key)
         self.lbl_luna_model_label = QLabel("")
         luna_layout.addWidget(self.lbl_luna_model_label)
-        self.lbl_luna_model = QLabel("gpt-5.6-luna")
+        self.lbl_luna_model = QLabel(DEFAULT_OPENAI_MODEL)
         self.lbl_luna_model.setObjectName("lunaModel")
         luna_layout.addWidget(self.lbl_luna_model)
         self.lbl_luna_capabilities = QLabel("")
@@ -677,41 +758,47 @@ class TranslationSettingsPanel(QWidget):
         parent_layout.addWidget(self.online_provider_frame)
         parent_layout.addWidget(self.luna_provider_frame)
         self._configure_provider_accessibility()
-        focus_chain = [
-            self.btn_translate_google,
-            self.btn_translate_ai,
-            self.input_api_key,
-            self.cmb_ai_model,
-            self.btn_advanced_tuning,
-            self.chk_online_gemma_enabled,
-            self.input_api_key,
-            self.chk_luna_enabled, self.input_luna_api_key,
-            self.cmb_luna_reasoning, self.spin_luna_timeout,
-        ]
-        for first, second in zip(focus_chain, focus_chain[1:]):
-            self.setTabOrder(first, second)
+        # Visual provider rows now lead the scroll area.  Rely on Qt's widget
+        # order; the old chain started with hidden compatibility buttons and
+        # duplicated the API-key field, creating invalid cross-window links.
         self._sync_provider_config_from_controller()
 
     def _configure_provider_accessibility(self):
         lang = self._ui_language()
         is_en = str(lang).lower().startswith("en")
-        def set_a11y(widget, name_en, name_zh, description_en, description_zh):
-            widget.setAccessibleName(name_en if is_en else name_zh)
-            widget.setAccessibleDescription(description_en if is_en else description_zh)
+        is_ja = lang == "ja"
+        def set_a11y(widget, name_en, name_zh, description_en, description_zh, name_ja=None, description_ja=None):
+            if is_en:
+                widget.setAccessibleName(name_en)
+                widget.setAccessibleDescription(description_en)
+            elif is_ja:
+                widget.setAccessibleName(name_ja or name_en)
+                widget.setAccessibleDescription(description_ja or description_en)
+            else:
+                widget.setAccessibleName(name_zh)
+                widget.setAccessibleDescription(description_zh)
 
-        set_a11y(self.btn_translate_google, "Use Google Translate", "使用 Google 翻譯", "Select the no-key translation path.", "選擇不需 API Key 的翻譯路徑。")
-        set_a11y(self.btn_translate_ai, "Use AI translation", "使用 AI 翻譯", "Select a configured AI provider.", "選擇已設定的 AI Provider。")
-        set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; it is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，不會寫入設定資料。")
-        set_a11y(self.btn_api_key_visible, "Show Online Gemma API key", "顯示 Online Gemma API Key", "Toggle secret visibility locally.", "只在本機切換秘密顯示。")
-        set_a11y(self.cmb_ai_model, "AI model", "AI 模型", "Choose the model used by the legacy AI path.", "選擇舊版 AI 路徑使用的模型。")
-        set_a11y(self.btn_advanced_tuning, "Advanced local tuning", "本地進階參數", "Expand optional local model parameters.", "展開可選的本地模型參數。")
-        set_a11y(self.chk_online_gemma_enabled, "Enable Online Gemma", "啟用 Online Gemma", "Allow Online Gemma to be selected. Connectivity is checked at request time.", "允許選用 Online Gemma；連線會在要求送出時檢查。")
-        set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; the value is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，內容不會寫入設定資料。")
-        set_a11y(self.chk_auto_switch, "Rotate Gemma models automatically", "自動輪替 Gemma 模型", "Rotate between gemma-4-26b-a4b-it and gemma-4-31b-it when enabled.", "啟用後在 gemma-4-26b-a4b-it 與 gemma-4-31b-it 間自動輪替。")
-        set_a11y(self.chk_luna_enabled, "Enable Luna", "啟用 Luna", "Allow the fixed gpt-5.6-luna provider.", "允許使用固定的 gpt-5.6-luna Provider。")
-        set_a11y(self.input_luna_api_key, "Luna API key", "Luna API Key", "Secret input. The value is not exposed through accessibility text.", "秘密欄位，內容不會透過輔助功能文字暴露。")
-        set_a11y(self.cmb_luna_reasoning, "Luna thinking disabled", "Luna Thinking 已關閉", "Thinking is fixed off for low latency.", "為維持低延遲，Thinking 固定關閉。")
-        set_a11y(self.spin_luna_timeout, "Luna timeout seconds", "Luna 逾時秒數", "Maximum request time in seconds.", "要求的最長等待秒數。")
+        set_a11y(self.btn_translate_google, "Use Google Translate", "使用 Google 翻譯", "Select the no-key translation path.", "選擇不需 API Key 的翻譯路徑。", "Google 翻訳を使う", "API キー不要の翻訳方法を選択します。")
+        set_a11y(self.btn_translate_ai, "Use AI translation", "使用 AI 翻譯", "Select a configured AI provider.", "選擇已設定的 AI Provider。", "AI 翻訳を使う", "設定済みの AI プロバイダーを選択します。")
+        choice_a11y = {
+            "google": ("Google Translate", "Google 翻譯", "Select Google Translate; no API key is required.", "選擇 Google 翻譯；不需要 API Key。", "Google 翻訳", "Google 翻訳を選択します。API キーは不要です。"),
+            "local_gemma": ("Local Gemma", "本機 Gemma", "Select the local Gemma model; no cloud key is required.", "選擇本機 Gemma；不需要雲端金鑰。", "ローカル Gemma", "ローカル Gemma モデルを選択します。クラウドキーは不要です。"),
+            "online_gemma": ("Online Gemma", "線上 Gemma", "Select Online Gemma; a Google API key is required.", "選擇線上 Gemma；需要 Google API Key。", "Online Gemma", "Online Gemma を選択します。Google API キーが必要です。"),
+            "luna": ("Luna", "Luna", "Select Luna; a Luna API key is required.", "選擇 Luna；需要 Luna API Key。", "Luna", "Luna を選択します。Luna API キーが必要です。"),
+        }
+        for provider_id, radio in self.provider_choice_buttons.items():
+            set_a11y(radio, *choice_a11y[provider_id])
+        set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; it is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，不會寫入設定資料。", "Online Gemma API キー", "Windows DPAPI で保護される秘密情報です。設定データには保存されません。")
+        set_a11y(self.btn_api_key_visible, "Show Online Gemma API key", "顯示 Online Gemma API Key", "Toggle secret visibility locally.", "只在本機切換秘密顯示。", "Online Gemma API キーを表示", "この端末上でのみ秘密情報の表示を切り替えます。")
+        set_a11y(self.cmb_ai_model, "AI model", "AI 模型", "Choose the model used by the legacy AI path.", "選擇舊版 AI 路徑使用的模型。", "AI モデル", "従来の AI 経路で使うモデルを選択します。")
+        set_a11y(self.btn_advanced_tuning, "Advanced local tuning", "本地進階參數", "Expand optional local model parameters.", "展開可選的本地模型參數。", "ローカルモデルの詳細設定", "ローカルモデルの任意のパラメーターを表示します。")
+        set_a11y(self.chk_online_gemma_enabled, "Enable Online Gemma", "啟用 Online Gemma", "Allow Online Gemma to be selected. Connectivity is checked at request time.", "允許選用 Online Gemma；連線會在要求送出時檢查。", "Online Gemma を有効化", "Online Gemma を選択可能にします。接続はリクエスト送信時に確認します。")
+        set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; the value is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，內容不會寫入設定資料。", "Online Gemma API キー", "Windows DPAPI で保護される秘密情報です。設定データには保存されません。")
+        set_a11y(self.chk_auto_switch, "Rotate Gemma models automatically", "自動輪替 Gemma 模型", "Rotate between gemma-4-26b-a4b-it and gemma-4-31b-it when enabled.", "啟用後在 gemma-4-26b-a4b-it 與 gemma-4-31b-it 間自動輪替。", "Gemma モデルを自動切替", "有効にすると gemma-4-26b-a4b-it と gemma-4-31b-it を切り替えます。")
+        set_a11y(self.chk_luna_enabled, "Enable Luna", "啟用 Luna", "Allow the fixed gpt-6-luna provider.", "允許使用固定的 gpt-6-luna Provider。", "Luna を有効化", "固定の gpt-6-luna プロバイダーを使用可能にします。")
+        set_a11y(self.input_luna_api_key, "Luna API key", "Luna API Key", "Secret input. The value is not exposed through accessibility text.", "秘密欄位，內容不會透過輔助功能文字暴露。", "Luna API キー", "秘密情報です。アクセシビリティ用のテキストには表示されません。")
+        set_a11y(self.cmb_luna_reasoning, "Luna thinking disabled", "Luna Thinking 已關閉", "Thinking is fixed off for low latency.", "為維持低延遲，Thinking 固定關閉。", "Luna Thinking は無効", "低遅延のため Thinking は常に無効です。")
+        set_a11y(self.spin_luna_timeout, "Luna timeout seconds", "Luna 逾時秒數", "Maximum request time in seconds.", "要求的最長等待秒數。", "Luna のタイムアウト（秒）", "リクエストの最大待機時間です。")
 
     def _sync_provider_config_from_controller(self):
         self.set_provider_config(
@@ -736,6 +823,185 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.blockSignals(True)
         self.input_luna_api_key.setText(self._controller_secret("luna_api_key", "openai_api_key"))
         self.input_luna_api_key.blockSignals(False)
+
+    def _set_provider_choice(self, provider_id):
+        """Set the visible provider radio without invoking its gate callback."""
+        provider_id = str(provider_id or "google")
+        if provider_id not in self.provider_choice_buttons:
+            provider_id = "google"
+        button = self.provider_choice_buttons[provider_id]
+        button.blockSignals(True)
+        button.setChecked(True)
+        button.blockSignals(False)
+        self._selected_provider_id = provider_id
+        self._sync_provider_disclosure_visibility()
+        for choice_id, row in self.provider_choice_rows.items():
+            row.setProperty("selected", choice_id == provider_id)
+            style = row.style()
+            if style is not None:
+                style.unpolish(row)
+                style.polish(row)
+            row.update()
+
+    def _sync_provider_disclosure_visibility(self):
+        """Keep only the selected provider's settings body in the reading path."""
+        selected = self._selected_provider_id
+        show_disclosure = selected != "google"
+        for provider_id, disclosure in self.provider_disclosures.items():
+            disclosure.setVisible(show_disclosure and provider_id == selected)
+        self.provider_status_frame.setVisible(show_disclosure)
+
+    def _provider_for_current_model(self):
+        model_id = str(getattr(self.controller.worker, "gemma_model", "") or "").strip().lower()
+        if model_id in LOCAL_MODEL_IDS:
+            return "local_gemma"
+        return "online_gemma"
+
+    def _controller_route_provider(self, provider_id):
+        """Tell newer controllers which concrete registry provider is active."""
+        route_id = {
+            "google": "google",
+            "local_gemma": "local_multimodal",
+            "online_gemma": "gemma",
+            "luna": "openai",
+        }.get(str(provider_id or ""))
+        if not route_id:
+            return False
+        return self._optional_controller_call("select_translation_provider", route_id)
+
+    def _controller_route_choice(self):
+        """Read the persisted first provider without exposing any secret."""
+        chain = getattr(self.controller, "provider_chain", None)
+        if chain is None:
+            chain = getattr(getattr(self.controller, "worker", None), "provider_chain", None)
+        if isinstance(chain, str):
+            chain = [part.strip() for part in chain.split(",") if part.strip()]
+        if not isinstance(chain, (list, tuple)) or not chain:
+            return None
+        first = str(chain[0] or "").strip().lower()
+        worker = getattr(self.controller, "worker", None)
+        if first != "google" and worker is not None and not getattr(worker, "use_gemma_translation", False):
+            return "google"
+        if first == "gemma" and self._provider_for_current_model() == "local_gemma":
+            return "local_gemma"
+        return {
+            "google": "google",
+            "local_multimodal": "local_gemma",
+            "gemma": "online_gemma",
+            "openai": "luna",
+        }.get(first)
+
+    def _restore_provider_choice(self):
+        self._set_provider_choice(self._selected_provider_id or "google")
+
+    def _select_remote_gemma(self):
+        """Keep the canonical model selector aligned with Online Gemma."""
+        current_model = str(self.cmb_ai_model.currentData() or "").strip().lower()
+        if current_model not in LOCAL_MODEL_IDS:
+            return True
+        for index in range(self.cmb_ai_model.count()):
+            model_id = str(self.cmb_ai_model.itemData(index) or "").strip().lower()
+            if model_id and model_id not in LOCAL_MODEL_IDS:
+                self.cmb_ai_model.setCurrentIndex(index)
+                return True
+        return False
+
+    def on_provider_selected(self, provider_id):
+        """Select one provider while preserving the existing model/key gates."""
+        provider_id = str(provider_id or "")
+        if provider_id == "google":
+            self._set_provider_choice(provider_id)
+            self.on_translate_mode_clicked(False)
+            return
+
+        if provider_id == "local_gemma":
+            if not self._select_local_gemma():
+                self._restore_provider_choice()
+                self._show_provider_gate_message(
+                    "Local Gemma is unavailable in this build. Choose another provider or install the full edition."
+                    if str(self._ui_language()).lower().startswith("en") else
+                    "このビルドでは Local Gemma を利用できません。他のプロバイダーを選択するか、フル版をインストールしてください。"
+                    if self._ui_language() == "ja" else
+                    "此版本找不到本機 Gemma 模型選項，請改選其他引擎或安裝完整版本。"
+                )
+                return
+            self._set_provider_choice(provider_id)
+            self.on_translate_mode_clicked(True)
+            return
+
+        if provider_id == "online_gemma":
+            self._set_provider_choice(provider_id)
+            self._ai_requested = True
+            has_key = bool(self.input_api_key.text().strip() or self._controller_secret("google_api_key"))
+            online_disclosure = self.provider_disclosures["online_gemma"]
+            online_disclosure.set_expanded(True)
+            if not has_key:
+                if not self.chk_online_gemma_enabled.isChecked():
+                    self.chk_online_gemma_enabled.setChecked(True)
+                self._optional_controller_call("stage_translation_provider_setup", provider_id)
+                self.input_api_key.setFocus()
+                self.update_translate_summary()
+                self._show_provider_gate_message(
+                    "Online Gemma is paused until its API key is entered. Enter it below to continue."
+                    if str(self._ui_language()).lower().startswith("en")
+                    else "Online Gemma は API キーが入力されるまで一時停止しています。下に入力して続行してください。"
+                    if self._ui_language() == "ja"
+                    else "線上 Gemma 暫停翻譯，請在下方輸入 API Key 後繼續。"
+                )
+                return
+            if not self._select_remote_gemma():
+                self._optional_controller_call("stage_translation_provider_setup", provider_id)
+                self._show_provider_gate_message(
+                    "Choose an online Gemma model to continue."
+                    if str(self._ui_language()).lower().startswith("en")
+                    else "続行するには Online Gemma モデルを選択してください。"
+                    if self._ui_language() == "ja"
+                    else "請先選擇線上 Gemma 模型後繼續。"
+                )
+                return
+            self.on_translate_mode_clicked(True)
+            return
+
+        if provider_id == "luna":
+            self._set_provider_choice(provider_id)
+            luna_disclosure = self.provider_disclosures["luna"]
+            luna_disclosure.set_expanded(True)
+            if not (self.input_luna_api_key.text().strip() or self._controller_secret("luna_api_key", "openai_api_key")):
+                if not self.chk_luna_enabled.isChecked():
+                    self.chk_luna_enabled.setChecked(True)
+                self._optional_controller_call("stage_translation_provider_setup", provider_id)
+                self.input_luna_api_key.setFocus()
+                self._show_provider_gate_message(
+                    "Luna is paused until its API key is entered. Enter it below to continue."
+                    if str(self._ui_language()).lower().startswith("en")
+                    else "Luna は API キーが入力されるまで一時停止しています。下に入力して続行してください。"
+                    if self._ui_language() == "ja"
+                    else "Luna 暫停翻譯，請在下方輸入 API Key 後繼續。"
+                )
+                return
+            if not self.chk_luna_enabled.isChecked():
+                self.chk_luna_enabled.setChecked(True)
+            self._controller_route_provider(provider_id)
+            self.update_translate_summary()
+
+    def _show_provider_gate_message(self, message):
+        self.lbl_translate_health_detail.setText(str(message))
+        self.lbl_translate_health_detail.setVisible(True)
+        self.lbl_translate_health_detail.setToolTip(str(message))
+        if not hasattr(self, "_setup_reveal_timer"):
+            self._setup_reveal_timer = QTimer(self)
+            self._setup_reveal_timer.setSingleShot(True)
+            self._setup_reveal_timer.timeout.connect(self._reveal_provider_setup)
+        self._setup_reveal_timer.start(0)
+
+    def _reveal_provider_setup(self):
+        field = {
+            "online_gemma": self.input_api_key,
+            "luna": self.input_luna_api_key,
+        }.get(self._selected_provider_id)
+        if field is not None and field.isVisible():
+            self.translation_scroll_area.ensureWidgetVisible(field, 12, 36)
+            field.setFocus()
 
     def _select_local_gemma(self):
         """選取本地模型，並確保 controller 與面板即使原本同索引也會同步。"""
@@ -763,21 +1029,35 @@ class TranslationSettingsPanel(QWidget):
                 is_local_model = self._select_local_gemma()
             self._expand_provider_for_model(getattr(self.controller.worker, "gemma_model", ""))
             if has_key or is_local_model:
-                self.controller.toggle_ai_translation(True)
+                if callable(getattr(self.controller, "select_translation_provider", None)):
+                    self._controller_route_provider(self._provider_for_current_model())
+                else:
+                    self.controller.toggle_ai_translation(True)
             else:
                 self.controller.toggle_ai_translation(False)
                 self.sync_from_controller()
                 self.input_api_key.setFocus()
                 return
         else:
-            self.controller.toggle_ai_translation(False)
+            if callable(getattr(self.controller, "select_translation_provider", None)):
+                self._controller_route_provider("google")
+            else:
+                self.controller.toggle_ai_translation(False)
         self.sync_from_controller()
 
     def on_api_key_text_changed(self, text):
         self.on_google_api_key_changed(text)
-        if text.strip() and self._ai_requested and not getattr(self.controller.worker, "use_gemma_translation", False):
+        if (text.strip() and self._ai_requested
+                and not callable(getattr(self.controller, "select_translation_provider", None))
+                and not getattr(self.controller.worker, "use_gemma_translation", False)):
+            # Preserve the legacy two-button path used by older integrations.
             self.controller.toggle_ai_translation(True)
         self.update_translate_summary()
+
+    def on_api_key_editing_finished(self):
+        if (self.input_api_key.text().strip() and self._selected_provider_id == "online_gemma"
+                and self._controller_route_choice() != "online_gemma"):
+            self.on_provider_selected("online_gemma")
 
     def toggle_api_key_visible(self):
         visible = self.input_api_key.echoMode() != QLineEdit.Normal
@@ -794,7 +1074,7 @@ class TranslationSettingsPanel(QWidget):
             if matched_index >= 0:
                 controller_index = matched_index
         self.controller.on_ai_model_changed(controller_index)
-        if self._ai_requested or self.btn_translate_ai.isChecked():
+        if self._ai_requested or self._selected_provider_id in {"local_gemma", "online_gemma"}:
             self._expand_provider_for_model(model_id)
         if (
             self._ai_requested
@@ -920,6 +1200,9 @@ class TranslationSettingsPanel(QWidget):
     def on_online_gemma_enabled_changed(self, checked):
         if not self._optional_controller_call("on_online_gemma_enabled_changed", bool(checked)):
             self._optional_controller_call("on_gemma_online_enabled_changed", bool(checked))
+        self.input_api_key.setEnabled(bool(checked))
+        self.btn_api_key_visible.setEnabled(bool(checked))
+        self.chk_auto_switch.setEnabled(bool(checked))
         self.update_provider_status_rows()
 
     def on_google_api_key_changed(self, text):
@@ -930,12 +1213,19 @@ class TranslationSettingsPanel(QWidget):
     def on_luna_enabled_changed(self, checked):
         if not self._optional_controller_call("on_luna_enabled_changed", bool(checked)):
             self._optional_controller_call("on_openai_enabled_changed", bool(checked))
+        self.input_luna_api_key.setEnabled(bool(checked))
+        self.spin_luna_timeout.setEnabled(bool(checked))
         self.update_provider_status_rows()
 
     def on_luna_api_key_changed(self, text):
         if not self._optional_controller_call("on_luna_api_key_changed", str(text or "")):
             self._optional_controller_call("on_openai_api_key_changed", str(text or ""))
         self.update_provider_status_rows()
+
+    def on_luna_api_key_editing_finished(self):
+        if (self.input_luna_api_key.text().strip() and self._selected_provider_id == "luna"
+                and self._controller_route_choice() != "luna"):
+            self.on_provider_selected("luna")
 
     def on_luna_reasoning_changed(self, index):
         value = "none"
@@ -1049,6 +1339,7 @@ class TranslationSettingsPanel(QWidget):
         return statuses, bool(records)
 
     def _online_gemma_rotation_detail(self, is_en):
+        is_ja = self._ui_language() == "ja"
         worker = getattr(self.controller, "worker", None)
         preferred = str(getattr(worker, "gemma_model", "") or "").strip()
         active = str(getattr(worker, "active_gemma_model", "") or "").strip()
@@ -1058,12 +1349,14 @@ class TranslationSettingsPanel(QWidget):
             return (
                 f"Rotation trail: {preferred} → {active}"
                 if is_en
-                else f"輪替軌跡：{preferred} → {active}"
+                else f"切替履歴：{preferred} → {active}"
+                if is_ja else f"輪替軌跡：{preferred} → {active}"
             )
         return (
             f"Rotation target: {active}"
             if is_en
-            else f"輪替目標：{active}"
+            else f"切替先：{active}"
+            if is_ja else f"輪替目標：{active}"
         )
 
     @staticmethod
@@ -1111,7 +1404,7 @@ class TranslationSettingsPanel(QWidget):
             },
             "luna": {
                 "enabled": self.chk_luna_enabled.isChecked(),
-                "model": "gpt-5.6-luna",
+                "model": DEFAULT_OPENAI_MODEL,
                 "reasoning_effort": reasoning,
                 "timeout_seconds": int(self.spin_luna_timeout.value()),
             },
@@ -1171,29 +1464,32 @@ class TranslationSettingsPanel(QWidget):
         if not self.provider_status_rows:
             return
         is_en = str(self._ui_language()).lower().startswith("en")
-        ready = "Ready" if is_en else "已就緒"
-        needs_setup = "Needs setup" if is_en else "需要設定"
-        unverified = "Unverified" if is_en else "未驗證"
-        cooldown = "Cooldown" if is_en else "冷卻中"
-        using = "Using" if is_en else "使用中"
-        local_not_applicable = "Local status" if is_en else "本地狀態"
+        is_ja = self._ui_language() == "ja"
+        ready = "Ready" if is_en else ("準備完了" if is_ja else "已就緒")
+        needs_setup = "Needs setup" if is_en else ("設定が必要" if is_ja else "需要設定")
+        unverified = "Unverified" if is_en else ("未確認" if is_ja else "未驗證")
+        cooldown = "Cooldown" if is_en else ("クールダウン中" if is_ja else "冷卻中")
+        using = "Using" if is_en else ("使用中" if is_ja else "使用中")
+        local_not_applicable = "Local status" if is_en else ("ローカル状態" if is_ja else "本地狀態")
         health = self._provider_health(local_only=True)
         local_ready = str(health.code).startswith("local_ready")
         local_status = ready if local_ready else (local_not_applicable if health.code == "google_ready" else needs_setup)
+        self._set_provider_choice_status("local_gemma", local_status)
         self._set_provider_row(
             "local_gemma",
             local_status,
-            health.detail if not local_ready else ("Local model status" if is_en else "本地模型狀態"),
+            health.detail if not local_ready else ("Local model status" if is_en else ("ローカルモデルの状態" if is_ja else "本地模型狀態")),
             local_not_applicable,
         )
 
         has_key = bool(self.input_api_key.text().strip())
         online_enabled = self.chk_online_gemma_enabled.isChecked()
         online_status = ready if online_enabled and has_key and self.model_availability_result.verified else (unverified if online_enabled and has_key else needs_setup)
-        online_detail = ("Single API key configured" if is_en else "已設定單一 API Key") if has_key else ("Add the Gemma API key" if is_en else "請輸入 Gemma API Key")
+        online_detail = ("Single API key configured" if is_en else ("API キーを設定済み" if is_ja else "已設定單一 API Key")) if has_key else ("Add the Gemma API key" if is_en else ("Gemma API キーを入力してください" if is_ja else "請輸入 Gemma API Key"))
         rotation_detail = self._online_gemma_rotation_detail(is_en)
         if rotation_detail:
             online_detail = f"{online_detail} · {rotation_detail}"
+        self._set_provider_choice_status("online_gemma", online_status)
         self._set_provider_row("online_gemma", online_status, online_detail, "")
 
         model_statuses, has_runtime_snapshot = self._online_gemma_model_statuses()
@@ -1204,10 +1500,10 @@ class TranslationSettingsPanel(QWidget):
             "using": using,
         }
         model_detail_text = {
-            "ready": "Rate: Ready · Cooldown: None" if is_en else "速率：可用 · 冷卻：無",
-            "unverified": "Rate: Unverified · Cooldown: Unverified" if is_en else "速率：未驗證 · 冷卻：未驗證",
-            "cooldown": "Rate: Limited · Cooldown: Active" if is_en else "速率：受限 · 冷卻：進行中",
-            "using": "Rate: Active · Cooldown: None" if is_en else "速率：使用中 · 冷卻：無",
+            "ready": "Rate: Ready · Cooldown: None" if is_en else ("レート：利用可能 · クールダウン：なし" if is_ja else "速率：可用 · 冷卻：無"),
+            "unverified": "Rate: Unverified · Cooldown: Unverified" if is_en else ("レート：未確認 · クールダウン：未確認" if is_ja else "速率：未驗證 · 冷卻：未驗證"),
+            "cooldown": "Rate: Limited · Cooldown: Active" if is_en else ("レート：制限中 · クールダウン：実行中" if is_ja else "速率：受限 · 冷卻：進行中"),
+            "using": "Rate: Active · Cooldown: None" if is_en else ("レート：稼働中 · クールダウン：なし" if is_ja else "速率：使用中 · 冷卻：無"),
         }
         for model_id, model_row in self.online_gemma_model_rows.items():
             status = model_statuses.get(model_id, "unverified")
@@ -1217,7 +1513,16 @@ class TranslationSettingsPanel(QWidget):
 
         luna_key = self.input_luna_api_key.text().strip()
         luna_status = unverified if self.chk_luna_enabled.isChecked() and luna_key else needs_setup
-        self._set_provider_row("luna", luna_status, "Text + image input" if is_en else "支援文字與圖片輸入", "")
+        self._set_provider_choice_status("google", ready)
+        self._set_provider_choice_status("luna", luna_status)
+        self._set_provider_row("luna", luna_status, "Text + image input" if is_en else ("テキストと画像の入力に対応" if is_ja else "支援文字與圖片輸入"), "")
+
+    def _set_provider_choice_status(self, provider_id, status):
+        row = self.provider_choice_rows.get(provider_id)
+        if row is None:
+            return
+        row.status_label.setText(str(status or ""))
+        self._apply_status_tone(row.status_label, status)
 
     def _set_provider_row(self, provider_id, status, detail, scope):
         row = self.provider_status_rows[provider_id]
@@ -1228,10 +1533,11 @@ class TranslationSettingsPanel(QWidget):
         disclosure = self.provider_disclosures.get(provider_id)
         if disclosure is not None:
             is_en = str(self._ui_language()).lower().startswith("en")
+            is_ja = self._ui_language() == "ja"
             capability = {
-                "local_gemma": "Local model · no cloud key required" if is_en else "本地模型・不需雲端金鑰",
-                "online_gemma": "One key · two Gemma models · thinking minimal" if is_en else "單一 Key・雙 Gemma 模型・thinking minimal",
-                "luna": "Text + image input · reasoning off" if is_en else "文字＋圖片輸入・reasoning 固定關閉",
+                "local_gemma": "Local model · no cloud key required" if is_en else ("ローカルモデル · クラウドキー不要" if is_ja else "本地模型・不需雲端金鑰"),
+                "online_gemma": "One key · two Gemma models · thinking minimal" if is_en else ("1 つのキー · 2 つの Gemma モデル · thinking minimal" if is_ja else "單一 Key・雙 Gemma 模型・thinking minimal"),
+                "luna": "Text + image input · reasoning off" if is_en else ("テキストと画像に対応 · reasoning オフ" if is_ja else "文字＋圖片輸入・reasoning 固定關閉"),
             }.get(provider_id, disclosure.capability)
             disclosure.set_summary(status, capability)
             disclosure.header.setProperty("statusTone", self._status_tone(status))
@@ -1241,6 +1547,8 @@ class TranslationSettingsPanel(QWidget):
                 style.polish(disclosure.header)
 
     def on_advanced_tuning_toggled(self, checked):
+        self.lbl_gemma_prompt.setVisible(bool(checked))
+        self.input_gemma_prompt.setVisible(bool(checked))
         self.tuning_frame.setVisible(checked)
 
     def on_gemma_prompt_changed(self):
@@ -1311,18 +1619,22 @@ class TranslationSettingsPanel(QWidget):
             "gemma-3-4b-it-local": {
                 "en": "Full edition includes the model; light edition downloads to AppData. Read the <a href=\"https://ai.google.dev/gemma/terms\">Gemma Terms of Use</a> before enabling.",
                 "zh-TW": "完整包內附模型；輕量包下載至 AppData。啟用前請閱讀 <a href=\"https://ai.google.dev/gemma/terms\">Gemma 使用條款</a>。",
+                "ja": "フル版にはモデルが含まれます。ライト版では AppData にダウンロードします。有効化する前に <a href=\"https://ai.google.dev/gemma/terms\">Gemma 利用規約</a>をお読みください。",
             },
             "gemma-3-27b-it": {
                 "en": "Best balance for screenshot translation.",
                 "zh-TW": "截圖翻譯的平衡首選。",
+                "ja": "スクリーンショット翻訳に適したバランスのモデルです。",
             },
             "gemma-4-31b-it": {
                 "en": "Large model with stronger vision, but slower.",
                 "zh-TW": "更強的視覺能力，但速度較慢。",
+                "ja": "視覚能力に優れた大型モデルですが、処理は遅めです。",
             },
             "gemini-2.5-pro": {
                 "en": "Strong paid model; can be slower or rate-limited.",
                 "zh-TW": "付費強力模型，可能較慢或受限。",
+                "ja": "高性能の有料モデルです。処理が遅い場合や利用制限がかかる場合があります。",
             },
         }
         model_note = notes.get(model_name)
@@ -1340,41 +1652,68 @@ class TranslationSettingsPanel(QWidget):
 
     def refresh_localized_texts(self):
         lang = self._ui_language()
-        self.lbl_translate.setText(translation_tools.ui_text(lang, "translation_panel_title"))
-        self.lbl_translate_hint.setText(translation_tools.ui_text(lang, "translation_panel_hint"))
-        self.lbl_translate_mode.setText("Provider" if lang == "en" else "\u7ffb\u8b6f\u4f86\u6e90")
-        self.btn_translate_google.setText(translation_tools.ui_text(lang, "translation_mode_google"))
-        self.btn_translate_ai.setText(translation_tools.ui_text(lang, "translation_mode_ai"))
-        self._set_visibility_button_text()
         is_en = str(lang).lower().startswith("en")
-        self.lbl_api_key.setText("Online Gemma API key" if is_en else "Online Gemma API Key")
-        self.input_api_key.setPlaceholderText("Gemma API key" if is_en else "Gemma API Key")
+        is_ja = lang == "ja"
+
+        def localized(en, zh, ja):
+            return en if is_en else (ja if is_ja else zh)
+
+        self.lbl_translate.setText(localized("Translation", "翻譯引擎", "翻訳"))
+        self.lbl_translate_hint.setText(
+            localized("Choose how to translate.", "選擇適合你的翻譯方式", "翻訳方法を選択してください。")
+        )
+        self.lbl_translate_mode.setText(localized("Provider", "翻譯來源", "プロバイダー"))
+        provider_copy = {
+            "google": (
+                ("Google Translate", "No API key required") if is_en
+                else (("Google 翻訳", "API キー不要") if is_ja else ("Google 翻譯", "不需 API Key"))
+            ),
+            "local_gemma": (
+                ("Local Gemma", "Local model · no cloud key required") if is_en
+                else (("ローカル Gemma", "ローカルモデル · クラウドキー不要") if is_ja else ("本機 Gemma", "本地模型・不需雲端金鑰"))
+            ),
+            "online_gemma": (
+                ("Online Gemma", "One key · two Gemma models") if is_en
+                else (("Online Gemma", "1 つのキー · 2 つの Gemma モデル") if is_ja else ("線上 Gemma", "單一 Key・雙 Gemma 模型"))
+            ),
+            "luna": (
+                ("Luna", "Text + image input · Luna key required") if is_en
+                else (("Luna", "テキストと画像に対応 · Luna キーが必要") if is_ja else ("Luna", "文字＋圖片輸入・需要 Luna Key"))
+            ),
+        }
+        for provider_id, (name, description) in provider_copy.items():
+            row = self.provider_choice_rows[provider_id]
+            row.name_label.setText(name)
+            row.detail_label.setText(description)
+        self._set_visibility_button_text()
+        self.lbl_api_key.setText(localized("Online Gemma API key", "Online Gemma API Key", "Online Gemma API キー"))
+        self.input_api_key.setPlaceholderText(localized("Gemma API key", "Gemma API Key", "Gemma API キー"))
         self.lbl_online_gemma.setText("Online Gemma" if is_en else "Online Gemma")
-        self.chk_online_gemma_enabled.setText("Enable Online Gemma" if is_en else "啟用 Online Gemma")
+        self.chk_online_gemma_enabled.setText(localized("Enable Online Gemma", "啟用 Online Gemma", "Online Gemma を有効化"))
         self.lbl_auto_switch.setText(
             "When enabled, rotate between gemma-4-26b-a4b-it and gemma-4-31b-it after a model limit."
-            if is_en else "啟用後，模型受限時會在 gemma-4-26b-a4b-it 與 gemma-4-31b-it 間自動輪替。"
+            if is_en else ("モデルの制限時に gemma-4-26b-a4b-it と gemma-4-31b-it を自動で切り替えます。" if is_ja else "啟用後，模型受限時會在 gemma-4-26b-a4b-it 與 gemma-4-31b-it 間自動輪替。")
         )
         self.lbl_online_gemma_models.setText(
             "Models: gemma-4-26b-a4b-it · gemma-4-31b-it · thinking minimal"
-            if is_en else "模型：gemma-4-26b-a4b-it、gemma-4-31b-it；thinking：minimal"
+            if is_en else ("モデル：gemma-4-26b-a4b-it · gemma-4-31b-it · thinking minimal" if is_ja else "模型：gemma-4-26b-a4b-it、gemma-4-31b-it；thinking：minimal")
         )
         self.lbl_luna.setText("Luna" if is_en else "Luna")
-        self.chk_luna_enabled.setText("Enable Luna" if is_en else "啟用 Luna")
-        self.lbl_luna_api_key.setText("Luna API key" if is_en else "Luna API Key")
-        self.lbl_luna_model_label.setText("Model (fixed)" if is_en else "模型（固定）")
+        self.chk_luna_enabled.setText(localized("Enable Luna", "啟用 Luna", "Luna を有効化"))
+        self.lbl_luna_api_key.setText(localized("Luna API key", "Luna API Key", "Luna API キー"))
+        self.lbl_luna_model_label.setText(localized("Model (fixed)", "模型（固定）", "モデル（固定）"))
         self.lbl_luna_capabilities.setText(
             "Capabilities: text + image input. Connectivity and quota are checked at request time."
             if is_en
-            else "能力：文字＋圖片輸入。連線與額度會在要求送出時檢查。"
+            else ("テキストと画像の入力に対応。接続と利用枠はリクエスト送信時に確認します。" if is_ja else "能力：文字＋圖片輸入。連線與額度會在要求送出時檢查。")
         )
-        self.lbl_luna_reasoning.setText("Thinking (fixed off)" if is_en else "Thinking（固定關閉）")
-        self.lbl_luna_timeout.setText("Timeout" if is_en else "逾時")
-        self.spin_luna_timeout.setSuffix(" sec" if is_en else " 秒")
-        self.cmb_luna_reasoning.setItemText(0, "Off" if is_en else "關閉")
+        self.lbl_luna_reasoning.setText(localized("Thinking (fixed off)", "Thinking（固定關閉）", "Thinking（固定オフ）"))
+        self.lbl_luna_timeout.setText(localized("Timeout", "逾時", "タイムアウト"))
+        self.spin_luna_timeout.setSuffix(" sec" if is_en else (" 秒" if is_ja else " 秒"))
+        self.cmb_luna_reasoning.setItemText(0, localized("Off", "關閉", "オフ"))
         self.lbl_ai_model.setText(translation_tools.ui_text(lang, "translation_ai_model"))
         self.btn_use_local_gemma.setText(
-            "Use local Gemma 3 4B" if is_en else "使用本地 Gemma 3 4B"
+            localized("Use local Gemma 3 4B", "使用本地 Gemma 3 4B", "ローカル Gemma 3 4B を使用")
         )
         self.lbl_local_model_terms.setText(self._ai_model_note_text("gemma-3-4b-it-local"))
         self._refresh_model_availability_text()
@@ -1399,8 +1738,8 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_local_multimodal_timeout.setText(
             translation_tools.ui_text(lang, "translation_local_multimodal_timeout")
         )
-        self.spin_local_multimodal_timeout.setSuffix(" sec" if lang == "en" else " 秒")
-        self.btn_advanced_tuning.setText("Advanced Local Tuning" if is_en else "本地進階參數")
+        self.spin_local_multimodal_timeout.setSuffix(" sec" if is_en else " 秒")
+        self.btn_advanced_tuning.setText(localized("Advanced prompt & tuning", "進階提示詞與參數", "プロンプトと詳細設定"))
         self._configure_provider_accessibility()
         self.update_ai_model_notes()
 
@@ -1411,11 +1750,16 @@ class TranslationSettingsPanel(QWidget):
         self.btn_translate_ai.setChecked(use_ai)
         self.btn_translate_google.blockSignals(False)
         self.btn_translate_ai.blockSignals(False)
+        if use_ai:
+            if self._selected_provider_id != "luna":
+                self._set_provider_choice(self._provider_for_current_model())
+        else:
+            self._set_provider_choice("google")
         enabled = bool(use_ai or self._ai_requested)
         self.set_translate_advanced_visible(enabled)
         self.update_key_state(enabled)
         model_id = str(self.cmb_ai_model.currentData() or "").strip().lower()
-        if use_ai and model_id not in LOCAL_MODEL_IDS and not self.input_api_key.text().strip():
+        if use_ai and self._selected_provider_id != "luna" and model_id not in LOCAL_MODEL_IDS and not self.input_api_key.text().strip():
             self.input_api_key.setFocus()
         self.update_translate_summary()
 
@@ -1627,6 +1971,19 @@ class TranslationSettingsPanel(QWidget):
         self.btn_translate_google.blockSignals(False)
         self.btn_translate_ai.blockSignals(False)
 
+        pending_provider = getattr(self.controller, "pending_translation_provider_id", None)
+        persisted_provider = self._controller_route_choice()
+        if pending_provider in self.provider_choice_buttons:
+            self._set_provider_choice(pending_provider)
+        elif persisted_provider is not None:
+            self._set_provider_choice(persisted_provider)
+        elif ai_enabled:
+            self._set_provider_choice(self._provider_for_current_model())
+        elif getattr(self.controller, "openai_enabled", False) and self.input_luna_api_key.text().strip():
+            self._set_provider_choice("luna")
+        else:
+            self._set_provider_choice("google")
+
         enabled = bool(ai_enabled or self._ai_requested)
         self.set_translate_advanced_visible(enabled)
         self.update_key_state(enabled)
@@ -1699,17 +2056,48 @@ class TranslationSettingsPanel(QWidget):
             "line-height: 1.2; margin-top: 2px;"
         )
 
-        self.mode_buttons.setStyleSheet(
-            f"QWidget {{ background-color: {theme.input_bg}; border: 1px solid {theme.border}; border-radius: 12px; }}"
+        provider_surface = theme.get("provider_surface", theme.input_bg)
+        provider_border = theme.get("provider_border", theme.border)
+        provider_top = theme.get("provider_top_highlight", theme.border)
+        provider_edge = theme.get("provider_bottom_edge", theme.border)
+        nested_surface = theme.get("nested_model_surface", theme.input_bg)
+        nested_border = theme.get("nested_model_border", theme.border)
+        provider_metadata = theme.get("provider_metadata", theme.subtext)
+        provider_selection_accent = (
+            "#AD9AFF" if theme.key == "dark"
+            else "#7052D6" if theme.key == "light"
+            else theme.accent
         )
-        button_style = (
-            f"QPushButton {{ color: {theme.subtext}; background-color: transparent; border: none; "
-            f"border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 800; }}"
-            f"QPushButton:hover {{ color: {theme.text}; background-color: {theme.accent_soft}; }}"
-            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; }}"
+        provider_selection_soft = (
+            "rgba(173, 154, 255, 42)" if theme.key == "dark"
+            else "rgba(112, 82, 214, 30)" if theme.key == "light"
+            else theme.accent_soft
         )
-        self.btn_translate_google.setStyleSheet(button_style)
-        self.btn_translate_ai.setStyleSheet(button_style)
+        self.mode_buttons.setStyleSheet("QWidget#providerChoiceRows { background: transparent; border: none; }")
+        provider_row_style = (
+            f"QFrame#providerChoiceRow_google, QFrame#providerChoiceRow_local_gemma, "
+            f"QFrame#providerChoiceRow_online_gemma, QFrame#providerChoiceRow_luna {{ "
+            f"background-color: {provider_surface}; border: 1px solid {provider_border}; border-radius: 8px; }}"
+            f" QFrame#providerChoiceRow_google:hover, QFrame#providerChoiceRow_local_gemma:hover, "
+            f"QFrame#providerChoiceRow_online_gemma:hover, QFrame#providerChoiceRow_luna:hover {{ border-color: {provider_selection_accent}; }}"
+            f" QFrame#providerChoiceRow_google[selected=\"true\"], QFrame#providerChoiceRow_local_gemma[selected=\"true\"], "
+            f"QFrame#providerChoiceRow_online_gemma[selected=\"true\"], QFrame#providerChoiceRow_luna[selected=\"true\"] {{ "
+            f"background-color: {provider_selection_soft}; border: 2px solid {provider_selection_accent}; }}"
+            f" QRadioButton {{ background: transparent; color: {theme.text}; font-size: 13px; border:2px solid transparent; border-radius:4px; }}"
+            f" QRadioButton:focus {{ border:2px solid {theme.focus}; }}"
+            f" QRadioButton::indicator {{ width:14px; height:14px; border:2px solid {provider_selection_accent}; border-radius:9px; background:transparent; }}"
+            f" QRadioButton::indicator:checked {{ background:{provider_selection_accent}; border-color:{provider_selection_accent}; }}"
+        )
+        for row in self.provider_choice_rows.values():
+            row.setStyleSheet(provider_row_style)
+            row.name_label.setStyleSheet(
+                f"font-size: 13px; font-weight: 800; color: {theme.text}; background: transparent; border: none;"
+            )
+            row.detail_label.setStyleSheet(
+                f"font-size: 11px; color: {provider_metadata}; background: transparent; border: none;"
+            )
+            row.status_label.setStyleSheet(self._status_label_style(theme, size=10))
+            self._apply_status_tone(row.status_label, row.status_label.text())
 
         self.input_api_key.setStyleSheet(
             f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
@@ -1768,13 +2156,6 @@ class TranslationSettingsPanel(QWidget):
         self.spin_local_gemma_repeat.setStyleSheet(spinbox_style)
         self.spin_local_multimodal_timeout.setStyleSheet(spinbox_style)
         self.tuning_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
-        provider_surface = theme.get("provider_surface", theme.input_bg)
-        provider_border = theme.get("provider_border", theme.border)
-        provider_top = theme.get("provider_top_highlight", theme.border)
-        provider_edge = theme.get("provider_bottom_edge", theme.border)
-        nested_surface = theme.get("nested_model_surface", theme.input_bg)
-        nested_border = theme.get("nested_model_border", theme.border)
-        provider_metadata = theme.get("provider_metadata", theme.subtext)
         self.provider_status_frame.setStyleSheet(
             f"QFrame#providerStatusCards {{ background: transparent; border: none; }}"
             f"QFrame#providerDisclosure_local_gemma, QFrame#providerDisclosure_online_gemma, QFrame#providerDisclosure_luna {{ "

@@ -2,6 +2,15 @@
 
 CloudHime's full MSIX includes the pinned Gemma model and projector, with their terms and notices in `_internal/models`. The lightweight ZIP excludes these weights and can download them to the user's local application-data directory after the local feature is enabled. CloudHime does not require or communicate with Ollama.
 
+## GenSen Rounded UI fonts
+
+- Project: https://github.com/ButTaiwan/gensen-font
+- Pinned source commit: `d347d3fffcb45e08857052433a0b432ed4f7ace8`
+- Bundled files: `GenSenRounded2TW-R.otf` and `GenSenRounded2JP-R.otf`
+- License: SIL Open Font License 1.1; the full license is bundled at `assets/fonts/OFL.txt`.
+
+The Traditional Chinese and English UI use the TW face; the Japanese UI uses the JP face. These fonts are registered only inside the application and are not installed into Windows.
+
 ## Gemma 3 4B model and multimodal projector
 
 Gemma is provided under and subject to the Gemma Terms of Use found at https://ai.google.dev/gemma/terms.

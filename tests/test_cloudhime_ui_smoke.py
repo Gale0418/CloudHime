@@ -9,6 +9,37 @@ from cloudhime_ui import StatusChargeBar, _resource_path
 from PySide6.QtCore import QTimer
 
 
+def test_controller_scan_and_hotkey_labels_follow_ui_language_before_hotkey_setup():
+    controller = Controller.__new__(Controller)
+    controller.ui_language = "ja"
+    controller.random_scan_center_seconds = 30
+
+    assert Controller.get_random_scan_button_text(controller) == "ランダム 30s~"
+    assert Controller.get_hotkey_button_text(controller).startswith("今すぐ翻訳")
+
+
+def test_luna_route_requires_enabled_config_and_enables_it_on_selection():
+    controller = Controller.__new__(Controller)
+    controller.worker = SimpleNamespace(
+        use_gemma_translation=True,
+        google_api_key="",
+        set_provider_chain=Mock(),
+    )
+    controller.provider_chain = ["openai"]
+    controller.openai_api_key = "test-key"
+    controller.openai_enabled = False
+    controller.pending_translation_provider_id = None
+    controller._advance_scan_generation = Mock()
+    controller.on_luna_enabled_changed = Mock(side_effect=lambda enabled: setattr(controller, "openai_enabled", enabled))
+    controller.toggle_ai_translation = Mock()
+    controller.update_gemma_rate_indicator = Mock()
+
+    assert Controller._required_provider_setup(controller) == "luna"
+    assert Controller.select_translation_provider(controller, "luna")
+    controller.on_luna_enabled_changed.assert_called_once_with(True)
+    assert Controller._required_provider_setup(controller) is None
+
+
 def test_resource_path_resolves_bundled_assets():
     asset_path = Path(_resource_path("assets/bg_dark.png"))
 
@@ -175,7 +206,75 @@ def test_controller_applies_single_google_credential():
     assert calls == ["single-secret"]
 
 
-def test_settings_revamp_keeps_legacy_three_column_shell(qtbot, monkeypatch):
+def test_controller_select_translation_provider_commits_expected_route():
+    def make_controller(*, openai_api_key=""):
+        calls = []
+        controller = Controller.__new__(Controller)
+        controller.openai_api_key = openai_api_key
+        controller.provider_chain = ["gemma", "google"]
+        controller.worker = SimpleNamespace(
+            google_api_key="test-google-key",
+            gemma_model="gemma-test",
+            set_provider_chain=lambda chain: calls.append(("chain", list(chain))),
+            set_gemma_enabled=lambda enabled: calls.append(("gemma_enabled", enabled)),
+        )
+        controller._advance_scan_generation = lambda **kwargs: calls.append(
+            ("invalidate", kwargs)
+        )
+        controller.toggle_ai_translation = Controller.toggle_ai_translation.__get__(
+            controller, Controller
+        )
+        controller.lbl_status = SimpleNamespace(setText=lambda text: calls.append(("status", text)))
+        controller.btn_ai_mode = SimpleNamespace(
+            isChecked=lambda: False,
+            blockSignals=lambda _blocked: None,
+            setChecked=lambda checked: calls.append(("ai_mode", checked)),
+        )
+        controller.settings_window = None
+        controller.cmb_ai_model = SimpleNamespace(currentText=lambda: "Gemma test")
+        controller.update_gemma_rate_indicator = lambda: calls.append(("rate",))
+        controller.schedule_save_settings = lambda: calls.append(("save",))
+        return controller, calls
+
+    controller, calls = make_controller()
+    assert Controller.select_translation_provider(controller, "luna") is False
+    assert controller.provider_chain == ["gemma", "google"]
+    assert calls == []
+
+    controller, calls = make_controller(openai_api_key="test-openai-key")
+    assert Controller.select_translation_provider(controller, "luna") is True
+    assert controller.provider_chain == ["openai"]
+    assert ("chain", ["openai"]) in calls
+    assert ("gemma_enabled", True) in calls
+
+    controller, calls = make_controller(openai_api_key="test-openai-key")
+    assert Controller.select_translation_provider(controller, "google") is True
+    assert controller.provider_chain == ["google"]
+    assert ("chain", ["google"]) in calls
+    assert ("gemma_enabled", False) in calls
+
+
+def test_explicit_missing_key_route_requests_setup_but_google_does_not():
+    controller = SimpleNamespace(
+        worker=SimpleNamespace(use_gemma_translation=True, google_api_key="", gemma_model="gemma-4-31b-it"),
+        openai_api_key="", provider_chain=["openai"],
+    )
+    assert Controller._required_provider_setup(controller) == "luna"
+    controller.provider_chain = ["gemma", "google"]
+    assert Controller._required_provider_setup(controller) == "online_gemma"
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    assert Controller._required_provider_setup(controller) is None
+    controller.provider_chain = ["google"]
+    assert Controller._required_provider_setup(controller) is None
+
+
+def test_scan_actions_stop_when_setup_is_required():
+    controller = SimpleNamespace(_open_required_provider_setup=lambda: True)
+    Controller.on_immediate_click(controller)
+    Controller.start_auto_scan(controller)
+
+
+def test_settings_revamp_tabs_preserve_model_route(qtbot, monkeypatch):
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
@@ -187,11 +286,28 @@ def test_settings_revamp_keeps_legacy_three_column_shell(qtbot, monkeypatch):
     qtbot.addWidget(controller)
     controller.toggle_settings_window()
     settings = controller.settings_window
-    assert settings.minimumWidth() == 1400
-    assert settings.minimumHeight() == 780
-    assert not hasattr(settings, "settings_scroll_area")
-    assert not hasattr(settings, "settings_nav_buttons")
-    assert settings.card_translate.parent() is settings.translation_panel
+    settings.show()
+    assert settings.minimumWidth() == 900
+    assert settings.minimumHeight() == 620
+    assert settings.settings_tabs.count() == 4
+    assert settings.settings_pages.count() == 4
+
+    panel = settings.translation_panel
+    initial_worker_model = controller.worker.gemma_model
+    initial_panel_model = panel.cmb_ai_model.currentData()
+    for index in range(settings.settings_tabs.count()):
+        settings.settings_tabs.setCurrentIndex(index)
+        qtbot.wait(5)
+        assert settings.settings_pages.currentIndex() == index
+        assert controller.worker.gemma_model == initial_worker_model
+        assert panel.cmb_ai_model.currentData() == initial_panel_model
+
+    assert settings.settings_pages.widget(0).isAncestorOf(panel)
+    capture_page = settings.settings_pages.widget(1)
+    assert all(
+        capture_page.isAncestorOf(control)
+        for control in (settings.card_ocr, settings.card_region_render, settings.card_relief)
+    )
     controller.close_app()
 
 
@@ -343,10 +459,11 @@ def test_controller_local_vision_states_update_ui(qtbot):
     assert len(health_refreshes) == 5
 
 
-def test_controller_local_vision_download_status_is_bilingual(qtbot):
+def test_controller_local_vision_download_status_is_localized(qtbot):
     for language, expected in (
         ("zh-TW", "下載 Gemma 模型"),
         ("en", "Downloading Gemma model"),
+        ("ja", "Gemma モデルをダウンロード中"),
     ):
         controller = Controller.__new__(Controller)
         controller.ui_language = language
@@ -361,6 +478,25 @@ def test_controller_local_vision_download_status_is_bilingual(qtbot):
         assert controller.charge_bar.progress == 40
         assert expected in controller.charge_bar.label
         assert expected in messages[-1]
+
+
+def test_ui_language_sets_persistent_locale_and_matching_translation_target(qtbot):
+    targets = []
+    saves = []
+    controller = Controller.__new__(Controller)
+    controller.ui_language = "en"
+    controller.worker = SimpleNamespace(set_translation_target_lang=targets.append)
+    controller.settings_window = None
+    controller.schedule_save_settings = lambda: saves.append(True)
+
+    Controller.set_ui_language(controller, "ja-JP", refresh=False)
+    assert controller.get_ui_language() == "ja"
+    assert targets[-1] == "ja"
+    assert saves == [True]
+
+    Controller.set_ui_language(controller, "zh-TW", refresh=False)
+    assert targets[-1] == "zh-TW"
+    assert saves == [True, True]
 
 
 def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypatch, tmp_path):
@@ -417,7 +553,57 @@ def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypat
     assert controller.worker.google_api_key == "secret-key"
 
 
-def test_clearing_api_key_does_not_disable_local_gemma(monkeypatch):
+def test_google_and_luna_keys_survive_restart_in_user_scoped_encrypted_store(
+    qtbot, monkeypatch, tmp_path
+):
+    import cloudhime_ui
+
+    monkeypatch.setattr(cloudhime_ui, "API_KEY_SECRET_PATH", str(tmp_path / "google.secret"))
+    monkeypatch.setattr(cloudhime_ui, "OPENAI_API_KEY_SECRET_PATH", str(tmp_path / "luna.secret"))
+    monkeypatch.setattr(
+        cloudhime_ui,
+        "LEGACY_GOOGLE_API_KEY_SECONDARY_SECRET_PATH",
+        str(tmp_path / "legacy.secret"),
+    )
+    monkeypatch.setattr(cloudhime_ui, "APPDATA_ENV_PATH", str(tmp_path / "missing-appdata.env"))
+    monkeypatch.setattr(cloudhime_ui, "LEGACY_ENV_PATH", str(tmp_path / "missing-legacy.env"))
+    monkeypatch.delenv(cloudhime_ui.API_KEY_ENV_VAR, raising=False)
+    monkeypatch.setattr(cloudhime_ui, "load_settings_data", lambda paths: ({}, None))
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None)
+
+    first_overlay = OverlayWindow()
+    qtbot.addWidget(first_overlay)
+    first = Controller(first_overlay)
+    qtbot.addWidget(first)
+    first.on_api_key_changed("test-only-google-key")
+    first.on_luna_api_key_changed("test-only-luna-key")
+    first.close_app()
+
+    second_overlay = OverlayWindow()
+    qtbot.addWidget(second_overlay)
+    second = Controller(second_overlay)
+    qtbot.addWidget(second)
+    assert second.worker.google_api_key == "test-only-google-key"
+    assert second.openai_api_key == "test-only-luna-key"
+    assert second.worker.openai_api_key == "test-only-luna-key"
+    assert (tmp_path / "google.secret").read_bytes() != b"test-only-google-key"
+    assert (tmp_path / "luna.secret").read_bytes() != b"test-only-luna-key"
+    second.close_app()
+
+
+@pytest.mark.parametrize(
+    ("model", "provider_chain"),
+    [
+        ("gemma-3-4b-it-local", ("local_multimodal",)),
+        ("gemma-4-31b-it", ("openai",)),
+    ],
+)
+def test_clearing_google_api_key_does_not_disable_independent_ai_route(
+    monkeypatch, model, provider_chain
+):
     import cloudhime_ui
 
     class FakeLineEdit:
@@ -449,9 +635,10 @@ def test_clearing_api_key_does_not_disable_local_gemma(monkeypatch):
     controller.worker = SimpleNamespace(
         google_api_key="secret-key",
         use_gemma_translation=True,
-        gemma_model="gemma-3-4b-it-local",
+        gemma_model=model,
         set_google_api_key=lambda value: setattr(controller.worker, "google_api_key", value),
     )
+    controller.provider_chain = provider_chain
     controller.input_api_key = FakeLineEdit()
     controller.settings_window = None
     controller.schedule_save_settings = lambda: None
@@ -461,6 +648,47 @@ def test_clearing_api_key_does_not_disable_local_gemma(monkeypatch):
 
     assert controller.worker.google_api_key == ""
     assert toggles == []
+
+
+def test_missing_key_stage_cancels_scan_and_blocks_old_provider_request():
+    controller = Controller.__new__(Controller)
+    cancelled = []
+    requests = []
+    controller.stop_scan = lambda: cancelled.append(True)
+    controller.worker = SimpleNamespace(
+        use_gemma_translation=True,
+        enqueue_scan_request=lambda generation: requests.append(generation),
+    )
+    controller.provider_chain = ("openai",)
+    controller.scan_generation = 7
+    controller.scan_in_progress = True
+
+    assert Controller.stage_translation_provider_setup(controller, "online_gemma")
+    assert Controller._required_provider_setup(controller) == "online_gemma"
+    Controller._emit_scan_signal(controller, 7)
+
+    assert cancelled == [True]
+    assert requests == []
+    assert controller.provider_chain == ("openai",)
+
+
+def test_explicit_local_route_has_no_cloud_fallback():
+    controller = Controller.__new__(Controller)
+    applied = []
+    controller.worker = SimpleNamespace(
+        gemma_model="gemma-3-4b-it-local",
+        google_api_key="",
+        set_provider_chain=lambda chain: applied.append(tuple(chain)),
+    )
+    controller._advance_scan_generation = lambda **_kwargs: None
+    controller.toggle_ai_translation = lambda _enabled: None
+    controller.update_gemma_rate_indicator = lambda: None
+    controller.pending_translation_provider_id = "luna"
+
+    assert Controller.select_translation_provider(controller, "local_multimodal")
+    assert applied == [("local_multimodal",)]
+    assert controller.provider_chain == ["local_multimodal"]
+    assert controller.pending_translation_provider_id is None
 
 
 def test_api_key_reader_skips_corrupt_appdata_for_legacy(monkeypatch, tmp_path):
@@ -869,6 +1097,7 @@ def test_settings_save_failure_rolls_back_work_context_and_stays_open():
         input_knowledge_title=SimpleNamespace(text=lambda: "New Work"),
         _knowledge_title_dirty=True,
         lbl_knowledge_status=SimpleNamespace(setText=lambda text: calls.append(("status", text))),
+        settings_tabs=Mock(),
         _current_ui_language=lambda: "en",
         hide=Mock(),
     )
@@ -877,6 +1106,7 @@ def test_settings_save_failure_rolls_back_work_context_and_stays_open():
 
     assert calls[:2] == ["New Work", "Old Work"]
     assert calls[2] == ("status", "Settings could not be saved")
+    view.settings_tabs.setCurrentIndex.assert_called_once_with(2)
     assert view._knowledge_title_dirty is True
     view.hide.assert_not_called()
 

@@ -927,6 +927,17 @@ class OCRWorker(QObject):
                 supported_models=config.supported_models,
             )
             selected_local_model = config.gemma_model in LOCAL_MODEL_IDS
+            explicit_provider_chain = tuple(config.provider_chain or ())
+            chain_first_provider = (
+                str(explicit_provider_chain[0]).strip().casefold()
+                if explicit_provider_chain
+                else ""
+            )
+            local_provider_selected = not explicit_provider_chain or chain_first_provider in {
+                "gemma",
+                "local_multimodal",
+            }
+            selected_local_model = selected_local_model and local_provider_selected
             embedded_runtime = getattr(self, "local_vision_runtime", None)
             runtime_state = getattr(embedded_runtime, "_state", None)
             has_embedded_runtime = embedded_runtime is not None
@@ -937,7 +948,9 @@ class OCRWorker(QObject):
             self._local_text_runtime_required = local_text_runtime_required
             desired_profile = (
                 "vision"
-                if config.gemma_enabled and config.local_multimodal_enabled
+                if local_provider_selected
+                and config.gemma_enabled
+                and config.local_multimodal_enabled
                 else "text"
                 if local_text_runtime_required
                 else None
@@ -1526,6 +1539,12 @@ class OCRWorker(QObject):
             getattr(self, "gemma_prompt", ""),
             getattr(self, "screenshot_gemma_prompt", ""),
             bool(self._has_google_api_credentials()),
+            tuple(getattr(self, "provider_chain", ()) or ()),
+            bool(getattr(self, "openai_enabled", False)),
+            bool(getattr(self, "openai_api_key", "")),
+            getattr(self, "openai_model", DEFAULT_OPENAI_MODEL),
+            getattr(self, "openai_reasoning_effort", DEFAULT_OPENAI_REASONING_EFFORT),
+            float(getattr(self, "openai_timeout_seconds", DEFAULT_OPENAI_TIMEOUT_SECONDS)),
             bool(getattr(self, "local_multimodal_enabled", False)),
             getattr(self, "local_multimodal_base_url", ""),
             getattr(self, "local_multimodal_model", ""),
@@ -1585,13 +1604,36 @@ class OCRWorker(QObject):
         registry = self.translation_registry
         if registry is None:
             return None
+        normalized_name = str(provider_name or "").strip().casefold()
+        if normalized_name == "gemma" and getattr(self, "provider_chain", ()):
+            normalized_name = self._resolve_provider_chain_name() or ""
+            if not normalized_name:
+                return None
         try:
-            provider = registry.get(provider_name)
+            provider = registry.get(normalized_name)
         except Exception:
             return None
         if provider is None or not provider.available():
             return None
         return provider
+
+    def _resolve_provider_chain_name(self):
+        """Return the first available provider selected by the explicit chain."""
+        registry = getattr(self, "translation_registry", None)
+        if registry is None:
+            return None
+        for provider_name in getattr(self, "provider_chain", ()) or ():
+            normalized_name = str(provider_name or "").strip().casefold()
+            if not normalized_name:
+                continue
+            try:
+                provider = registry.get(normalized_name)
+                if provider is None or not provider.available():
+                    continue
+            except Exception:
+                continue
+            return str(getattr(provider, "name", normalized_name) or normalized_name).strip().casefold()
+        return None
 
     def _recognize_with_backends(self, img_np):
         if not self.ocr_backends:
@@ -1703,6 +1745,26 @@ class OCRWorker(QObject):
             lock = threading.RLock()
             self._translation_registry_lock = lock
         with lock:
+            previous_config = (
+                bool(getattr(self, "openai_enabled", False)),
+                str(getattr(self, "openai_api_key", "") or ""),
+                str(getattr(self, "openai_model", DEFAULT_OPENAI_MODEL) or ""),
+                str(
+                    getattr(
+                        self,
+                        "openai_reasoning_effort",
+                        DEFAULT_OPENAI_REASONING_EFFORT,
+                    )
+                    or ""
+                ),
+                float(
+                    getattr(
+                        self,
+                        "openai_timeout_seconds",
+                        DEFAULT_OPENAI_TIMEOUT_SECONDS,
+                    )
+                ),
+            )
             if enabled is not None:
                 self.openai_enabled = bool(enabled)
             effective_api_key = api_key if api_key is not None else openai_api_key
@@ -1720,6 +1782,28 @@ class OCRWorker(QObject):
                     self.openai_timeout_seconds = float(timeout_seconds)
                 except (TypeError, ValueError):
                     self.openai_timeout_seconds = float(DEFAULT_OPENAI_TIMEOUT_SECONDS)
+            current_config = (
+                bool(getattr(self, "openai_enabled", False)),
+                str(getattr(self, "openai_api_key", "") or ""),
+                str(getattr(self, "openai_model", DEFAULT_OPENAI_MODEL) or ""),
+                str(
+                    getattr(
+                        self,
+                        "openai_reasoning_effort",
+                        DEFAULT_OPENAI_REASONING_EFFORT,
+                    )
+                    or ""
+                ),
+                float(
+                    getattr(
+                        self,
+                        "openai_timeout_seconds",
+                        DEFAULT_OPENAI_TIMEOUT_SECONDS,
+                    )
+                ),
+            )
+        if current_config != previous_config:
+            self._clear_translation_memories()
         self._refresh_translation_registry()
 
     def set_openai_model(self, model):
@@ -1739,11 +1823,15 @@ class OCRWorker(QObject):
             lock = threading.RLock()
             self._translation_registry_lock = lock
         with lock:
-            self.provider_chain = tuple(
+            normalized_chain = tuple(
                 str(provider).strip().casefold()
                 for provider in (provider_chain or ())
                 if str(provider).strip()
             )
+            changed = normalized_chain != tuple(getattr(self, "provider_chain", ()) or ())
+            self.provider_chain = normalized_chain
+        if changed:
+            self._clear_translation_memories()
         self._refresh_translation_registry()
 
     def set_gemma_enabled(self, enabled):
@@ -1965,6 +2053,20 @@ class OCRWorker(QObject):
         self.auto_threshold_refresh_interval_ms = minutes * 60 * 1000
 
     def has_remote_multimodal_ai(self):
+        if getattr(self, "provider_chain", ()):
+            selected_provider = self._resolve_provider_chain_name()
+            if selected_provider == "openai":
+                provider = self._get_translation_provider("openai")
+                return bool(
+                    self.use_gemma_translation
+                    and provider is not None
+                    and (
+                        callable(getattr(provider, "translate_multimodal", None))
+                        or callable(getattr(provider, "translate_screenshot", None))
+                    )
+                )
+            if selected_provider != "gemma":
+                return False
         model = (
             getattr(self, "active_gemma_model", self.gemma_model)
             or self.gemma_model
@@ -1980,6 +2082,12 @@ class OCRWorker(QObject):
         )
 
     def has_local_multimodal_ai(self):
+        provider_chain = tuple(getattr(self, "provider_chain", ()) or ())
+        if provider_chain and str(provider_chain[0]).strip().casefold() not in {
+            "gemma",
+            "local_multimodal",
+        }:
+            return False
         provider = getattr(self, "local_multimodal_provider", None)
         available = getattr(provider, "available", None)
         return (
@@ -1997,13 +2105,38 @@ class OCRWorker(QObject):
         return self.has_any_multimodal_ai()
 
     def has_ai_text_provider(self):
-        return self.use_gemma_translation and self._get_translation_provider("gemma") is not None
+        if not self.use_gemma_translation:
+            return False
+        provider = self._get_translation_provider("gemma")
+        return bool(
+            provider is not None
+            and str(getattr(provider, "name", "gemma") or "gemma").strip().casefold()
+            not in {"", "google"}
+        )
 
     def _is_local_model_active(self):
+        provider_chain = tuple(getattr(self, "provider_chain", ()) or ())
+        if provider_chain and str(provider_chain[0]).strip().casefold() not in {
+            "gemma",
+            "local_multimodal",
+        }:
+            return False
         model = getattr(self, "active_gemma_model", self.gemma_model) or self.gemma_model
         return model in LOCAL_MODEL_IDS
 
     def resolve_multimodal_provider_name(self):
+        if getattr(self, "provider_chain", ()):
+            selected_provider = self._resolve_provider_chain_name()
+            if selected_provider == "local_multimodal" and self.has_local_multimodal_ai():
+                return "local_multimodal"
+            if selected_provider == "openai" and self.has_remote_multimodal_ai():
+                return "openai"
+            if selected_provider == "gemma":
+                if self.has_local_multimodal_ai():
+                    return "local_multimodal"
+                if self.has_remote_multimodal_ai():
+                    return "gemma"
+            return None
         if self.has_local_multimodal_ai():
             return "local_multimodal"
         if self.has_remote_multimodal_ai():
@@ -2079,6 +2212,7 @@ class OCRWorker(QObject):
         context = {
             "source_text": normalize_ocr_text(text),
             "requested_provider": provider,
+            "provider_chain": tuple(getattr(self, "provider_chain", ()) or ()),
             "target_lang": getattr(self, "translation_target_lang", "zh-TW"),
             "knowledge_revision": getattr(self, "knowledge_revision_token", "knowledge-pack:none"),
             "dictionary_revision": getattr(self, "translation_dictionary_revision", "dictionary-v1"),
@@ -2096,6 +2230,16 @@ class OCRWorker(QObject):
                 "active_model": getattr(self, "active_gemma_model", ""),
                 "prompt": getattr(self, "gemma_prompt", ""),
                 "auto_switch": bool(getattr(self, "gemma_auto_switch_enabled", False)),
+            }
+        elif provider == "openai":
+            context["provider_config"] = {
+                "model": getattr(self, "openai_model", DEFAULT_OPENAI_MODEL),
+                "reasoning_effort": getattr(
+                    self, "openai_reasoning_effort", DEFAULT_OPENAI_REASONING_EFFORT
+                ),
+                "timeout_seconds": float(
+                    getattr(self, "openai_timeout_seconds", DEFAULT_OPENAI_TIMEOUT_SECONDS)
+                ),
             }
         else:
             context["provider_config"] = {"dictionary_revision": "dictionary-v1"}
@@ -2172,9 +2316,26 @@ class OCRWorker(QObject):
                 pass
 
     def get_translation_provider_priority(self, provider):
+        if str(provider or "").strip().casefold() == "openai":
+            return 30
         return translation_tools.get_translation_provider_priority(provider)
 
     def get_current_ai_provider(self):
+        if getattr(self, "provider_chain", ()):
+            selected_provider = self._resolve_provider_chain_name()
+            if selected_provider in {"openai", "google", "local_multimodal"}:
+                return selected_provider
+            if selected_provider != "gemma":
+                return "google"
+            if self._is_local_model_active():
+                return "local_multimodal"
+            model = (
+                getattr(self, "active_gemma_model", self.gemma_model)
+                or self.gemma_model
+                or ""
+            ).strip()
+            spec = get_model_spec(model)
+            return spec.provider if spec is not None else "google"
         model = (
             getattr(self, "active_gemma_model", self.gemma_model)
             or self.gemma_model
@@ -2195,7 +2356,7 @@ class OCRWorker(QObject):
         }
 
     def should_replace_provider(self, old_provider, new_provider):
-        return translation_tools.should_replace_provider(old_provider, new_provider)
+        return self.get_translation_provider_priority(new_provider) >= self.get_translation_provider_priority(old_provider)
 
     def get_preferred_text_entry(self, text):
         key = self.make_hud_memory_key(text)
@@ -2547,6 +2708,8 @@ class OCRWorker(QObject):
                 requested_provider=getattr(result, "requested_provider", None),
                 fallback_reason=getattr(result, "fallback_reason", None),
             )
+        if getattr(self, "provider_chain", ()):
+            raise ValueError("translation_provider_unavailable")
         if not self._has_google_api_credentials():
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
@@ -2615,6 +2778,8 @@ class OCRWorker(QObject):
                 }
                 return json.dumps(translated_text, ensure_ascii=False)
             raise ValueError("empty_gemma_multimodal_response")
+        if getattr(self, "provider_chain", ()):
+            raise ValueError("translation_provider_unavailable")
         if not self._has_google_api_credentials():
             raise ValueError("missing_google_api_key")
         if not image_parts:
@@ -2760,6 +2925,8 @@ class OCRWorker(QObject):
                     fallback_reason=getattr(result, "fallback_reason", None),
                 )
             )
+        if getattr(self, "provider_chain", ()):
+            raise ValueError("translation_provider_unavailable")
         if not self._has_google_api_credentials():
             raise ValueError("missing_google_api_key")
         model_name = self.resolve_gemma_model_for_call(self.gemma_model)
