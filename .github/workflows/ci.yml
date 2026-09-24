@@ -32,7 +32,7 @@ jobs:
     outputs:
       matrix: ${{ steps.inventory.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build test matrix from inventory
         id: inventory
@@ -58,10 +58,10 @@ jobs:
       matrix: ${{ fromJSON(needs.test-inventory.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -97,10 +97,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -159,8 +159,8 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -460,6 +460,7 @@ jobs:
     timeout-minutes: 180
 
     steps:
+      # Self-hosted runner version is not yet verified for Node 24 actions.
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -540,6 +541,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      # Self-hosted runner version is not yet verified for Node 24 actions.
       - uses: actions/checkout@v4
 
       - name: Set up Python

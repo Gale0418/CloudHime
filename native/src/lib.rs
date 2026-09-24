@@ -29,7 +29,10 @@ pub fn frame_metrics_u8(left: &[u8], right: &[u8], channels: usize) -> Result<Me
         changed_pixels: 0,
         absolute_delta: 0,
     };
-    for (a, b) in left.chunks_exact(channels).zip(right.chunks_exact(channels)) {
+    for (a, b) in left
+        .chunks_exact(channels)
+        .zip(right.chunks_exact(channels))
+    {
         let mut changed = false;
         for (&x, &y) in a.iter().zip(b) {
             changed |= x != y;
@@ -124,8 +127,14 @@ mod tests {
     #[test]
     fn rejects_invalid_lengths_and_shapes() {
         assert_eq!(frame_metrics_u8(&[], &[], 1), Err(FrameError::InvalidShape));
-        assert_eq!(frame_metrics_u8(&[0], &[0], 0), Err(FrameError::InvalidShape));
-        assert_eq!(frame_metrics_u8(&[0], &[0], 2), Err(FrameError::InvalidShape));
+        assert_eq!(
+            frame_metrics_u8(&[0], &[0], 0),
+            Err(FrameError::InvalidShape)
+        );
+        assert_eq!(
+            frame_metrics_u8(&[0], &[0], 2),
+            Err(FrameError::InvalidShape)
+        );
         assert_eq!(
             frame_metrics_u8(&[0], &[0, 1], 1),
             Err(FrameError::InvalidLength)

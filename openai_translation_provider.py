@@ -163,6 +163,11 @@ class OpenAITranslationProvider:
         if not isinstance(decoded, dict):
             raise ValueError("openai_response_schema_invalid")
         self._check_cancel(cancel_predicate)
+        # A direct HTTP Responses result must explicitly report completion.
+        # The compact, status-less adapter fixtures remain supported only by
+        # _extract_output_text, never as proof that a remote request finished.
+        if decoded.get("status") != "completed":
+            raise ValueError("openai_response_incomplete")
         return decoded
 
     @staticmethod

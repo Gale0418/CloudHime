@@ -85,6 +85,7 @@
     {
       "name": "ui",
       "test_files": [
+        "tests/test_ui_fonts.py",
         "tests/test_cloudhime_ui_smoke.py",
         "tests/test_relief_settings.py",
         "tests/test_settings_window_theme_polish.py",

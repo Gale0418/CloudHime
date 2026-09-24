@@ -22,6 +22,11 @@ def provider_module(monkeypatch):
     helpers = ModuleType("translation_helpers")
     helpers.clean_model_output_multiline = lambda text: text
     helpers.split_translated_lines = lambda text, count: text.splitlines()
+    helpers.target_lang_instruction = lambda lang: {
+        "en": "natural English",
+        "ja": "natural Japanese",
+        "zh-TW": "natural Traditional Chinese used in Taiwan",
+    }[lang]
     regions = ModuleType("vision_region")
     regions.VisionRegionResult = SimpleNamespace
     regions.build_region_vision_prompt = lambda *a, **k: "unused"
@@ -85,6 +90,35 @@ def test_refusal_mixed_with_output_text_is_not_translation(provider_module):
 ])
 def test_completed_and_legacy_compact_success_remain_supported(provider_module, payload):
     assert provider_module.OpenAITranslationProvider._extract_output_text(payload)
+
+
+@pytest.mark.parametrize("payload,accepted", [
+    ({"output_text": "partial"}, False),
+    ({"status": "completed", "output_text": "finished"}, True),
+])
+def test_http_response_requires_explicit_completed_status(provider_module, monkeypatch, payload, accepted):
+    provider = provider_module.OpenAITranslationProvider(api_key="test")
+    monkeypatch.setattr(provider_module.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+    if accepted:
+        assert provider._complete("prompt") == "finished"
+    else:
+        with pytest.raises(ValueError, match="openai_response_incomplete"):
+            provider._complete("prompt")
+
+
+def test_cancellation_during_decode_wins_over_incomplete_status(provider_module, monkeypatch):
+    provider = provider_module.OpenAITranslationProvider(api_key="test")
+    cancelled = False
+
+    def decode(_body):
+        nonlocal cancelled
+        cancelled = True
+        return {"output_text": "partial"}
+
+    monkeypatch.setattr(provider_module.request, "urlopen", lambda *a, **k: io.BytesIO(b"{}"))
+    monkeypatch.setattr(provider_module, "load_strict_json", decode)
+    with pytest.raises(provider_module.OpenAIRequestCancelled):
+        provider._complete("prompt", cancel_predicate=lambda: cancelled)
 
 
 def test_optional_schema_uses_valid_json_mode(provider_module):
@@ -168,7 +202,7 @@ def test_malformed_output_cannot_hide_behind_compact_text(provider_module, outpu
 
 
 @pytest.mark.parametrize("operation", ["translate", "translate_batch", "translate_multimodal", "translate_screenshot", "interpret_regions"])
-@pytest.mark.parametrize("override,expected", [(None, "en"), ("zh-TW", "zh-TW")])
+@pytest.mark.parametrize("override,expected", [(None, "en"), ("zh-TW", "zh-TW"), ("ja", "ja")])
 def test_target_language_uses_configuration_unless_explicitly_overridden(provider_module, operation, override, expected):
     provider = provider_module.OpenAITranslationProvider(api_key="test", target_lang="en")
     seen = {}
@@ -192,4 +226,5 @@ def test_target_language_uses_configuration_unless_explicitly_overridden(provide
         provider_module.build_region_vision_prompt = region_prompt
         provider_module.parse_region_vision_response = lambda *a, **k: [SimpleNamespace()]
         provider.interpret_regions(image, [{"id": 1}], image_width=1, image_height=1, **kwargs)
-    assert "to " + expected in seen["prompt"]
+    target = {"en": "natural English", "ja": "natural Japanese", "zh-TW": "natural Traditional Chinese used in Taiwan"}[expected]
+    assert "to " + target in seen["prompt"]

@@ -598,6 +598,66 @@ def test_api_key_uses_encrypted_store_and_does_not_write_plaintext_env(monkeypat
     assert controller.worker.google_api_key == "secret-key"
 
 
+@pytest.mark.parametrize("provider", ["Google", "Luna"])
+def test_failed_key_save_stays_pending_and_visible_until_retry(provider):
+    from cloudhime_ui import SecretStoreError
+
+    class FailingStore:
+        fail = True
+
+        def set(self, value):
+            if self.fail:
+                raise SecretStoreError("private failure")
+            self.value = value
+
+        def mark_legacy_sources_disabled(self):
+            pass
+
+    store = FailingStore()
+    label = SimpleNamespace(text_value="", setText=lambda text: setattr(label, "text_value", text), text=lambda: label.text_value)
+    panel = SimpleNamespace(warning="", set_key_save_warning=lambda text: setattr(panel, "warning", text))
+    controller = Controller.__new__(Controller)
+    controller.ui_language = "en"
+    controller.lbl_status = label
+    controller.settings_window = SimpleNamespace(translation_panel=panel)
+    if provider == "Google":
+        controller.secret_store = store
+        controller.pending_api_key = "private-key"
+        persist = Controller._persist_pending_api_key
+        pending_attr = "pending_api_key"
+    else:
+        controller.openai_secret_store = store
+        controller.pending_openai_api_key = "private-key"
+        persist = Controller._persist_pending_openai_api_key
+        pending_attr = "pending_openai_api_key"
+
+    assert persist(controller) is False
+    assert getattr(controller, pending_attr) == "private-key"
+    assert provider in panel.warning
+    assert "Could not save" in label.text_value
+    assert "private-key" not in panel.warning
+
+    store.fail = False
+    assert persist(controller) is True
+    assert store.value == "private-key"
+    assert getattr(controller, pending_attr) is None
+    assert panel.warning == ""
+
+
+def test_close_stays_open_when_key_save_fails():
+    controller = Controller.__new__(Controller)
+    controller.cancel_knowledge_research = Mock()
+    controller.knowledge_build_worker = None
+    controller._persist_pending_api_key = Mock(return_value=False)
+    controller._persist_pending_openai_api_key = Mock(return_value=True)
+    controller.save_settings = Mock()
+
+    Controller.close_app(controller)
+
+    assert controller._close_app_started is False
+    controller.save_settings.assert_not_called()
+
+
 def test_google_and_luna_keys_survive_restart_in_user_scoped_encrypted_store(
     qtbot, monkeypatch, tmp_path
 ):

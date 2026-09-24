@@ -54,7 +54,7 @@ def test_provider_defaults_are_redacted_and_available():
 @pytest.mark.parametrize("effort", ["none", "low", "medium", "high", "xhigh", "max", "ultra"])
 def test_reasoning_effort_is_forced_to_none_for_legacy_and_unknown_values(monkeypatch, effort):
     captured = {}
-    install_response(monkeypatch, b'{"output_text":"ok"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"ok"}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret", reasoning_effort=effort)
 
     provider.translate("hello")
@@ -67,7 +67,7 @@ def test_reasoning_effort_is_forced_to_none_for_legacy_and_unknown_values(monkey
 
 def test_translate_posts_responses_payload_and_parses_output_text(monkeypatch):
     captured = {}
-    install_response(monkeypatch, b'{"output_text":"  translated  "}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"  translated  "}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret-key", timeout_seconds=17)
 
     result = provider.translate("hello", source_lang="en", target_lang="zh-TW")
@@ -86,7 +86,7 @@ def test_translate_posts_responses_payload_and_parses_output_text(monkeypatch):
 
 def test_translate_batch_payload_disables_reasoning(monkeypatch):
     captured = {}
-    install_response(monkeypatch, b'{"output_text":"one\\ntwo"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"one\\ntwo"}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
     results = provider.translate_batch(["1", "2"])
@@ -102,7 +102,7 @@ def test_translate_batch_payload_disables_reasoning(monkeypatch):
 )
 def test_translation_prompt_keeps_selected_output_language(monkeypatch, target_lang, instruction):
     captured = {}
-    install_response(monkeypatch, b'{"output_text":"translated"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"translated"}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
     provider.translate("Translate this into another language", target_lang=target_lang)
@@ -114,7 +114,7 @@ def test_translation_prompt_keeps_selected_output_language(monkeypatch, target_l
 
 def test_multimodal_converts_gemini_inline_data_to_data_url(monkeypatch):
     captured = {}
-    install_response(monkeypatch, b'{"output":[],"output_text":"one\\ntwo"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output":[],"output_text":"one\\ntwo"}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
     results = provider.translate_multimodal(
@@ -137,6 +137,7 @@ def test_multimodal_converts_gemini_inline_data_to_data_url(monkeypatch):
 def test_output_content_form_is_supported_and_region_schema_is_sent(monkeypatch):
     body = json.dumps(
         {
+            "status": "completed",
             "output": [
                 {
                     "type": "message",
@@ -172,12 +173,12 @@ def test_screenshot_payloads_disable_reasoning(monkeypatch):
     image_parts = [{"inline_data": {"mime_type": "image/png", "data": "abc"}}]
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
-    install_response(monkeypatch, b'{"output_text":"detected text"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"detected text"}', captured)
     provider.transcribe_screenshot(image_parts)
     payload = json.loads(captured["request"].data.decode("utf-8"))
     assert payload["reasoning"] == {"effort": "none"}
 
-    install_response(monkeypatch, b'{"output_text":"translated text"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"translated text"}', captured)
     provider.translate_screenshot(image_parts)
     payload = json.loads(captured["request"].data.decode("utf-8"))
     assert payload["reasoning"] == {"effort": "none"}
@@ -185,7 +186,7 @@ def test_screenshot_payloads_disable_reasoning(monkeypatch):
 
 def test_structured_text_requires_valid_nonempty_json(monkeypatch):
     captured = {}
-    install_response(monkeypatch, b'{"output_text":"{\\"ok\\":true}"}', captured)
+    install_response(monkeypatch, b'{"status":"completed","output_text":"{\\"ok\\":true}"}', captured)
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
     assert provider.generate_structured_text("return an object", schema={"type": "object"}) == '{"ok":true}'
@@ -193,11 +194,11 @@ def test_structured_text_requires_valid_nonempty_json(monkeypatch):
     assert payload["reasoning"] == {"effort": "none"}
     assert payload["text"]["format"]["schema"] == {"type": "object"}
 
-    install_response(monkeypatch, b'{"output_text":"not-json"}')
+    install_response(monkeypatch, b'{"status":"completed","output_text":"not-json"}')
     with pytest.raises(ValueError, match="openai_response_schema_invalid"):
         provider.generate_structured_text("return json")
 
-    install_response(monkeypatch, b'{"output_text":""}')
+    install_response(monkeypatch, b'{"status":"completed","output_text":""}')
     with pytest.raises(ValueError, match="openai_empty_response"):
         provider.generate_structured_text("return json")
 
@@ -248,7 +249,7 @@ def test_response_body_limit_and_cancellation_are_fail_closed(monkeypatch):
 
     def response_then_cancel(*_args, **_kwargs):
         cancelled["value"] = True
-        return FakeResponse(b'{"output_text":"result"}')
+        return FakeResponse(b'{"status":"completed","output_text":"result"}')
 
     monkeypatch.setattr(provider_module.request, "urlopen", response_then_cancel)
     with pytest.raises(OpenAIRequestCancelled):

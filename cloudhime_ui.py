@@ -3499,6 +3499,32 @@ class Controller(QWidget):
         if hasattr(self, "save_timer"):
             self.save_timer.start(250)
 
+    def _update_key_save_warning(self, provider, failed):
+        failures = set(getattr(self, "_key_save_failures", set()))
+        if failed:
+            failures.add(provider)
+        else:
+            failures.discard(provider)
+        self._key_save_failures = failures
+        names = ", ".join(name for name in ("Google", "Luna") if name in failures)
+        language = str(getattr(self, "ui_language", "zh-TW") or "zh-TW")
+        if language == "ja":
+            message = f"{names} API キーを保存できませんでした。設定を開いたまま、キーを編集して再試行してください。" if names else ""
+        elif language.startswith("en"):
+            message = f"Could not save the {names} API key. Keep settings open and edit the key to retry." if names else ""
+        else:
+            message = f"{names} API Key 儲存失敗。請保持設定頁開啟，編輯金鑰後重試。" if names else ""
+        previous = getattr(self, "_key_save_warning", "")
+        self._key_save_warning = message
+        settings_window = getattr(self, "settings_window", None)
+        panel = getattr(settings_window, "translation_panel", None)
+        setter = getattr(panel, "set_key_save_warning", None)
+        if callable(setter):
+            setter(message)
+        status = getattr(self, "lbl_status", None)
+        if status is not None and (message or status.text() == previous):
+            status.setText(message)
+
     def _persist_pending_api_key(self):
         pending = getattr(self, "pending_api_key", None)
         if pending is None:
@@ -3512,8 +3538,10 @@ class Controller(QWidget):
                 self.secret_store.delete()
         except SecretStoreError as exc:
             logger.error("Failed to persist encrypted API key: %s", type(exc).__name__)
+            self._update_key_save_warning("Google", True)
             return False
         self.pending_api_key = None
+        self._update_key_save_warning("Google", False)
         return True
 
     def _persist_secret_value(self, store_attr, pending_attr):
@@ -3522,6 +3550,7 @@ class Controller(QWidget):
             return True
         store = getattr(self, store_attr, None)
         if store is None:
+            self._update_key_save_warning("Luna", True)
             return False
         try:
             if pending:
@@ -3534,8 +3563,10 @@ class Controller(QWidget):
                 pending_attr,
                 type(exc).__name__,
             )
+            self._update_key_save_warning("Luna", True)
             return False
         setattr(self, pending_attr, None)
+        self._update_key_save_warning("Luna", False)
         return True
 
     def _persist_pending_openai_api_key(self):
@@ -4834,6 +4865,9 @@ class Controller(QWidget):
     def toggle_settings_window(self):
         if self.settings_window is None:
             self.settings_window = SettingsWindowRevamp(self)
+            self.settings_window.translation_panel.set_key_save_warning(
+                getattr(self, "_key_save_warning", "")
+            )
         if self.settings_window.isVisible():
             self.settings_window.hide()
         else:
@@ -5408,8 +5442,11 @@ class Controller(QWidget):
         knowledge_worker = getattr(self, "knowledge_build_worker", None)
         if knowledge_worker is not None:
             knowledge_worker.wait_for_all(2.0)
-        self._persist_pending_api_key()
-        self._persist_pending_openai_api_key()
+        google_saved = self._persist_pending_api_key()
+        luna_saved = self._persist_pending_openai_api_key()
+        if not (google_saved and luna_saved):
+            self._close_app_started = False
+            return
         self.save_settings()
         self._shutdown_remote_model_availability()
         if hasattr(self, 'worker'):

@@ -174,8 +174,8 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     assert "Stop-Process -Id $process.Id -Force" in runner
     assert 'throw "UI test file timed out after $TimeoutSeconds seconds' in runner
     assert "--basetemp" in runner
-    msix_job = ci[ci.index("  msix-contract:"):]
-    assert "uses: actions/setup-python@v5" in msix_job
+    msix_job = ci[ci.index("  msix-contract:"):ci.index("  real-release-build:")]
+    assert "uses: actions/setup-python@v7" in msix_job
     assert "python-version: '3.10'" in msix_job
     assert "Build MSIX package" in ci
     assert "Inspect and sign MSIX package" in ci

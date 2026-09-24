@@ -290,6 +290,10 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_health_detail.setMinimumWidth(0)
         self.lbl_translate_health_detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_translate_health_detail.setVisible(True)
+        self.lbl_key_save_warning = QLabel("")
+        self.lbl_key_save_warning.setObjectName("keySaveWarning")
+        self.lbl_key_save_warning.setWordWrap(True)
+        self.lbl_key_save_warning.setVisible(False)
         self.lbl_translate_mode = QLabel("")
         self.lbl_translate_mode.setVisible(True)
 
@@ -302,6 +306,7 @@ class TranslationSettingsPanel(QWidget):
         translate_layout.addWidget(self.lbl_translate_hint)
         translate_layout.addWidget(self.lbl_translate_summary)
         translate_layout.addWidget(self.lbl_translate_health_detail)
+        translate_layout.addWidget(self.lbl_key_save_warning)
 
         # Provider health is embedded in the legacy card as small status cards;
         # it is metadata only and never implies remaining quota.
@@ -1833,6 +1838,10 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_summary.setToolTip(health.detail)
         self.update_provider_status_rows()
 
+    def set_key_save_warning(self, message):
+        self.lbl_key_save_warning.setText(message)
+        self.lbl_key_save_warning.setVisible(bool(message))
+
     def update_key_state(self, enabled):
         self.input_api_key.setEnabled(enabled)
         self.btn_api_key_visible.setEnabled(enabled)
@@ -2035,6 +2044,9 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_summary.setStyleSheet(theme.pill_qss("accent"))
         self.lbl_translate_health_detail.setStyleSheet(
             f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;"
+        )
+        self.lbl_key_save_warning.setStyleSheet(
+            f"font-size: 12px; font-weight: 700; color: {theme.error}; background: transparent; border: none;"
         )
         self.lbl_advanced_translate.setStyleSheet("background: transparent; border: none; color: transparent;")
         self.lbl_advanced_hint.setStyleSheet("background: transparent; border: none; color: transparent;")
