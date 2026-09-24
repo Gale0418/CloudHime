@@ -191,7 +191,7 @@ class OcrBackendSettingsPanel(QFrame):
         self.refresh_localized_texts()
         self.lbl_title.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {theme.subtext};")
         self.segment_container.setStyleSheet(theme.panel_qss("subtle", radius=11))
-        button_style = theme.button_qss(radius=8)
+        button_style = theme.jelly_button_qss(radius=8)
         for backend_name in optional_backend_names():
             button = self._backend_buttons.get(backend_name)
             if button is not None:

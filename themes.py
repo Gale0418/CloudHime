@@ -159,6 +159,33 @@ class ThemeDefinition:
             f"border-bottom: 1px solid {self.control_disabled_bg}; padding: 6px 12px 4px; }}"
         )
 
+    def jelly_button_qss(self, variant: str = "secondary", radius: int = 10) -> str:
+        """Soft relief for the CloudHime controls; retain a flat high-contrast fallback."""
+        if self.key == "high_contrast":
+            style = self.raised_button_qss(variant, radius)
+            return style.replace(f"color: {self.checked_fg};", "color: #121212;") if variant == "primary" else style
+        if variant == "primary":
+            top, bottom, edge, fg = (
+                ("#B8A8FF", "#6D52D9", "#533BB4", "#FFFFFF") if self.key == "light"
+                else ("#A993FF", "#654EC8", "#4936A4", "#FFFFFF")
+            )
+        else:
+            top, bottom, edge, fg = (
+                ("#FFFFFF", "#EAE6F8", "#C6BDE6", "#333052") if self.key == "light"
+                else ("#555477", "#333451", "#77729E", "#F8F5FF")
+            )
+        gradient = f"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {bottom})"
+        return (
+            f"QPushButton {{ background: {gradient}; color: {fg}; border: 1px solid {edge}; "
+            f"border-top-color: {top}; border-bottom: 2px solid {edge}; border-radius: {int(radius)}px; "
+            "padding: 5px 9px 4px; font-weight: 700; }"
+            f"QPushButton:hover {{ border: 2px solid {self.focus}; border-top-color: {top}; }}"
+            f"QPushButton:pressed {{ background: {bottom}; border-top: 2px solid {edge}; border-bottom: 1px solid {top}; }}"
+            f"QPushButton:checked {{ background: {self.control_checked}; color: {self.checked_fg}; border: 1px solid {edge}; border-bottom: 2px solid {edge}; }}"
+            f"QPushButton:focus {{ border: 2px solid {self.focus}; }}"
+            f"QPushButton:disabled {{ background: {self.control_disabled_bg}; color: {self.control_disabled_fg}; border: 1px solid {self.border}; }}"
+        )
+
     def combo_qss(self, radius: int = 8) -> str:
         return (
             f"QComboBox {{ background-color: {self.input_bg}; color: {self.text}; "

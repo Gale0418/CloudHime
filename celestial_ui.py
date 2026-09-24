@@ -227,16 +227,28 @@ def style_settings(window, theme, image_path):
     surface = "#121212" if high else ("#23263D" if dark else "#F8F7FD")
     accent = theme.accent if high else ("#AD9AFF" if dark else "#7052D6")
     secondary_text = theme.text if high else ("#C5C2D7" if dark else "#615B72")
-    window.princess_portrait.set_art(None if high else image_path)
+    # The full landscape already contains the princess; keep her side clear of controls.
+    window.princess_portrait.set_art(None)
     window.princess_portrait.setVisible(not high)
-    window.backdrop_panel.setStyleSheet(f"QFrame#settingsBackdropPanel {{background:{surface}; border:1px solid {theme.border}; border-radius:18px;}}")
+    backdrop = (
+        f"background:{surface};" if high else
+        f"background-color:{surface}; border-image:url('{image_path}') 0 0 0 0 stretch stretch;"
+    )
+    window.backdrop_panel.setStyleSheet(
+        f"QFrame#settingsBackdropPanel {{{backdrop} border:1px solid {theme.border}; border-radius:18px;}}"
+    )
     window.settings_tabs.setStyleSheet(
         f"QTabBar::tab {{ color:{theme.text}; padding:12px 16px; border-bottom:2px solid transparent; }}"
         f"QTabBar::tab:selected {{color:{accent}; border-bottom:2px solid {accent}; font-weight:600;}}"
         f"QTabBar::tab:hover {{background:{theme.accent_soft};}}"
         f"QTabBar::tab:focus {{border:1px solid {accent};}}"
     )
-    window.settings_pages.setStyleSheet(f"QStackedWidget#celestialPages, QWidget#celestialPageContent {{background:{surface}; border:none; color:{theme.text};}} QScrollArea {{border:none; background:transparent;}}")
+    page_surface = surface if high else ("rgba(24, 25, 51, 188)" if dark else "rgba(255, 255, 255, 188)")
+    window.princess_portrait.setStyleSheet("background:transparent; border:none;")
+    window.settings_pages.setStyleSheet(
+        f"QStackedWidget#celestialPages, QWidget#celestialPageContent {{background:{page_surface}; border:none; color:{theme.text};}} "
+        "QScrollArea {border:none; background:transparent;}"
+    )
     scroll_style = (
         "QScrollArea {border:none; background:transparent;}"
         "QScrollBar:vertical {background:transparent; width:8px; margin:0;}"
@@ -258,4 +270,4 @@ def style_settings(window, theme, image_path):
         card.setStyleSheet(f"QFrame {{background:transparent; border:none; color:{theme.text};}}")
     for label in (window.lbl_translate, window.lbl_ocr, window.lbl_region_render, window.lbl_relief, window.research_heading, window.appearance_heading):
         label.setStyleSheet(f"color:{theme.text}; font-size:20px; font-weight:600; background:transparent; border:none;")
-    window.btn_save.setStyleSheet(f"QPushButton {{background:{accent}; color:{'#121212' if dark else '#FFFFFF'}; border:none; border-radius:8px; padding:10px 24px; font-weight:600;}} QPushButton:focus {{border:2px solid {theme.text};}}")
+    window.btn_save.setStyleSheet(theme.jelly_button_qss("primary"))

@@ -2107,8 +2107,8 @@ class TranslationSettingsPanel(QWidget):
             f" QLineEdit:focus {{ border: 2px solid {theme.focus}; padding: 6px; }}"
             f" QLineEdit:disabled {{ background-color: {theme.control_disabled_bg}; color: {theme.control_disabled_fg}; border-color: {theme.control_disabled_bg}; }}"
         )
-        self.btn_api_key_visible.setStyleSheet(theme.button_qss(radius=8))
-        self.btn_refresh_model_availability.setStyleSheet(theme.button_qss(radius=8))
+        self.btn_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
+        self.btn_refresh_model_availability.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
         self.input_gemma_prompt.setStyleSheet(
             f"QPlainTextEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
@@ -2222,8 +2222,8 @@ class TranslationSettingsPanel(QWidget):
             f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 7px; font-size: 13px; }}"
             f" QLineEdit:focus {{ border: 2px solid {theme.accent}; }}"
         )
-        self.btn_api_key_visible.setStyleSheet(theme.button_qss(radius=8))
-        self.btn_refresh_model_availability.setStyleSheet(theme.button_qss(radius=8))
+        self.btn_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
+        self.btn_refresh_model_availability.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.input_luna_api_key.setStyleSheet(
             f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 7px; font-size: 13px; }}"
             f" QLineEdit:focus {{ border: 2px solid {theme.accent}; }}"

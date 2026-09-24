@@ -34,27 +34,30 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
             else "#23263D" if mode == "dark"
             else "#F8F7FD"
         )
-        assert f"background:{expected_surface};" in backdrop_style
+        if mode == "high_contrast":
+            assert f"background:{expected_surface};" in backdrop_style
+            assert "background-image" not in backdrop_style
+        else:
+            assert f"background-color:{expected_surface};" in backdrop_style
+            assert "border-image:url(" in backdrop_style
         assert f"color: {theme.text};" in settings.lbl_page_title.styleSheet()
         assert f"color: {theme.subtext};" in settings.lbl_page_subtitle.styleSheet()
         export_style = settings.btn_export_history.styleSheet()
-        assert f"background-color: {theme.input_bg};" in export_style
-        assert f"border-color: {theme.accent};" in export_style
+        assert export_style == theme.jelly_button_qss()
         assert "QPushButton:focus" in export_style
-        assert "min-height: 32px" in export_style
         top_style = settings.top_panel.styleSheet()
-        assert f"background-color: {theme.settings_top_bg};" in top_style
+        expected_top_bg = (
+            "#121212" if mode == "high_contrast"
+            else "rgba(20, 21, 47, 146)" if mode == "dark"
+            else "rgba(255, 255, 255, 140)"
+        )
+        assert f"background-color: {expected_top_bg};" in top_style
         assert "background: transparent" not in top_style
         if mode == "high_contrast":
-            assert QColor(theme.settings_top_bg).isValid()
-            assert QColor(theme.settings_top_bg).alpha() == 255
+            assert QColor(expected_top_bg).alpha() == 255
         else:
-            expected_top_bg = (
-                "rgba(28, 28, 30, 224)"
-                if mode == "dark"
-                else "rgba(242, 242, 247, 224)"
-            )
-            assert theme.settings_top_bg == expected_top_bg
+            assert int(expected_top_bg.rstrip(")").split(",")[-1]) < 255
+        assert settings.btn_save.styleSheet() == theme.jelly_button_qss("primary")
         assert settings.btn_close.text() == "✕"
         assert settings.top_panel.objectName() == "settingsTopPanel"
         assert settings.shell_panel.objectName() == "settingsShellPanel"
@@ -64,6 +67,8 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         assert "QTabBar::tab:selected" in tab_style
         assert "QTabBar::tab:focus" in tab_style
         assert settings.princess_portrait.isVisible() is (mode != "high_contrast")
+        if mode != "high_contrast":
+            assert "rgba(" in settings.settings_pages.styleSheet()
 
         assert settings.lbl_random_scan_summary.styleSheet() == theme.pill_qss("accent")
         assert settings.lbl_auto_threshold_refresh_summary.styleSheet() == theme.pill_qss("accent")

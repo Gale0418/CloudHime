@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
                                QGraphicsOpacityEffect, QGridLayout)
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
                             QAbstractNativeEventFilter, QEvent)
-from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase
+from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
@@ -1053,9 +1053,24 @@ class CooldownButton(QPushButton):
         if self.underMouse() and self.isEnabled():
             bg = self.hover_bg
 
-        painter.setPen(QPen(self.border_color, 2))
-        painter.setBrush(QBrush(bg))
+        if self.isDown() and self.isEnabled():
+            bg = bg.darker(115)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        gradient.setColorAt(0.0, bg.lighter(133) if self.isEnabled() else bg)
+        gradient.setColorAt(0.48, bg.lighter(112) if self.isEnabled() else bg)
+        gradient.setColorAt(1.0, bg.darker(108) if self.isEnabled() else bg)
+        painter.setPen(QPen(self.border_color.darker(125), 2))
+        painter.setBrush(QBrush(gradient))
         painter.drawRoundedRect(rect, 8, 8)
+
+        if self.isEnabled():
+            shine = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+            shine.setColorAt(0.0, QColor(255, 255, 255, 105))
+            shine.setColorAt(0.5, QColor(255, 255, 255, 15))
+            shine.setColorAt(1.0, QColor(255, 255, 255, 0))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(shine))
+            painter.drawRoundedRect(rect.adjusted(3, 3, -3, -rect.height() // 2), 6, 6)
 
         if self.cooldown_progress > 0:
             fill_rect = QRect(rect)
@@ -2855,7 +2870,8 @@ class SettingsWindowRevamp(QWidget):
     def update_theme(self, theme_mode):
         theme = resolve_theme(theme_mode)
         is_dark = theme.key != "light"
-        card_bg = "rgba(18, 31, 46, 168)" if is_dark else "rgba(255, 255, 255, 214)"
+        card_bg = "#202020" if theme.key == "high_contrast" else ("rgba(24, 24, 48, 174)" if is_dark else "rgba(255, 255, 255, 188)")
+        top_bg = "#121212" if theme.key == "high_contrast" else ("rgba(20, 21, 47, 146)" if is_dark else "rgba(255, 255, 255, 140)")
         translation_border = "#3D8DFF" if is_dark else "#5AA7F7"
         ocr_border = "#41B96F" if is_dark else "#50B86F"
         render_border = "#8D5CF6" if is_dark else "#8D65D8"
@@ -2871,7 +2887,7 @@ class SettingsWindowRevamp(QWidget):
             f"background-image: url('{bg_image_path}'); background-position: center; background-repeat: no-repeat; }}"
         )
         self.top_panel.setStyleSheet(
-            f"QWidget#settingsTopPanel {{ background-color: {theme.get('settings_top_bg', theme.header_bg)}; border: none; }}"
+            f"QWidget#settingsTopPanel {{ background-color: {top_bg}; border: none; }}"
         )
         self.shell_panel.setStyleSheet(
             f"QFrame#settingsShellPanel {{ background: transparent; border: none; }}"
@@ -2890,13 +2906,7 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_brand_icon.setStyleSheet(f"background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 20px;")
         self.lbl_page_title.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {theme.text}; background: transparent; border: none;")
         self.lbl_page_subtitle.setStyleSheet(f"font-size: 14px; color: {theme.subtext}; background: transparent; border: none;")
-        self.btn_export_history.setStyleSheet(
-            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
-            "border-radius: 8px; padding: 7px 12px; min-height: 32px; font-size: 13px; font-weight: 700; }"
-            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
-            f"QPushButton:focus {{ border: 2px solid {theme.accent}; }}"
-            f"QPushButton:disabled {{ color: {theme.subtext}; background-color: {theme.control_disabled_bg}; border-color: {theme.border}; }}"
-        )
+        self.btn_export_history.setStyleSheet(theme.jelly_button_qss())
         self.btn_close.setStyleSheet(
             f"QPushButton {{ background-color: transparent; color: {theme.subtext}; border: none; font-size: 16px; font-weight: 900; }}"
             f"QPushButton:hover {{ background-color: {theme.accent_soft}; color: {theme.text}; border-radius: 15px; }}"
@@ -2954,17 +2964,9 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_knowledge_status.setStyleSheet(
             f"color: {theme.subtext}; background: transparent; border: none; font-size: 11px;"
         )
-        self.btn_knowledge_action.setStyleSheet(
-            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; border-radius: 6px; padding: 6px 9px; }}"
-            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
-            f"QPushButton:disabled {{ color: {theme.subtext}; background-color: {theme.control_disabled_bg}; border-color: {theme.border}; }}"
-        )
+        self.btn_knowledge_action.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.slider_relief_offset_x.setStyleSheet(slider_style)
-        render_button_style = (
-            f"QPushButton {{ color: {theme.text}; background-color: transparent; border: 1px solid {theme.border}; "
-            f"border-radius: 10px; padding: 6px 10px; }}"
-            f"QPushButton:checked {{ background-color: {theme.accent}; color: #FFFFFF; border-color: {theme.accent}; }}"
-        )
+        render_button_style = theme.jelly_button_qss()
         self.btn_render_bubble.setStyleSheet(render_button_style)
         self.btn_render_relief.setStyleSheet(render_button_style)
         self.btn_render_screenshot.setStyleSheet(render_button_style)
@@ -2977,18 +2979,10 @@ class SettingsWindowRevamp(QWidget):
             f"border-bottom: 2px solid {theme.get('settings_card_edge', translation_border)}; border-radius: 14px; }}"
         )
         self.lbl_translate.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {translation_border}; background: transparent; border: none;")
-        footer_button_style = (
-            f"QPushButton {{ color: {theme.text}; background-color: {theme.input_bg}; border: 1px solid {theme.border}; "
-            "border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 700; }"
-            f"QPushButton:hover {{ border-color: {theme.accent}; background-color: {theme.accent_soft}; }}"
-        )
+        footer_button_style = theme.jelly_button_qss()
         self.btn_reset_defaults.setStyleSheet(footer_button_style)
         self.btn_cancel.setStyleSheet(footer_button_style)
-        self.btn_save.setStyleSheet(
-            f"QPushButton {{ color: #FFFFFF; background-color: {theme.accent}; border: 1px solid {theme.accent}; "
-            "border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 800; }"
-            f"QPushButton:hover {{ background-color: {theme.control_checked}; }}"
-        )
+        self.btn_save.setStyleSheet(theme.jelly_button_qss("primary"))
         self.update_relief_state(self.controller.region_render_mode == REGION_RENDER_RELIEF)
         style_settings(self, theme, bg_image_path)
 
@@ -3149,7 +3143,7 @@ class Controller(QWidget):
         self.local_runtime_coordinator = LocalVisionRuntimeCoordinator()
         
         self.setWindowTitle("雲朵翻譯姬")
-        self.resize(380, 260)
+        self.resize(380, 275)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
@@ -3218,8 +3212,8 @@ class Controller(QWidget):
         self.btn_min.clicked.connect(self.showMinimized)
         self.btn_min.setStyleSheet("background:transparent; color:#888; border:none; font-weight:900;")
         
-        self.btn_close = QPushButton("Close")
-        self.btn_close.setFixedSize(56, 28)
+        self.btn_close = QPushButton("×")
+        self.btn_close.setFixedSize(28, 28)
         self.btn_close.setCursor(Qt.PointingHandCursor)
         self.btn_close.clicked.connect(self.close_app)
         self.btn_close.setStyleSheet("background:transparent; color:#888; border:none; font-weight:900;")
@@ -3297,20 +3291,32 @@ class Controller(QWidget):
         scan_mode_row.addWidget(self.btn_mode_region)
         inner_layout.addLayout(scan_mode_row)
 
-        btn_layout = QHBoxLayout()
+        translate_row = QHBoxLayout()
+        translate_row.setSpacing(8)
         self.btn_now = CooldownButton("立即翻譯 (~)")
         self.btn_now.setCursor(Qt.PointingHandCursor)
         self.btn_now.clicked.connect(self.on_immediate_click)
-        self.auto_group = QButtonGroup(self)
-        self.auto_group.setExclusive(True)
-        self.btn_30 = QPushButton(self.get_random_scan_button_text())
+        self.btn_hotkey = QPushButton("~")
+        self.btn_hotkey.setFixedSize(36, 44)
+        self.btn_hotkey.setCursor(Qt.PointingHandCursor)
+        self.btn_hotkey.clicked.connect(self.on_immediate_click)
+        self.btn_hotkey.setAccessibleName("翻譯快捷鍵")
+        translate_row.addWidget(self.btn_now, 1)
+        translate_row.addWidget(self.btn_hotkey)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(8)
+        self.btn_30 = QPushButton()
         self.btn_30.setCheckable(True)
         self.btn_30.setCursor(Qt.PointingHandCursor)
-        self.btn_30.clicked.connect(self.start_auto_scan)
-        self.auto_group.addButton(self.btn_30)
+        self.btn_30.clicked.connect(self.on_auto_scan_toggled)
+        self.cmb_scan_interval = QComboBox()
+        self.cmb_scan_interval.setMinimumWidth(104)
+        self.cmb_scan_interval.currentIndexChanged.connect(self.on_main_scan_interval_changed)
         self.btn_now.setMinimumHeight(44)
-        inner_layout.addWidget(self.btn_now)
-        btn_layout.addWidget(self.btn_30)
+        inner_layout.addLayout(translate_row)
+        btn_layout.addWidget(self.btn_30, 1)
+        btn_layout.addWidget(self.cmb_scan_interval)
         self.btn_stop = QPushButton("停止")
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.clicked.connect(self.stop_scan)
@@ -3477,12 +3483,17 @@ class Controller(QWidget):
             pass
 
     def get_hotkey_button_text(self):
-        label = getattr(getattr(self, "hotkey_filter", None), "registered_label", None) or "~"
-        return f"{self._tr('controller.button.now', fallback='Translate Now')} ({label})"
+        return self._tr("controller.button.now", fallback="Translate Now")
 
     def refresh_hotkey_button_text(self):
         if hasattr(self, "btn_now"):
             self.btn_now.setText(self.get_hotkey_button_text())
+        if hasattr(self, "btn_hotkey"):
+            label = getattr(getattr(self, "hotkey_filter", None), "registered_label", None) or "~"
+            self.btn_hotkey.setText(label)
+            self.btn_hotkey.setToolTip(
+                self._tr("controller.tooltip.hotkey", fallback="Shortcut: {shortcut}", shortcut=label)
+            )
 
     def schedule_save_settings(self):
         if hasattr(self, "save_timer"):
@@ -3683,8 +3694,11 @@ class Controller(QWidget):
             self.btn_stop.setText(self._tr("controller.button.stop", fallback="停止"))
         if hasattr(self, "btn_theme"):
             self.btn_theme.setToolTip(self._tr("controller.tooltip.settings", fallback="設定"))
+        if hasattr(self, "btn_close"):
+            self.btn_close.setToolTip(self._tr("controller.tooltip.close", fallback="關閉"))
         if hasattr(self, "btn_30"):
-            self.btn_30.setText(self.get_random_scan_button_text())
+            self._refresh_auto_scan_button()
+            self._sync_main_scan_interval()
         if hasattr(self, "btn_now") and self.btn_now.isEnabled():
             self.refresh_hotkey_button_text()
         setup_provider = self._required_provider_setup()
@@ -4287,8 +4301,10 @@ class Controller(QWidget):
         self.random_scan_center_seconds = max(1, min(300, int(center_seconds)))
         self.random_scan_jitter_percent = max(0, min(100, int(jitter_percent)))
         self.update_random_scan_button_text()
-        if self.current_auto_interval > 0 and self.current_auto_interval != 5000:
-            self.update_countdown_label()
+        if self.current_auto_interval > 0:
+            self.current_auto_interval = self.random_scan_center_seconds * 1000
+            if self.auto_timer.isActive():
+                self.schedule_next_scan()
         if self.settings_window is not None:
             self.settings_window.update_random_scan_summary()
         self.schedule_save_settings()
@@ -4298,7 +4314,43 @@ class Controller(QWidget):
         return f"{prefix} {int(self.random_scan_center_seconds)}s~"
 
     def update_random_scan_button_text(self):
-        self.btn_30.setText(self.get_random_scan_button_text())
+        if hasattr(self, "cmb_scan_interval"):
+            self._sync_main_scan_interval()
+
+    def _refresh_auto_scan_button(self):
+        indicator = "●" if self.btn_30.isChecked() else "○"
+        label = localization.tr(
+            "controller.button.auto_scan",
+            getattr(self, "ui_language", localization.DEFAULT_UI_LANGUAGE),
+            fallback="自動掃描",
+        )
+        self.btn_30.setText(f"{indicator} {label}")
+
+    def _sync_main_scan_interval(self):
+        combo = self.cmb_scan_interval
+        selected = int(self.random_scan_center_seconds)
+        values = (10, 15, 30, 60)
+        if selected not in values:
+            values = tuple(sorted((*values, selected)))
+        combo.blockSignals(True)
+        combo.clear()
+        for seconds in values:
+            combo.addItem(
+                self._tr("controller.scan_interval.approx", fallback="約 {seconds} 秒", seconds=seconds),
+                seconds,
+            )
+        combo.setCurrentIndex(combo.findData(selected))
+        combo.blockSignals(False)
+
+    def on_main_scan_interval_changed(self, index):
+        if index < 0:
+            return
+        seconds = self.cmb_scan_interval.itemData(index)
+        if seconds is None:
+            return
+        self.on_random_scan_settings_changed(seconds, self.random_scan_jitter_percent)
+        if self.settings_window is not None:
+            self.settings_window.sync_from_controller()
 
     def get_random_scan_delay_ms(self):
         center_ms = max(1000, int(self.random_scan_center_seconds) * 1000)
@@ -4842,6 +4894,7 @@ class Controller(QWidget):
         self.worker.last_auto_threshold_refresh_ms = 0.0
         self.trigger_scan_sequence()
         self.btn_now.setEnabled(False)
+        self.btn_hotkey.setEnabled(False)
         self.btn_now.setText(self._tr("controller.status.cold_down", fallback="Cooling down..."))
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = time.monotonic() + (self.cooldown_total_ms / 1000.0)
@@ -4854,6 +4907,7 @@ class Controller(QWidget):
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = 0.0
         self.btn_now.setEnabled(True)
+        self.btn_hotkey.setEnabled(True)
         self.refresh_hotkey_button_text()
         status_text = self.lbl_status.text()
         if not self.scan_in_progress:
@@ -4875,16 +4929,31 @@ class Controller(QWidget):
         self.btn_now.setText(f"{progress}%")
         self._set_status_text("controller.status.cold_down", fallback="Cooling down...")
 
+    def on_auto_scan_toggled(self, checked):
+        if checked:
+            self.start_auto_scan()
+        else:
+            self.stop_scan()
+
     def start_auto_scan(self, checked=False, base_interval=None):
         if self._open_required_provider_setup():
+            if hasattr(self, "btn_30"):
+                self.btn_30.setChecked(False)
+                self._refresh_auto_scan_button()
             return
         if self.scan_mode == SCAN_MODE_REGION and not self.selected_region:
             self._set_status_text("controller.status.need_region", fallback="Please set a scan region first")
             self.begin_region_selection()
+            if hasattr(self, "btn_30"):
+                self.btn_30.setChecked(False)
+                self._refresh_auto_scan_button()
             return
         if base_interval is None:
             base_interval = max(1000, int(self.random_scan_center_seconds) * 1000)
         self.current_auto_interval = base_interval
+        if hasattr(self, "btn_30"):
+            self.btn_30.setChecked(True)
+            self._refresh_auto_scan_button()
         self._set_status_text(
             "controller.status.auto_scanning",
             fallback="{prefix} auto-scanning",
@@ -5025,9 +5094,8 @@ class Controller(QWidget):
         self.current_auto_interval = 0
         self.auto_timer.stop()
         self.display_timer.stop()
-        self.auto_group.setExclusive(False)
         self.btn_30.setChecked(False)
-        self.auto_group.setExclusive(True)
+        self._refresh_auto_scan_button()
         self._set_status_text("controller.status.auto_stopped", fallback="⏸ Auto stopped")
         self.overlay.clear_all()
 
@@ -5170,20 +5238,26 @@ class Controller(QWidget):
             theme.control_disabled_fg,
         )
 
-        auto_btn_style = theme.button_qss("toggle")
+        auto_btn_style = theme.jelly_button_qss()
         self.btn_30.setStyleSheet(auto_btn_style)
+        self.btn_hotkey.setStyleSheet(auto_btn_style)
+        self.cmb_scan_interval.setStyleSheet(theme.combo_qss(radius=8))
         self.btn_ai_mode.setStyleSheet(auto_btn_style)
         self.btn_mode_full.setStyleSheet(auto_btn_style)
         self.btn_mode_region.setStyleSheet(auto_btn_style)
 
-        self.btn_stop.setStyleSheet(theme.button_qss("toggle"))
+        self.btn_stop.setStyleSheet(auto_btn_style)
         self.btn_theme.setText("⚙")
         self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: transparent; color: {theme.accent}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: {theme.accent_soft}; border-radius: 15px; }}")
+        self.btn_close.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {theme.subtext}; border: none; font-size: 20px; font-weight: 600; }} "
+            f"QPushButton:hover {{ background: {theme.accent_soft}; color: {theme.text}; border-radius: 14px; }}"
+        )
         accent = theme.accent if theme.key == "high_contrast" else ("#AD9AFF" if theme.key == "dark" else "#7052D6")
         self.princess_avatar.set_art(_resource_path("assets/bg_light.png" if theme.key == "light" else "assets/bg_dark.png"))
         self.princess_avatar.setVisible(theme.key != "high_contrast")
         for button in (self.btn_mode_full, self.btn_mode_region, self.btn_30):
-            button.setStyleSheet(auto_btn_style + f"QPushButton:checked {{background:{accent}; color:{'#121212' if theme.key != 'light' else '#FFFFFF'};}}")
+            button.setStyleSheet(auto_btn_style)
         self.btn_now.set_theme_colors(accent, "#121212" if theme.key != "light" else "#FFFFFF", accent,
                                      accent, accent, theme.control_disabled_bg, theme.control_disabled_fg)
         self.lbl_title.setStyleSheet(f"color:{theme.text}; font-size:19px; font-weight:600; background:transparent; border:none;")

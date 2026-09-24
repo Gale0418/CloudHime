@@ -72,6 +72,51 @@ def test_cloudhime_startup(qtbot, monkeypatch):
     qtbot.waitUntil(lambda: not window.isVisible() and not overlay.isVisible(), timeout=2000)
 
 
+def test_controller_main_controls_match_available_actions(qtbot, monkeypatch):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None))
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None)
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    window = Controller(overlay)
+    qtbot.addWidget(window)
+    window.show()
+
+    assert window.btn_close.text() == "×"
+    assert window.btn_hotkey.text() == "~"
+    assert window.btn_hotkey.isVisible()
+
+    interval_index = window.cmb_scan_interval.findData(30)
+    window.cmb_scan_interval.setCurrentIndex(interval_index)
+    assert window.random_scan_center_seconds == 30
+    assert window.cmb_scan_interval.currentData() == 30
+
+    window.btn_30.click()
+    assert window.btn_30.isChecked()
+    assert window.btn_30.text().startswith("● ")
+    assert window.current_auto_interval == 30_000
+    assert window.auto_timer.isActive()
+    window.cmb_scan_interval.setCurrentIndex(window.cmb_scan_interval.findData(60))
+    assert window.current_auto_interval == 60_000
+    assert window.auto_timer.isActive()
+    window.btn_30.click()
+    assert not window.btn_30.isChecked()
+    assert window.btn_30.text().startswith("○ ")
+    assert window.current_auto_interval == 0
+    assert not window.auto_timer.isActive()
+
+    window.on_random_scan_settings_changed(23, 20)
+    assert window.cmb_scan_interval.currentData() == 23
+    window.set_ui_language("ja", persist=False)
+    assert window.btn_30.text() == "○ 自動スキャン"
+    assert window.cmb_scan_interval.currentText() == "約 23 秒"
+
+    window.close_app()
+    qtbot.waitUntil(lambda: not window.isVisible(), timeout=2000)
+
+
 def test_cloudhime_startup_loads_local_multimodal_settings(qtbot, monkeypatch):
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
