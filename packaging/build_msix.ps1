@@ -84,6 +84,9 @@ foreach ($part in $versionParts) {
 if (-not $validVersion) {
     throw "Version must contain four numeric components in the range 0-65535, for example 0.1.0.0."
 }
+if ($StoreRelease -and [int]$versionParts[3] -ne 0) {
+    throw "StoreRelease requires the fourth version component (revision) to be 0; Partner Center rejects non-zero revisions."
+}
 
 function Resolve-MakeAppx {
     param([string]$RequestedPath)

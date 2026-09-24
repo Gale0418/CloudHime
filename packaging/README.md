@@ -20,6 +20,8 @@ CreateUpload also produces a manually assembled .msixupload archive containing t
 
     pwsh -File packaging/build_msix.ps1 -StoreRelease -StoreIdentityConfigPath packaging/store-identity.local.json -Version 0.1.0.0 -CreateUpload
 
+Partner Center 只接受修訂欄位為 0 的四段式版本號；更新 `0.1.0.0` 時應使用例如 `0.1.1.0`。正式建置會在打包前拒絕 `0.1.0.1` 等修訂欄位非零的版本。
+
 這個 guard 不會建立、猜測或替代 Partner Center product identity；缺少正式 identity 時應保持未執行，不可用開發 publisher 偽裝成 Store release。`store-identity.local.json` 已加入 `.gitignore`，不可提交身分資料。
 ## Release dist preflight
 

@@ -1085,6 +1085,51 @@ def test_store_release_rejects_missing_identity_config_before_preflight():
     assert result.returncode != 0
     assert "StoreRelease requires -StoreIdentityConfigPath" in combined
 
+
+def test_store_release_rejects_nonzero_revision_before_preflight(tmp_path):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the Store version guard test")
+
+    root = Path(__file__).resolve().parents[1]
+    config_path = tmp_path / "store-identity.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "identity_name": "CloudHime.Store",
+                "publisher": "CN=WindSheep",
+                "publisher_display_name": "CloudHime",
+                "package_family_name": "CloudHime.Store_1234567890123",
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            str(root / "packaging" / "build_msix.ps1"),
+            "-StoreRelease",
+            "-StoreIdentityConfigPath",
+            str(config_path),
+            "-Version",
+            "0.1.0.1",
+            "-PreflightOnly",
+            "-DistDir",
+            str(tmp_path / "missing-dist"),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert result.returncode != 0
+    assert "fourth version component (revision) to be 0" in result.stdout + result.stderr
+
 def test_store_release_rejects_placeholder_publisher_before_preflight():
     powershell = _powershell_executable()
     if not powershell:
