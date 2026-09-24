@@ -64,7 +64,7 @@
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
 ### 從原始碼運行 (Source)
-1. 確保你有 Python 3.10+ 環境。
+1. 建議使用 Python 3.10（Windows CI 與鎖定依賴的已驗證版本）。其他版本尚未列入 CI；本機 Python 3.13 曾在單一程序混跑全部 Qt 測試時發生 PySide6 native crash，請勿將 3.10 的測試結果視為 3.13 相容性保證。
 2. 執行 `install.bat` 建立開發環境；本地 Gemma 模型與 projector 會由 CloudHime 在需要時下載、驗證並管理到使用者 AppData。
 3. 執行 `run.bat`
 

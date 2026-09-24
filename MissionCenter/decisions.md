@@ -1196,3 +1196,10 @@
 - T35 改以退場驗證追蹤；Review 只保留移除後新發行包驗證，不再等待作者授權答覆。既有歷史測試不冒充新版本證據。
 - GitHub issue #15 永久刪除被權限拒絕；已撤回標題／內文並關閉，可能仍有編輯歷史。三個本機 Meiki 模型已移至資源回收筒，可還原。
 - 詳細證據：reviews/2026-09-20-meiki-retirement.md。
+
+## 2026-09-24：CH-E9 驗收邊界與 CH-T65 獨立延後
+
+- 主人明確選擇按已驗收的漸進式 hardening 範圍收尾 CH-E9；CH-T65 是發行穩定後的新功能再評估，改為不隸屬 CH-E9 的獨立 Backlog，未實作亦未標 Done。
+- CH-E6 的準確度／效能補強繼續獨立進行，不因 CH-E9 收尾而宣稱完成；CH-E9 的前置關聯已移除，保留兩項工作各自的真實狀態。
+- 正式發行環境鎖定 Python 3.10／Windows x64；同一程序完整 pytest 在該環境為 1499 passed、3 skipped、1 deselected。先前本機 Python 3.13 的 PySide6 native access violation 不重現於 3.10，但不宣稱已修復 3.13 相容性；CI 分組隔離仍是正式 gate。
+- CH-E9 仍須經獨立完成審查、驗證與 Mission Center lifecycle，不能只修改 Markdown 狀態或把 Store／WACK／CH-E6 的進行中項目算作本 Epic 已完成。
