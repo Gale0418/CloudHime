@@ -322,3 +322,11 @@
 - Change：148 檔初審的 12 issues 已逐項查證修復，20 檔聚焦複審 0 issues；指定驗證 531 個不同案例通過，README 與 CI inventory 已更新。
 - Reason：依主人「確認真的有問題再修」及每小時三次、每次 150 檔限制完成。首次 too_many_files 與未完成的正式評議都保留真實狀態。
 - Impact：主窗、引擎與歷史程式可追溯至 reviews/2026-10-02-coderabbit-main-sync.md；原始輸入雜湊見 coderabbit-scope.json。正式 critic_full 預算未授權，CH-T117 Review／SmokeTest YES／Review NO。
+
+## 2026-10-02T18:54:39+08:00：CH-T117 main 同步與 CI 對帳
+
+- Timestamp：2026-10-02T18:54:39+08:00
+- Change：原始碼 2a802305ee91d05e9e9bfc8f5053dfab61f7297f 已直接推送 GitHub main，遠端與本地 SHA 相同；CI run 36997658191 completed／success。
+- Reason：主人授權存 Git、CodeRabbit、README／Mission Center 更新與 main 上傳；以真實遠端結果補登，避免預先宣稱成功。
+- Impact：八個必需 CI 工作成功；兩個 real frozen release 工作依既有條件 skipped。純文件對帳提交使用 [skip ci]，程式碼驗證對應原始碼 SHA。正式評議仍缺明確預算授權，Review 保留；Store 與新套件未完成項不改寫。
+- CI：[執行結果](https://github.com/Gale0418/CloudHime/actions/runs/36997658191)。

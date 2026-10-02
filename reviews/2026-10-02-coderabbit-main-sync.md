@@ -13,6 +13,9 @@
 - 新增 `tests/test_product_experience.py` 的 CI inventory 項目，避免新測試未被矩陣執行。
 - README 更新使用步驟、金鑰與資料去向、存檔失敗的退出方式，以及原始碼／既有套件的版本邊界。
 
+- 原始碼提交 [`2a80230`](https://github.com/Gale0418/CloudHime/commit/2a802305ee91d05e9e9bfc8f5053dfab61f7297f) 已直接推送 main，本地／遠端 SHA 一致，工作目錄乾淨。
+- [GitHub CI](https://github.com/Gale0418/CloudHime/actions/runs/36997658191) 已 `completed / success`，八個必需工作通過；兩個真實 frozen release 工作依既有條件 skipped，不算新套件驗證。CI 使用正式 Python 3.10。
+
 ### 問題處置
 
 | 嚴重度 | 檔案／問題 | 查證與處置 |
@@ -49,7 +52,6 @@ Windows、本機 Python **3.13.11**、PySide6 **6.10.1**、`QT_QPA_PLATFORM=offs
 
 ## Unfinished
 
-- GitHub main 的最終 SHA、推送結果與 CI 以實際遠端對帳為準；本文件在提交前形成，不預先宣稱遠端成功。
 - 正式 completion critic council 尚未 dispatch：`critic_full` 需要 total／per-seat／tool／wall-clock 明確預算授權，目前缺少此授權，因此 CH-T117 保留 **Review**。CodeRabbit 複審完成不替代正式評議。
 - 新原始碼未重建 `dist`／MSIX；CH-T55 Store 外觀確認、CH-T116 Python 3.13 原生崩潰調查維持原狀。
 
