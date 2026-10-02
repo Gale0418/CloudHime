@@ -78,7 +78,7 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 
 結束程式時若一般設定無法儲存，可選擇返回重試，或放棄未儲存變更後結束；金鑰儲存失敗時會保留視窗，讓你先處理問題。
 
-> **目前版本狀態：** 2026-10-02 的操作、引擎導覽與框選回饋改善已在原始碼；既有 `dist` 套件尚未重建，因此不包含這些變更。指定測試與實際限制見[互動體驗驗收](reviews/2026-10-02-interaction-delight.md)及[推薦體驗驗收](reviews/2026-10-02-recommendation-experience.md)，不代表完整發行或 Microsoft Store 認證已完成。
+> **目前版本狀態：** 2026-10-02 的操作、引擎導覽與框選回饋改善已在原始碼；本機另建 Python 3.10 light 預覽包，修復實機驗收發現的 Windows 啟動崩潰，已通過啟動／設定開關／退出、設定寫出後重啟與單圖本地 Vision smoke。既有 `dist`／公開下載／Store 套件仍未更新；新預覽包的外觀與完整滑鼠流程受驗收工具限制而未完成。指定測試與限制見[原生驗收](reviews/2026-10-02-native-acceptance.md)、[互動體驗驗收](reviews/2026-10-02-interaction-delight.md)及[推薦體驗驗收](reviews/2026-10-02-recommendation-experience.md)，不代表完整發行或 Microsoft Store 認證已完成。
 
 本輪亦以 CodeRabbit 補審歷史程式，逐項查證並修復已確認問題；範圍、處置與驗證結果見[原始碼審查紀錄](reviews/2026-10-02-coderabbit-main-sync.md)。
 

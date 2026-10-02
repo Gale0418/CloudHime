@@ -2,11 +2,28 @@
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QMessageBox
 
-from cloudhime_ui import Controller, OverlayWindow
+from cloudhime_ui import Controller, OverlayWindow, SelectionOverlay
 from celestial_ui import chrome_icon
+
+
+def test_selection_overlay_handles_synchronous_fullscreen_resize(qtbot, monkeypatch):
+    states = []
+
+    def synchronous_resize(overlay, state):
+        states.append(state)
+        overlay.resizeEvent(QResizeEvent(QSize(800, 600), overlay.size()))
+
+    monkeypatch.setattr(SelectionOverlay, "setWindowState", synchronous_resize)
+    overlay = SelectionOverlay()
+    qtbot.addWidget(overlay)
+    assert states == [Qt.WindowFullScreen]
+    assert overlay.selection_hint.parent() is overlay
+    assert overlay.selection_hint.y() == 16
+    assert not overlay.isVisible()
 
 
 @pytest.fixture

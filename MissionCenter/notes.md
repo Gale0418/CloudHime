@@ -330,3 +330,11 @@
 - Reason：主人授權存 Git、CodeRabbit、README／Mission Center 更新與 main 上傳；以真實遠端結果補登，避免預先宣稱成功。
 - Impact：八個必需 CI 工作成功；兩個 real frozen release 工作依既有條件 skipped。純文件對帳提交使用 [skip ci]，程式碼驗證對應原始碼 SHA。正式評議仍缺明確預算授權，Review 保留；Store 與新套件未完成項不改寫。
 - CI：[執行結果](https://github.com/Gale0418/CloudHime/actions/runs/36997658191)。
+
+## 2026-10-02T20:12:14+08:00：CH-T117 原生驗收與新 light 預覽
+
+- Timestamp：2026-10-02T20:12:14+08:00
+- Change：Windows 原生啟動觸發 SelectionOverlay 提示尚未初始化的 AttributeError；以最小事件順序修復並補回歸。224 個不同案例通過；CodeRabbit 本小時一次，實際 135 檔／0 issues。
+- Reason：主人授權 Computer Use GO，從實際 Python 3.10 啟動查證問題，再重建獨立 light EXE；舊 dist／Store 保留。
+- Impact：新 EXE 建置／import／dist verifier 通過；原生主窗、設定開關、退出、設定寫出重啟與 CPU 單圖 Vision smoke 通過。capture timeout／click geometry unavailable，外觀、框選與完整 UI 流程未完成。CH-T117 保留 Review／Review NO；正式評議 not dispatched: approval/budget missing。
+- Evidence：reviews/2026-10-02-native-acceptance.md；原始紀錄在 output/acceptance-ui-20261002、建置在 output/acceptance-20261002-194531。

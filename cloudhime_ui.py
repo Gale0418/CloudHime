@@ -745,9 +745,6 @@ class SelectionOverlay(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowState(Qt.WindowFullScreen)
         self.start_point = None
         self.current_rect = QRect()
         self.is_selecting = False
@@ -759,6 +756,10 @@ class SelectionOverlay(QWidget):
         self.selection_hint.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setCursor(Qt.CrossCursor)
         self.set_theme_mode(self.theme_mode)
+        # Native Windows fullscreen changes may dispatch resizeEvent immediately.
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowState(Qt.WindowFullScreen)
         self.hide()
 
     def set_theme_mode(self, theme_mode):
