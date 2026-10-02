@@ -338,3 +338,10 @@
 - Reason：主人授權 Computer Use GO，從實際 Python 3.10 啟動查證問題，再重建獨立 light EXE；舊 dist／Store 保留。
 - Impact：新 EXE 建置／import／dist verifier 通過；原生主窗、設定開關、退出、設定寫出重啟與 CPU 單圖 Vision smoke 通過。capture timeout／click geometry unavailable，外觀、框選與完整 UI 流程未完成。CH-T117 保留 Review／Review NO；正式評議 not dispatched: approval/budget missing。
 - Evidence：reviews/2026-10-02-native-acceptance.md；原始紀錄在 output/acceptance-ui-20261002、建置在 output/acceptance-20261002-194531。
+
+## 2026-10-02T20:16:55+08:00：CH-T117 原生修復 main／CI 對帳
+
+- Timestamp：2026-10-02T20:16:55+08:00
+- Change：main 原始碼 7c93c153d345483ae489aae5a5c6dd07ba9abf48 已推送並對帳；GitHub CI 37005380465 completed／success，八個必需工作成功、兩個 frozen release 工作 skipped。
+- Reason：依實際遠端結果補登，本次純文件提交 [skip ci]，不把文件 SHA 當程式碼 CI SHA。
+- Impact：新本機 light EXE 與 CPU 單圖 smoke 各有獨立證據；完整 UI／Store 與正式評論仍未完成，CH-T117 Review 保留。

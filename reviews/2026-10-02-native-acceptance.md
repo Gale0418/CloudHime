@@ -49,4 +49,10 @@ Windows Git 僅兩個實作／測試檔有內容差異；WSL Git 未繼承 Windo
 
 啟動日誌仍有 optional opencc 未安裝訊息，不宣稱零警告。本輪未改動既有依賴政策，也未建立／安裝新 MSIX 或上傳新 Release 資產。
 
+## main 與 CI 對帳
+
+修復及 README／任務紀錄已直接提交 main [`7c93c15`](https://github.com/Gale0418/CloudHime/commit/7c93c153d345483ae489aae5a5c6dd07ba9abf48)，推送後本地／遠端 SHA 相同，工作目錄乾淨。該提交的 [GitHub CI](https://github.com/Gale0418/CloudHime/actions/runs/37005380465) 為 completed／success：八個必需工作成功，兩個 real frozen release 工作 skipped。本機新 EXE 驗證有獨立證據，未用 skipped CI 代替。
+
+本段與任務中心對帳為後續純文件提交，使用 `[skip ci]`；程式码 CI 證據對應上述來源提交。
+
 CH-T117 保留 Review。正式 critic_full 尚未 dispatch，缺 total／per-seat／tool／wall-clock 明確預算授權；CodeRabbit 與本輪驗收不替代正式評議。未完成的外觀、完整原生流程、新 MSIX／Store、乾淨機與 live API 驗證均不宣稱通過。
