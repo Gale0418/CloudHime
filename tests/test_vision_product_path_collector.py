@@ -73,6 +73,38 @@ def test_cleanup_on_failure_and_residual_is_probed_after_cleanup():
     run, made, _ = _collect(residual_probe=lambda worker: 0 if worker.cleaned else -1)
     assert run["records"] and all(worker.cleaned for worker in made)
 
+
+@pytest.mark.parametrize(
+    ("scan_fails", "cleanup_fails", "expected_error"),
+    [
+        (True, False, "scan failed"),
+        (False, True, "cleanup failed"),
+        (True, True, "scan failed"),
+        (False, False, "probe failed"),
+    ],
+)
+def test_post_cleanup_probe_error_does_not_mask_scan_or_cleanup_error(
+    monkeypatch, scan_fails, cleanup_fails, expected_error
+):
+    class FailingWorker(FakeWorker):
+        def cleanup(self):
+            super().cleanup()
+            if cleanup_fails:
+                raise RuntimeError("cleanup failed")
+
+    def fail_probe(*_args):
+        raise RuntimeError("probe failed")
+
+    monkeypatch.setattr(
+        "vision_product_path_collector._probe_after_cleanup",
+        fail_probe,
+    )
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        _collect(
+            worker_factory=lambda: FailingWorker(0, fail=scan_fails)
+        )
+
 def test_trace_stage_sum_wall_total_and_quality_are_raw_only():
     run, _, _ = _collect()
     record = run["records"][0]

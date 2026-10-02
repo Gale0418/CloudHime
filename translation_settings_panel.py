@@ -280,6 +280,11 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_translate_hint.setMaximumWidth(16777215)
         self.lbl_translate_hint.setVisible(True)
+        self.lbl_data_use = QLabel("")
+        self.lbl_data_use.setObjectName("translationDataUse")
+        self.lbl_data_use.setWordWrap(True)
+        self.lbl_data_use.setMinimumWidth(0)
+        self.lbl_data_use.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_translate_summary = QLabel("")
         self.lbl_translate_summary.setWordWrap(True)
         self.lbl_translate_summary.setMinimumWidth(0)
@@ -442,7 +447,7 @@ class TranslationSettingsPanel(QWidget):
             ("google", "Google 翻譯", "不需 API Key"),
             ("local_gemma", "本機 Gemma", "本地模型・不需雲端金鑰"),
             ("online_gemma", "線上 Gemma", "單一 Key・雙 Gemma 模型"),
-            ("luna", "Luna", "文字＋圖片輸入・需要 Luna Key"),
+            ("luna", "Luna", "文字＋圖片輸入・需要 OpenAI API 金鑰"),
         )
         for provider_id, provider_name, description in provider_choices:
             row = _ProviderChoiceRow(provider_id, provider_name, description, mode_buttons)
@@ -458,6 +463,7 @@ class TranslationSettingsPanel(QWidget):
         self._set_provider_choice("google")
         translate_layout.addWidget(self.lbl_translate_mode)
         translate_layout.addWidget(mode_buttons)
+        translate_layout.addWidget(self.lbl_data_use)
 
         self.advanced_translate_frame = QFrame()
         self.advanced_translate_frame.setMinimumWidth(0)
@@ -789,7 +795,7 @@ class TranslationSettingsPanel(QWidget):
             "google": ("Google Translate", "Google 翻譯", "Select Google Translate; no API key is required.", "選擇 Google 翻譯；不需要 API Key。", "Google 翻訳", "Google 翻訳を選択します。API キーは不要です。"),
             "local_gemma": ("Local Gemma", "本機 Gemma", "Select the local Gemma model; no cloud key is required.", "選擇本機 Gemma；不需要雲端金鑰。", "ローカル Gemma", "ローカル Gemma モデルを選択します。クラウドキーは不要です。"),
             "online_gemma": ("Online Gemma", "線上 Gemma", "Select Online Gemma; a Google API key is required.", "選擇線上 Gemma；需要 Google API Key。", "Online Gemma", "Online Gemma を選択します。Google API キーが必要です。"),
-            "luna": ("Luna", "Luna", "Select Luna; a Luna API key is required.", "選擇 Luna；需要 Luna API Key。", "Luna", "Luna を選択します。Luna API キーが必要です。"),
+            "luna": ("Luna", "Luna", "Select Luna; your OpenAI API key is required.", "選擇 Luna；需要你的 OpenAI API 金鑰。", "Luna", "Luna を選択します。ご自身の OpenAI API キーが必要です。"),
         }
         for provider_id, radio in self.provider_choice_buttons.items():
             set_a11y(radio, *choice_a11y[provider_id])
@@ -801,7 +807,7 @@ class TranslationSettingsPanel(QWidget):
         set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; the value is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，內容不會寫入設定資料。", "Online Gemma API キー", "Windows DPAPI で保護される秘密情報です。設定データには保存されません。")
         set_a11y(self.chk_auto_switch, "Rotate Gemma models automatically", "自動輪替 Gemma 模型", "Rotate between gemma-4-26b-a4b-it and gemma-4-31b-it when enabled.", "啟用後在 gemma-4-26b-a4b-it 與 gemma-4-31b-it 間自動輪替。", "Gemma モデルを自動切替", "有効にすると gemma-4-26b-a4b-it と gemma-4-31b-it を切り替えます。")
         set_a11y(self.chk_luna_enabled, "Enable Luna", "啟用 Luna", "Allow the fixed gpt-6-luna provider.", "允許使用固定的 gpt-6-luna Provider。", "Luna を有効化", "固定の gpt-6-luna プロバイダーを使用可能にします。")
-        set_a11y(self.input_luna_api_key, "Luna API key", "Luna API Key", "Secret input. The value is not exposed through accessibility text.", "秘密欄位，內容不會透過輔助功能文字暴露。", "Luna API キー", "秘密情報です。アクセシビリティ用のテキストには表示されません。")
+        set_a11y(self.input_luna_api_key, "OpenAI API key for Luna", "Luna 的 OpenAI API 金鑰", "Secret input. The value is not exposed through accessibility text.", "秘密欄位，內容不會透過輔助功能文字暴露。", "Luna 用 OpenAI API キー", "秘密情報です。アクセシビリティ用のテキストには表示されません。")
         set_a11y(self.cmb_luna_reasoning, "Luna thinking disabled", "Luna Thinking 已關閉", "Thinking is fixed off for low latency.", "為維持低延遲，Thinking 固定關閉。", "Luna Thinking は無効", "低遅延のため Thinking は常に無効です。")
         set_a11y(self.spin_luna_timeout, "Luna timeout seconds", "Luna 逾時秒數", "Maximum request time in seconds.", "要求的最長等待秒數。", "Luna のタイムアウト（秒）", "リクエストの最大待機時間です。")
 
@@ -839,6 +845,7 @@ class TranslationSettingsPanel(QWidget):
         button.setChecked(True)
         button.blockSignals(False)
         self._selected_provider_id = provider_id
+        self._refresh_data_use_note()
         self._sync_provider_disclosure_visibility()
         for choice_id, row in self.provider_choice_rows.items():
             row.setProperty("selected", choice_id == provider_id)
@@ -847,6 +854,32 @@ class TranslationSettingsPanel(QWidget):
                 style.unpolish(row)
                 style.polish(row)
             row.update()
+
+    def _refresh_data_use_note(self):
+        notes = {
+            "zh-TW": {
+                "google": "Google 翻譯會收到辨識文字，需要網路。若另啟用雲端 OCR，也會送出畫面影像。",
+                "local_gemma": "模型可在電腦上處理；首次使用可能需下載。啟用雲端 OCR 或設定遠端端點時，內容仍會送出。",
+                "online_gemma": "翻譯文字或畫面會送往 Google。需自己的 Google API 金鑰，用量與額度依帳戶設定。",
+                "luna": "翻譯文字或畫面會送往 OpenAI。需自己的 OpenAI API 金鑰，用量與額度依帳戶設定。",
+            },
+            "en": {
+                "google": "Google Translate receives recognized text and needs internet access. Cloud OCR also sends screen images when enabled.",
+                "local_gemma": "Models can run on your computer; first use may require a download. Cloud OCR or a remote endpoint still sends content off this device.",
+                "online_gemma": "Translation text or images go to Google. Bring your own Google API key; usage and limits depend on your account.",
+                "luna": "Translation text or images go to OpenAI. Bring your own OpenAI API key; usage and limits depend on your account.",
+            },
+            "ja": {
+                "google": "認識した文字を Google 翻訳に送信します。ネット接続が必要です。クラウド OCR を有効にすると画像も送信されます。",
+                "local_gemma": "モデルは端末で動作できます。初回はダウンロードが必要な場合があります。クラウド OCR やリモート接続先には内容が送信されます。",
+                "online_gemma": "翻訳する文字や画像を Google に送信します。ご自身の Google API キーが必要です。利用量と制限はアカウントの設定によります。",
+                "luna": "翻訳する文字や画像を OpenAI に送信します。ご自身の OpenAI API キーが必要です。利用量と制限はアカウントの設定によります。",
+            },
+        }
+        language = self._ui_language()
+        self.lbl_data_use.setText(notes.get(language, notes["zh-TW"])[self._selected_provider_id])
+        self.lbl_data_use.setAccessibleName(self.lbl_data_use.text())
+        self.lbl_data_use.setAccessibleDescription({"en": "Translation data use", "ja": "翻訳データの送信先"}.get(language, "翻譯資料使用說明"))
 
     def _sync_provider_disclosure_visibility(self):
         """Keep only the selected provider's settings body in the reading path."""
@@ -947,11 +980,11 @@ class TranslationSettingsPanel(QWidget):
                 self.input_api_key.setFocus()
                 self.update_translate_summary()
                 self._show_provider_gate_message(
-                    "Online Gemma is paused until its API key is entered. Enter it below to continue."
+                    "Enter your Google API key below to use Online Gemma. Close settings to keep your previous engine."
                     if str(self._ui_language()).lower().startswith("en")
-                    else "Online Gemma は API キーが入力されるまで一時停止しています。下に入力して続行してください。"
+                    else "下に Google API キーを入力してください。設定を閉じると、以前のエンジンを引き続き使えます。"
                     if self._ui_language() == "ja"
-                    else "線上 Gemma 暫停翻譯，請在下方輸入 API Key 後繼續。"
+                    else "在下方貼上 Google API 金鑰即可使用線上 Gemma；關閉設定則繼續用原本的引擎。"
                 )
                 return
             if not self._select_remote_gemma():
@@ -977,11 +1010,11 @@ class TranslationSettingsPanel(QWidget):
                 self._optional_controller_call("stage_translation_provider_setup", provider_id)
                 self.input_luna_api_key.setFocus()
                 self._show_provider_gate_message(
-                    "Luna is paused until its API key is entered. Enter it below to continue."
+                    "Enter your OpenAI API key below to use Luna. Close settings to keep your previous engine."
                     if str(self._ui_language()).lower().startswith("en")
-                    else "Luna は API キーが入力されるまで一時停止しています。下に入力して続行してください。"
+                    else "下に OpenAI API キーを入力してください。設定を閉じると、以前のエンジンを引き続き使えます。"
                     if self._ui_language() == "ja"
-                    else "Luna 暫停翻譯，請在下方輸入 API Key 後繼續。"
+                    else "在下方貼上 OpenAI API 金鑰即可使用 Luna；關閉設定則繼續用原本的引擎。"
                 )
                 return
             if not self.chk_luna_enabled.isChecked():
@@ -1627,19 +1660,19 @@ class TranslationSettingsPanel(QWidget):
                 "ja": "フル版にはモデルが含まれます。ライト版では AppData にダウンロードします。有効化する前に <a href=\"https://ai.google.dev/gemma/terms\">Gemma 利用規約</a>をお読みください。",
             },
             "gemma-3-27b-it": {
-                "en": "Best balance for screenshot translation.",
-                "zh-TW": "截圖翻譯的平衡首選。",
-                "ja": "スクリーンショット翻訳に適したバランスのモデルです。",
+                "en": "Online model; requires your Google API key.",
+                "zh-TW": "線上模型；需自己的 Google API 金鑰。",
+                "ja": "オンラインモデルです。ご自身の Google API キーが必要です。",
             },
             "gemma-4-31b-it": {
-                "en": "Large model with stronger vision, but slower.",
-                "zh-TW": "更強的視覺能力，但速度較慢。",
-                "ja": "視覚能力に優れた大型モデルですが、処理は遅めです。",
+                "en": "Online model; text or images go to Google. Limits depend on your account.",
+                "zh-TW": "線上模型；文字或圖片會送往 Google，額度依帳戶設定。",
+                "ja": "文字や画像を Google に送信します。利用制限はアカウントの設定によります。",
             },
             "gemini-2.5-pro": {
-                "en": "Strong paid model; can be slower or rate-limited.",
-                "zh-TW": "付費強力模型，可能較慢或受限。",
-                "ja": "高性能の有料モデルです。処理が遅い場合や利用制限がかかる場合があります。",
+                "en": "Online model; availability, billing and limits depend on your Google account.",
+                "zh-TW": "線上模型；可用性、費用與額度依 Google 帳戶設定。",
+                "ja": "利用可否、料金、制限は Google アカウントの設定によります。",
             },
         }
         model_note = notes.get(model_name)
@@ -1665,34 +1698,37 @@ class TranslationSettingsPanel(QWidget):
 
         self.lbl_translate.setText(localized("Translation", "翻譯引擎", "翻訳"))
         self.lbl_translate_hint.setText(
-            localized("Choose how to translate.", "選擇適合你的翻譯方式", "翻訳方法を選択してください。")
+            localized("Start with Google Translate, without a translation API key. Choose a local or online AI engine when you need one.",
+                      "第一次先試 Google 翻譯，不用準備翻譯金鑰。需要 AI 時，再選本機或線上引擎。",
+                      "まずは翻訳キー不要の Google 翻訳を試せます。必要に応じて端末内やオンラインの AI を選んでください。")
         )
         self.lbl_translate_mode.setText(localized("Provider", "翻譯來源", "プロバイダー"))
         provider_copy = {
             "google": (
-                ("Google Translate", "No API key required") if is_en
-                else (("Google 翻訳", "API キー不要") if is_ja else ("Google 翻譯", "不需 API Key"))
+                ("Google Translate", "Try first · internet required · no translation key") if is_en
+                else (("Google 翻訳", "まず試す · ネット接続が必要 · 翻訳キー不要") if is_ja else ("Google 翻譯", "先試一次・需網路・不用翻譯金鑰"))
             ),
             "local_gemma": (
-                ("Local Gemma", "Local model · no cloud key required") if is_en
-                else (("ローカル Gemma", "ローカルモデル · クラウドキー不要") if is_ja else ("本機 Gemma", "本地模型・不需雲端金鑰"))
+                ("Local Gemma", "Run on your computer · prepare the model first") if is_en
+                else (("ローカル Gemma", "端末で翻訳 · モデルの準備が必要") if is_ja else ("本機 Gemma", "在電腦上翻譯・先準備模型"))
             ),
             "online_gemma": (
-                ("Online Gemma", "One key · two Gemma models") if is_en
-                else (("Online Gemma", "1 つのキー · 2 つの Gemma モデル") if is_ja else ("線上 Gemma", "單一 Key・雙 Gemma 模型"))
+                ("Online Gemma", "Text + images · your Google API key") if is_en
+                else (("Online Gemma", "文字と画像 · Google API キーが必要") if is_ja else ("線上 Gemma", "文字與圖片・需 Google API 金鑰"))
             ),
             "luna": (
-                ("Luna", "Text + image input · Luna key required") if is_en
-                else (("Luna", "テキストと画像に対応 · Luna キーが必要") if is_ja else ("Luna", "文字＋圖片輸入・需要 Luna Key"))
+                ("Luna", "Text + images · your OpenAI API key") if is_en
+                else (("Luna", "文字と画像 · OpenAI API キーが必要") if is_ja else ("Luna", "文字與圖片・需 OpenAI API 金鑰"))
             ),
         }
         for provider_id, (name, description) in provider_copy.items():
             row = self.provider_choice_rows[provider_id]
             row.name_label.setText(name)
             row.detail_label.setText(description)
+        self._refresh_data_use_note()
         self._set_visibility_button_text()
-        self.lbl_api_key.setText(localized("Online Gemma API key", "Online Gemma API Key", "Online Gemma API キー"))
-        self.input_api_key.setPlaceholderText(localized("Gemma API key", "Gemma API Key", "Gemma API キー"))
+        self.lbl_api_key.setText(localized("Google API key for Online Gemma", "線上 Gemma 的 Google API 金鑰", "Online Gemma 用 Google API キー"))
+        self.input_api_key.setPlaceholderText(localized("Enter your Google API key", "貼上你的 Google API 金鑰", "Google API キーを入力"))
         self.lbl_online_gemma.setText("Online Gemma" if is_en else "Online Gemma")
         self.chk_online_gemma_enabled.setText(localized("Enable Online Gemma", "啟用 Online Gemma", "Online Gemma を有効化"))
         self.lbl_auto_switch.setText(
@@ -1705,7 +1741,8 @@ class TranslationSettingsPanel(QWidget):
         )
         self.lbl_luna.setText("Luna" if is_en else "Luna")
         self.chk_luna_enabled.setText(localized("Enable Luna", "啟用 Luna", "Luna を有効化"))
-        self.lbl_luna_api_key.setText(localized("Luna API key", "Luna API Key", "Luna API キー"))
+        self.lbl_luna_api_key.setText(localized("OpenAI API key for Luna", "Luna 的 OpenAI API 金鑰", "Luna 用 OpenAI API キー"))
+        self.input_luna_api_key.setPlaceholderText(localized("Enter your OpenAI API key", "貼上你的 OpenAI API 金鑰", "OpenAI API キーを入力"))
         self.lbl_luna_model_label.setText(localized("Model (fixed)", "模型（固定）", "モデル（固定）"))
         self.lbl_luna_capabilities.setText(
             "Capabilities: text + image input. Connectivity and quota are checked at request time."
@@ -2045,6 +2082,8 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_translate_health_detail.setStyleSheet(
             f"font-size: 11px; color: {theme.subtext}; background: transparent; border: none;"
         )
+        data_color = theme.text if theme.key == "high_contrast" else ("#C5C2D7" if theme.key == "dark" else "#615B72")
+        self.lbl_data_use.setStyleSheet(f"font-size:12px; color:{data_color}; background:transparent; border:none;")
         self.lbl_key_save_warning.setStyleSheet(
             f"font-size: 12px; font-weight: 700; color: {theme.error}; background: transparent; border: none;"
         )

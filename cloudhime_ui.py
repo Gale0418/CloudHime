@@ -17,6 +17,7 @@ import random
 import re
 import json
 import time
+import math
 import traceback
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -44,7 +45,7 @@ from PySide6.QtWidgets import (
                                QGraphicsOpacityEffect, QGridLayout)
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
                             QAbstractNativeEventFilter, QEvent)
-from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient
+from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient, QShortcut, QKeySequence
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
@@ -114,7 +115,7 @@ from knowledge_research_service import (
     RESEARCH_MODEL_IDS,
     KnowledgeResearchService,
 )
-from celestial_ui import PrincessAvatar, compose_settings, localize_settings, style_settings
+from celestial_ui import PrincessAvatar, chrome_icon, compose_settings, localize_settings, style_settings
 from secret_store import SecretStore, SecretStoreError
 # 防止高 DPI 縮放導致座標錯位
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
@@ -751,17 +752,53 @@ class SelectionOverlay(QWidget):
         self.current_rect = QRect()
         self.is_selecting = False
         self.theme_mode = "light"
+        self.ui_language = localization.DEFAULT_UI_LANGUAGE
+        self.selection_hint = QLabel(self)
+        self.selection_hint.setWordWrap(True)
+        self.selection_hint.setAlignment(Qt.AlignCenter)
+        self.selection_hint.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setCursor(Qt.CrossCursor)
+        self.set_theme_mode(self.theme_mode)
         self.hide()
 
     def set_theme_mode(self, theme_mode):
         theme = resolve_theme(theme_mode)
         self.theme_mode = theme.key
+        self.selection_hint.setStyleSheet(
+            f"color:{theme.text}; background:{theme.card_bg}; border:1px solid {theme.accent}; "
+            "border-radius:8px; padding:10px 16px; font-size:14px;"
+        )
         self.update()
+
+    def set_ui_language(self, language):
+        self.ui_language = localization.normalize_ui_language(language)
+        self._refresh_selection_hint()
+
+    def _refresh_selection_hint(self):
+        text = localization.tr("selection.hint.drag", self.ui_language)
+        if not self.current_rect.isNull():
+            rect = self.current_rect.normalized()
+            key = "selection.hint.too_small" if rect.width() < 20 or rect.height() < 20 else "selection.hint.size"
+            text += "\n" + localization.tr(key, self.ui_language, width=rect.width(), height=rect.height())
+        self.selection_hint.setText(text)
+        self.selection_hint.setAccessibleName(text)
+        self._position_selection_hint()
+
+    def _position_selection_hint(self):
+        width = max(1, min(580, self.width() - 32))
+        self.selection_hint.setFixedWidth(width)
+        self.selection_hint.adjustSize()
+        self.selection_hint.move((self.width() - width) // 2, 16)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_selection_hint()
 
     def begin_selection(self):
         self.start_point = None
         self.current_rect = QRect()
         self.is_selecting = False
+        self._refresh_selection_hint()
         self.showFullScreen()
         self.raise_()
         self.activateWindow()
@@ -787,12 +824,14 @@ class SelectionOverlay(QWidget):
             self.start_point = event.position().toPoint()
             self.current_rect = QRect(self.start_point, self.start_point)
             self.is_selecting = True
+            self._refresh_selection_hint()
             self.update()
 
     def mouseMoveEvent(self, event):
         if self.is_selecting and self.start_point is not None:
             current = event.position().toPoint()
             self.current_rect = QRect(self.start_point, current).normalized()
+            self._refresh_selection_hint()
             self.update()
 
     def mouseReleaseEvent(self, event):
@@ -1055,22 +1094,9 @@ class CooldownButton(QPushButton):
 
         if self.isDown() and self.isEnabled():
             bg = bg.darker(115)
-        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        gradient.setColorAt(0.0, bg.lighter(133) if self.isEnabled() else bg)
-        gradient.setColorAt(0.48, bg.lighter(112) if self.isEnabled() else bg)
-        gradient.setColorAt(1.0, bg.darker(108) if self.isEnabled() else bg)
-        painter.setPen(QPen(self.border_color.darker(125), 2))
-        painter.setBrush(QBrush(gradient))
+        painter.setPen(QPen(self.border_color, 1))
+        painter.setBrush(QBrush(bg))
         painter.drawRoundedRect(rect, 8, 8)
-
-        if self.isEnabled():
-            shine = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-            shine.setColorAt(0.0, QColor(255, 255, 255, 105))
-            shine.setColorAt(0.5, QColor(255, 255, 255, 15))
-            shine.setColorAt(1.0, QColor(255, 255, 255, 0))
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(shine))
-            painter.drawRoundedRect(rect.adjusted(3, 3, -3, -rect.height() // 2), 6, 6)
 
         if self.cooldown_progress > 0:
             fill_rect = QRect(rect)
@@ -1082,6 +1108,10 @@ class CooldownButton(QPushButton):
         painter.setPen(fg)
         painter.setFont(self.font())
         painter.drawText(rect, Qt.AlignCenter, self.text())
+        if self.hasFocus():
+            painter.setPen(QPen(fg, 1, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(rect.adjusted(4, 4, -4, -4), 4, 4)
         painter.end()
 
 
@@ -1869,6 +1899,16 @@ def write_translation_history_export(path, cache):
         json.dump(payload, fp, ensure_ascii=False, indent=2, allow_nan=False)
 
 class SettingsWindowRevamp(QWidget):
+    def closeEvent(self, event):
+        self.on_cancel_clicked()
+        event.accept()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "princess_portrait"):
+            from celestial_ui import adapt_settings
+            adapt_settings(self)
+
     def toggle_screenshot_prompt(self, expanded):
         if not expanded and self.input_screenshot_gemma_prompt.hasFocus():
             self.screenshot_prompt_toggle.setFocus()
@@ -2347,6 +2387,10 @@ class SettingsWindowRevamp(QWidget):
         self.auto_scan_panel.setStyleSheet("QFrame { background: transparent; border: none; }")
         compose_settings(self, top, theme_chip, language_chip, knowledge_chip,
                          knowledge_options_row, body, footer_layout)
+        self.close_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self.close_shortcut.activated.connect(self.on_cancel_clicked)
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_clicked)
         self.refresh_localized_texts()
 
     def on_translate_mode_clicked(self, use_ai):
@@ -2429,7 +2473,8 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_page_title.setText("CloudHime")
         self.lbl_page_subtitle.setText(translation_tools.ui_text(lang, "settings_subtitle"))
         self.btn_close.setToolTip(translation_tools.ui_text(lang, "settings_close"))
-        self.btn_close.setText("✕")
+        self.btn_close.setText("")
+        self.btn_close.setAccessibleName(self.btn_close.toolTip())
         self.lbl_theme_mode.setText("🎨")
         self.lbl_theme_mode.setToolTip(translation_tools.ui_text(lang, "settings_theme_mode"))
         self.lbl_ui_language.setText("🌐")
@@ -2450,7 +2495,8 @@ class SettingsWindowRevamp(QWidget):
             self.btn_knowledge_action.setText(self._knowledge_action_text())
             self._refresh_knowledge_status()
         self.btn_reset_defaults.setText(translation_tools.ui_text(lang, "settings_reset_defaults"))
-        self.btn_cancel.setText(translation_tools.ui_text(lang, "settings_cancel"))
+        self.btn_cancel.setText(translation_tools.ui_text(lang, "settings_close"))
+        self.btn_cancel.setToolTip(self.lbl_page_subtitle.text())
         self.btn_save.setText(translation_tools.ui_text(lang, "settings_save"))
         self.spin_random_scan_center.setSuffix(" sec" if lang == "en" else " 秒")
         self.spin_auto_threshold_refresh_minutes.setSuffix(" min" if lang == "en" else (" 分" if lang == "ja" else " 分鐘"))
@@ -2507,6 +2553,9 @@ class SettingsWindowRevamp(QWidget):
             self.refresh_localized_texts()
 
     def on_save_clicked(self):
+        if getattr(self.controller, "pending_translation_provider_id", None):
+            self.controller._open_required_provider_setup()
+            return
         previous_title = str(
             getattr(self.controller, "active_work_title", "") or ""
         )
@@ -2539,6 +2588,9 @@ class SettingsWindowRevamp(QWidget):
         self._knowledge_title_dirty = False
         self.hide()
     def on_cancel_clicked(self):
+        cancel_setup = getattr(self.controller, "cancel_translation_provider_setup", None)
+        if callable(cancel_setup):
+            cancel_setup()
         if self._knowledge_is_building():
             cancel = getattr(self.controller, "cancel_knowledge_research", None)
             if callable(cancel):
@@ -3143,7 +3195,8 @@ class Controller(QWidget):
         self.local_runtime_coordinator = LocalVisionRuntimeCoordinator()
         
         self.setWindowTitle("雲朵翻譯姬")
-        self.resize(380, 275)
+        self.setMinimumWidth(440)
+        self.resize(440, 360)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
@@ -3243,7 +3296,7 @@ class Controller(QWidget):
         self.btn_theme.setObjectName("settingsButton")
         self.btn_theme.setAccessibleName("開啟設定")
         self.btn_theme.setAccessibleDescription("開啟設定中心")
-        self.btn_theme.setFixedSize(30, 30)
+        self.btn_theme.setMinimumSize(62, 32)
         self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_settings_window)
         status_row.addWidget(self.lbl_status)
@@ -3291,6 +3344,11 @@ class Controller(QWidget):
         scan_mode_row.addWidget(self.btn_mode_region)
         inner_layout.addLayout(scan_mode_row)
 
+        self.lbl_scan_hint = QLabel()
+        self.lbl_scan_hint.setWordWrap(True)
+        self.lbl_scan_hint.setObjectName("scanHint")
+        inner_layout.addWidget(self.lbl_scan_hint)
+
         translate_row = QHBoxLayout()
         translate_row.setSpacing(8)
         self.btn_now = CooldownButton("立即翻譯 (~)")
@@ -3322,6 +3380,15 @@ class Controller(QWidget):
         self.btn_stop.clicked.connect(self.stop_scan)
         btn_layout.addWidget(self.btn_stop)
         inner_layout.addLayout(btn_layout)
+        for button in (self.btn_mode_full, self.btn_mode_region, self.btn_30, self.btn_stop):
+            button.setMinimumHeight(32)
+
+        self.stop_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self.stop_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self.stop_shortcut.activated.connect(self.stop_scan)
+        self.settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
+        self.settings_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self.settings_shortcut.activated.connect(self.toggle_settings_window)
 
         self.update_frame_style()
         self.refresh_main_ui_texts()
@@ -3672,7 +3739,9 @@ class Controller(QWidget):
 
     def _set_status_text(self, key, fallback=None, **params):
         if hasattr(self, "lbl_status"):
-            self.lbl_status.setText(self._tr(key, fallback=fallback, **params))
+            text = self._tr(key, fallback=fallback, **params)
+            self._localized_status = (key, fallback, params, text)
+            self.lbl_status.setText(text)
 
     def _refresh_translation_provider_health(self):
         settings_window = getattr(self, "settings_window", None)
@@ -3695,6 +3764,8 @@ class Controller(QWidget):
         ui_fonts.apply_ui_font(normalized)
         changed = normalized != getattr(self, "ui_language", localization.DEFAULT_UI_LANGUAGE)
         self.ui_language = normalized
+        if hasattr(self, "selection_overlay"):
+            self.selection_overlay.set_ui_language(normalized)
         if hasattr(self, "worker") and hasattr(self.worker, "set_translation_target_lang"):
             self.worker.set_translation_target_lang(localization.get_translation_target_lang(normalized))
         if refresh and hasattr(self, "lbl_title"):
@@ -3707,6 +3778,9 @@ class Controller(QWidget):
             self.schedule_save_settings()
 
     def refresh_main_ui_texts(self):
+        status = getattr(self, "_localized_status", None)
+        if status and self.lbl_status.text() == status[3]:
+            self._set_status_text(status[0], fallback=status[1], **status[2])
         if hasattr(self, "setWindowTitle"):
             self.setWindowTitle(self._tr("controller.window_title", fallback="CloudHime"))
         if hasattr(self, "lbl_title"):
@@ -3724,7 +3798,17 @@ class Controller(QWidget):
         if hasattr(self, "btn_stop"):
             self.btn_stop.setText(self._tr("controller.button.stop", fallback="停止"))
         if hasattr(self, "btn_theme"):
+            self.btn_theme.setText(self._tr("controller.tooltip.settings", fallback="Settings"))
+            self.btn_theme.setAccessibleName(self.btn_theme.text())
             self.btn_theme.setToolTip(self._tr("controller.tooltip.settings", fallback="設定"))
+        for name, key in (("btn_min", "controller.tooltip.minimize"), ("btn_close", "controller.tooltip.close"),
+                          ("btn_stop", "controller.tooltip.stop"), ("cmb_scan_interval", "controller.tooltip.interval")):
+            control = getattr(self, name, None)
+            if control is not None:
+                text = self._tr(key)
+                control.setToolTip(text)
+                control.setAccessibleName(text)
+        self._refresh_scan_hint()
         if hasattr(self, "btn_close"):
             self.btn_close.setToolTip(self._tr("controller.tooltip.close", fallback="關閉"))
         if hasattr(self, "btn_30"):
@@ -4350,12 +4434,24 @@ class Controller(QWidget):
 
     def _refresh_auto_scan_button(self):
         indicator = "●" if self.btn_30.isChecked() else "○"
+        language = getattr(self, "ui_language", localization.DEFAULT_UI_LANGUAGE)
+        key = "controller.button.auto_scan"
+        params = {}
+        if self.btn_30.isChecked():
+            if getattr(self, "scan_in_progress", False):
+                key = "controller.button.auto_busy"
+            elif getattr(self, "auto_timer", None) is not None and self.auto_timer.isActive():
+                key = "controller.button.auto_wait"
+                params["seconds"] = max(0, math.ceil(self.auto_timer.remainingTime() / 1000))
         label = localization.tr(
-            "controller.button.auto_scan",
-            getattr(self, "ui_language", localization.DEFAULT_UI_LANGUAGE),
+            key,
+            language,
             fallback="自動掃描",
+            **params,
         )
         self.btn_30.setText(f"{indicator} {label}")
+        self.btn_30.setAccessibleName(label)
+        self.btn_30.setToolTip(localization.tr("controller.tooltip.auto_scan", language))
 
     def _sync_main_scan_interval(self):
         combo = self.cmb_scan_interval
@@ -4420,6 +4516,7 @@ class Controller(QWidget):
         self.schedule_save_settings()
 
     def update_mode_status_text(self):
+        self._refresh_scan_hint()
         if self.scan_mode == SCAN_MODE_FULLSCREEN:
             self._set_status_text("controller.mode.fullscreen", fallback="Mode: Full screen")
             return
@@ -4430,6 +4527,14 @@ class Controller(QWidget):
             self._set_status_text("controller.mode.screenshot", fallback="Mode: Screenshot")
         else:
             self._set_status_text("controller.mode.bubble", fallback="Mode: Bubble")
+
+    def _refresh_scan_hint(self):
+        label = getattr(self, "lbl_scan_hint", None)
+        if label is None:
+            return
+        key = "controller.hint.region" if self.scan_mode == SCAN_MODE_REGION else "controller.hint.fullscreen"
+        label.setText(self._tr(key))
+        self.btn_mode_region.setToolTip(self._tr("controller.tooltip.region"))
 
     def on_region_relief_settings_changed(self, offset_x, offset_y, font_pt, opacity):
         self.region_relief_offset_x = max(-RELIEF_MAX_OFFSET_PX, min(RELIEF_MAX_OFFSET_PX, int(offset_x)))
@@ -4708,6 +4813,17 @@ class Controller(QWidget):
         self.stop_scan()
         return True
 
+    def cancel_translation_provider_setup(self):
+        """Abandon an unconfigured choice; its previous runtime route is intact."""
+        if not self.pending_translation_provider_id:
+            return
+        self.pending_translation_provider_id = None
+        self.update_mode_status_text()
+        self.refresh_main_ui_texts()
+        self.update_gemma_rate_indicator()
+        if self.settings_window is not None:
+            self.settings_window.translation_panel.sync_from_controller()
+
     def select_translation_provider(self, provider_id):
         """Commit the UI choice to the persisted runtime route, not only its label."""
         provider_id = {"openai": "luna", "gemma": "online_gemma", "local_multimodal": "local_gemma"}.get(provider_id, provider_id)
@@ -4745,11 +4861,11 @@ class Controller(QWidget):
         if desired_enabled and not (has_luna_key if is_luna else (has_key or is_local_model)):
             language = self.get_ui_language()
             if language == "ja":
-                self.lbl_status.setText("Luna API キーを入力してください" if is_luna else "Google API キーを入力するか、ローカルモデルに切り替えてください")
+                self.lbl_status.setText("Luna 用 OpenAI API キーを入力してください" if is_luna else "Google API キーを入力するか、ローカルモデルに切り替えてください")
             elif language == "en":
-                self.lbl_status.setText("Enter a Luna API key" if is_luna else "Enter a Google API key or switch to the local model")
+                self.lbl_status.setText("Enter your OpenAI API key for Luna" if is_luna else "Enter a Google API key or switch to the local model")
             else:
-                self.lbl_status.setText("請先輸入 Luna API Key" if is_luna else "請先輸入 Google API KEY，或切換到本地模型")
+                self.lbl_status.setText("請先輸入 Luna 的 OpenAI API 金鑰" if is_luna else "請先輸入 Google API KEY，或切換到本地模型")
             desired_enabled = False
         self.worker.set_gemma_enabled(desired_enabled)
         if self.btn_ai_mode.isChecked() != desired_enabled:
@@ -4811,12 +4927,12 @@ class Controller(QWidget):
         self.raise_()
         self.activateWindow()
         if not rect:
-            if self.selected_region is not None or self.scan_mode != SCAN_MODE_FULLSCREEN:
-                self._advance_scan_generation(cancel_active=True, rearm_auto=True)
-            self.selected_region = None
-            self.worker.set_scan_region(None)
-            self.btn_mode_full.setChecked(True)
-            self.set_scan_mode(SCAN_MODE_FULLSCREEN, invalidate=False)
+            self.btn_mode_full.setChecked(self.scan_mode == SCAN_MODE_FULLSCREEN)
+            self.btn_mode_region.setChecked(self.scan_mode == SCAN_MODE_REGION)
+            if self.scan_mode == SCAN_MODE_REGION and self.selected_region:
+                self.region_frame.show_region(self.selected_region)
+            self._refresh_scan_hint()
+            self._set_status_text("controller.status.selection_cancelled")
             return
         if tuple(rect) != tuple(self.selected_region or ()) or self.scan_mode != SCAN_MODE_REGION:
             self._advance_scan_generation(cancel_active=True, rearm_auto=True)
@@ -4869,13 +4985,13 @@ class Controller(QWidget):
                 getattr(self, "_key_save_warning", "")
             )
         if self.settings_window.isVisible():
-            self.settings_window.hide()
+            self.settings_window.on_cancel_clicked()
         else:
             self.settings_window.show()
             try:
-                screen = QApplication.primaryScreen().availableGeometry()
-                width = min(1120, max(940, screen.width() - 32))
-                height = min(760, max(680, screen.height() - 28))
+                screen = self.screen().availableGeometry()
+                width = min(1120, screen.width() - 32)
+                height = min(760, screen.height() - 28)
                 self.settings_window.resize(width, height)
                 x = screen.left() + max(0, (screen.width() - self.settings_window.width()) // 2)
                 y = screen.top() + max(0, (screen.height() - self.settings_window.height()) // 2)
@@ -4916,6 +5032,8 @@ class Controller(QWidget):
     def on_immediate_click(self):
         if self._open_required_provider_setup():
             return
+        if self.scan_in_progress:
+            return
         if self.cooldown_timer.isActive():
             logger.info("[Hotkey] Cooldown active, please wait")
             return
@@ -4929,28 +5047,23 @@ class Controller(QWidget):
         self.trigger_scan_sequence()
         self.btn_now.setEnabled(False)
         self.btn_hotkey.setEnabled(False)
-        self.btn_now.setText(self._tr("controller.status.cold_down", fallback="Cooling down..."))
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = time.monotonic() + (self.cooldown_total_ms / 1000.0)
         self.cooldown_progress_timer.start()
         self.cooldown_timer.start(self.cooldown_total_ms)
-        self._set_status_text("controller.status.cold_down", fallback="Cooling down...")
+        self.update_cooldown_progress()
 
     def reset_immediate_btn(self):
         self.cooldown_progress_timer.stop()
         self.btn_now.set_cooldown_progress(0)
         self.cooldown_end_time = 0.0
-        self.btn_now.setEnabled(True)
-        self.btn_hotkey.setEnabled(True)
-        self.refresh_hotkey_button_text()
-        status_text = self.lbl_status.text()
-        if not self.scan_in_progress:
-            # 截圖模式的完成訊息要保留，不要被冷卻結束直接蓋掉
-            if any(token in status_text for token in ("截圖", "翻譯", "完成")):
-                return
-            self.update_mode_status_text()
-        elif "截圖" in status_text or "Screenshot" in status_text:
-            self._set_status_text("controller.status.capture_running", fallback="Screenshot translation running...")
+        busy = self.scan_in_progress
+        self.btn_now.setEnabled(not busy)
+        self.btn_hotkey.setEnabled(not busy)
+        if busy:
+            self.btn_now.setText(self._tr("controller.button.translating"))
+        else:
+            self.refresh_hotkey_button_text()
 
     def update_cooldown_progress(self):
         if self.cooldown_end_time <= 0:
@@ -4960,8 +5073,7 @@ class Controller(QWidget):
         progress = int(round((1.0 - (remaining / (self.cooldown_total_ms / 1000.0))) * 100))
         progress = max(0, min(100, progress))
         self.btn_now.set_cooldown_progress(progress)
-        self.btn_now.setText(f"{progress}%")
-        self._set_status_text("controller.status.cold_down", fallback="Cooling down...")
+        self.btn_now.setText(self._tr("controller.button.wait", seconds=math.ceil(remaining)))
 
     def on_auto_scan_toggled(self, checked):
         if checked:
@@ -5011,8 +5123,9 @@ class Controller(QWidget):
         if self.current_auto_interval == 0: 
             self.display_timer.stop()
             return
-        self.countdown_seconds -= 1
-        if self.countdown_seconds < 0:
+        self.countdown_seconds = max(0, math.ceil(self.auto_timer.remainingTime() / 1000))
+        self._refresh_auto_scan_button()
+        if self.countdown_seconds == 0:
             self.display_timer.stop()
 
     def _flush_stream_updates(self, generation=None):
@@ -5086,6 +5199,8 @@ class Controller(QWidget):
 
     def on_scan_complete(self, results):
         self.scan_in_progress = False
+        if not self.cooldown_timer.isActive():
+            self.reset_immediate_btn()
         self.last_scan_results = list(results) if results else []
         self.overlay.set_render_context(
             self.scan_mode,
@@ -5119,6 +5234,9 @@ class Controller(QWidget):
             worker.set_scan_generation(self.scan_generation)
         if cancel_active:
             self.scan_in_progress = False
+            if hasattr(self, "cooldown_timer"):
+                self.cooldown_timer.stop()
+                self.reset_immediate_btn()
             if rearm_auto and getattr(self, "current_auto_interval", 0) > 0:
                 self.schedule_next_scan()
         return self.scan_generation
@@ -5136,8 +5254,13 @@ class Controller(QWidget):
     def trigger_scan_sequence(self):
         if self._open_required_provider_setup():
             return
+        if self.scan_in_progress:
+            return
         self.scan_in_progress = True
         self.display_timer.stop()
+        self._refresh_auto_scan_button()
+        if not self.cooldown_timer.isActive():
+            self.reset_immediate_btn()
         # 截圖隱身術已啟用，不需要在掃描時隱藏 UI，保留舊字幕達成無縫更新
         generation = self.scan_generation
         QTimer.singleShot(
@@ -5160,8 +5283,6 @@ class Controller(QWidget):
         self.update_status(message)
 
     def update_status(self, msg):
-        if self.display_timer.isActive() and not any(token in msg for token in ("完成", "翻譯", "失敗", "錯誤", "需要", "就緒")):
-            return
         self.lbl_status.setToolTip(msg)
         self.lbl_status.setStatusTip(msg)
         self.lbl_status.setText(msg)
@@ -5281,21 +5402,34 @@ class Controller(QWidget):
         self.btn_mode_region.setStyleSheet(auto_btn_style)
 
         self.btn_stop.setStyleSheet(auto_btn_style)
-        self.btn_theme.setText("⚙")
-        self.btn_theme.setStyleSheet(f"QPushButton {{ background-color: transparent; color: {theme.accent}; border: none; font-size: 18px; }} QPushButton:hover {{ background-color: {theme.accent_soft}; border-radius: 15px; }}")
-        self.btn_close.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {theme.subtext}; border: none; font-size: 20px; font-weight: 600; }} "
-            f"QPushButton:hover {{ background: {theme.accent_soft}; color: {theme.text}; border-radius: 14px; }}"
-        )
+        self.btn_theme.setStyleSheet(f"QPushButton {{ background:transparent; color:{theme.text}; border:1px solid {theme.border}; border-radius:8px; padding:5px 8px; }} QPushButton:hover {{ background:{theme.accent_soft}; }} QPushButton:focus {{ border:2px solid {theme.focus}; }}")
+        for button in (self.btn_min, self.btn_close):
+            button.setText("")
+            button.setIcon(chrome_icon("close" if button is self.btn_close else "minimize", theme.text))
+            button.setStyleSheet(
+                f"QPushButton {{ background: transparent; color: {theme.subtext}; border: none; font-size: 20px; font-weight: 600; }} "
+                f"QPushButton:hover {{ background: {theme.accent_soft}; color: {theme.text}; border-radius: 6px; }}"
+                f"QPushButton:focus {{ border:2px solid {theme.focus}; border-radius:6px; }}"
+            )
         accent = theme.accent if theme.key == "high_contrast" else ("#AD9AFF" if theme.key == "dark" else "#7052D6")
         self.princess_avatar.set_art(_resource_path("assets/bg_light.png" if theme.key == "light" else "assets/bg_dark.png"))
         self.princess_avatar.setVisible(theme.key != "high_contrast")
-        for button in (self.btn_mode_full, self.btn_mode_region, self.btn_30):
-            button.setStyleSheet(auto_btn_style)
+        accent_fg = "#FFFFFF" if theme.key == "light" else "#121212"
+        main_control_style = (
+            f"QPushButton {{background:{theme.control_bg}; color:{theme.text}; border:1px solid {theme.border}; border-radius:8px; padding:6px 10px;}}"
+            f"QPushButton:hover {{background:{theme.control_hover};}}"
+            f"QPushButton:checked {{background:{accent}; color:{accent_fg}; border-color:{accent};}}"
+            f"QPushButton:focus {{border:2px solid {theme.focus};}}"
+            f"QPushButton:disabled {{background:{theme.control_disabled_bg}; color:{theme.control_disabled_fg};}}"
+        )
+        for button in (self.btn_mode_full, self.btn_mode_region, self.btn_30, self.btn_stop, self.btn_hotkey):
+            button.setStyleSheet(main_control_style)
         self.btn_now.set_theme_colors(accent, "#121212" if theme.key != "light" else "#FFFFFF", accent,
                                      accent, accent, theme.control_disabled_bg, theme.control_disabled_fg)
         self.lbl_title.setStyleSheet(f"color:{theme.text}; font-size:19px; font-weight:600; background:transparent; border:none;")
         self.lbl_status.setStyleSheet(f"color:{theme.text}; background:transparent; border:none; padding:2px;")
+        hint_color = theme.text if theme.key == "high_contrast" else ("#C5C2D7" if theme.key == "dark" else "#615B72")
+        self.lbl_scan_hint.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
         if self.settings_window is not None:
             self.settings_window.update_theme(theme.key)
             self.settings_window.sync_from_controller()
@@ -5447,7 +5581,18 @@ class Controller(QWidget):
         if not (google_saved and luna_saved):
             self._close_app_started = False
             return
-        self.save_settings()
+        if not self.save_settings():
+            self._set_status_text("settings_save_failed", fallback="Settings could not be saved")
+            choice = QMessageBox.question(
+                self,
+                self._tr("settings_save_failed"),
+                self._tr("settings_save_failed_exit_prompt"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if choice != QMessageBox.Yes:
+                self._close_app_started = False
+                return
         self._shutdown_remote_model_availability()
         if hasattr(self, 'worker'):
             self.worker.cleanup()
@@ -5470,6 +5615,15 @@ class Controller(QWidget):
         self.overlay.close()
         self.close()
         QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        # Native close (Alt+F4 / taskbar) must take the same shutdown path.
+        if not getattr(self, "_close_app_started", False):
+            self.close_app()
+        if getattr(self, "_close_app_started", False):
+            event.accept()
+        else:
+            event.ignore()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

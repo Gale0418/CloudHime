@@ -9,6 +9,7 @@ Task 1：真機資產契約 – RED/GREEN 單元測試。
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -382,3 +383,66 @@ def test_verify_resolved_assets_filters_text_profile(tmp_path, monkeypatch):
     ) == []
 
     assert calls == [assets.server_path, assets.model_path]
+
+
+def test_write_managed_receipt_preserves_other_assets_for_same_revision(tmp_path):
+    root = tmp_path / "managed"
+    root.mkdir()
+    manifest = vision_assets_module.GEMMA_ASSET_MANIFEST
+    model_spec = vision_assets_module.AssetSpec(
+        manifest[0].name, manifest[0].url, manifest[0].sha256, 1
+    )
+    (root / model_spec.name).write_bytes(b"m")
+    previous = {
+        "revision": GEMMA_ASSET_REVISION,
+        "assets": {
+            manifest[1].name: {
+                "size": 17,
+                "mtime_ns": 29,
+                "sha256": manifest[1].sha256,
+            }
+        },
+    }
+    (root / ".verified.json").write_text(
+        json.dumps(previous), encoding="utf-8"
+    )
+
+    vision_assets_module._write_receipt(root, (model_spec,))
+
+    written = json.loads(
+        (root / ".verified.json").read_text(encoding="utf-8")
+    )
+    assert written["revision"] == GEMMA_ASSET_REVISION
+    assert written["assets"][manifest[1].name] == previous["assets"][manifest[1].name]
+    assert written["assets"][manifest[0].name]["size"] == 1
+
+
+def test_write_legacy_receipt_preserves_other_assets_for_same_revision(tmp_path):
+    assets = resolve_vision_assets(tmp_path / "app")
+    assets.server_path.parent.mkdir(parents=True)
+    assets.server_path.write_bytes(b"s")
+    assets.model_path.parent.mkdir(parents=True, exist_ok=True)
+    assets.model_path.write_bytes(b"m")
+    receipt = vision_assets_module._legacy_receipt_path(tmp_path / "local")
+    receipt.parent.mkdir(parents=True)
+    previous_entry = {
+        "path": "previous-projector-path",
+        "size": 17,
+        "mtime_ns": 29,
+        "sha256": GEMMA_PROJECTOR_SHA256,
+    }
+    receipt.write_text(
+        json.dumps(
+            {"revision": GEMMA_ASSET_REVISION, "assets": {"projector_path": previous_entry}}
+        ),
+        encoding="utf-8",
+    )
+
+    vision_assets_module._write_legacy_receipt(
+        assets, tmp_path / "local", required_fields=("server_path", "model_path")
+    )
+
+    written = json.loads(receipt.read_text(encoding="utf-8"))
+    assert written["revision"] == GEMMA_ASSET_REVISION
+    assert written["assets"]["projector_path"] == previous_entry
+    assert written["assets"]["server_path"]["size"] == 1

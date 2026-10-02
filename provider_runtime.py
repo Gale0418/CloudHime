@@ -423,6 +423,7 @@ class RuntimeCredentialPool:
                     continue
                 if state.cooldown_until > now:
                     waits.append(state.cooldown_until - now)
+                    continue
                 scope = self._scopes.setdefault(self._scope_for(state.credential), _QuotaState())
                 if scope.cooldown_until > now:
                     waits.append(scope.cooldown_until - now)
@@ -644,7 +645,7 @@ class RuntimeCredentialPool:
             if 200 <= status_code <= 399:
                 return "success"
             return "provider_error"
-        return "success"
+        return "provider_error" if error is not None or status_code is not None else "success"
 
 
 CredentialPool = RuntimeCredentialPool

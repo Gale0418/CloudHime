@@ -41,6 +41,26 @@ def _configure_text_worker(worker, image):
     worker.trigger_background_threshold_refresh = lambda *args, **kwargs: None
 
 
+@pytest.mark.parametrize("error", [RuntimeError("cache probe failed"), LocalRequestCancelled("cancelled")])
+def test_current_scan_failure_before_translation_releases_busy_state(qtbot, monkeypatch, error):
+    worker = OCRWorker()
+    _configure_text_worker(worker, np.zeros((40, 80, 3), dtype=np.uint8))
+    worker.set_scan_generation(8)
+    worker.enqueue_scan_request(8)
+    monkeypatch.setattr(worker, "_observe_frame_gate", Mock(side_effect=error))
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+    finished = []
+    tokenized = []
+    worker.finished.connect(finished.append)
+    worker.scan_finished.connect(lambda generation, results: tokenized.append((generation, results)))
+    try:
+        worker.run_scan_once()
+        assert finished == [[]]
+        assert tokenized == [(8, [])]
+    finally:
+        worker.cleanup()
+
+
 @pytest.mark.parametrize(
     ("scan_mode", "render_mode", "expect_region_detection"),
     [
@@ -333,11 +353,15 @@ def test_screenshot_cache_skips_ocr_hint_after_local_vision_success(monkeypatch,
         worker.cleanup()
 
 @pytest.mark.parametrize("failure", ["exception", "empty"])
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
 
 
-def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, failure):
+def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, failure, language):
     image = np.zeros((80, 160, 3), dtype=np.uint8)
     worker = OCRWorker()
+    worker.translation_target_lang = language
+    messages = []
+    worker.status_msg.connect(messages.append)
     worker.ocr_backends = []
     worker.google_ocr_enabled = False
     worker.auto_threshold_enabled = False
@@ -360,6 +384,12 @@ def test_screenshot_failure_or_empty_result_is_not_cached(monkeypatch, qtbot, fa
         worker.run_scan_once()
         assert len(worker.exact_image_cache) == 0
         expected_hint_calls = 1 if failure == "exception" else 0
+        expected_status = (
+            worker._scan_status_text("worker.status.screenshot_failed", error="RuntimeError")
+            if failure == "exception"
+            else worker._scan_status_text("worker.status.screenshot_empty")
+        )
+        assert messages[-1] == expected_status
         assert worker.build_screenshot_text_hint.call_count == expected_hint_calls
         worker.run_scan_once()
 
@@ -1747,6 +1777,39 @@ def test_scan_status_emits_legacy_and_generation_tagged_signals(qtbot):
 
         assert legacy == ["scan_test_status"]
         assert tokenized == [(6, "scan_test_status")]
+    finally:
+        worker.cleanup()
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_first_empty_scan_emits_localized_recovery_without_prior_text(qtbot, language):
+    worker = OCRWorker()
+    messages = []
+    worker.status_msg.connect(messages.append)
+    worker.translation_target_lang = language
+    worker.last_combined_text = ""
+    try:
+        worker.handle_empty()
+        assert messages == [worker._scan_status_text("worker.status.no_text")]
+        assert "worker.status" not in messages[0]
+        assert worker.last_results == []
+    finally:
+        worker.cleanup()
+
+
+def test_empty_scan_preserves_explicit_message_and_stale_status_guard(qtbot):
+    worker = OCRWorker()
+    messages = []
+    worker.status_msg.connect(messages.append)
+    try:
+        worker.set_scan_generation(1)
+        worker.enqueue_scan_request(1)
+        worker._active_scan_request = worker._take_scan_request()
+        worker.handle_empty("Screen unchanged")
+        assert messages == ["Screen unchanged"]
+        worker.set_scan_generation(2)
+        worker.handle_empty()
+        assert messages == ["Screen unchanged"]
     finally:
         worker.cleanup()
 

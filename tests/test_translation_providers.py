@@ -9,6 +9,7 @@ from translation_providers import GoogleTranslationProvider
 from translation_providers import (
     GemmaTranslationProvider,
     LocalMultimodalProvider,
+    LocalRequestCancelled,
     classify_region_vision_failure,
 )
 from translation_helpers import build_gemma_prompt
@@ -874,6 +875,38 @@ def test_gemma_stream_partial_transport_failure_is_ambiguous_without_replay(monk
         next(stream)
     assert calls == ["secret-a"]
     assert pool.snapshot()[0]["last_outcome"] == "ambiguous"
+
+
+def test_gemma_stream_uses_configured_target_when_omitted_and_keeps_explicit_target():
+    prompts = []
+
+    def fake_stream(_model, prompt, **_kwargs):
+        prompts.append(prompt)
+        yield "translated"
+
+    provider = GemmaTranslationProvider(
+        google_api_key="test-key",
+        gemma_model="gemma-test",
+        target_lang="en",
+        supported_models=("gemma-test",),
+    )
+    provider._stream_request = fake_stream
+
+    assert list(provider.translate_stream("omitted")) == ["translated"]
+    assert list(provider.translate_stream("explicit", target_lang="ja")) == ["translated"]
+    assert list(provider.translate_stream("omitted", target_lang=None)) == ["translated"]
+    assert list(provider.translate_stream("omitted", target_lang="")) == ["translated"]
+    assert "into natural English" in prompts[0]
+    assert "into natural Japanese" in prompts[1]
+    assert len(prompts) == 2
+
+
+def test_local_multimodal_request_after_close_raises_cancellation():
+    provider = LocalMultimodalProvider(enabled=False)
+    provider.close()
+
+    with pytest.raises(LocalRequestCancelled, match="local_request_scheduler_closed"):
+        provider._request_chat_completion({"messages": []})
 
 
 

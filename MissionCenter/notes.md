@@ -308,3 +308,17 @@
 - 契約基線：所有 Gemma 使用 `thinkingLevel=minimal`；Luna 使用 reasoning effort `none`。
 - 主代理可重現基線：`python -m pytest -q tests/test_secret_store.py tests/test_settings_store.py tests/test_translation_providers.py tests/test_translation_orchestrator.py tests/test_remote_model_availability_worker.py tests/test_cloudhime_workers.py tests/test_cloudhime_ui_smoke.py` → `229 passed in 3.32s`。
 - Mission Center CLI 相容性：`doctor` 與 `sync` 可解析新增 canonical rows，但 `transition CH-T107/CH-T108 ...` 仍回 `unknown_task`；保留錯誤證據，不手改 managed lifecycle summary。
+
+## 2026-10-02T18:24:18+08:00：CH-T117 原始碼審查與同步
+
+- 審查採忽略目錄下的獨立 Git 投影：本輪 18 檔用原始 HEAD 差異，歷史檔用空基線完整補審；投影歷史不是產品新增檔案的歷史。
+- 排除資產、模型、產物、機密與不相關大型檔案；有修改的核心大檔保留完整上下文。排除不代表已證明無缺陷。
+- CodeRabbit 第一輪 too_many_files 後用新範圍重試；只有完整 finding 事件與完成訊號才算完成審查。正式結果逐項查證後才修改。
+- 原始碼推送依主人明確授權直接 main；正式評議與套件發行狀態各自記錄。詳細範圍與 SHA-256 在 output/mission-center-evidence/rabbit-retry-scope-20261002.json。
+
+## 2026-10-02T18:47:18+08:00：CH-T117 技術審查完成
+
+- Timestamp：2026-10-02T18:47:18+08:00
+- Change：148 檔初審的 12 issues 已逐項查證修復，20 檔聚焦複審 0 issues；指定驗證 531 個不同案例通過，README 與 CI inventory 已更新。
+- Reason：依主人「確認真的有問題再修」及每小時三次、每次 150 檔限制完成。首次 too_many_files 與未完成的正式評議都保留真實狀態。
+- Impact：主窗、引擎與歷史程式可追溯至 reviews/2026-10-02-coderabbit-main-sync.md；原始輸入雜湊見 coderabbit-scope.json。正式 critic_full 預算未授權，CH-T117 Review／SmokeTest YES／Review NO。

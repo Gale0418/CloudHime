@@ -8,6 +8,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
 _LOCAL_MODEL_ID = "gemma-3-4b-it-local"
 _SERVER_MODEL_NAME = "gemma-3-4b-it"
@@ -39,15 +40,18 @@ def _endpoint(value: Any) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError("runtime endpoint is required")
     raw = value.strip()
-    host_port = raw.split("://", 1)[-1].split("/", 1)[0]
-    host = host_port.rsplit(":", 1)[0].strip("[]")
     try:
+        parsed = urlsplit(raw if "://" in raw else f"//{raw}")
+        if not parsed.netloc or parsed.username is not None or parsed.password is not None:
+            raise ValueError("runtime endpoint must be loopback")
+        host = parsed.hostname
+        _ = parsed.port
         loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
     except ValueError:
         loopback = False
     if not loopback:
         raise ValueError("runtime endpoint must be loopback")
-    return host_port
+    return parsed.netloc
 
 
 class ProductPathLocalSession:
@@ -349,7 +353,8 @@ class ProductPathLocalSession:
             raise ValueError("cpu runtime is not permitted")
         if str(condition.get("gpu_mode", "")).lower() == "cpu":
             raise ValueError("cpu runtime is not permitted")
-        configured_endpoint = str(condition.get("base_url", "")).strip()
+        raw_endpoint = condition.get("base_url")
+        configured_endpoint = "" if raw_endpoint is None else str(raw_endpoint).strip()
         if configured_endpoint:
             raise ValueError("external endpoint is not permitted")
 

@@ -3,7 +3,16 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QScrollArea, QStackedWidget, QTabBar
 
 from CloudHime import Controller, OverlayWindow
-from themes import resolve_theme
+import pytest
+
+from themes import resolve_theme, build_bubble_style, ThemeRegistry
+
+
+@pytest.mark.parametrize("mode", ThemeRegistry.available_modes())
+@pytest.mark.parametrize("relief", [False, True])
+def test_bubble_stylesheet_is_a_balanced_qss_rule(mode, relief):
+    stylesheet = build_bubble_style(resolve_theme(mode), relief)["stylesheet"]
+    assert stylesheet.count("{") == stylesheet.count("}") == 1
 
 
 def test_settings_window_theme_polish(qtbot, monkeypatch):
@@ -23,6 +32,7 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
     window.toggle_settings_window()
     settings = window.settings_window
     assert settings is not None
+    settings.resize(1120, 760)
 
     for mode in ("dark", "light", "high_contrast"):
         settings.update_theme(mode)
@@ -41,7 +51,8 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
             assert f"background-color:{expected_surface};" in backdrop_style
             assert "border-image:url(" in backdrop_style
         assert f"color: {theme.text};" in settings.lbl_page_title.styleSheet()
-        assert f"color: {theme.subtext};" in settings.lbl_page_subtitle.styleSheet()
+        subtitle_color = theme.text if mode == "high_contrast" else ("#C5C2D7" if mode == "dark" else "#615B72")
+        assert f"color: {subtitle_color};" in settings.lbl_page_subtitle.styleSheet()
         export_style = settings.btn_export_history.styleSheet()
         assert export_style == theme.jelly_button_qss()
         assert "QPushButton:focus" in export_style
@@ -58,7 +69,7 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         else:
             assert int(expected_top_bg.rstrip(")").split(",")[-1]) < 255
         assert settings.btn_save.styleSheet() == theme.jelly_button_qss("primary")
-        assert settings.btn_close.text() == "✕"
+        assert not settings.btn_close.icon().isNull()
         assert settings.top_panel.objectName() == "settingsTopPanel"
         assert settings.shell_panel.objectName() == "settingsShellPanel"
 
@@ -94,8 +105,8 @@ def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch
     qtbot.wait(10)
 
     settings.show()
-    assert settings.minimumWidth() == 900
-    assert settings.minimumHeight() == 620
+    assert settings.minimumWidth() == 760
+    assert settings.minimumHeight() == 520
     assert isinstance(settings.settings_tabs, QTabBar)
     assert settings.settings_tabs.count() == 4
     assert isinstance(settings.settings_pages, QStackedWidget)

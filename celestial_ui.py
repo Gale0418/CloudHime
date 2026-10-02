@@ -9,8 +9,30 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the
 finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 """
 from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QPainter, QPixmap, QPainterPath
+from PySide6.QtGui import QPainter, QPixmap, QPainterPath, QIcon, QColor, QPen
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QTabBar, QStackedWidget, QBoxLayout, QToolButton
+
+
+def chrome_icon(kind, color):
+    """Small vector window controls that do not depend on a symbol font."""
+    pixmap = QPixmap(32, 32)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    if str(color).startswith("rgba("):
+        channels = str(color)[5:-1].split(",")
+        ink = QColor(*(int(float(channel.strip())) for channel in channels))
+    else:
+        ink = QColor(color)
+    painter.setPen(QPen(ink, 2.5))
+    if kind == "close":
+        painter.drawLine(9, 9, 23, 23)
+        painter.drawLine(23, 9, 9, 23)
+    else:
+        painter.drawLine(8, 16, 24, 16)
+    painter.end()
+    pixmap.setDevicePixelRatio(2)
+    return QIcon(pixmap)
 
 
 class PrincessPortrait(QWidget):
@@ -91,13 +113,15 @@ def _page(*widgets):
 def compose_settings(window, top, theme_chip, language_chip, knowledge_chip,
                      knowledge_options, body, footer_layout):
     """Move controls, preserving signal wiring and Save/Cancel semantics."""
-    window.setMinimumSize(900, 620)
+    window.setMinimumSize(760, 520)
     window.resize(1120, 760)
-    window.lbl_page_subtitle.hide()
+    window.lbl_page_subtitle.setWordWrap(True)
     window.lbl_brand_icon.hide()
     footer_layout.insertWidget(0, window.btn_export_history)
     window.btn_reset_defaults.setMinimumWidth(0)
     window.btn_reset_defaults.setMaximumWidth(220)
+    for button in (window.btn_save, window.btn_cancel, window.btn_reset_defaults, window.btn_export_history):
+        button.setMinimumHeight(36)
 
     # Detach old top-level rows before installing the research page.
     top.removeItem(knowledge_options)
@@ -180,6 +204,7 @@ def localize_settings(window, language):
     if not hasattr(window, "settings_tabs"):
         return
     if language == "ja":
+        save_hint = "設定は自動保存されます。作品名は「保存」で有効になります。"
         labels = ("翻訳", "キャプチャと表示", "作品リサーチ", "外観")
         work_title, research_model = "作品名", "調査モデル"
         sources = "公開ソース URL（任意）"
@@ -188,6 +213,7 @@ def localize_settings(window, language):
         appearance_hint = "読書のペースに合わせてライトとダークを切り替えられます。ハイコントラストではシンプルで読みやすい画面を表示します。"
         theme_label, language_label = "テーマ", "表示言語"
     elif language == "en":
+        save_hint = "Options save automatically. Save to apply the work title."
         labels = ("Translation", "Capture & display", "Work research", "Appearance")
         work_title, research_model = "Work title", "Research model"
         sources = "Public source URLs (optional)"
@@ -196,6 +222,7 @@ def localize_settings(window, language):
         appearance_hint = "Choose daylight or starlight for your reading. High contrast uses a plain, readable surface."
         theme_label, language_label = "Theme", "Language"
     else:
+        save_hint = "選項即時套用並自動儲存；作品名稱按「儲存」才啟用。"
         labels = ("翻譯引擎", "擷取與顯示", "作品研究", "外觀")
         work_title, research_model = "作品名稱", "研究模型"
         sources = "公開來源網址（選填）"
@@ -205,6 +232,7 @@ def localize_settings(window, language):
         theme_label, language_label = "主題", "語言"
     for index, text in enumerate(labels):
         window.settings_tabs.setTabText(index, text)
+    window.lbl_page_subtitle.setText(save_hint)
     window.research_heading.setText(labels[2])
     window.research_title_label.setText(work_title)
     window.research_model_label.setText(research_model)
@@ -229,14 +257,12 @@ def style_settings(window, theme, image_path):
     secondary_text = theme.text if high else ("#C5C2D7" if dark else "#615B72")
     # The full landscape already contains the princess; keep her side clear of controls.
     window.princess_portrait.set_art(None)
-    window.princess_portrait.setVisible(not high)
-    backdrop = (
-        f"background:{surface};" if high else
-        f"background-color:{surface}; border-image:url('{image_path}') 0 0 0 0 stretch stretch;"
-    )
-    window.backdrop_panel.setStyleSheet(
-        f"QFrame#settingsBackdropPanel {{{backdrop} border:1px solid {theme.border}; border-radius:18px;}}"
-    )
+    window._celestial_theme = theme
+    window._celestial_image_path = image_path
+    window.btn_close.setText("")
+    window.btn_close.setIcon(chrome_icon("close", theme.text))
+    window.btn_close.setAccessibleName(window.btn_close.toolTip())
+    window.lbl_page_subtitle.setStyleSheet(f"color: {secondary_text}; font-size:12px; background:transparent; border:none;")
     window.settings_tabs.setStyleSheet(
         f"QTabBar::tab {{ color:{theme.text}; padding:12px 16px; border-bottom:2px solid transparent; }}"
         f"QTabBar::tab:selected {{color:{accent}; border-bottom:2px solid {accent}; font-weight:600;}}"
@@ -271,3 +297,21 @@ def style_settings(window, theme, image_path):
     for label in (window.lbl_translate, window.lbl_ocr, window.lbl_region_render, window.lbl_relief, window.research_heading, window.appearance_heading):
         label.setStyleSheet(f"color:{theme.text}; font-size:20px; font-weight:600; background:transparent; border:none;")
     window.btn_save.setStyleSheet(theme.jelly_button_qss("primary"))
+    adapt_settings(window)
+
+
+def adapt_settings(window):
+    """Give the work area the full width on small Windows desktops."""
+    theme = getattr(window, "_celestial_theme", None)
+    if theme is None:
+        return
+    compact = window.width() < 980
+    high = theme.key == "high_contrast"
+    window.princess_portrait.setVisible(not compact and not high)
+    surface = "#121212" if high else ("#23263D" if theme.key == "dark" else "#F8F7FD")
+    backdrop = f"background:{surface};"
+    if not compact and not high:
+        backdrop = f"background-color:{surface}; border-image:url('{window._celestial_image_path}') 0 0 0 0 stretch stretch;"
+    window.backdrop_panel.setStyleSheet(
+        f"QFrame#settingsBackdropPanel {{{backdrop} border:1px solid {theme.border}; border-radius:18px;}}"
+    )

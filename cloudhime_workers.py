@@ -584,12 +584,19 @@ class OCRWorker(QObject):
     def _emit_scan_finished(self, results):
         if self._abort_stale_scan(ScanStage.RENDER_DISPATCH):
             return False
+        if getattr(self, "_scan_terminal_guard_active", False):
+            if self._scan_terminal_emitted:
+                return False
+            self._scan_terminal_emitted = True
         self._record_render_dispatch(results)
         request = self._active_scan_request
         generation = request.generation if request is not None else self._scan_generation
         self.finished.emit(results)
         self.scan_finished.emit(generation, results)
         return True
+
+    def _scan_status_text(self, key, **params):
+        return localization.tr(key, getattr(self, "translation_target_lang", localization.DEFAULT_UI_LANGUAGE), **params)
 
     def _emit_scan_status(self, message):
         if not self._active_scan_is_current():
@@ -5997,6 +6004,38 @@ class OCRWorker(QObject):
         self._reset_scan_trace()
         self._last_scan_source_available = None
         self._active_scan_request = self._take_scan_request()
+        self._scan_terminal_guard_active = True
+        self._scan_terminal_emitted = False
+        try:
+            self._run_scan_once()
+        except LocalRequestCancelled:
+            if self._active_scan_is_current():
+                self._record_scan_event(
+                    ScanStage.TRANSLATION,
+                    ScanOutcome.CANCELLED,
+                    error_code=ScanErrorCode.SCAN_CANCELLED,
+                    detail="scan_request_cancelled",
+                )
+                self._emit_scan_status(self._scan_status_text("worker.status.scan_cancelled"))
+        except Exception as exc:
+            if self._active_scan_is_current():
+                self._record_scan_event(
+                    ScanStage.TRANSLATION,
+                    ScanOutcome.FAILURE,
+                    error_code=ScanErrorCode.TRANSLATION_FAILED,
+                    detail="scan_unhandled_failure",
+                    exception=exc,
+                )
+                logger.error("Scan failed: %s", type(exc).__name__)
+                self._emit_scan_status(self._scan_status_text("worker.status.translation_failed"))
+        finally:
+            try:
+                if not self._scan_terminal_emitted and self._active_scan_is_current():
+                    self._emit_scan_finished([])
+            finally:
+                self._scan_terminal_guard_active = False
+
+    def _run_scan_once(self):
         if self._abort_stale_scan(ScanStage.FRAME_CACHE):
             return
         is_screenshot_mode = self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT
@@ -6027,7 +6066,7 @@ class OCRWorker(QObject):
                 error_code=ScanErrorCode.OCR_FAILED,
                 detail="ocr_backend_unavailable",
             )
-            self._emit_scan_status("❌ 缺少可用 OCR 後端")
+            self._emit_scan_status(self._scan_status_text("worker.status.no_ocr_backend"))
             self._emit_scan_finished([])
             self.show_ui.emit()
             return
@@ -6058,7 +6097,7 @@ class OCRWorker(QObject):
                 detail="capture_failed",
                 exception=exc,
             )
-            self._emit_scan_status(f"\u274c 擷取螢幕失敗：{type(exc).__name__}")
+            self._emit_scan_status(self._scan_status_text("worker.status.capture_failed", error=type(exc).__name__))
             self._emit_scan_finished([])
             return
         finally:
@@ -6200,7 +6239,7 @@ class OCRWorker(QObject):
                         error_code=ScanErrorCode.TRANSLATION_FAILED,
                         detail="translation_input_unavailable",
                     )
-                    self._emit_scan_status("❌ 截圖模式需要 Gemma AI 與 Google API KEY")
+                    self._emit_scan_status(self._scan_status_text("worker.status.screenshot_requires_ai"))
                     self._emit_scan_finished([])
                     self.show_ui.emit()
                     return
@@ -6258,7 +6297,7 @@ class OCRWorker(QObject):
                                 detail="translation_fallback_failed",
                                 exception=fallback_exc,
                             )
-                            self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}")
+                            self._emit_scan_status(self._scan_status_text("worker.status.screenshot_failed", error=type(exc).__name__))
                             self._emit_scan_finished([])
                             self.show_ui.emit()
                             return
@@ -6271,7 +6310,7 @@ class OCRWorker(QObject):
                             detail="translation_failed",
                             exception=exc,
                         )
-                        self._emit_scan_status(f"❌ 截圖翻譯失敗：{type(exc).__name__}")
+                        self._emit_scan_status(self._scan_status_text("worker.status.screenshot_failed", error=type(exc).__name__))
                         self._emit_scan_finished([])
                         self.show_ui.emit()
                         return
@@ -6285,7 +6324,7 @@ class OCRWorker(QObject):
                     started_at=translation_started,
                     detail="translation_empty",
                 )
-                self.handle_empty("⚠️ 截圖翻譯結果為空")
+                self.handle_empty(self._scan_status_text("worker.status.screenshot_empty"))
                 self.show_ui.emit()
                 return
 
@@ -7052,7 +7091,7 @@ class OCRWorker(QObject):
                 item_count=len(final_results),
             )
             _log(f"⑩ 全部完成！共 {len(final_results)} 筆結果")
-            self._emit_scan_status("✅ 翻譯完成")
+            self._emit_scan_status(self._scan_status_text("worker.status.translation_done"))
             self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
             self._emit_scan_finished(final_results)
 
@@ -7070,14 +7109,14 @@ class OCRWorker(QObject):
                 exception=e,
             )
             logger.error(f"Error: {e}")
-            self._emit_scan_status("⚠️ 翻譯失敗")
+            self._emit_scan_status(self._scan_status_text("worker.status.translation_failed"))
             fallback = [(item['text'], item['x'], item['y'], item['w'], item['h']) for item in merged_items]
             self.last_results = fallback
             self._emit_scan_finished(fallback)
 
-    def handle_empty(self, message="💤 畫面無文字"):
+    def handle_empty(self, message=None):
+        self._emit_scan_status(self._scan_status_text("worker.status.no_text") if message is None else message)
         if self.last_combined_text != "":
-            self._emit_scan_status(message)
             self.last_combined_text = ""
             self.last_results = []
         self._emit_scan_finished([])

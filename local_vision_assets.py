@@ -323,6 +323,7 @@ def _write_legacy_receipt(
             "mtime_ns": stat.st_mtime_ns,
             "sha256": expected_sha,
         }
+    entries = _merge_receipt_entries(receipt, entries)
     payload = {"revision": GEMMA_ASSET_REVISION, "assets": entries}
     temporary: Path | None = None
     try:
@@ -369,6 +370,21 @@ def _receipt_matches(root: Path, manifest=None) -> bool:
         return False
 
 
+def _merge_receipt_entries(receipt: Path, entries: dict) -> dict:
+    """Keep already verified fields when updating a same-revision receipt."""
+    try:
+        previous = json.loads(receipt.read_text(encoding="utf-8"))
+        previous_entries = previous.get("assets")
+        if (
+            previous.get("revision") == GEMMA_ASSET_REVISION
+            and isinstance(previous_entries, dict)
+        ):
+            return {**previous_entries, **entries}
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return entries
+
+
 def _write_receipt(root: Path, manifest=None) -> None:
     entries = {}
     specs = tuple(GEMMA_ASSET_MANIFEST if manifest is None else manifest)
@@ -379,8 +395,9 @@ def _write_receipt(root: Path, manifest=None) -> None:
             "mtime_ns": stat.st_mtime_ns,
             "sha256": spec.sha256,
         }
-    payload = {"revision": GEMMA_ASSET_REVISION, "assets": entries}
     receipt = root / _RECEIPT_NAME
+    entries = _merge_receipt_entries(receipt, entries)
+    payload = {"revision": GEMMA_ASSET_REVISION, "assets": entries}
     temporary: Path | None = None
     try:
         fd, temporary_name = tempfile.mkstemp(

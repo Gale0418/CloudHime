@@ -1,3 +1,5 @@
+import pytest
+
 from provider_health import assess_provider_health
 
 
@@ -146,3 +148,150 @@ def test_local_text_without_vision_runtime_still_offers_managed_download():
     )
 
     assert health.code == "local_download_required"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_code", "summary_text", "detail_text"),
+    [
+        (
+            {"ai_requested": False, "ai_enabled": False, "model_id": "gemma-3-27b-it"},
+            "google_ready",
+            "Google 翻訳",
+            "API キーは不要",
+        ),
+        (
+            {"model_id": "gemma-3-27b-it", "has_api_key": False},
+            "remote_key_required",
+            "設定が必要",
+            "Google API キー",
+        ),
+        (
+            {"model_id": "gemma-3-27b-it", "has_api_key": True},
+            "remote_configured",
+            "設定済み",
+            "翻訳開始時",
+        ),
+        (
+            {"local_vision_state": "progress", "local_vision_detail": "38|downloading"},
+            "local_progress",
+            "38%",
+            "Ollama",
+        ),
+        (
+            {"local_vision_state": "starting"},
+            "local_loading",
+            "読み込み中",
+            "ウォームアップ",
+        ),
+        (
+            {"local_vision_state": "failed", "local_vision_detail": "health_timeout"},
+            "local_failed",
+            "起動失敗",
+            "タイムアウト",
+        ),
+        (
+            {"embedded_runtime_available": False},
+            "local_runtime_missing",
+            "修復が必要",
+            "再インストール",
+        ),
+        (
+            {"local_vision_state": "ready", "local_vision_mode": "cpu"},
+            "local_ready_cpu",
+            "CPU で利用可能",
+            "速度は低下",
+        ),
+        (
+            {"local_vision_state": "ready", "local_vision_mode": "gpu"},
+            "local_ready_gpu",
+            "利用可能",
+            "GPU アクセラレーション",
+        ),
+        (
+            {"model_assets_present": True},
+            "local_start_pending",
+            "準備中",
+            "自動的に起動",
+        ),
+        (
+            {},
+            "local_download_required",
+            "ダウンロードが必要",
+            "AppData",
+        ),
+    ],
+)
+def test_japanese_health_states_localize_without_changing_state_or_tone(
+    overrides, expected_code, summary_text, detail_text
+):
+    japanese = _health(ui_language="ja", **overrides)
+    english = _health(ui_language="en", **overrides)
+
+    assert japanese.code == expected_code
+    assert japanese.code == english.code
+    assert japanese.tone == english.tone
+    assert summary_text in japanese.summary
+    assert detail_text in japanese.detail
+    if expected_code != "google_ready":
+        assert "Gemma Local" in japanese.summary
+
+
+@pytest.mark.parametrize(
+    ("phase", "mode", "expected"),
+    [
+        ("checking_disk", "", "ディスクの空き容量を確認中"),
+        ("checking_assets", "", "モデルファイルを確認中"),
+        ("downloading", "", "ローカル Gemma をダウンロード中"),
+        ("verifying", "", "ローカル Gemma を検証中"),
+        ("loading_model", "", "ローカル Gemma を読み込み中"),
+        ("loading_tensors", "", "モデルの重みを読み込み中"),
+        ("initializing", "gpu", "GPU を初期化中"),
+        ("initializing", "cpu", "CPU を初期化中"),
+        ("warming_up", "", "ローカル Gemma をウォームアップ中"),
+        ("model_loaded", "", "ローカルサービスを確認中"),
+        ("starting_server", "", "内蔵ランタイムを起動中"),
+        ("unknown_phase", "", "ローカル Gemma を準備中"),
+    ],
+)
+def test_japanese_progress_localizes_phase_and_preserves_percent(phase, mode, expected):
+    japanese = _health(
+        ui_language="ja",
+        local_vision_state="progress",
+        local_vision_mode=mode,
+        local_vision_detail=f"73|{phase}",
+    )
+    english = _health(
+        ui_language="en",
+        local_vision_state="progress",
+        local_vision_mode=mode,
+        local_vision_detail=f"73|{phase}",
+    )
+
+    assert japanese.code == "local_progress"
+    assert japanese.tone == english.tone
+    assert expected in japanese.summary
+    assert "73%" in japanese.summary
+    assert "Gemma Local" in japanese.summary
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("CUDA out of memory", "GPU を多く使用するアプリ"),
+        ("health_timeout", "タイムアウトしました"),
+        ("asset_hash_mismatch", "破損したファイル"),
+        ("runtime_missing", "内蔵推論ランタイム"),
+        ("port_unavailable", "ループバックポート"),
+        ("unknown_failure", "Google 翻訳は引き続き利用できます"),
+    ],
+)
+def test_japanese_failure_guidance_is_actionable_and_does_not_echo_detail(detail, expected):
+    health = _health(
+        ui_language="ja",
+        local_vision_state="failed",
+        local_vision_detail=f"{detail}: PRIVATE USER TEXT",
+    )
+
+    assert health.code == "local_failed"
+    assert expected in health.detail
+    assert "PRIVATE USER TEXT" not in health.detail

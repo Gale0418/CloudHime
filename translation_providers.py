@@ -925,7 +925,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
                 lease.release(error=exc, ambiguous=emitted)
                 raise
 
-    def translate_stream(self, text: str, *, target_lang: str = "zh-TW"):
+    def translate_stream(self, text: str, *, target_lang: str | None = None):
         """Generator: 串流翻譯，每次 yield 一個文字 chunk（打字機效果用）。"""
         normalized = clean_model_output(text).strip() if text else ""
         if not normalized:
@@ -1353,7 +1353,7 @@ class _LocalRequestScheduler:
     def run(self, callback: Callable[[], Any], *, cancel_predicate=None):
         with self._condition:
             if self._closed:
-                raise RuntimeError("local_request_scheduler_closed")
+                raise LocalRequestCancelled("local_request_scheduler_closed")
             ticket = self._next_ticket
             self._next_ticket += 1
             while ticket != self._serving_ticket:

@@ -10,6 +10,7 @@ import pytest
 from vision_product_path_local_adapter import (
     ProductPathLocalSession,
     _default_pixels_hash,
+    _endpoint,
 )
 
 
@@ -491,6 +492,27 @@ def test_rejects_cpu_or_external_endpoint_conditions(condition):
         ProductPathLocalSession(lambda: FakeWorker()).start_cold(
             _condition(**condition)
         )
+
+
+def test_none_runtime_endpoint_is_treated_as_unconfigured():
+    validated = ProductPathLocalSession._validate_condition(
+        _condition(base_url=None)
+    )
+
+    assert validated["runtime_profile"] == "vision"
+
+
+def test_endpoint_returns_netloc_without_query_or_path():
+    assert _endpoint("http://127.0.0.1:43123?ready=1") == "127.0.0.1:43123"
+
+
+def test_endpoint_accepts_bracketed_ipv6_loopback_without_explicit_port():
+    assert _endpoint("http://[::1]") == "[::1]"
+
+
+def test_endpoint_rejects_userinfo_even_when_hostname_is_loopback():
+    with pytest.raises(ValueError, match="loopback"):
+        _endpoint("http://user:secret@127.0.0.1:43123")
 
 
 def test_scan_failure_still_cleans_once_and_clears_content():

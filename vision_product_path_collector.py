@@ -461,11 +461,21 @@ def collect_condition_raw(manifest: Mapping[str, Any], condition: Mapping[str, A
                     worker.cleanup()
                 except Exception as exc:
                     cleanup_error = exc
-                residual, runtime_mode = _probe_after_cleanup(worker, residual_probe, runtime_mode_probe)
+                probe_error: Exception | None = None
+                try:
+                    residual, runtime_mode = _probe_after_cleanup(
+                        worker,
+                        residual_probe,
+                        runtime_mode_probe,
+                    )
+                except Exception as exc:
+                    probe_error = exc
             if scan_error is not None:
                 raise scan_error
             if cleanup_error is not None:
                 raise cleanup_error
+            if probe_error is not None:
+                raise probe_error
             stages["total"] = (time.perf_counter() - started) * 1000.0
             records.append({"case_id": case["id"], "repeat": repeat,
                             "condition_fingerprint": fingerprint, "provider": provider,

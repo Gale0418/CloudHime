@@ -84,7 +84,7 @@ def test_controller_main_controls_match_available_actions(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window.show()
 
-    assert window.btn_close.text() == "×"
+    assert not window.btn_close.icon().isNull()
     assert window.btn_hotkey.text() == "~"
     assert window.btn_hotkey.isVisible()
 
@@ -332,8 +332,8 @@ def test_settings_revamp_tabs_preserve_model_route(qtbot, monkeypatch):
     controller.toggle_settings_window()
     settings = controller.settings_window
     settings.show()
-    assert settings.minimumWidth() == 900
-    assert settings.minimumHeight() == 620
+    assert settings.minimumWidth() == 760
+    assert settings.minimumHeight() == 520
     assert settings.settings_tabs.count() == 4
     assert settings.settings_pages.count() == 4
 
@@ -917,6 +917,7 @@ def test_stop_scan_invalidates_worker_generation_and_clears_overlay():
     controller.display_timer = Mock()
     controller.auto_group = Mock()
     controller.btn_30 = Mock()
+    controller.btn_30.isChecked.return_value = False
     controller.worker = SimpleNamespace(set_scan_generation=Mock())
     controller.overlay = SimpleNamespace(clear_all=Mock())
     controller._set_status_text = Mock()

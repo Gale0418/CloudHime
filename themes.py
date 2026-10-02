@@ -559,7 +559,7 @@ def build_bubble_style(theme: ThemeDefinition, relief: bool = False) -> dict:
         return {
             "stylesheet": (
                 f"QLabel {{ background: transparent; color: {theme['bubble_relief_fg']}; "
-                "font-weight: 400; border: none; padding: 0px; }}"
+                "font-weight: 400; border: none; padding: 0px; }"
             ),
             "fill": theme["bubble_relief_fg"],
             "outline": theme["bubble_relief_outline"],
@@ -568,7 +568,7 @@ def build_bubble_style(theme: ThemeDefinition, relief: bool = False) -> dict:
         "stylesheet": (
             f"QLabel {{ background-color: {theme['bubble_bg']}; color: {theme['bubble_fg']}; "
             f"font-weight: bold; border-radius: 12px; border: 1px solid {theme['bubble_border']}; "
-            "padding: 2px; }}"
+            "padding: 2px; }"
         ),
         "fill": theme["bubble_fg"],
         "outline": theme["bubble_relief_outline"] if theme.is_dark else "rgba(255, 255, 255, 220)",

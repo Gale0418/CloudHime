@@ -85,6 +85,29 @@ def test_retry_after_parses_seconds_and_http_date():
     assert parse_retry_after("not-a-date", now=now) is None
 
 
+def test_retry_after_reports_credential_backoff_instead_of_zero():
+    clock = ManualClock()
+    pool = _pool(clock, server_error_backoff_base=3)
+    lease = pool.acquire("google", "gemini-test", key_id="key-a")
+    lease.release(status_code=503)
+
+    assert pool.retry_after("google", "gemini-test", key_id="key-a") == pytest.approx(3)
+
+
+def test_unrecognized_non_integer_status_is_provider_error_and_timeout_stays_timeout():
+    clock = ManualClock()
+    pool = _pool(clock)
+    lease = pool.acquire("google", "gemini-test", key_id="key-a")
+    lease.release(error=RuntimeError("provider response"), status_code="503")
+    item = next(item for item in pool.snapshot() if item["key_id"] == "key-a")
+    assert item["last_outcome"] == "provider_error"
+
+    lease = pool.acquire("google", "gemini-test", key_id="key-a")
+    lease.release(error=TimeoutError("request timed out"))
+    item = next(item for item in pool.snapshot() if item["key_id"] == "key-a")
+    assert item["last_outcome"] == "timeout"
+
+
 def test_429_cooldown_is_shared_by_same_project_keys_and_expires_with_monotonic_clock():
     clock = ManualClock()
     pool = _pool(clock)

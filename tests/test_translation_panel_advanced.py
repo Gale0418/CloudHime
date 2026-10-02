@@ -66,6 +66,36 @@ class DummyController:
         return "default prompt"
 
 
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_data_use_guidance_tracks_pending_and_restored_engine(qtbot, language):
+    controller = DummyController()
+    controller.ui_language = language
+    controller.provider_chain = ("google",)
+    panel = TranslationSettingsPanel(controller, [("Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    assert "Google" in panel.lbl_data_use.text()
+    assert "OCR" in panel.lbl_data_use.text()
+    if language == "ja":
+        assert "Google 翻訳" in panel.lbl_translate_summary.text()
+        assert "不要" in panel.lbl_translate_health_detail.text()
+    panel.on_provider_selected("luna")
+    assert "OpenAI" in panel.lbl_data_use.text()
+    assert "OpenAI" in panel.lbl_luna_api_key.text()
+    assert "OpenAI" in panel.input_luna_api_key.placeholderText()
+    controller.pending_translation_provider_id = None
+    panel.sync_from_controller()
+    assert "Google" in panel.lbl_data_use.text()
+    assert "OpenAI" not in panel.lbl_data_use.text()
+    controller.provider_chain = ("local_multimodal",)
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.worker.use_gemma_translation = True
+    panel.sync_from_controller()
+    assert "OCR" in panel.lbl_data_use.text()
+    assert "Google" not in panel.lbl_data_use.text()
+    assert panel.lbl_data_use.accessibleName() == panel.lbl_data_use.text()
+    assert panel.lbl_data_use.accessibleDescription()
+
+
 def test_pending_provider_selection_survives_panel_sync(qtbot):
     controller = DummyController()
     controller.provider_chain = ("google",)

@@ -209,6 +209,9 @@ class TesseractBackend(OCRBackend):
         self._available = False
         self._pytesseract = None
         self._output_type = None
+        self._version_probe_lock = threading.Lock()
+        self._version_probe_complete = False
+        self._version_available = False
         try:
             import pytesseract  # type: ignore
             from pytesseract import Output  # type: ignore
@@ -222,11 +225,16 @@ class TesseractBackend(OCRBackend):
     def available(self) -> bool:
         if not self._available:
             return False
-        try:
-            _ = self._pytesseract.get_tesseract_version()
-            return True
-        except Exception:
-            return False
+        with self._version_probe_lock:
+            if self._version_probe_complete:
+                return self._version_available
+            try:
+                _ = self._pytesseract.get_tesseract_version()
+                self._version_available = True
+            except Exception:
+                self._version_available = False
+            self._version_probe_complete = True
+            return self._version_available
 
     def recognize(self, image: np.ndarray) -> OCRResult:
         if not self.available():
