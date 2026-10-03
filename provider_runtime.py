@@ -427,7 +427,7 @@ class RuntimeCredentialPool:
                 scope = self._scopes.setdefault(self._scope_for(state.credential), _QuotaState())
                 if scope.cooldown_until > now:
                     waits.append(scope.cooldown_until - now)
-                elif self.quota_limit is not None and scope.calls:
+                elif self.quota_limit is not None and len(scope.calls) >= int(self.quota_limit):
                     waits.append(max(0.01, scope.calls[0] + self.quota_window_seconds - now))
                 elif not state.active:
                     return 0.0
@@ -583,7 +583,7 @@ class RuntimeCredentialPool:
                 scope = self._scopes.setdefault(self._scope_for(state.credential), _QuotaState())
                 if scope.cooldown_until > now:
                     waits.append(scope.cooldown_until - now)
-                elif self.quota_limit is not None and scope.calls:
+                elif self.quota_limit is not None and len(scope.calls) >= int(self.quota_limit):
                     waits.append(max(0.01, scope.calls[0] + self.quota_window_seconds - now))
         return max(0.01, min(waits))
 

@@ -1,13 +1,100 @@
 """User-facing recovery and lifecycle contracts; no live services or secrets."""
 from unittest.mock import Mock
 
+from types import SimpleNamespace
+
 import pytest
+import celestial_ui
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QMessageBox
 
 from cloudhime_ui import Controller, OverlayWindow, SelectionOverlay
 from celestial_ui import chrome_icon
+from ocr_backend_catalog import optional_backend_names
+from ocr_backend_panel import OcrBackendSettingsPanel
+from provider_health import local_model_failure_message
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+@pytest.mark.parametrize("vision", [False, True])
+def test_local_startup_failure_shows_safe_recovery(controller, language, vision):
+    controller.set_ui_language(language, persist=False)
+    controller.worker.use_gemma_translation = True
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.local_multimodal_enabled = vision
+    controller.provider_chain = ()
+    detail = "health_timeout: PRIVATE_USER_PATH <b>RAW_STDERR</b> " * 100
+    controller.update_status("Previous message")
+    handler = controller.on_local_vision_status if vision else controller.on_local_model_status
+    handler("failed", detail)
+    message = controller.lbl_status.text()
+    assert local_model_failure_message(detail, language) in message
+    assert "PRIVATE_USER_PATH" not in message
+    assert "RAW_STDERR" not in message
+    assert len(message) < 500
+    assert controller.lbl_status.toolTip() == message
+    assert controller.lbl_status.statusTip() == message
+    assert controller.lbl_status.textFormat() == Qt.PlainText
+
+
+@pytest.mark.parametrize("state", ["starting", "progress", "ready", "failed", "stopped"])
+def test_inactive_local_engine_cannot_replace_current_translation_status(controller, state):
+    controller.update_status("Google translation failed — retry")
+    controller.on_local_vision_status(state, "40|downloading")
+    controller.on_local_model_status(state, "PRIVATE_DIAGNOSTICS")
+    assert controller.local_vision_state == state
+    assert controller.local_model_state == state
+    assert controller.lbl_status.text() == "Google translation failed — retry"
+
+
+def test_localized_status_keeps_accessible_hints_current(controller):
+    controller.update_status("Previous error")
+    controller._set_status_text("controller.status.ready")
+    assert controller.lbl_status.toolTip() == controller.lbl_status.text()
+    assert controller.lbl_status.statusTip() == controller.lbl_status.text()
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+@pytest.mark.parametrize("provider", ["google", "local_gemma", "online_gemma", "luna"])
+def test_main_window_explains_current_engine_and_data_destination(controller, language, provider):
+    controller.set_ui_language(language, persist=False)
+    controller.worker.use_gemma_translation = provider != "google"
+    controller.worker.gemma_model = "gemma-3-4b-it-local" if provider == "local_gemma" else "gemma-3-27b-it"
+    controller.provider_chain = ("openai",) if provider == "luna" else ("gemma", "google")
+    controller.worker.google_api_key = "PRIVATE_GOOGLE_KEY"
+    controller.openai_api_key = "PRIVATE_OPENAI_KEY"
+    controller.local_multimodal_enabled = False
+    controller.local_model_state = "ready"
+    controller.update_status("Translation error — retry")
+    assert controller._tr(f"controller.engine.{provider}") in controller.lbl_engine_summary.text()
+    assert controller.lbl_engine_data.text() == controller._tr(f"controller.engine.data.{provider}")
+    if provider in {"online_gemma", "luna"}:
+        assert controller._tr("controller.engine.state.configured") in controller.lbl_engine_summary.text()
+    assert "PRIVATE_" not in controller.lbl_engine_summary.text() + controller.lbl_engine_data.text()
+    assert controller.lbl_status.text() == "Translation error — retry"
+
+
+def test_pending_engine_keeps_actual_route_and_data_destination_visible(controller):
+    controller.worker.use_gemma_translation = False
+    controller.pending_translation_provider_id = "luna"
+    controller._refresh_main_engine_summary()
+    assert controller._tr("controller.engine.google") in controller.lbl_engine_summary.text()
+    assert controller._tr("controller.engine.pending", name="Luna") in controller.lbl_engine_summary.text()
+    assert controller.lbl_engine_data.text() == controller._tr("controller.engine.data.google")
+
+
+def test_engine_settings_entry_can_be_used_again_without_closing_or_switching_route(controller, qtbot):
+    controller.worker.use_gemma_translation = False
+    chain = controller.provider_chain
+    qtbot.mouseClick(controller.btn_engine_settings, Qt.LeftButton)
+    assert controller.settings_window.isVisible()
+    controller.settings_window.settings_tabs.setCurrentIndex(2)
+    qtbot.mouseClick(controller.btn_engine_settings, Qt.LeftButton)
+    assert controller.settings_window.isVisible()
+    assert controller.settings_window.settings_tabs.currentIndex() == 0
+    assert controller.provider_chain == chain
+    assert not controller.worker.use_gemma_translation
 
 
 def test_selection_overlay_handles_synchronous_fullscreen_resize(qtbot, monkeypatch):
@@ -73,6 +160,109 @@ def test_stop_releases_cooldown_and_busy_buttons(controller, monkeypatch):
     assert controller.btn_now.isEnabled()
     assert controller.btn_hotkey.isEnabled()
     assert controller.btn_now.text() == controller.get_hotkey_button_text()
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_auto_scan_can_pause_to_read_and_resume_without_erasing_captions(controller, qtbot, language):
+    controller.set_ui_language(language, persist=False)
+    result = [("慢慢讀完這一句", 100, 100, 180, 40)]
+    controller.on_scan_complete(result)
+    bubble = controller.overlay.bubbles[0]
+    controller.start_auto_scan(base_interval=5000)
+    generation = controller.scan_generation
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    assert not controller.auto_timer.isActive()
+    assert not controller.display_timer.isActive()
+    assert controller.current_auto_interval == 0
+    assert controller.scan_generation > generation
+    assert controller.overlay.bubbles[0] is bubble
+    assert controller.last_scan_results == result
+    assert controller._tr("controller.button.auto_resume") in controller.btn_30.text()
+    assert controller.lbl_status.text() == controller._tr("controller.status.auto_paused")
+    controller.set_ui_language(language, persist=False)
+    assert controller.lbl_status.text() == controller._tr("controller.status.auto_paused")
+    controller.on_scan_complete_for_generation(generation, [("晚到的下一句", 100, 100, 180, 40)])
+    assert controller.overlay.bubbles[0] is bubble
+    controller.btn_30.setFocus()
+    qtbot.keyClick(controller.btn_30, Qt.Key_Space)
+    assert controller.current_auto_interval == 5000
+    assert controller.auto_timer.isActive()
+    assert not controller.scan_in_progress
+    assert controller.overlay.bubbles[0] is bubble
+
+
+def test_pause_freezes_visible_stream_and_discards_pending_or_late_chunks(controller, qtbot):
+    controller.on_scan_complete([("上一段完整翻譯", 100, 100, 180, 40)])
+    controller.start_auto_scan()
+    generation = controller.scan_generation
+    controller.scan_in_progress = True
+    controller.on_translation_stream_update(0, "目前看得到的半句", "google", 100, 100, 180, 40)
+    controller.on_translation_stream_update_for_generation(generation, 0, "還沒顯示的句子", "google", 100, 100, 180, 40)
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    controller.on_translation_stream_update_for_generation(generation, 0, "晚到的串流", "google", 100, 100, 180, 40)
+    controller.set_theme_mode("dark")
+    assert controller.overlay.bubbles[0].text() == "目前看得到的半句"
+    assert not controller._pending_stream_updates
+    assert not controller.scan_in_progress
+    assert controller.btn_now.isEnabled()
+    assert controller.btn_hotkey.isEnabled()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark", "high_contrast"])
+def test_stop_clears_reading_state_so_theme_changes_cannot_restore_old_captions(controller, theme):
+    controller.on_scan_complete([("已經停止閱讀的舊句子", 100, 100, 180, 40)])
+    controller.stop_scan()
+    controller.set_theme_mode(theme)
+    assert not controller.overlay.bubbles
+    assert controller.last_scan_results == []
+    assert controller._tr("controller.button.auto_scan") in controller.btn_30.text()
+
+
+def test_stop_after_pause_returns_to_idle_and_clears_frozen_caption(controller, qtbot):
+    controller.on_scan_complete([("暫停中的句子", 100, 100, 180, 40)])
+    controller.start_auto_scan()
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    qtbot.mouseClick(controller.btn_stop, Qt.LeftButton)
+    assert not controller.overlay.bubbles
+    assert controller.last_scan_results == []
+    assert controller._tr("controller.button.auto_scan") in controller.btn_30.text()
+
+
+def test_pause_before_capture_prevents_the_delayed_scan_request(controller, qtbot):
+    requests = []
+    controller.request_scan.connect(lambda: requests.append(True))
+    controller.start_auto_scan(base_interval=5000)
+    controller.trigger_scan_sequence()
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    qtbot.wait(80)
+    assert requests == []
+    assert not controller.scan_in_progress
+
+
+def test_resume_honors_interval_changed_while_paused(controller, qtbot):
+    controller.start_auto_scan(base_interval=5000)
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    controller.cmb_scan_interval.setCurrentIndex(controller.cmb_scan_interval.findData(15))
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    assert controller.current_auto_interval == 15000
+    assert controller.random_scan_center_seconds == 15
+    assert controller.auto_timer.isActive()
+
+
+def test_manual_translation_while_paused_updates_caption_without_restarting_auto_scan(controller, qtbot, monkeypatch):
+    def scan(worker):
+        worker._emit_scan_finished([("手動翻譯的下一句", 100, 100, 180, 40)])
+
+    monkeypatch.setattr("cloudhime_workers.OCRWorker._run_scan_once", scan)
+    controller.on_scan_complete([("慢慢閱讀中的句子", 100, 100, 180, 40)])
+    controller.start_auto_scan()
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    qtbot.mouseClick(controller.btn_now, Qt.LeftButton)
+    qtbot.waitUntil(lambda: controller.last_scan_results[0][0] == "手動翻譯的下一句", timeout=2000)
+    assert controller.current_auto_interval == 0
+    assert not controller.auto_timer.isActive()
+    assert not controller.btn_30.isChecked()
+    assert controller._tr("controller.button.auto_resume") in controller.btn_30.text()
 
 
 def test_completion_releases_busy_buttons_after_cooldown(controller):
@@ -216,6 +406,42 @@ def test_dark_window_icons_resolve_css_rgba_foreground(qapp):
     assert ink.green() > 240
     assert ink.blue() > 240
     assert ink.alpha() > 0
+
+
+@pytest.mark.parametrize(
+    ("alpha", "expected"),
+    [("0.5", 128), ("1.0", 255), ("1", 1), ("220", 220)],
+)
+def test_chrome_icon_rgba_alpha_supports_fractional_and_qt_integer_values(qapp, monkeypatch, alpha, expected):
+    captured = []
+    original_qpen = celestial_ui.QPen
+
+    def record_pen(color, width):
+        captured.append(color.alpha())
+        return original_qpen(color, width)
+
+    monkeypatch.setattr(celestial_ui, "QPen", record_pen)
+    chrome_icon("close", f"rgba(255, 255, 255, {alpha})")
+    assert captured == [expected]
+
+
+def test_ocr_backend_unknown_state_still_starts_install(qtbot, monkeypatch):
+    panel = OcrBackendSettingsPanel(SimpleNamespace(ui_language="en"))
+    qtbot.addWidget(panel)
+    backend_name = optional_backend_names()[0]
+    started = []
+    warnings = []
+    monkeypatch.setattr("ocr_backend_panel.detect_backend_state", lambda _name: None)
+    monkeypatch.setattr("ocr_backend_panel.QMessageBox.warning", lambda *_args: warnings.append(_args[-1]))
+    monkeypatch.setattr(panel, "_start_backend_install", lambda name: started.append(name))
+    monkeypatch.setattr(panel, "_set_controller_backend_enabled", lambda *_args: None)
+    monkeypatch.setattr(panel, "sync_from_controller", lambda: None)
+
+    panel.on_backend_toggled(backend_name, True)
+    panel._on_install_finished(backend_name, True, "Install succeeded but backend state is unknown.")
+
+    assert started == [backend_name]
+    assert warnings == ["Install succeeded but backend state is unknown."]
 
 
 def test_native_close_is_rejected_when_settings_save_fails(controller, monkeypatch, qtbot):

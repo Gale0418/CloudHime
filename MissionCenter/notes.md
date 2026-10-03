@@ -378,3 +378,12 @@
 - 三評論與全新獨立仲裁核對255項manifest，最終passed；13項finding為10 fixed／3具體反證駁回，沒有未處置P0／P1或已確認範圍內P2／P3。原limited、失敗與超額用量保留。
 - CH-T117完成來源驗收，passport與原生transition為正式生命週期證據；續讀reviews/2026-10-04-hardening.md與output/mission-center-critique/CH-T117-closure-proof-20261004.json。
 - 沒有新EXE／Store／live／實體桌面驗收；其他任務gate維持。PAT事件仍需owner撤銷替換憑證、確認Antigravity當次工作停止，沒有聲稱解除；同一任務的追加收尾已獲持續授權。
+
+
+## 2026-10-04T04:43:46+08:00：產品體驗來源與 main 同步收尾
+
+- Timestamp：2026-10-04T04:43:46+08:00
+- Change：可信任狀態、引擎／資料去向摘要、字幕暫停／繼續／停止已完成來源修正；CodeRabbit 148 檔初審 6 issues 查證修復，21 檔複審 0 issues；收尾七份 JUnit 去重 245 案通過，README／驗收紀錄已更新。main 提交與上傳已獲使用者授權，遠端結果待提交後確認。
+- Reason：主人要求存 Git、餵兔子、GitHub main 一次收尾；以每小時 3 次／每次 150 檔上限執行，排除未修改大檔與非來源資料。
+- Impact：不改既有任務生命週期；CH-T117 的先前正式完成證據保留，本新產品全面可販售任務草案尚未轉成正式 Epic。原生 Qt 崩潰根因未知、沒有新 EXE／Store／live 驗收，不能將來源同步等同正式發行。
+- Evidence：reviews/2026-10-04-sale-readiness.md；output/main-sync-20261004/shipping-verification.json、review-scope.json、final-review-scope.json、excluded-large-evidence.json、coderabbit-148.ndjson、coderabbit-final.ndjson、product-experience-native-crash.log。

@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
                             QAbstractNativeEventFilter, QEvent, Slot)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient, QShortcut, QKeySequence
+from provider_health import local_model_failure_message
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
@@ -582,6 +583,7 @@ class OverlayWindow(QWidget):
         screen = QApplication.primaryScreen().geometry()
         self.setGeometry(0, 0, screen.width(), screen.height())
         self.bubbles = []
+        self._bubble_render_key = None
         self.is_dark = False
         self.theme_mode = "light"
         self.scan_mode = SCAN_MODE_FULLSCREEN
@@ -623,6 +625,17 @@ class OverlayWindow(QWidget):
         self.scan_region = scan_region if (scan_region and len(scan_region) == 4) else None
 
     def update_bubbles(self, results):
+        results = [tuple(result) for result in results]
+        render_key = (
+            tuple(results), self.theme_mode, self.scan_mode, self.render_mode,
+            self.relief_offset_x, self.relief_offset_y, self.relief_font_pt, self.relief_opacity,
+            tuple(self.scan_region or ()), self.font().toString(), self.devicePixelRatioF(),
+            QApplication.primaryScreen().availableGeometry().getRect(),
+        )
+        if render_key == self._bubble_render_key:
+            self.setVisible(True)
+            self.raise_()
+            return
         self.clear_all()
         for t, x, y, w, h in results:
             mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else REGION_RENDER_BUBBLE
@@ -647,15 +660,23 @@ class OverlayWindow(QWidget):
             )
         if any(b.render_mode == REGION_RENDER_SCREENSHOT for b in self.bubbles):
             self.arrange_bubbles()
+        self._bubble_render_key = render_key
         self.setVisible(True)
         self.raise_()
 
+    def snapshot_results(self):
+        """Return only text already displayed, in its original capture coordinates."""
+        return [(bubble.text(), *bubble.source_rect.getRect()) for bubble in self.bubbles]
+
     def clear_all(self):
+        self._bubble_render_key = None
         for b in self.bubbles:
+            b.hide()
             b.deleteLater()
         self.bubbles = []
 
     def update_translation_stream(self, index, partial_text, provider, x, y, w, h):
+        self._bubble_render_key = None
         if not self.isVisible():
             self.show()
             self.raise_()
@@ -693,6 +714,7 @@ class OverlayWindow(QWidget):
         """串流更新：只更新現有氣泡的文字，不重建（打字機效果用）"""
         if not self.bubbles or not results:
             return
+        self._bubble_render_key = None
         for i, (t, x, y, w, h) in enumerate(results):
             if i < len(self.bubbles):
                 bubble = self.bubbles[i]
@@ -3226,6 +3248,7 @@ class Controller(QWidget):
         self.cooldown_end_time = 0.0
         self.scan_in_progress = False
         self.scan_generation = 0
+        self._paused_auto_interval = 0
         self._pending_stream_updates = {}
         self._stream_render_timer = QTimer(self)
         self._stream_render_timer.setSingleShot(True)
@@ -3305,7 +3328,7 @@ class Controller(QWidget):
         
         title_bar = QHBoxLayout()
         self.princess_avatar = PrincessAvatar()
-        self.lbl_title = QLabel("CloudHime v3.0")
+        self.lbl_title = QLabel("CloudHime")
         self.lbl_title.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         
         self.btn_min = QPushButton("－")
@@ -3327,8 +3350,27 @@ class Controller(QWidget):
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
+        engine_row = QHBoxLayout()
+        self.lbl_engine_summary = QLabel()
+        self.lbl_engine_summary.setTextFormat(Qt.PlainText)
+        self.lbl_engine_summary.setWordWrap(True)
+        self.lbl_engine_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.btn_engine_settings = QPushButton()
+        self.btn_engine_settings.setMinimumHeight(28)
+        self.btn_engine_settings.setCursor(Qt.PointingHandCursor)
+        self.btn_engine_settings.clicked.connect(self.show_translation_engine_settings)
+        engine_row.addWidget(self.lbl_engine_summary, 1)
+        engine_row.addWidget(self.btn_engine_settings)
+        inner_layout.addLayout(engine_row)
+        self.lbl_engine_data = QLabel()
+        self.lbl_engine_data.setTextFormat(Qt.PlainText)
+        self.lbl_engine_data.setWordWrap(True)
+        self.lbl_engine_data.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        inner_layout.addWidget(self.lbl_engine_data)
+
         status_row = QHBoxLayout()
         self.lbl_status = QLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
+        self.lbl_status.setTextFormat(Qt.PlainText)
         self.lbl_status.setObjectName("translationStatus")
         self.lbl_status.setProperty("semanticRole", "translation-status")
         self.lbl_status.setAccessibleName("翻譯狀態")
@@ -3807,10 +3849,19 @@ class Controller(QWidget):
     def _set_status_text(self, key, fallback=None, **params):
         if hasattr(self, "lbl_status"):
             text = self._tr(key, fallback=fallback, **params)
+            self._set_status_message(text)
             self._localized_status = (key, fallback, params, text)
-            self.lbl_status.setText(text)
+
+    def _set_status_message(self, text):
+        self._localized_status = None
+        self.lbl_status.setText(text)
+        for name in ("setToolTip", "setStatusTip"):
+            setter = getattr(self.lbl_status, name, None)
+            if callable(setter):
+                setter(text)
 
     def _refresh_translation_provider_health(self):
+        self._refresh_main_engine_summary()
         settings_window = getattr(self, "settings_window", None)
         updater = getattr(settings_window, "update_translate_summary", None)
         if not callable(updater):
@@ -3851,7 +3902,7 @@ class Controller(QWidget):
         if hasattr(self, "setWindowTitle"):
             self.setWindowTitle(self._tr("controller.window_title", fallback="CloudHime"))
         if hasattr(self, "lbl_title"):
-            self.lbl_title.setText(self._tr("controller.title", fallback="CloudHime v3.0"))
+            self.lbl_title.setText(self._tr("controller.title", fallback="CloudHime"))
         if hasattr(self, "input_api_key"):
             self.input_api_key.setPlaceholderText(
                 self._tr("controller.placeholder.google_api_key", fallback="Google API KEY")
@@ -3876,6 +3927,7 @@ class Controller(QWidget):
                 control.setToolTip(text)
                 control.setAccessibleName(text)
         self._refresh_scan_hint()
+        self._refresh_main_engine_summary()
         if hasattr(self, "btn_close"):
             self.btn_close.setToolTip(self._tr("controller.tooltip.close", fallback="關閉"))
         if hasattr(self, "btn_30"):
@@ -3892,9 +3944,55 @@ class Controller(QWidget):
                 status_text = f"{name}：API キーを入力してください"
             else:
                 status_text = f"{name}：需要設定 API Key"
-            self.lbl_status.setText(status_text)
+            self._set_status_message(status_text)
             if hasattr(self, "charge_bar"):
                 self.charge_bar.set_progress(0, name)
+
+    def _selected_translation_provider(self):
+        """Describe the selected primary engine; requests may use configured fallbacks."""
+        worker = getattr(self, "worker", None)
+        if worker is None or not getattr(worker, "use_gemma_translation", False):
+            return "google"
+        if tuple(getattr(self, "provider_chain", ()) or ())[:1] == ("openai",):
+            return "luna"
+        if getattr(worker, "gemma_model", "") in LOCAL_MODEL_IDS:
+            return "local_gemma"
+        return "online_gemma"
+
+    def _refresh_main_engine_summary(self):
+        if not hasattr(self, "lbl_engine_summary"):
+            return
+        provider = self._selected_translation_provider()
+        name = self._tr(f"controller.engine.{provider}")
+        if provider == "google":
+            state = "internet"
+        elif provider == "local_gemma":
+            model_state = getattr(self, "local_vision_state" if self.local_multimodal_enabled else "local_model_state", "")
+            state = {"ready": "ready", "starting": "preparing", "loading": "preparing",
+                     "progress": "preparing", "failed": "failed"}.get(model_state, "unverified")
+        else:
+            key = self.openai_api_key if provider == "luna" else self.worker.google_api_key
+            state = "configured" if key.strip() else "setup"
+        pending = getattr(self, "pending_translation_provider_id", None)
+        state_text = self._tr(f"controller.engine.state.{state}")
+        if pending in {"luna", "online_gemma"}:
+            state_text = self._tr("controller.engine.pending", name=self._tr(f"controller.engine.{pending}"))
+        self.lbl_engine_summary.setText(self._tr("controller.engine.summary", name=name, state=state_text))
+        self.lbl_engine_data.setText(self._tr(f"controller.engine.data.{provider}"))
+        self.btn_engine_settings.setText(self._tr("controller.engine.change"))
+        description = self._tr("controller.engine.settings_description")
+        self.btn_engine_settings.setToolTip(description)
+        self.btn_engine_settings.setAccessibleName(self.btn_engine_settings.text())
+        self.btn_engine_settings.setAccessibleDescription(description)
+
+    def show_translation_engine_settings(self):
+        if self._open_required_provider_setup():
+            return
+        if self.settings_window is None or not self.settings_window.isVisible():
+            self.toggle_settings_window()
+        self.settings_window.settings_tabs.setCurrentIndex(0)
+        self.settings_window.raise_()
+        self.settings_window.activateWindow()
 
     def _required_provider_setup(self):
         pending = getattr(self, "pending_translation_provider_id", None)
@@ -4489,6 +4587,8 @@ class Controller(QWidget):
         self.random_scan_center_seconds = max(1, min(300, int(center_seconds)))
         self.random_scan_jitter_percent = max(0, min(100, int(jitter_percent)))
         self.update_random_scan_button_text()
+        if getattr(self, "_paused_auto_interval", 0) > 0:
+            self._paused_auto_interval = self.random_scan_center_seconds * 1000
         if self.current_auto_interval > 0:
             self.current_auto_interval = self.random_scan_center_seconds * 1000
             if self.auto_timer.isActive():
@@ -4510,6 +4610,9 @@ class Controller(QWidget):
         language = getattr(self, "ui_language", localization.DEFAULT_UI_LANGUAGE)
         key = "controller.button.auto_scan"
         params = {}
+        paused = getattr(self, "_paused_auto_interval", 0) > 0
+        if not self.btn_30.isChecked() and paused:
+            key = "controller.button.auto_resume"
         if self.btn_30.isChecked():
             if getattr(self, "scan_in_progress", False):
                 key = "controller.button.auto_busy"
@@ -4524,7 +4627,8 @@ class Controller(QWidget):
         )
         self.btn_30.setText(f"{indicator} {label}")
         self.btn_30.setAccessibleName(label)
-        self.btn_30.setToolTip(localization.tr("controller.tooltip.auto_scan", language))
+        tooltip_key = "controller.tooltip.auto_resume" if paused else "controller.tooltip.auto_scan"
+        self.btn_30.setToolTip(localization.tr(tooltip_key, language))
 
     def _sync_main_scan_interval(self):
         combo = self.cmb_scan_interval
@@ -4605,7 +4709,9 @@ class Controller(QWidget):
         label = getattr(self, "lbl_scan_hint", None)
         if label is None:
             return
-        key = "controller.hint.region" if self.scan_mode == SCAN_MODE_REGION else "controller.hint.fullscreen"
+        key = "controller.hint.fullscreen"
+        if self.scan_mode == SCAN_MODE_REGION:
+            key = "controller.hint.region" if self.selected_region else "controller.hint.region_empty"
         label.setText(self._tr(key))
         self.btn_mode_region.setToolTip(self._tr("controller.tooltip.region"))
 
@@ -4704,11 +4810,11 @@ class Controller(QWidget):
             new_label = self.cmb_ai_model.itemText(model_index) if model_index >= 0 else new_model
             language = self.get_ui_language()
             if language == "ja":
-                self.lbl_status.setText(f"AI モデルを自動切替：{old_label} → {new_label}")
+                self._set_status_message(f"AI モデルを自動切替：{old_label} → {new_label}")
             elif language == "en":
-                self.lbl_status.setText(f"AI model switched automatically: {old_label} → {new_label}")
+                self._set_status_message(f"AI model switched automatically: {old_label} → {new_label}")
             else:
-                self.lbl_status.setText(f"AI模型自動切換：{old_label} -> {new_label}")
+                self._set_status_message(f"AI模型自動切換：{old_label} -> {new_label}")
         self.schedule_save_settings()
 
     def on_api_key_changed(self, text):
@@ -4934,11 +5040,11 @@ class Controller(QWidget):
         if desired_enabled and not (has_luna_key if is_luna else (has_key or is_local_model)):
             language = self.get_ui_language()
             if language == "ja":
-                self.lbl_status.setText("Luna 用 OpenAI API キーを入力してください" if is_luna else "Google API キーを入力するか、ローカルモデルに切り替えてください")
+                self._set_status_message("Luna 用 OpenAI API キーを入力してください" if is_luna else "Google API キーを入力するか、ローカルモデルに切り替えてください")
             elif language == "en":
-                self.lbl_status.setText("Enter your OpenAI API key for Luna" if is_luna else "Enter a Google API key or switch to the local model")
+                self._set_status_message("Enter your OpenAI API key for Luna" if is_luna else "Enter a Google API key or switch to the local model")
             else:
-                self.lbl_status.setText("請先輸入 Luna 的 OpenAI API 金鑰" if is_luna else "請先輸入 Google API KEY，或切換到本地模型")
+                self._set_status_message("請先輸入 Luna 的 OpenAI API 金鑰" if is_luna else "請先輸入 Google API KEY，或切換到本地模型")
             desired_enabled = False
         self.worker.set_gemma_enabled(desired_enabled)
         if self.btn_ai_mode.isChecked() != desired_enabled:
@@ -4952,11 +5058,11 @@ class Controller(QWidget):
         if desired_enabled:
             language = self.get_ui_language()
             if language == "ja":
-                self.lbl_status.setText("AI：Luna" if is_luna else f"AI モデル：{self.cmb_ai_model.currentText()}")
+                self._set_status_message("AI：Luna" if is_luna else f"AI モデル：{self.cmb_ai_model.currentText()}")
             elif language == "en":
-                self.lbl_status.setText("AI: Luna" if is_luna else f"AI model: {self.cmb_ai_model.currentText()}")
+                self._set_status_message("AI: Luna" if is_luna else f"AI model: {self.cmb_ai_model.currentText()}")
             else:
-                self.lbl_status.setText("AI: Luna" if is_luna else f"AI模型: {self.cmb_ai_model.currentText()}")
+                self._set_status_message("AI: Luna" if is_luna else f"AI模型: {self.cmb_ai_model.currentText()}")
         self.schedule_save_settings()
 
     def set_scan_mode(self, scan_mode, invalidate=True):
@@ -5152,7 +5258,20 @@ class Controller(QWidget):
         if checked:
             self.start_auto_scan()
         else:
-            self.stop_scan()
+            self.pause_auto_scan()
+
+    def pause_auto_scan(self):
+        if self.current_auto_interval <= 0:
+            return
+        self._paused_auto_interval = self.current_auto_interval
+        self.current_auto_interval = 0
+        self.auto_timer.stop()
+        self.display_timer.stop()
+        self.last_scan_results = self.overlay.snapshot_results()
+        self._advance_scan_generation(cancel_active=True)
+        self.btn_30.setChecked(False)
+        self._refresh_auto_scan_button()
+        self._set_status_text("controller.status.auto_paused")
 
     def start_auto_scan(self, checked=False, base_interval=None):
         if self._open_required_provider_setup():
@@ -5168,7 +5287,8 @@ class Controller(QWidget):
                 self._refresh_auto_scan_button()
             return
         if base_interval is None:
-            base_interval = max(1000, int(self.random_scan_center_seconds) * 1000)
+            base_interval = getattr(self, "_paused_auto_interval", 0) or max(1000, int(self.random_scan_center_seconds) * 1000)
+        self._paused_auto_interval = 0
         self.current_auto_interval = base_interval
         if hasattr(self, "btn_30"):
             self.btn_30.setChecked(True)
@@ -5321,6 +5441,8 @@ class Controller(QWidget):
     def stop_scan(self):
         self._advance_scan_generation(cancel_active=True)
         self.current_auto_interval = 0
+        self._paused_auto_interval = 0
+        self.last_scan_results = []
         self.auto_timer.stop()
         self.display_timer.stop()
         self.btn_30.setChecked(False)
@@ -5364,12 +5486,11 @@ class Controller(QWidget):
         self.update_status(message)
 
     def update_status(self, msg):
-        self.lbl_status.setToolTip(msg)
-        self.lbl_status.setStatusTip(msg)
-        self.lbl_status.setText(msg)
+        self._set_status_message(msg)
         self.update_gemma_rate_indicator()
 
     def update_gemma_rate_indicator(self):
+        self._refresh_main_engine_summary()
         if not hasattr(self, "charge_bar") or not hasattr(self, "worker"):
             return
         if tuple(getattr(self, "provider_chain", ()) or ())[:1] == ("openai",):
@@ -5515,10 +5636,24 @@ class Controller(QWidget):
         self.lbl_status.setStyleSheet(f"color:{theme.text}; background:transparent; border:none; padding:2px;")
         hint_color = theme.text if theme.key == "high_contrast" else ("#C5C2D7" if theme.key == "dark" else "#615B72")
         self.lbl_scan_hint.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
+        self.lbl_engine_summary.setStyleSheet(f"color:{theme.text}; font-size:12px; font-weight:600; background:transparent; border:none;")
+        self.lbl_engine_data.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
+        self.btn_engine_settings.setStyleSheet(main_control_style)
         if self.settings_window is not None:
             self.settings_window.update_theme(theme.key)
             self.settings_window.sync_from_controller()
         self.region_frame.set_theme_mode(theme.key)
+
+    def _local_status_is_active(self, *, vision):
+        worker = getattr(self, "worker", None)
+        if worker is None:
+            return True
+        return (
+            bool(getattr(worker, "use_gemma_translation", False))
+            and getattr(worker, "gemma_model", "") in LOCAL_MODEL_IDS
+            and tuple(getattr(self, "provider_chain", ()) or ())[:1] != ("openai",)
+            and bool(getattr(self, "local_multimodal_enabled", False)) == vision
+        )
 
     def on_local_model_status(self, state, detail=""):
         state = str(state or "failed")
@@ -5526,6 +5661,8 @@ class Controller(QWidget):
         self.local_model_state = state
         self.local_model_detail = detail
         self._refresh_translation_provider_health()
+        if not self._local_status_is_active(vision=False):
+            return
         theme = resolve_theme(self.theme_mode)
         language = self.get_ui_language()
 
@@ -5537,7 +5674,7 @@ class Controller(QWidget):
                 "ja": "Local Gemma3 を読み込み中",
             }.get(language, "Local Gemma3 載入中")
             self.charge_bar.set_indeterminate(True, label)
-            self.lbl_status.setText({
+            self._set_status_message({
                 "en": "Loading the bundled model and initializing the GPU...",
                 "ja": "組み込みモデルを読み込み、GPU を初期化しています...",
             }.get(language, "正在讀取內嵌模型並初始化 GPU..."))
@@ -5549,7 +5686,7 @@ class Controller(QWidget):
                 "en": "Local Gemma3 is ready",
                 "ja": "Local Gemma3 の準備ができました",
             }.get(language, "Local Gemma3 已就緒"))
-            self.lbl_status.setText({
+            self._set_status_message({
                 "en": "Bundled Local Gemma3 is ready",
                 "ja": "組み込み Local Gemma3 の準備ができました",
             }.get(language, "內嵌 Local Gemma3 已就緒"))
@@ -5559,13 +5696,11 @@ class Controller(QWidget):
         self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
         if language == "ja":
             failed = "Local Gemma3 の読み込みに失敗しました"
-            self.lbl_status.setText(f"組み込みモデルの読み込みに失敗しました：{detail}" if detail else "組み込みモデルの読み込みに失敗しました")
         elif language == "en":
             failed = "Local Gemma3 failed to load"
-            self.lbl_status.setText(f"Bundled model failed to load: {detail}" if detail else "Bundled model failed to load")
         else:
             failed = "Local Gemma3 載入失敗"
-            self.lbl_status.setText(f"內嵌模型載入失敗：{detail}" if detail else "內嵌模型載入失敗")
+        self._set_status_message(local_model_failure_message(detail, language))
         self.charge_bar.set_progress(0, failed)
 
     def on_local_vision_status(self, state, detail=""):
@@ -5574,6 +5709,8 @@ class Controller(QWidget):
         self.local_vision_state = state
         self.local_vision_detail = detail
         self._refresh_translation_provider_health()
+        if not self._local_status_is_active(vision=True):
+            return
         theme = resolve_theme(self.theme_mode)
         lang = self.get_ui_language()
         english = lang == "en"
@@ -5613,7 +5750,7 @@ class Controller(QWidget):
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(progress, f"{label} {progress}%")
             suffix = "..." if progress < 100 else ""
-            self.lbl_status.setText(f"{label}{suffix} ({progress}%)" if progress < 100 else label)
+            self._set_status_message(f"{label}{suffix} ({progress}%)" if progress < 100 else label)
             return
 
         if state == "starting":
@@ -5621,7 +5758,7 @@ class Controller(QWidget):
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             label = localized("Loading Gemma Vision", "Gemma Vision 載入中", "Gemma Vision を読み込み中")
             self.charge_bar.set_indeterminate(True, label)
-            self.lbl_status.setText(
+            self._set_status_message(
                 localized("Preparing the embedded multimodal engine...", "正在準備內嵌多模態引擎...", "組み込みマルチモーダルエンジンを準備中...")
             )
             return
@@ -5629,29 +5766,32 @@ class Controller(QWidget):
             colors = build_charge_bar_colors(theme, "normal")
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(100, localized("Gemma Vision ready", "Gemma Vision 已就緒", "Gemma Vision の準備ができました"))
-            self.lbl_status.setText(
+            self._set_status_message(
                 localized("Embedded Gemma Vision is ready", "內嵌 Gemma Vision 已就緒", "組み込み Gemma Vision の準備ができました")
             )
             return
 
-        colors = build_charge_bar_colors(theme, "danger")
+        colors = build_charge_bar_colors(theme, "off" if state == "stopped" else "danger")
         self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
 
         if state == "missing":
-            bar_text = localized("Vision model missing", "缺少 Vision 模型", "Vision モデルが見つかりません")
-            status_text = localized("Embedded multimodal model files were not found", "找不到內嵌多模態模型檔案", "組み込みマルチモーダルモデルのファイルが見つかりません")
+            failure_kind = "runtime_missing" if "server" in detail.lower() or ".exe" in detail.lower() else "model_missing"
+            if failure_kind == "runtime_missing":
+                bar_text = localized("Vision runtime missing", "缺少 Vision 執行元件", "Vision ランタイムが見つかりません")
+                status_text = localized("Embedded multimodal runtime files were not found", "找不到內嵌多模態執行元件", "組み込みマルチモーダルランタイムのファイルが見つかりません")
+            else:
+                bar_text = localized("Vision model missing", "缺少 Vision 模型", "Vision モデルが見つかりません")
+                status_text = localized("Embedded multimodal model files were not found", "找不到內嵌多模態模型檔案", "組み込みマルチモーダルモデルのファイルが見つかりません")
+            status_text += " — " + local_model_failure_message(failure_kind, lang)
         elif state == "stopped":
             bar_text = localized("Vision stopped", "Vision 已停止", "Vision を停止しました")
             status_text = localized("Embedded multimodal server stopped", "內嵌多模態伺服器已停止", "組み込みマルチモーダルサーバーが停止しました")
         else:
             bar_text = localized("Gemma Vision failed", "Gemma Vision 啟動失敗", "Gemma Vision の起動に失敗しました")
-            status_text = localized("Embedded multimodal startup failed", "內嵌多模態啟動失敗", "組み込みマルチモーダルの起動に失敗しました")
-
-        if detail:
-            status_text += (f": {detail}" if english else f"：{detail}")
+            status_text = local_model_failure_message(detail, lang)
 
         self.charge_bar.set_progress(0, bar_text)
-        self.lbl_status.setText(status_text)
+        self._set_status_message(status_text)
 
     def close_app(self):
         if getattr(self, "_close_app_started", False) or getattr(self, "_close_app_finished", False):

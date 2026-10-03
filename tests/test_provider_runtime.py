@@ -94,6 +94,27 @@ def test_retry_after_reports_credential_backoff_instead_of_zero():
     assert pool.retry_after("google", "gemini-test", key_id="key-a") == pytest.approx(3)
 
 
+@pytest.mark.parametrize("quota_limit", [2, 3])
+def test_retry_after_is_zero_when_rolling_quota_still_has_capacity(quota_limit):
+    clock = ManualClock()
+    pool = _pool(clock, quota_limit=quota_limit, quota_window_seconds=10)
+    lease = pool.acquire("google", "gemini-test", key_id="key-a")
+    lease.release(outcome="success")
+    clock.advance(9.9)
+
+    assert pool.retry_after("google", "gemini-test", key_id="key-a") == 0.0
+    next_lease = pool.acquire("google", "gemini-test", key_id="key-a", wait=False)
+    next_lease.release(outcome="success")
+
+
+def test_active_under_quota_credential_has_no_deterministic_retry_time():
+    clock = ManualClock()
+    pool = _pool(clock, quota_limit=3, quota_window_seconds=10)
+    lease = pool.acquire("google", "gemini-test", key_id="key-a")
+    assert pool.retry_after("google", "gemini-test", key_id="key-a") is None
+    lease.release(outcome="success")
+
+
 def test_unrecognized_non_integer_status_is_provider_error_and_timeout_stays_timeout():
     clock = ManualClock()
     pool = _pool(clock)

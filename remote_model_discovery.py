@@ -147,6 +147,8 @@ def parse_models_page(
     *,
     model_catalog: Sequence[ModelSpec] | None = None,
 ) -> tuple[list[RemoteModelCapability], str | None]:
+    if not isinstance(payload, Mapping):
+        raise RemoteModelDiscoveryError("invalid_models_payload")
     raw_models = payload.get("models")
     if not isinstance(raw_models, list):
         raise RemoteModelDiscoveryError("invalid_models_payload")

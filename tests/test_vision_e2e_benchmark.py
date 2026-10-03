@@ -120,6 +120,41 @@ def test_vision_only_quality_uses_translation_basis_without_ocr_source():
     assert all(record["ocr_char_similarity"] is None for record in candidate_records)
 
 
+def test_paired_quality_uses_common_basis_when_one_side_lacks_source():
+    cases = [
+        _case("a"),
+        _case("b", family="family-b", image_sha="b" * 64),
+    ]
+    baseline = _run(_condition("base"), cases)
+    candidate = _run(_condition("candidate", route="route-b"), cases)
+    for record in baseline["records"]:
+        if record["case_id"] == "a":
+            record["detected_source"] = "錯誤原文"
+    for record in candidate["records"]:
+        if record["case_id"] == "a":
+            record["detected_source"] = ""
+            record["source_available"] = False
+
+    report = evaluator.evaluate_paired(_manifest(*cases), baseline, candidate)
+    records_by_case_condition = {
+        (record["case_id"], record["condition"]): record
+        for record in report["records"]
+    }
+
+    for condition in ("baseline", "candidate"):
+        record = records_by_case_condition[("a", condition)]
+        assert record["quality_basis"] == "translation_only"
+        assert record["quality_score"] == pytest.approx(1.0)
+    assert records_by_case_condition[("a", "baseline")]["source_available"] is True
+    assert records_by_case_condition[("a", "baseline")]["ocr_char_similarity"] == pytest.approx(0.5)
+    assert records_by_case_condition[("a", "candidate")]["source_available"] is False
+
+    for condition in ("baseline", "candidate"):
+        record = records_by_case_condition[("b", condition)]
+        assert record["quality_basis"] == "source+translation"
+        assert record["source_available"] is True
+
+
 def test_manifest_rejects_source_family_and_image_hash_split_leakage():
     first, second = _case("a", split="train"), _case("b", split="test")
     second["source_group"] = "other-group"

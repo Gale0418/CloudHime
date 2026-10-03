@@ -53,20 +53,19 @@ def test_import_succeeds_when_file_handler_is_unavailable(monkeypatch):
     assert any(isinstance(handler, logging.StreamHandler) for handler in module.logger.handlers)
 
 
-def test_log_ai_debug_writes_only_to_appdata(monkeypatch, tmp_path):
+def test_log_ai_debug_uses_existing_logger_without_direct_file_write(monkeypatch, tmp_path):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setattr(logging, "FileHandler", DummyFileHandler)
     module = import_cloudhime_logging()
 
-    with patch.object(module.os, "makedirs") as mock_makedirs, patch("builtins.open", new_callable=mock_open) as mock_file:
+    with patch("builtins.open", new_callable=mock_open) as mock_file, patch.object(
+        module.logger, "debug"
+    ) as mock_debug:
         test_msg = "test_ai_debug_msg_123"
         module.log_ai_debug(test_msg)
 
-    mock_file.assert_called_once()
-    log_path = mock_file.call_args.args[0]
-    assert log_path == os.path.join(str(tmp_path), "CloudHime", "cloudhime_ai_debug.log")
-    assert test_msg in mock_file().write.call_args.args[0]
-    mock_makedirs.assert_called_once_with(os.path.dirname(log_path), exist_ok=True)
+    mock_file.assert_not_called()
+    mock_debug.assert_called_once_with(f"[AI-DEBUG] {test_msg}")
 
 def test_log_translation_debug_delegates_to_ai_debug(monkeypatch):
     monkeypatch.setattr(logging, "FileHandler", DummyFileHandler)

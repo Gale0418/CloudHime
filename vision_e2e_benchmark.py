@@ -448,9 +448,22 @@ def _validate_run(
     return condition, records
 
 
+def _record_source_available(record: Mapping[str, Any]) -> bool:
+    source = record.get("detected_source")
+    source_ok = isinstance(source, str) and bool(source.strip())
+    source_available = record.get("source_available", source_ok)
+    if not isinstance(source_available, bool):
+        raise ValueError("record source_available must be boolean")
+    if source_available and not source_ok:
+        raise ValueError("record source_available requires detected_source")
+    return source_available
+
+
 def _score_records(
     cases: Sequence[Mapping[str, Any]],
     records: Sequence[Mapping[str, Any]],
+    *,
+    translation_only_cases: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     by_case = {case["id"]: case for case in cases}
     scored: list[dict[str, Any]] = []
@@ -460,11 +473,7 @@ def _score_records(
         output = record.get("translation")
         source_ok = isinstance(source, str) and bool(source.strip())
         output_ok = isinstance(output, str) and bool(output.strip())
-        source_available = record.get("source_available", source_ok)
-        if not isinstance(source_available, bool):
-            raise ValueError("record source_available must be boolean")
-        if source_available and not source_ok:
-            raise ValueError("record source_available requires detected_source")
+        source_available = _record_source_available(record)
         ocr_score = (
             translation.character_similarity(source, case["reference_source"])
             if source_ok
@@ -493,7 +502,10 @@ def _score_records(
             ),
         ]
         quality_basis = "translation_only"
-        if source_available:
+        if source_available and (
+            translation_only_cases is None
+            or case["id"] not in translation_only_cases
+        ):
             quality_basis = "source+translation"
             quality_components.append(
                 (
@@ -625,13 +637,20 @@ def evaluate_paired(
             "baseline and candidate condition fingerprints must match"
         )
 
+    translation_only_cases = {
+        record["case_id"]
+        for record in [*base_raw, *candidate_raw]
+        if not _record_source_available(record)
+    }
     base = _score_records(
         cases,
         [{**record, "condition": "baseline"} for record in base_raw],
+        translation_only_cases=translation_only_cases,
     )
     variant = _score_records(
         cases,
         [{**record, "condition": "candidate"} for record in candidate_raw],
+        translation_only_cases=translation_only_cases,
     )
     base_summary = _summary(base)
     variant_summary = _summary(variant)

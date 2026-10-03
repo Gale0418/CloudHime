@@ -7,6 +7,7 @@ from unittest.mock import Mock
 from CloudHime import Controller, OverlayWindow
 from cloudhime_ui import StatusChargeBar, _resource_path
 from PySide6.QtCore import QTimer
+from themes import build_charge_bar_colors, resolve_theme
 
 
 def test_controller_scan_and_hotkey_labels_follow_ui_language_before_hotkey_setup():
@@ -110,8 +111,10 @@ def test_controller_main_controls_match_available_actions(qtbot, monkeypatch):
     window.on_random_scan_settings_changed(23, 20)
     assert window.cmb_scan_interval.currentData() == 23
     window.set_ui_language("ja", persist=False)
-    assert window.btn_30.text() == "○ 自動スキャン"
+    assert window.btn_30.text() == "○ 自動スキャンを再開"
     assert window.cmb_scan_interval.currentText() == "約 23 秒"
+    window.btn_stop.click()
+    assert window.btn_30.text() == "○ 自動スキャン"
 
     window.close_app()
     qtbot.waitUntil(lambda: not window.isVisible(), timeout=2000)
@@ -496,12 +499,35 @@ def test_controller_local_vision_states_update_ui(qtbot):
     Controller.on_local_vision_status(controller, "missing", "path/to/model")
     assert controller.charge_bar.progress == 0
     assert "找不到內嵌多模態模型檔案" in messages[-1]
-    assert "path/to/model" in messages[-1]
+    assert "path/to/model" not in messages[-1]
+    assert "下載" in messages[-1]
 
     Controller.on_local_vision_status(controller, "stopped", "")
     assert controller.charge_bar.progress == 0
     assert messages[-1] == "內嵌多模態伺服器已停止"
+    colors = build_charge_bar_colors(resolve_theme("light"), "off")
+    assert controller.charge_bar.fill_color == controller.charge_bar._parse_color(colors["fill_color"])
     assert len(health_refreshes) == 5
+
+
+@pytest.mark.parametrize("language, label, heading", [
+    ("zh-TW", "缺少 Vision 執行元件", "找不到內嵌多模態執行元件"),
+    ("en", "Vision runtime missing", "Embedded multimodal runtime files were not found"),
+    ("ja", "Vision ランタイムが見つかりません", "組み込みマルチモーダルランタイムのファイルが見つかりません"),
+])
+def test_missing_vision_runtime_does_not_ask_for_model_files(qtbot, language, label, heading):
+    controller = Controller.__new__(Controller)
+    controller.ui_language = language
+    controller.theme_mode = "light"
+    controller.charge_bar = StatusChargeBar()
+    qtbot.addWidget(controller.charge_bar)
+    messages = []
+    controller.lbl_status = SimpleNamespace(setText=messages.append)
+    controller._refresh_translation_provider_health = lambda: None
+    Controller.on_local_vision_status(controller, "missing", "PRIVATE_PATH/runtime/llama-server.exe")
+    assert controller.charge_bar.label == label
+    assert messages[-1].startswith(heading)
+    assert "PRIVATE_PATH" not in messages[-1]
 
 
 def test_controller_local_vision_download_status_is_localized(qtbot):
@@ -928,6 +954,8 @@ def test_stop_scan_invalidates_worker_generation_and_clears_overlay():
     controller.worker.set_scan_generation.assert_called_once_with(9)
     assert controller.scan_in_progress is False
     assert controller.current_auto_interval == 0
+    assert controller.last_scan_results == []
+    assert controller._paused_auto_interval == 0
     controller.overlay.clear_all.assert_called_once()
 
 

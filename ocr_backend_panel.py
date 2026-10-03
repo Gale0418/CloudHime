@@ -128,7 +128,7 @@ class OcrBackendSettingsPanel(QFrame):
         self.sync_from_controller()
 
         state = self._cache_backend_state(backend_name)
-        if not state.available:
+        if state is None or not state.available:
             self._start_backend_install(backend_name)
 
     def _start_backend_install(self, backend_name):
@@ -153,16 +153,19 @@ class OcrBackendSettingsPanel(QFrame):
         self._busy_backend = None
         state = self._cache_backend_state(backend_name)
         if state is None:
-            state = detect_backend_state(backend_name)
-        if success and state.available:
+            try:
+                state = detect_backend_state(backend_name)
+            except Exception:
+                state = None
+        if success and state is not None and state.available:
             self._set_controller_backend_enabled(backend_name, True)
             self.sync_from_controller()
             return
         self._set_controller_backend_enabled(backend_name, False)
         self.sync_from_controller()
         title = BACKEND_SPECS[backend_name].label if backend_name in BACKEND_SPECS else "OCR"
-        body = message or state.detail or "Install failed."
-        if success and not state.available:
+        body = message or (state.detail if state is not None else "") or "Install failed."
+        if success and state is not None and not state.available:
             QMessageBox.information(self, title, body)
         else:
             QMessageBox.warning(self, title, body)

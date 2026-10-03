@@ -86,6 +86,17 @@ def test_parse_models_page_filters_to_generate_content_and_uses_static_image_pol
     assert records[1].supports_image_input is False
 
 
+def test_invalid_non_mapping_models_payload_uses_unverified_fallback():
+    result = discover_remote_models(
+        "test-key",
+        urlopen=lambda _request, timeout: _Response(["not", "a", "mapping"]),
+    )
+
+    assert result.status == DISCOVERY_STATUS_UNVERIFIED
+    assert result.verified is False
+    assert result.error_code == "discovery_failed"
+
+
 def test_fetch_remote_model_records_follows_pages_without_leaking_key():
     requests = []
     pages = iter(

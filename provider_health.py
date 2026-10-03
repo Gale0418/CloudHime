@@ -54,7 +54,14 @@ def _failure_guidance(detail: str, language: str) -> str:
             "模型啟動逾時。請關閉佔用 GPU 的程式後重試；Google 翻譯仍可使用。",
             "モデルの起動がタイムアウトしました。GPU を多く使用するアプリを終了して再試行してください。Google 翻訳は引き続き利用できます。",
         )
-    if any(token in code for token in ("asset", "hash", "sha", "model_missing", "projector")):
+    if "model_missing" in code:
+        return _pick(
+            language,
+            "The local model has not been downloaded. Connect to the internet and select the local engine again to download and verify it.",
+            "尚未下載本地模型。請連上網路後重新選擇本機引擎，下載並驗證模型。",
+            "ローカルモデルが未ダウンロードです。インターネットに接続し、ローカルエンジンを選び直してモデルをダウンロード・検証してください。",
+        )
+    if any(token in code for token in ("asset", "hash", "sha", "projector")):
         return _pick(
             language,
             "Model verification failed. Restart the download; CloudHime will reject damaged files.",
@@ -81,6 +88,11 @@ def _failure_guidance(detail: str, language: str) -> str:
         "本地 AI 無法啟動。請重新啟動 CloudHime；Google 翻譯仍可使用。",
         "ローカル AI を起動できませんでした。CloudHime を再起動してください。Google 翻訳は引き続き利用できます。",
     )
+
+
+def local_model_failure_message(detail: str, ui_language: str) -> str:
+    """Return recovery guidance without putting runtime diagnostics in the UI."""
+    return _failure_guidance(detail, _language(ui_language))
 
 
 def _progress_label(detail: str, language: str, mode: str = "") -> str:

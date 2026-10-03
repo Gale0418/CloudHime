@@ -1,6 +1,13 @@
 import pytest
 
-from provider_health import assess_provider_health
+from provider_health import assess_provider_health, local_model_failure_message
+
+
+@pytest.mark.parametrize("language, expected", [("en", "has not been downloaded"), ("zh-TW", "尚未下載"), ("ja", "未ダウンロード")])
+def test_missing_model_is_download_guidance_instead_of_verification_failure(language, expected):
+    message = local_model_failure_message("model_missing", language)
+    assert expected in message
+    assert message != local_model_failure_message("asset_hash_failed", language)
 
 
 def _health(**overrides):

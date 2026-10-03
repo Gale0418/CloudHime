@@ -21,7 +21,18 @@ def chrome_icon(kind, color):
     painter.setRenderHint(QPainter.Antialiasing)
     if str(color).startswith("rgba("):
         channels = str(color)[5:-1].split(",")
-        ink = QColor(*(int(float(channel.strip())) for channel in channels))
+        if len(channels) == 4:
+            rgb = tuple(int(float(channel.strip())) for channel in channels[:3])
+            alpha_text = channels[3].strip()
+            alpha_value = float(alpha_text)
+            # Qt's rgba() accepts integer alpha in the 0–255 range. Scale only
+            # decimal CSS-style opacity values, preserving e.g. rgba(..., 1).
+            is_fractional = any(marker in alpha_text.lower() for marker in (".", "e"))
+            if is_fractional and 0.0 <= alpha_value <= 1.0:
+                alpha_value *= 255
+            ink = QColor(*rgb, int(round(alpha_value)))
+        else:
+            ink = QColor(*(int(float(channel.strip())) for channel in channels))
     else:
         ink = QColor(color)
     painter.setPen(QPen(ink, 2.5))
