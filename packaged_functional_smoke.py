@@ -11,6 +11,7 @@ from typing import Any, Callable, Mapping
 
 PACKAGED_FUNCTIONAL_SMOKE_ENV = "CLOUDHIME_PACKAGED_FUNCTIONAL_SMOKE"
 PACKAGED_KNOWLEDGE_SMOKE_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_SMOKE"
+PACKAGED_WINDOWS_OCR_SMOKE_ENV = "CLOUDHIME_PACKAGED_WINDOWS_OCR_SMOKE"
 PACKAGED_SMOKE_RESULT_PATH_ENV = "CLOUDHIME_PACKAGED_SMOKE_RESULT_PATH"
 PACKAGED_KNOWLEDGE_TITLE_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_TITLE"
 PACKAGED_KNOWLEDGE_MODEL_ENV = "CLOUDHIME_PACKAGED_KNOWLEDGE_MODEL"
@@ -87,6 +88,29 @@ def _write_result(path: str, payload: Mapping[str, Any]) -> None:
     )
 
 
+def _run_windows_ocr_smoke(environment: Mapping[str, str]) -> dict[str, Any]:
+    """Run native OCR in the frozen app, retaining counts instead of recognized text."""
+    import cv2
+    from ocr_backends import WindowsOCRBackend
+
+    image = cv2.imread(_env_text(environment, PACKAGED_SMOKE_IMAGE_PATH_ENV))
+    if image is None:
+        raise ValueError("invalid_windows_ocr_smoke_image")
+    backend = WindowsOCRBackend()
+    if not backend.available():
+        raise ValueError("windows_ocr_unavailable")
+    result = backend.recognize(image)
+    if result.error or not result.lines:
+        raise ValueError("windows_ocr_smoke_failed")
+    return {
+        "schema_version": 1,
+        "status": "passed",
+        "smoke_kind": "windows_ocr",
+        "image_count": 1,
+        "line_count": len(result.lines),
+    }
+
+
 def _run_knowledge_smoke(environment: Mapping[str, str]) -> dict[str, Any]:
     """Exercise frozen Research dependencies while persisting only redacted counts."""
     from knowledge_extraction import parse_extraction_response, validate_extraction_payload
@@ -146,15 +170,19 @@ def run_packaged_functional_smoke(
     environment = os.environ if environ is None else environ
     vision_enabled = str(environment.get(PACKAGED_FUNCTIONAL_SMOKE_ENV, "")).strip() == "1"
     knowledge_enabled = str(environment.get(PACKAGED_KNOWLEDGE_SMOKE_ENV, "")).strip() == "1"
-    if not vision_enabled and not knowledge_enabled:
+    windows_ocr_enabled = str(environment.get(PACKAGED_WINDOWS_OCR_SMOKE_ENV, "")).strip() == "1"
+    if not vision_enabled and not knowledge_enabled and not windows_ocr_enabled:
         return None
 
     result_path = str(environment.get(PACKAGED_SMOKE_RESULT_PATH_ENV, "") or "").strip()
     try:
         if not result_path:
             raise ValueError("missing_packaged_smoke_result_path")
-        if vision_enabled and knowledge_enabled:
+        if sum((vision_enabled, knowledge_enabled, windows_ocr_enabled)) > 1:
             raise ValueError("conflicting_packaged_smoke_modes")
+        if windows_ocr_enabled:
+            _write_result(result_path, _run_windows_ocr_smoke(environment))
+            return 0
         if knowledge_enabled:
             _write_result(result_path, _run_knowledge_smoke(environment))
             return 0

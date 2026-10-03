@@ -111,6 +111,31 @@ def test_scan_requests_are_not_queued_while_busy(controller, monkeypatch, qtbot)
     assert dispatch.call_count == 1
 
 
+def test_translate_button_dispatches_worker_and_displays_result(controller, monkeypatch, qtbot):
+    calls = []
+
+    def scan(worker):
+        calls.append(worker._active_scan_request.generation)
+        worker._emit_scan_finished([("測試翻譯", 100, 100, 180, 40)])
+
+    monkeypatch.setattr("cloudhime_workers.OCRWorker._run_scan_once", scan)
+    controller.select_translation_provider("google")
+    qtbot.mouseClick(controller.btn_now, Qt.LeftButton)
+    qtbot.waitUntil(lambda: bool(calls), timeout=2000)
+    qtbot.waitUntil(lambda: bool(controller.overlay.bubbles), timeout=2000)
+    assert not controller.scan_in_progress
+    assert controller.last_scan_results[0][0] == "測試翻譯"
+
+
+def test_taskbar_icon_uses_product_artwork(controller):
+    image = controller.windowIcon().pixmap(64, 64).toImage()
+    assert not image.isNull()
+    assert any(
+        image.pixelColor(x, y).blue() > image.pixelColor(x, y).red() + 40
+        for y in range(image.height()) for x in range(image.width())
+    )
+
+
 @pytest.mark.parametrize("provider", ["luna", "online_gemma"])
 @pytest.mark.parametrize("exit_path", ["button", "toggle", "native"])
 def test_abandoned_key_setup_keeps_previous_route(controller, provider, exit_path):

@@ -58,3 +58,32 @@ Windows Git 僅兩個實作／測試檔有內容差異；WSL Git 未繼承 Windo
 CH-T117 保留 Review。正式 critic_full 尚未 dispatch，缺 total／per-seat／tool／wall-clock 明確預算授權；CodeRabbit 與本輪驗收不替代正式評議。未完成的外觀、完整原生流程、新 MSIX／Store、乾淨機與 live API 驗證均不宣稱通過。
 
 CodeRabbit 原始 NDJSON SHA-256：`95efc93ce9049257b067077851948c7a9e4c3895f491603eeb55e3effc19b17e`；原始檔保留在忽略的驗收資料夾。
+
+## 21:30 原生驗收複查
+
+在來源 HEAD `933adbb` 下重新驗收同一份 EXE，SHA-256 仍為 `2cfd06b6029eb62c010f10250339ae11a44d435f7ccf3ac32486463c751d975d`。本次使用全新隔離 APPDATA／LOCALAPPDATA，啟動資料與日誌存於 `output/acceptance-followup-20261002/`。
+
+- EXE 建立 CloudHime 主窗，Windows OCR backend 與快捷鍵註冊成功；accessibility 可讀主窗的設定、全螢幕／區域、立即翻譯、自動掃描、間隔與停止控制項。
+- Computer Use 截圖先回報 `FrameArrived timed out: timed out waiting on channel`；依工具流程重新列出並取得唯一目標視窗後重試，仍回報 `window capture timed out: timed out waiting on channel`。停止重試截圖，不使用過期座標。
+- `Ctrl+,` 後 accessibility 為 null；`Esc` 後主窗控制項恢復。無法確認設定內容、版面或修改保存；Tab 後也未得到可辨識的控制項焦點。
+- `Alt+F4` 後本次 PID 57576 已退出，日誌記錄解除快捷鍵；該套件路徑下沒有存活的 llama-server 程序。
+
+本次沒有執行翻譯、雲端請求、模型下載或重跑既有回歸測試，沒有修改產品程式。外觀、滑鼠框選／取消、立即翻譯、自動掃描／停止與設定修改保存的完整原生驗收仍未通過；工具故障本身不算產品缺陷，也不構成通過證據。
+
+## 2026-10-03 工作列圖示與掃描卡住修復
+
+主人確認預覽介面看起來正常，並回報 Windows 工作列的翻譯姬圖示消失、Translate Now 進入掃描中但沒有字幕。此確認對應 10/2 預覽套件，不直接套用到 Store 套件。
+
+Python 3.10 的真實 Windows OCR 呼叫重現卡死：WinRT async completion 載入 `winrt.windows.foundation` 時拋出 ModuleNotFoundError，await 未完成。原環境與舊 frozen archive 均缺少 Foundation／Foundation.Collections。補齊兩個 3.2.1 元件後，同一份合成公開英文 fixture 在來源環境辨識到兩行，約 0.23 秒。依賴、hash-locked 生產／CI 清單、PyInstaller hidden imports 與 OCR available 預檢一併補齊；缺少元件時改為不可用，避免宣告 ready 後卡死。
+
+使用既有彩色 `assets/cloudhime_logo.png` 設定 QApplication、Controller 與 EXE 圖示，保留缺圖 fallback。先前 EXE 存在圖示資源，但未指定產品圖示；不能把資源存在誤報為正確工作列圖示。
+
+公開 fixture 的真實 Google route 回傳 TooManyRequests，保留原文而非完成翻譯。逐項翻譯失敗現在顯示「未完成」或 Google 限流提示，失敗項不寫入 translation／preferred-text／HUD cache；既有 exact-image cache 的完整 provider guard 保留。Google 外部限流未解除，不宣稱 live 翻譯成功。
+
+驗證：產品／OCR thread safety／依賴／packaging 集合 88 passed；functional smoke 12 passed；worker fallback／三語限流 4 passed；相鄰正常翻譯與 provider fallback 2 passed，共 106 個不同案例。pytest cache 有既有 WinError 5 警告；另一次額外 worker 測試命令因打包期間長時間無輸出而中止，未列入通過數。diff-check 通過。本輪未執行新的 CodeRabbit 或 GitHub CI，未更新 Store／MSIX；CH-T117 保留 Review。
+
+新增 opt-in `CLOUDHIME_PACKAGED_WINDOWS_OCR_SMOKE`，只保存 status／image_count／line_count，不保存 OCR 原文。新 EXE 的真實 Windows OCR smoke 通過：兩行、含啟動約 3.84 秒、exit 0；frozen import smoke exit 0。`verify_release_dist.ps1 -ModelBundle light` 回報 ready，368 檔／1,554,558,363 bytes／0 模型；新 hash-locked provenance 為 40 components。EXE 的 PE 圖示資源與舊預設圖示不同，產品圖示群組存在；人工工作列外觀仍待確認。
+
+新版 `output/ocr-icon-20261003/dist/CloudHime/CloudHime.exe`，SHA-256 `7834f13d7f4d2ee82377dc0569a775d333b0cc3e843b3afaa454ac99ec28b4b1`。來源為 HEAD `933adbb` 加本輪未提交修復，建置前後八個產品來源／圖示 hash 一致，詳見 `output/ocr-icon-20261003/source-sha256.json`。首次衍生 spec 放在 build 子目錄造成 entry 路徑解析錯誤；修正 spec 位置後重新建置成功，未覆寫舊預覽包。原始診斷、測試、build、frozen OCR／import／dist 與圖示結果位於 `output/scan-diagnosis-20261003/`。不宣稱完整原生字幕流程、Google live 翻譯、Store 更新或乾淨機驗收通過。
+
+主人後續回覆「感覺 OK 都沒問題」，記錄為修正版一般使用的人工確認；未據此宣稱每個原生操作或 Store 套件均已完成嚴格驗收。依主人要求由 imagegen 生成透明雲姬 logo，保存為 assets/cloudhime_logo_v2.png；未改動已開啟的預覽 EXE。

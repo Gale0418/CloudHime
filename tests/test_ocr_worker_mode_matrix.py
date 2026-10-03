@@ -1505,7 +1505,38 @@ def test_screenshot_request_cancellation_does_not_text_fallback(qtbot):
     finally:
         worker.cleanup()
 
-def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
+class TooManyRequests(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("fallback_error", "target_lang", "status_key"),
+    [
+        (
+            RuntimeError("private fallback failure"),
+            "zh-TW",
+            "worker.status.translation_incomplete",
+        ),
+        (
+            TooManyRequests("rate limited"),
+            "zh-TW",
+            "worker.status.translation_rate_limited",
+        ),
+        (
+            TooManyRequests("rate limited"),
+            "en",
+            "worker.status.translation_rate_limited",
+        ),
+        (
+            TooManyRequests("rate limited"),
+            "ja",
+            "worker.status.translation_rate_limited",
+        ),
+    ],
+)
+def test_scan_trace_marks_partial_source_fallback(
+    monkeypatch, qtbot, fallback_error, target_lang, status_key
+):
     image = np.zeros((40, 80, 3), dtype=np.uint8)
     worker = OCRWorker()
     _configure_region_cache_worker(worker, image)
@@ -1523,10 +1554,15 @@ def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
         return_value=([None], [None])
     )
     worker.translate_text_preferred_with_provider = Mock(
-        side_effect=RuntimeError("private fallback failure")
+        side_effect=fallback_error
     )
     worker.get_best_known_translation = Mock(return_value=("", ""))
+    worker.translation_target_lang = target_lang
     warning_messages = []
+    status_messages = []
+    finished = []
+    worker.status_msg.connect(status_messages.append)
+    worker.finished.connect(finished.append)
     monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(workers_module.logger, "warning", lambda *args: warning_messages.append(args))
 
@@ -1541,11 +1577,49 @@ def test_scan_trace_marks_partial_source_fallback(monkeypatch, qtbot):
         assert event.provider == "google"
         assert event.fallback_reason == "translation_source_fallback"
         worker.translate_text_preferred_with_provider.assert_called_once_with("Two")
+        assert finished[0][1][0] == "Two"
+        assert status_messages[-1] == worker._scan_status_text(status_key)
+        assert status_messages[-1] != worker._scan_status_text(
+            "worker.status.translation_done"
+        )
+        failed_cache_key = (
+            worker.detect_source_language("Two"),
+            workers_module.normalize_ocr_text("Two"),
+        )
+        assert failed_cache_key not in worker.translation_cache
+        assert worker.get_preferred_text_entry("Two") is None
+        assert worker.get_hud_memory("Two") is None
         assert any(
             args[0] == "[Translation fallback] failed index=%d type=%s; retaining source"
-            and args[1:] == (1, "RuntimeError")
+            and args[1:] == (1, type(fallback_error).__name__)
             for args in warning_messages
         )
+    finally:
+        worker.cleanup()
+
+
+def test_preferred_ai_google_fallback_rate_limit_reports_actual_provider(monkeypatch, qtbot):
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, np.zeros((40, 80, 3), dtype=np.uint8))
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "local"
+    worker.translate_items_with_ai_and_providers = Mock(return_value=([None], [None]))
+    worker.translate_items_in_batches_with_providers = Mock(return_value=([None], [None]))
+    worker._get_persistent_translation_result = Mock(return_value=None)
+    worker._translate_text_gemma_result = Mock(side_effect=ValueError("primary unavailable"))
+    worker._translate_text_google_result = Mock(side_effect=TooManyRequests("rate limited"))
+    statuses, finished = [], []
+    worker.status_msg.connect(statuses.append)
+    worker.finished.connect(finished.append)
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+    try:
+        worker.run_scan_once()
+        worker._translate_text_gemma_result.assert_called_once_with("Hello")
+        worker._translate_text_google_result.assert_called_once_with("Hello")
+        assert statuses[-1] == worker._scan_status_text("worker.status.translation_rate_limited")
+        assert finished[0][0][0] == "Hello"
+        assert worker.get_preferred_text_entry("Hello") is None
+        assert worker.get_hud_memory("Hello") is None
     finally:
         worker.cleanup()
 

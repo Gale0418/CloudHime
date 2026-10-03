@@ -118,7 +118,7 @@ from translation_providers import (
     classify_region_vision_failure,
 )
 from translation_contracts import TranslationResult
-from translation_orchestrator import TranslationOrchestrator
+from translation_orchestrator import TranslationOrchestrationError, TranslationOrchestrator
 from openai_translation_provider import (
     DEFAULT_OPENAI_MODEL,
     DEFAULT_OPENAI_REASONING_EFFORT,
@@ -597,6 +597,24 @@ class OCRWorker(QObject):
 
     def _scan_status_text(self, key, **params):
         return localization.tr(key, getattr(self, "translation_target_lang", localization.DEFAULT_UI_LANGUAGE), **params)
+
+    @staticmethod
+    def _is_rate_limit_error(exc):
+        error_name = type(exc).__name__
+        if (
+            isinstance(exc, TranslationOrchestrationError)
+            and exc.code == "translation_fallback_failed"
+        ):
+            error_name = exc.fallback_exception
+        if str(error_name).casefold() in {"toomanyrequests", "ratelimiterror"}:
+            return True
+        response = getattr(exc, "response", None)
+        status_code = (
+            getattr(response, "status_code", None)
+            or getattr(exc, "status_code", None)
+            or getattr(exc, "code", None)
+        )
+        return str(status_code) == "429"
 
     def _emit_scan_status(self, message):
         if not self._active_scan_is_current():
@@ -6867,6 +6885,8 @@ class OCRWorker(QObject):
         current_provider = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
         final_results = []
         final_providers = []
+        source_fallback_indexes = set()
+        google_rate_limited = False
 
         if self._abort_stale_scan(ScanStage.OCR):
             return
@@ -7021,22 +7041,36 @@ class OCRWorker(QObject):
                         )
                         trans_text = source_text
                         provider = ""
+                        source_fallback_indexes.add(i)
+                        # The preferred-text route always falls back to Google.
+                        failing_provider = (
+                            "google"
+                            if isinstance(exc, TranslationOrchestrationError)
+                            and exc.code == "translation_fallback_failed"
+                            else current_provider
+                        )
+                        if (
+                            str(failing_provider or "").strip().casefold() == "google"
+                            and self._is_rate_limit_error(exc)
+                        ):
+                            google_rate_limited = True
 
                 if self._abort_stale_scan(ScanStage.TRANSLATION):
                     return
                 trans_text = trans_text.strip()
-                cache_key = (
-                    self.detect_source_language(source_text),
-                    normalize_ocr_text(source_text)
-                )
-                self.remember_translation(cache_key, trans_text)
-                self.remember_preferred_text(source_text, trans_text, provider or "")
-                self.remember_hud_observation(
-                    source_text,
-                    (item['x'], item['y'], item['w'], item['h']),
-                    trans_text,
-                    provider or "",
-                )
+                if i not in source_fallback_indexes:
+                    cache_key = (
+                        self.detect_source_language(source_text),
+                        normalize_ocr_text(source_text)
+                    )
+                    self.remember_translation(cache_key, trans_text)
+                    self.remember_preferred_text(source_text, trans_text, provider or "")
+                    self.remember_hud_observation(
+                        source_text,
+                        (item['x'], item['y'], item['w'], item['h']),
+                        trans_text,
+                        provider or "",
+                    )
                 final_results.append((trans_text, item['x'], item['y'], item['w'], item['h']))
                 final_providers.append(self._canonical_cache_provider(provider))
 
@@ -7091,7 +7125,14 @@ class OCRWorker(QObject):
                 item_count=len(final_results),
             )
             _log(f"⑩ 全部完成！共 {len(final_results)} 筆結果")
-            self._emit_scan_status(self._scan_status_text("worker.status.translation_done"))
+            status_key = (
+                "worker.status.translation_rate_limited"
+                if google_rate_limited
+                else "worker.status.translation_incomplete"
+                if source_fallback_indexes
+                else "worker.status.translation_done"
+            )
+            self._emit_scan_status(self._scan_status_text(status_key))
             self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
             self._emit_scan_finished(final_results)
 

@@ -166,6 +166,35 @@ def test_packaged_functional_smoke_is_noop_without_opt_in():
     assert packaged.run_packaged_functional_smoke(environ={}) is None
 
 
+def test_packaged_windows_ocr_smoke_preserves_counts_without_text(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    import cv2
+    import ocr_backends
+    import packaged_functional_smoke as packaged
+
+    class Backend:
+        def available(self):
+            return True
+
+        def recognize(self, image):
+            return SimpleNamespace(error="", lines=[SimpleNamespace(text="PRIVATE OCR TEXT")])
+
+    monkeypatch.setattr(cv2, "imread", lambda path: object())
+    monkeypatch.setattr(ocr_backends, "WindowsOCRBackend", Backend)
+    result_path = tmp_path / "ocr.json"
+    environment = {
+        packaged.PACKAGED_WINDOWS_OCR_SMOKE_ENV: "1",
+        packaged.PACKAGED_SMOKE_IMAGE_PATH_ENV: "fixture.png",
+        packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
+    }
+    assert packaged.run_packaged_functional_smoke(environ=environment) == 0
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["status"] == "passed"
+    assert result["line_count"] == 1
+    assert "PRIVATE OCR TEXT" not in result_path.read_text(encoding="utf-8")
+
+
 def test_packaged_knowledge_smoke_writes_only_redacted_counts(tmp_path, monkeypatch):
     import json
     import packaged_functional_smoke as packaged

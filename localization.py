@@ -116,6 +116,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "worker.status.segment_progress": "{icon} {prefix} {current}/{total}",
         "worker.status.translation_done": "✅ 翻譯完成",
         "worker.status.translation_failed": "這次翻譯未完成。請檢查引擎設定與連線後再試。",
+        "worker.status.translation_incomplete": "部分文字保留原文，翻譯未完成。請檢查翻譯引擎後重試。",
+        "worker.status.translation_rate_limited": "Google 翻譯目前受到流量限制，請稍後重試或切換翻譯引擎。",
         "worker.status.no_text": "沒找到可辨識的文字，試著框選清楚的文字區域。",
     },
     "en": {
@@ -213,6 +215,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "worker.status.segment_progress": "{icon} {prefix} {current}/{total}",
         "worker.status.translation_done": "✅ Translation complete",
         "worker.status.translation_failed": "Translation did not finish. Check your engine settings and connection, then try again.",
+        "worker.status.translation_incomplete": "Some text was kept in the original language because translation did not finish. Check the engine and try again.",
+        "worker.status.translation_rate_limited": "Google Translate is rate limited. Wait and try again, or switch translation engines.",
         "worker.status.no_text": "No readable text found. Try selecting an area with clearer text.",
     },
     "ja": {
@@ -310,6 +314,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "worker.status.segment_progress": "{icon} {prefix} {current}/{total}",
         "worker.status.translation_done": "✅ 翻訳が完了しました",
         "worker.status.translation_failed": "翻訳が完了しませんでした。エンジン設定と接続を確認して再試行してください。",
+        "worker.status.translation_incomplete": "一部のテキストは原文のままです。翻訳エンジンを確認して再試行してください。",
+        "worker.status.translation_rate_limited": "Google 翻訳は現在利用制限中です。時間をおいて再試行するか、別の翻訳エンジンに切り替えてください。",
         "worker.status.no_text": "認識できる文字がありません。鮮明な文字の範囲を選択してください。",
     },
 }

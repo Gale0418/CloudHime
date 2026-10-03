@@ -89,6 +89,10 @@ class WindowsOCRBackend(OCRBackend):
                 from winsdk.windows.graphics.imaging import BitmapDecoder  # type: ignore
                 from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter  # type: ignore
             except Exception:
+                # Async completion and OCR line collections load these lazily.
+                # Check them before advertising OCR as ready to avoid a hung await.
+                import winrt.windows.foundation  # type: ignore  # noqa: F401
+                import winrt.windows.foundation.collections  # type: ignore  # noqa: F401
                 from winrt.windows.media.ocr import OcrEngine  # type: ignore
                 from winrt.windows.globalization import Language  # type: ignore
                 from winrt.windows.graphics.imaging import BitmapDecoder  # type: ignore

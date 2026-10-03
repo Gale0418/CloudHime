@@ -86,6 +86,8 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 前往 [GitHub Releases](https://github.com/Gale0418/CloudHime/releases) 查看打包版本；截至 2026-10-02，公開版本標示為 Pre-release（預覽版）。若下載的是打包檔，解壓縮後執行其中的 `CloudHime.exe`；本機原始碼目錄下的 `dist/CloudHime/CloudHime.exe` 僅適用於已建置的版本。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
+MSIX 的本機開發自簽與 Microsoft Store 正式發行是兩條不同流程；請依[雙軌發行手冊](docs/release-two-track.md)操作。原始碼、預覽包或未簽名的 Store 上傳輸入，都不代表已完成 Store 發行。
+
 ### 從原始碼運行 (Source)
 1. 建議使用 Python 3.10（Windows CI 與鎖定依賴的已驗證版本）。其他版本尚未列入 CI；本機 Python 3.13 曾在單一程序混跑全部 Qt 測試時發生 PySide6 native crash，請勿將 3.10 的測試結果視為 3.13 相容性保證。
 2. 執行 `install.bat` 建立開發環境；本地 Gemma 模型與 projector 會由 CloudHime 在需要時下載、驗證並管理到使用者 AppData。

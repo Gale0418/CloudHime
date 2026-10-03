@@ -1203,3 +1203,9 @@
 - CH-E6 的準確度／效能補強繼續獨立進行，不因 CH-E9 收尾而宣稱完成；CH-E9 的前置關聯已移除，保留兩項工作各自的真實狀態。
 - 正式發行環境鎖定 Python 3.10／Windows x64；同一程序完整 pytest 在該環境為 1499 passed、3 skipped、1 deselected。先前本機 Python 3.13 的 PySide6 native access violation 不重現於 3.10，但不宣稱已修復 3.13 相容性；CI 分組隔離仍是正式 gate。
 - CH-E9 仍須經獨立完成審查、驗證與 Mission Center lifecycle，不能只修改 Markdown 狀態或把 Store／WACK／CH-E6 的進行中項目算作本 Epic 已完成。
+
+## 2026-10-03T08:32:50+08:00：CloudHime logo 定案
+
+- 主人決定採用純雲朵，來源 assets/cloudhime_logo_cloud.png；主圖示與 44／50／150px 套件圖示已更新，透明度保留。
+- 人物版不採用；日後人物髮型以主人提供的銀紫長髮、細碎瀏海參考圖為準。
+- 本次未重建 EXE／MSIX、未提交或發佈 Store；相關後續由 CH-T117／CH-T55 追蹤。

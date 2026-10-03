@@ -3232,6 +3232,10 @@ class Controller(QWidget):
         mark("__init__ end")
 
     def set_cloud_icon(self):
+        product_icon = QIcon(_resource_path("assets/cloudhime_logo.png"))
+        if not product_icon.isNull():
+            self.setWindowIcon(product_icon)
+            return
         size = 64
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)

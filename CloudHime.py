@@ -178,6 +178,7 @@ if __name__ == "__main__":
         sys.exit(0)
     startup_log("main start")
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "assets", "cloudhime_logo.png")))
     
     startup_log("QApplication created")
     from ui_fonts import apply_ui_font
