@@ -4,6 +4,8 @@
 
 **最新反證：07:02:03，來源提交 `0373861710194bf63cd6918774978854f5c2274b` 的 [GitHub CI 37160325279](https://github.com/Gale0418/CloudHime/actions/runs/37160325279) 又發生原生存取違例。現在仍會；不能將下列本機通過結果稱為已根治。** 八個必要工作中七個成功、UI 群組失敗；兩個手動 frozen 工作跳過。設定外觀檔在獨立程序的第 12 案，建立 Controller 的 `setup_worker()`／`QThread()` 時失敗；CI 未產生 native dump，不能由 Python stack 判定為歷史同 RVA。這是在設定頁回呼修正之後、下述快捷鍵修正之前的來源。
 
+後續快捷鍵修正提交 `685fd91fc25fac041516d6b770f94161117c7375` 的 [CI 37161334665](https://github.com/Gale0418/CloudHime/actions/runs/37161334665) **八個必要工作成功、兩個手動 frozen 跳過**。這是新來源未再現的證據；歷史問題具間歇性，一次成功不證明因果或完整根治。再後續設定視窗 ownership 修正的遠端回執另行核對。
+
 ## 結論與範圍
 
 找到並修正一個可獨立重現的設定頁生命週期問題：`_ProviderDisclosure.resizeEvent()` 使用沒有 QObject context 的 `QTimer.singleShot(0, bound_method)`。元件刪除後，排隊的高度調整仍會讀取已刪除的 QLabel。修正為由 disclosure 持有的單次 QTimer，接到明確的 `@Slot()`；Qt 刪除元件時同時取消計時器，連續 resize 也只保留一次待執行調整。
@@ -57,6 +59,14 @@ Qt thread join／過早釋放的已知問題先前由 `f2e492f` 修正，證據�
 修正為 Controller 持有的單次 `_hotkey_activation_timer`、`@Slot()`，關閉時停止；`enable_hotkey()` 也拒絕 shutdown 期間呼叫。新 `hotkey-validation` 的五檔同程序 **214 passed**，含這個回歸。一次指令誤用不存在的 smoke 檔名導致 exit 4、沒有執行案例；更正為已確認存在的檔案後才取得上述通過證據。這個修正尚未被證明解決歷史 NULL fault，不能把普通斷言 red/green 當原生根因。
 
 快捷鍵修改的 `cloudhime_ui.py`／`tests/test_shutdown_lifecycle.py` 另以獨立 projection 送 CodeRabbit，**2 檔、0 issues**；`coderabbit-hotkey.ndjson` 與 `hotkey-review-scope.json` 保存最終 bytes／SHA-256。此時段累計 3 個 CLI 審查指令、2 次實際審查，沒有超過 3 次／150 檔上限。修改的大 UI 檔必須審查，未修改的大檔與所有 dump、settings、models、assets 均排除。
+
+## 設定視窗跨 Controller 殘留：已確認與修正
+
+`SettingsWindowRevamp` 原本沒有 QObject parent，卻強持有 Controller；關閉只隱藏，測試刪除 Controller 後仍留著設定窗。`settings-survivor-observation` 依設定外觀單檔順序觀察到 **6 個隱藏且有效的設定窗**，其 Controller 全部已 invalid；完整 GC 後仍 6 個。這是直接觀察到的生命週期殘留，不是已確認的 NULL producer。
+
+回歸 `test_settings_window_is_destroyed_with_controller` 驗證設定窗關閉後可以重開同一視窗，Controller 被刪除時設定窗也必須刪除；修正前 `settings-owner-red-clean` 明確 **1 failed**。最初診斷曾把手動刪除的 Controller 又交給 qtbot 關閉，產生 teardown error；修正測試所有權後才採用上述 clean red。產品修正只有 `super().__init__(controller)`，保留既有 `Qt.Tool`、獨立視窗與隱藏／重開行為。
+
+修正後 `settings-owner-green` 五檔同程序 **215 passed**；CDB 下 `settings-owned-observation` **15 passed**，每案後設定窗殘留 **0**。第三次實際 CodeRabbit 審查 **2 檔、0 issues**，最終 bytes 由 `ownership-review-scope.json` 核對。此小時共 4 個 CLI 指令，其中第 1 個在 `gitService.getBranchInfo` 前置檢查就失敗、沒有送審；實際審查總數 **3**，各 2 檔。沒有再送第四次實際審查，沒有上傳 dump／憑證。
 
 原始證據與可重跑診斷程式都在 ignored `output/qt-crash-20261004/`。full dump 限本地診斷；未放入 Git 或 CodeRabbit payload。所有本輪測試／debugger 子程序會於結束後核對，僅處理本次擁有的程序。
 

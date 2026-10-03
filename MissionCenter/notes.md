@@ -416,3 +416,12 @@
 - Impact：另以red確認關閉後500ms快捷鍵回呼仍重新註冊；改由Controller持有單次timer、關閉停止、Slot和shutdown guard。214案相關UI／關閉回歸通過；此修正不是已確認的NULL根因。歷史根因未完成，不變更任務生命周期，不重建或替換EXE／Store。
 - Review：快捷鍵2檔CodeRabbit0 issues，SHA256匹配；本時段累計3個CLI審查指令／2次實際審查，排除無關大檔、資產、模型、dump、設定與憑證。沒有超過使用者限制。
 - Evidence：reviews/2026-10-04-qt-native-diagnosis.md；https://github.com/Gale0418/CloudHime/actions/runs/37160325279；output/qt-crash-20261004/hotkey-close-red.xml、hotkey-validation.xml、settings-cold-native.xml、settings-before-worker-gc.xml、coderabbit-hotkey.ndjson、hotkey-review-scope.json。來源上傳後續回執核對，不將本機214pass當完整CI成功。
+
+
+## 2026-10-04T07:24:17+08:00：Qt 設定窗殘留修正與最新來源驗證
+
+- Timestamp：2026-10-04T07:24:17+08:00
+- Change：快捷鍵修正685fd91的CI37161334665八必要工作成功、兩手動frozen跳過；保留0373861於07:02原生AV反證。進一步觀察發現6個hidden設定窗跨案仍有效、Controller已invalid，GC後仍在；獨立clean red確認Controller刪除後設定窗未刪。
+- Impact：SettingsWindowRevamp由Controller持有QObject parent，保留Qt.Tool與close/hide/reopen；新215案UI回歸通過，CDB相同單檔15案通過且每案設定窗殘留0。歷史NULL首次失效物件仍未知，未宣稱上述三個已修缺陷就是共同原生根因；沒有新EXE、Store替換或任務Done轉移。
+- Review：ownership2檔CodeRabbit0issues，最終SHA256匹配。此小時3次實際審查各2檔，另1個CLI指令因git base前置失敗沒有送審，未超過3次／150檔，沒有第四次實際送審。
+- Evidence：reviews/2026-10-04-qt-native-diagnosis.md；output/qt-crash-20261004/settings-survivor-observation-survivors.jsonl、settings-owner-red-clean.xml、settings-owner-green.xml、settings-owned-observation-survivors.jsonl、coderabbit-ownership.ndjson、ownership-review-scope.json、hotkey-ci-receipt.json。

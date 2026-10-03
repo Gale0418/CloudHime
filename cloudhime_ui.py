@@ -1977,7 +1977,7 @@ class SettingsWindowRevamp(QWidget):
         self.screenshot_prompt_toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
 
     def __init__(self, controller):
-        super().__init__()
+        super().__init__(controller)
         self.controller = controller
         self.setWindowTitle("設定頁面")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)

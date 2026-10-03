@@ -3,8 +3,9 @@ import hashlib
 import threading
 import time
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot, QThread, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot, QThread, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
+from shiboken6 import isValid
 
 from cloudhime_ui import Controller, OverlayWindow
 from knowledge_builder_worker import KnowledgeBuildWorker
@@ -65,7 +66,7 @@ class _NativeJoinGateThread(QThread):
         return self.native_joined
 
 
-def _make_controller(qtbot, monkeypatch):
+def _make_controller(qtbot, monkeypatch, *, register_controller=True):
     monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None))
     monkeypatch.setattr("cloudhime_ui.SecretStore.get", lambda self: "")
     monkeypatch.setattr("cloudhime_ui.SecretStore.legacy_sources_disabled", lambda self: True)
@@ -74,7 +75,8 @@ def _make_controller(qtbot, monkeypatch):
     overlay = OverlayWindow()
     qtbot.addWidget(overlay)
     controller = Controller(overlay)
-    qtbot.addWidget(controller)
+    if register_controller:
+        qtbot.addWidget(controller)
     controller.show()
     return controller
 
@@ -157,6 +159,23 @@ def test_delayed_hotkey_activation_is_cancelled_when_closing(qtbot, monkeypatch)
     qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False), timeout=5000)
     qtbot.wait(600)
     assert registrations == []
+
+
+def test_settings_window_is_destroyed_with_controller(qtbot, monkeypatch):
+    controller = _make_controller(qtbot, monkeypatch, register_controller=False)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    assert settings.isWindow()
+    settings.close()
+    assert isValid(settings)  # Closing settings must still allow reopening it.
+    controller.toggle_settings_window()
+    assert controller.settings_window is settings
+    controller.close_app()
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False), timeout=5000)
+    controller.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert not isValid(controller)
+    assert not isValid(settings)
 
 
 def test_stopped_ocr_thread_still_waits_for_native_join(qtbot, monkeypatch):
