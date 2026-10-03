@@ -3,6 +3,9 @@ import json
 import pytest
 
 from persistent_translation_cache import (
+    DEFAULT_MAX_ENTRY_BYTES,
+    DEFAULT_MAX_LOAD_BYTES,
+    DEFAULT_MAX_TOTAL_BYTES,
     PersistentTranslationCache,
     build_translation_cache_key,
 )
@@ -106,6 +109,131 @@ def test_persistent_cache_does_not_store_empty_or_unattributed_values(tmp_path):
     assert cache.remember("empty", TranslationResult(text="", provider="google")) is False
     assert cache.remember("no-provider", TranslationResult(text="翻譯", provider="")) is False
     assert len(cache) == 0
+
+
+def test_persistent_cache_skips_utf8_entry_over_single_entry_budget(tmp_path, monkeypatch):
+    import persistent_translation_cache as cache_module
+
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_ENTRY_BYTES", 128)
+    cache = PersistentTranslationCache(tmp_path / "translation-cache.json")
+
+    assert cache.remember(
+        "key",
+        TranslationResult(text="翻" * 100, provider="google"),
+    ) is False
+    assert len(cache) == 0
+    assert not cache.path.exists()
+    assert DEFAULT_MAX_ENTRY_BYTES == 64 * 1024
+
+
+def test_persistent_cache_enforces_total_utf8_budget_and_load_file_limit(tmp_path, monkeypatch):
+    import persistent_translation_cache as cache_module
+
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_ENTRY_BYTES", 256)
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_TOTAL_BYTES", 220)
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_LOAD_BYTES", 512)
+    path = tmp_path / "translation-cache.json"
+    cache = PersistentTranslationCache(path)
+
+    for index in range(3):
+        assert cache.remember(
+            f"key-{index}",
+            TranslationResult(text="翻譯內容", provider="google"),
+        )
+
+    assert path.stat().st_size <= 220
+    assert cache.get("key-0") is None
+    assert DEFAULT_MAX_TOTAL_BYTES == 2 * 1024 * 1024
+    assert DEFAULT_MAX_LOAD_BYTES == 4 * 1024 * 1024
+
+    path.write_text(
+        json.dumps({"schema_version": 1, "entries": [], "padding": "x" * 600}),
+        encoding="utf-8",
+    )
+    oversized = PersistentTranslationCache(path)
+    assert len(oversized) == 0
+    assert oversized.last_error_code == "load_failed"
+
+
+def test_persistent_cache_compact_utf8_budget_is_exact_and_eviction_is_linear(
+    tmp_path, monkeypatch
+):
+    import persistent_translation_cache as cache_module
+
+    entry = {
+        "key": "日本語",
+        "text": "翻譯",
+        "provider": "google",
+        "model": None,
+        "requested_provider": None,
+    }
+    entry_bytes = json.dumps(entry, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    prefix = b'{"schema_version":1,"entries":['
+    suffix = b"]}"
+    exact_size = len(prefix) + len(entry_bytes) + len(suffix)
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_TOTAL_BYTES", exact_size)
+    path = tmp_path / "exact-cache.json"
+    cache = PersistentTranslationCache(path)
+
+    assert cache.remember("日本語", TranslationResult(text="翻譯", provider="google"))
+    assert path.read_bytes() == prefix + entry_bytes + suffix
+
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_TOTAL_BYTES", exact_size - 1)
+    rejected = PersistentTranslationCache(tmp_path / "too-small-cache.json")
+    assert rejected.remember("日本語", TranslationResult(text="翻譯", provider="google")) is False
+    assert not rejected.path.exists()
+
+    rows = [
+        {
+            "key": f"key-{index}",
+            "text": "翻譯內容" * 8,
+            "provider": "google",
+            "model": None,
+            "requested_provider": None,
+        }
+        for index in range(40)
+    ]
+    source_path = tmp_path / "many-entries.json"
+    source_path.write_text(
+        json.dumps({"schema_version": 1, "entries": rows}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cache_module, "DEFAULT_MAX_TOTAL_BYTES", 700)
+    serialization_calls = 0
+    serialize_entry = cache_module._entry_utf8_bytes
+
+    def count_serializations(key, record):
+        nonlocal serialization_calls
+        serialization_calls += 1
+        return serialize_entry(key, record)
+
+    monkeypatch.setattr(cache_module, "_entry_utf8_bytes", count_serializations)
+    loaded = PersistentTranslationCache(source_path)
+
+    assert serialization_calls == len(rows)
+    assert len(loaded) < len(rows)
+    assert next(reversed(loaded._entries)) == "key-39"
+    assert loaded._total_payload_bytes == len(prefix) + len(suffix) + sum(
+        len(value) for value in loaded._encoded_entries.values()
+    ) + max(0, len(loaded) - 1)
+    assert loaded._total_payload_bytes <= 700
+
+
+def test_persistent_cache_persists_lru_order_after_get_and_overwrite(tmp_path):
+    path = tmp_path / "lru-cache.json"
+    cache = PersistentTranslationCache(path, max_entries=2)
+    assert cache.remember("oldest", TranslationResult(text="舊", provider="google"))
+    assert cache.remember("newest", TranslationResult(text="新", provider="google"))
+
+    assert cache.get("oldest") is not None
+    assert cache.remember("oldest", TranslationResult(text="更新", provider="google"))
+    assert list(cache._entries) == ["newest", "oldest"]
+
+    restored = PersistentTranslationCache(path, max_entries=2)
+    assert list(restored._entries) == ["newest", "oldest"]
+    assert restored.remember("third", TranslationResult(text="第三", provider="google"))
+    assert restored.get("newest") is None
+    assert restored.get("oldest") is not None
 
 
 def _make_worker_for_persistent_route(cache):

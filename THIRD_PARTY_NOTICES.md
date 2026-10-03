@@ -56,6 +56,36 @@ The pinned `ddgs==9.14.4` wheel declares these base runtime dependencies; option
 
 The release build resolves these packages from the pinned DDGS dependency graph and must preserve the corresponding wheel license files in the release audit. CloudHime does not install them after Store installation.
 
+## deep-translator Google HTML adapter
+
+- Project: https://github.com/nidhaloff/deep-translator
+- Version: 1.11.4
+- Adapted component: Google HTML translator parsing and fallback behavior in `google_translation_transport.py`
+- Copyright: Copyright (C) 2020 Nidhal Baccouri
+- License: MIT; upstream license: https://github.com/nidhaloff/deep-translator/blob/v1.11.4/LICENSE
+
+MIT License
+
+Copyright (c) 2020 Nidhal Baccouri
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ### lxml (DDGS runtime dependency)
 
 - Project: https://lxml.de/

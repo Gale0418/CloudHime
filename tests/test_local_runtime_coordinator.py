@@ -243,3 +243,44 @@ def test_stop_then_release_during_inflight_start_stops_runtime_after_it_becomes_
     replacement = coordinator.acquire(_assets(), profile='vision')
     assert replacement.runtime is not created[0]
     replacement.release()
+
+
+def test_concurrent_release_of_one_lease_does_not_consume_another_lease():
+    created = []
+
+    def factory(assets, **kwargs):
+        runtime = FakeRuntime(assets, **kwargs)
+        created.append(runtime)
+        return runtime
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=factory)
+    first = coordinator.acquire(_assets(), profile="vision")
+    second = coordinator.acquire(_assets(), profile="vision")
+
+    class ConcurrentFalse:
+        """讓舊版在檢查與設值之間確定遇到兩個釋放執行緒。"""
+
+        def __init__(self):
+            self.checks = threading.Barrier(2)
+
+        def __bool__(self):
+            try:
+                self.checks.wait(timeout=0.2)
+            except threading.BrokenBarrierError:
+                pass
+            return False
+
+    # 以可控的布林檢查交錯重現「兩邊都看到尚未釋放」的時序。
+    first._released = ConcurrentFalse()
+    threads = [threading.Thread(target=first.release) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1)
+        assert not thread.is_alive()
+
+    assert coordinator.active_lease_count == 1
+    assert created[0].stop_calls == 0
+    assert second.released is False
+    second.release()
+    assert created[0].stop_calls == 1

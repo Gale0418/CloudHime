@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 from urllib import error, request
 
-from deep_translator import GoogleTranslator
+from google_translation_transport import GoogleTranslator
 
 from model_catalog import get_model_spec, REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
 from provider_runtime import CredentialUnavailable, RuntimeCredentialPool

@@ -49,6 +49,40 @@ from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainte
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
+_ACTIVE_SHUTDOWN_THREADS = set()
+_ACTIVE_REMOTE_SHUTDOWN_THREADS = set()
+
+
+def _qt_object_is_valid(obj):
+    if obj is None:
+        return False
+    try:
+        from shiboken6 import isValid
+    except ImportError:
+        return True
+    return isValid(obj)
+
+
+class _ShutdownCleanupThread(QThread):
+    """Run potentially blocking provider and knowledge cleanup off the GUI thread."""
+
+    def __init__(self, worker, knowledge_worker):
+        super().__init__()
+        self._worker = worker
+        self._knowledge_worker = knowledge_worker
+
+    def run(self):
+        if self._worker is not None:
+            try:
+                self._worker.cleanup()
+            except Exception as exc:
+                logger.error(f"[Shutdown] worker cleanup failed: {type(exc).__name__}")
+        if self._knowledge_worker is not None:
+            try:
+                self._knowledge_worker.wait_for_all(2.0)
+            except Exception as exc:
+                logger.error(f"[Shutdown] knowledge wait failed: {type(exc).__name__}")
+
 from themes import (
     ThemeRegistry,
     build_bubble_style,
@@ -3536,13 +3570,25 @@ class Controller(QWidget):
     def _shutdown_remote_model_availability(self):
         self._remote_model_availability_generation += 1
         thread = self.remote_model_availability_thread
-        if thread is None:
+        if not _qt_object_is_valid(thread) or not thread.isRunning():
+            self._remote_model_shutdown_finished = True
             return
-        if thread.isRunning():
-            thread.quit()
-            thread.wait(6000)
+        self._remote_model_shutdown_finished = False
+        # It can outlive this widget briefly while an in-flight network request
+        # returns. Keep it alive and use its finished signal as a GUI-side gate.
+        thread.setParent(None)
+        _ACTIVE_REMOTE_SHUTDOWN_THREADS.add(thread)
+        thread.finished.connect(
+            lambda thread=thread: _ACTIVE_REMOTE_SHUTDOWN_THREADS.discard(thread)
+        )
+        thread.finished.connect(self._on_remote_model_availability_shutdown_finished)
+        thread.quit()
+
+    def _on_remote_model_availability_shutdown_finished(self):
+        self._remote_model_shutdown_finished = True
         self.remote_model_availability_thread = None
         self.remote_model_availability_worker = None
+        self._maybe_finish_app_shutdown()
 
     def enable_hotkey(self):
         self.hotkey_filter.register_hotkey(self.winId())
@@ -5160,6 +5206,8 @@ class Controller(QWidget):
     def on_translation_stream_update_for_generation(
         self, generation, index, partial_text, provider, x, y, w, h
     ):
+        if getattr(self, "_shutdown_pending", False):
+            return
         if int(generation) != self.scan_generation:
             return
         timer = getattr(self, '_stream_render_timer', None)
@@ -5182,7 +5230,7 @@ class Controller(QWidget):
 
     def on_streaming_update(self, partial_results):
         """接收串流翻譯的中間結果，即時更新氣泡文字（打字機效果）"""
-        if not partial_results:
+        if getattr(self, "_shutdown_pending", False) or not partial_results:
             return
         if not self.overlay.bubbles:
             # 還沒建立氣泡時，先用 update_bubbles 建立框架
@@ -5197,12 +5245,14 @@ class Controller(QWidget):
             self.overlay.update_bubble_text_only(partial_results)
 
     def on_scan_complete_for_generation(self, generation, results):
-        if int(generation) != self.scan_generation:
+        if getattr(self, "_shutdown_pending", False) or int(generation) != self.scan_generation:
             return
         self._flush_stream_updates(generation)
         self.on_scan_complete(results)
 
     def on_scan_complete(self, results):
+        if getattr(self, "_shutdown_pending", False):
+            return
         self.scan_in_progress = False
         if not self.cooldown_timer.isActive():
             self.reset_immediate_btn()
@@ -5257,6 +5307,8 @@ class Controller(QWidget):
         self.overlay.clear_all()
 
     def trigger_scan_sequence(self):
+        if getattr(self, "_shutdown_pending", False):
+            return
         if self._open_required_provider_setup():
             return
         if self.scan_in_progress:
@@ -5274,6 +5326,8 @@ class Controller(QWidget):
         )
 
     def _emit_scan_signal(self, generation=None):
+        if getattr(self, "_shutdown_pending", False):
+            return
         if getattr(self, "pending_translation_provider_id", None):
             return
         generation = self.scan_generation if generation is None else int(generation)
@@ -5353,12 +5407,16 @@ class Controller(QWidget):
             self.charge_bar.set_progress(0, "Google")
 
     def hide_ui_for_scan(self):
+        if getattr(self, "_shutdown_pending", False):
+            return
         # 由於部分環境下截圖 API 仍可能無視 DisplayAffinity 拍到氣泡，
         # 在這裡做毫秒級的瞬間隱藏，截完圖立刻恢復。
         self.overlay.hide()
         QApplication.processEvents()
 
     def show_ui_after_scan(self):
+        if getattr(self, "_shutdown_pending", False):
+            return
         self.overlay.show()
         QApplication.processEvents()
 
@@ -5574,13 +5632,9 @@ class Controller(QWidget):
         self.lbl_status.setText(status_text)
 
     def close_app(self):
-        if getattr(self, "_close_app_started", False):
+        if getattr(self, "_close_app_started", False) or getattr(self, "_close_app_finished", False):
             return
         self._close_app_started = True
-        self.cancel_knowledge_research()
-        knowledge_worker = getattr(self, "knowledge_build_worker", None)
-        if knowledge_worker is not None:
-            knowledge_worker.wait_for_all(2.0)
         google_saved = self._persist_pending_api_key()
         luna_saved = self._persist_pending_openai_api_key()
         if not (google_saved and luna_saved):
@@ -5598,37 +5652,99 @@ class Controller(QWidget):
             if choice != QMessageBox.Yes:
                 self._close_app_started = False
                 return
-        self._shutdown_remote_model_availability()
-        if hasattr(self, 'worker'):
-            self.worker.cleanup()
+        self._shutdown_pending = True
+        self._set_status_text(
+            "controller.status.shutting_down",
+            fallback="Waiting for background work to finish before closing...",
+        )
+        self.cancel_knowledge_research()
+        # Stop admission first, then invalidate queued and active scan results.
+        self._advance_scan_generation(cancel_active=True)
+        self.current_auto_interval = 0
+        for button_name in (
+            "btn_now", "btn_hotkey", "btn_30", "btn_stop",
+            "btn_mode_full", "btn_mode_region",
+        ):
+            button = getattr(self, button_name, None)
+            if _qt_object_is_valid(button):
+                button.setEnabled(False)
+        for timer_name in (
+            "auto_timer", "display_timer", "cooldown_timer",
+            "cooldown_progress_timer", "gemma_rate_timer", "_stream_render_timer",
+        ):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                timer.stop()
         if hasattr(self, 'hotkey_filter'):
             self.hotkey_filter.unregister_hotkey(self.winId())
             if QApplication.instance():
                 QApplication.instance().removeNativeEventFilter(self.hotkey_filter)
-        self.auto_timer.stop()
-        self.display_timer.stop()
-        self.cooldown_timer.stop()
-        self.cooldown_progress_timer.stop()
-        self.ocr_thread.quit()
-        self.ocr_thread.wait()
-        if self.settings_window is not None:
-            self.settings_window.close()
-        self.region_frame.close()
-        self.selection_overlay.close()
-        if hasattr(self.overlay, 'timer'):
-            self.overlay.timer.stop()
-        self.overlay.close()
+        self._shutdown_remote_model_availability()
+        thread = getattr(self, "ocr_thread", None)
+        if thread is None or not thread.isRunning():
+            self._begin_shutdown_cleanup()
+            return
+        thread.finished.connect(self._on_ocr_thread_finished)
+        thread.quit()
+
+    def _on_ocr_thread_finished(self):
+        thread = getattr(self, "ocr_thread", None)
+        if thread is not None and not thread.wait(0):
+            QTimer.singleShot(0, self._on_ocr_thread_finished)
+            return
+        self._begin_shutdown_cleanup()
+
+    def _begin_shutdown_cleanup(self):
+        if getattr(self, "_shutdown_cleanup_started", False):
+            return
+        self._shutdown_cleanup_started = True
+        thread = _ShutdownCleanupThread(
+            getattr(self, "worker", None),
+            getattr(self, "knowledge_build_worker", None),
+        )
+        self._shutdown_cleanup_thread = thread
+        _ACTIVE_SHUTDOWN_THREADS.add(thread)
+        thread.finished.connect(
+            lambda thread=thread: _ACTIVE_SHUTDOWN_THREADS.discard(thread)
+        )
+        thread.finished.connect(self._on_shutdown_cleanup_finished)
+        thread.start()
+
+    def _on_shutdown_cleanup_finished(self):
+        self._shutdown_cleanup_finished = True
+        self._maybe_finish_app_shutdown()
+
+    def _maybe_finish_app_shutdown(self):
+        if (
+            getattr(self, "_shutdown_cleanup_finished", False)
+            and getattr(self, "_remote_model_shutdown_finished", False)
+        ):
+            self._finish_app_shutdown()
+
+    def _finish_app_shutdown(self):
+        if getattr(self, "_close_app_finished", False):
+            return
+        self._close_app_finished = True
+        for name in ("settings_window", "region_frame", "selection_overlay", "overlay"):
+            widget = getattr(self, name, None)
+            if _qt_object_is_valid(widget):
+                timer = getattr(widget, "timer", None)
+                if _qt_object_is_valid(timer):
+                    timer.stop()
+                widget.close()
         self.close()
-        QApplication.instance().quit()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
     def closeEvent(self, event):
         # Native close (Alt+F4 / taskbar) must take the same shutdown path.
+        if getattr(self, "_close_app_finished", False):
+            event.accept()
+            return
+        event.ignore()
         if not getattr(self, "_close_app_started", False):
             self.close_app()
-        if getattr(self, "_close_app_started", False):
-            event.accept()
-        else:
-            event.ignore()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

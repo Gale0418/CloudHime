@@ -12,7 +12,7 @@ import threading
 from collections import OrderedDict, deque
 from typing import Any
 
-from deep_translator import GoogleTranslator
+from google_translation_transport import GoogleTranslator
 
 from knowledge_prompt_context import KnowledgePromptContext
 from translation_contracts import TranslationResult

@@ -185,17 +185,28 @@ def test_settings_fit_short_desktop_and_hide_portrait(controller, monkeypatch, q
 def test_native_close_stops_threads_and_overlay(controller, qtbot):
     controller.overlay.show()
     controller.close()
-    qtbot.waitUntil(lambda: not controller.ocr_thread.isRunning())
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False))
+    assert not controller.ocr_thread.isRunning()
     assert not controller.isVisible()
     assert not controller.overlay.isVisible()
 
 
-def test_native_close_is_rejected_when_secret_save_fails(controller, monkeypatch):
+def test_native_close_is_rejected_when_secret_save_fails(controller, monkeypatch, qtbot):
+    original_status = controller.lbl_status.text()
     monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: False)
     controller.close()
     assert controller.isVisible()
     assert not controller._close_app_started
     assert controller.ocr_thread.isRunning()
+    assert controller.lbl_status.text() == original_status
+    assert controller.btn_now.isEnabled()
+    assert controller.btn_hotkey.isEnabled()
+    assert controller.btn_30.isEnabled()
+    monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: True)
+    controller.close_app()
+    # Async shutdown follows the rejected-close assertions so qtbot can drain
+    # all owned Qt objects before its widget teardown.
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False))
 
 
 def test_dark_window_icons_resolve_css_rgba_foreground(qapp):
@@ -207,7 +218,7 @@ def test_dark_window_icons_resolve_css_rgba_foreground(qapp):
     assert ink.alpha() > 0
 
 
-def test_native_close_is_rejected_when_settings_save_fails(controller, monkeypatch):
+def test_native_close_is_rejected_when_settings_save_fails(controller, monkeypatch, qtbot):
     monkeypatch.setattr(controller, "save_settings", lambda: False)
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.No)
     controller.close()
@@ -215,20 +226,27 @@ def test_native_close_is_rejected_when_settings_save_fails(controller, monkeypat
     assert not controller._close_app_started
     assert controller.ocr_thread.isRunning()
     assert controller.lbl_status.text() == controller._tr("settings_save_failed")
+    assert controller.btn_now.isEnabled()
+    assert controller.btn_hotkey.isEnabled()
+    assert controller.btn_30.isEnabled()
+    monkeypatch.setattr(controller, "save_settings", lambda: True)
+    controller.close_app()
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False))
 
 
-def test_native_close_can_discard_settings_after_save_failure(controller, monkeypatch):
+def test_native_close_can_discard_settings_after_save_failure(controller, monkeypatch, qtbot):
     monkeypatch.setattr(controller, "save_settings", lambda: False)
     prompt = Mock(return_value=QMessageBox.Yes)
     monkeypatch.setattr(QMessageBox, "question", prompt)
     controller.close()
     prompt.assert_called_once()
     assert prompt.call_args.args[-1] == QMessageBox.No
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False))
     assert not controller.isVisible()
     assert not controller.ocr_thread.isRunning()
 
 
-def test_discard_choice_never_bypasses_secret_save_failure(controller, monkeypatch):
+def test_discard_choice_never_bypasses_secret_save_failure(controller, monkeypatch, qtbot):
     monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: False)
     prompt = Mock(return_value=QMessageBox.Yes)
     monkeypatch.setattr(QMessageBox, "question", prompt)
@@ -236,6 +254,9 @@ def test_discard_choice_never_bypasses_secret_save_failure(controller, monkeypat
     prompt.assert_not_called()
     assert controller.isVisible()
     assert controller.ocr_thread.isRunning()
+    monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: True)
+    controller.close_app()
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False))
 
 
 @pytest.mark.parametrize("mode", ["region", "fullscreen"])

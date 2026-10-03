@@ -9,7 +9,7 @@ from typing import Any, Sequence
 
 import cv2
 import numpy as np
-from deep_translator import GoogleTranslator
+from google_translation_transport import GoogleTranslator
 
 from ocr_quality import HAS_CJK_PATTERN, normalize_ocr_text
 

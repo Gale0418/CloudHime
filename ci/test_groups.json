@@ -42,6 +42,7 @@
         "tests/test_settings_store.py",
         "tests/test_persistent_translation_cache.py",
         "tests/test_translation_helpers.py",
+        "tests/test_google_translation_transport.py",
         "tests/test_translation_orchestrator.py",
         "tests/test_translation_providers.py",
         "tests/test_translation_registry_online.py",
@@ -88,6 +89,7 @@
         "tests/test_ui_fonts.py",
         "tests/test_cloudhime_ui_smoke.py",
         "tests/test_product_experience.py",
+        "tests/test_shutdown_lifecycle.py",
         "tests/test_relief_settings.py",
         "tests/test_settings_window_theme_polish.py",
         "tests/test_translation_panel_advanced.py"

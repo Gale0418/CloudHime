@@ -14,6 +14,43 @@ from translation_contracts import TranslationResult
 
 CACHE_SCHEMA_VERSION = 1
 DEFAULT_MAX_ENTRIES = 512
+DEFAULT_MAX_ENTRY_BYTES = 64 * 1024
+DEFAULT_MAX_TOTAL_BYTES = 2 * 1024 * 1024
+DEFAULT_MAX_LOAD_BYTES = 4 * 1024 * 1024
+
+
+_PAYLOAD_PREFIX = (
+    b'{"schema_version":'
+    + str(CACHE_SCHEMA_VERSION).encode("ascii")
+    + b',"entries":['
+)
+_PAYLOAD_SUFFIX = b"]}"
+_EMPTY_PAYLOAD_BYTES = len(_PAYLOAD_PREFIX) + len(_PAYLOAD_SUFFIX)
+
+
+def _entry_utf8_bytes(key: str, record: Mapping[str, str | None]) -> bytes:
+    entry = {"key": key, **record}
+    return json.dumps(
+        entry,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _encoded_payload(entries: Mapping[str, bytes]) -> bytes:
+    return _PAYLOAD_PREFIX + b",".join(entries.values()) + _PAYLOAD_SUFFIX
+
+
+def _drop_oldest(
+    entries: OrderedDict[str, dict[str, str | None]],
+    encoded_entries: dict[str, bytes],
+    payload_size: int,
+) -> int:
+    key, _record = entries.popitem(last=False)
+    payload_size -= len(encoded_entries.pop(key))
+    if entries:
+        payload_size -= 1
+    return payload_size
 
 
 def build_translation_cache_key(context: Mapping[str, Any]) -> str:
@@ -37,6 +74,8 @@ class PersistentTranslationCache:
         self.path = Path(path)
         self.max_entries = max(1, int(max_entries))
         self._entries: OrderedDict[str, dict[str, str | None]] = OrderedDict()
+        self._encoded_entries: dict[str, bytes] = {}
+        self._total_payload_bytes = _EMPTY_PAYLOAD_BYTES
         self._lock = threading.RLock()
         self.last_error_code = ""
         self._load()
@@ -47,13 +86,19 @@ class PersistentTranslationCache:
 
     def _load(self) -> None:
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            with self.path.open("rb") as handle:
+                raw_payload = handle.read(DEFAULT_MAX_LOAD_BYTES + 1)
+            if len(raw_payload) > DEFAULT_MAX_LOAD_BYTES:
+                raise ValueError("load_size_limit")
+            payload = json.loads(raw_payload.decode("utf-8"))
             if not isinstance(payload, dict) or payload.get("schema_version") != CACHE_SCHEMA_VERSION:
                 raise ValueError("schema_version")
             entries = payload.get("entries")
             if not isinstance(entries, list):
                 raise ValueError("entries")
             loaded: OrderedDict[str, dict[str, str | None]] = OrderedDict()
+            encoded_entries: dict[str, bytes] = {}
+            payload_size = _EMPTY_PAYLOAD_BYTES
             for item in entries:
                 if not isinstance(item, dict):
                     continue
@@ -71,7 +116,7 @@ class PersistentTranslationCache:
                     continue
                 model = item.get("model")
                 requested_provider = item.get("requested_provider")
-                loaded[key] = {
+                record = {
                     "text": text,
                     "provider": provider,
                     "model": model if isinstance(model, str) else None,
@@ -79,15 +124,31 @@ class PersistentTranslationCache:
                         requested_provider if isinstance(requested_provider, str) else None
                     ),
                 }
-            while len(loaded) > self.max_entries:
-                loaded.popitem(last=False)
+                encoded_entry = _entry_utf8_bytes(key, record)
+                if len(encoded_entry) > DEFAULT_MAX_ENTRY_BYTES:
+                    continue
+                old_entry = encoded_entries.get(key)
+                if old_entry is None:
+                    if loaded:
+                        payload_size += 1
+                else:
+                    payload_size -= len(old_entry)
+                loaded[key] = record
+                encoded_entries[key] = encoded_entry
+                payload_size += len(encoded_entry)
+                while len(loaded) > self.max_entries or payload_size > DEFAULT_MAX_TOTAL_BYTES:
+                    payload_size = _drop_oldest(loaded, encoded_entries, payload_size)
             with self._lock:
                 self._entries = loaded
+                self._encoded_entries = encoded_entries
+                self._total_payload_bytes = payload_size
         except FileNotFoundError:
             return
         except Exception:
             with self._lock:
                 self._entries.clear()
+                self._encoded_entries.clear()
+                self._total_payload_bytes = _EMPTY_PAYLOAD_BYTES
                 self.last_error_code = "load_failed"
 
     def get(self, key: str) -> TranslationResult | None:
@@ -132,12 +193,41 @@ class PersistentTranslationCache:
             ),
         }
         with self._lock:
-            self._entries[normalized_key] = record
-            self._entries.move_to_end(normalized_key)
-            while len(self._entries) > self.max_entries:
-                self._entries.popitem(last=False)
             try:
-                self._write_payload(self._payload_locked())
+                encoded_entry = _entry_utf8_bytes(normalized_key, record)
+            except (UnicodeEncodeError, TypeError, ValueError):
+                self.last_error_code = "entry_size_limit"
+                return False
+            if len(encoded_entry) > DEFAULT_MAX_ENTRY_BYTES:
+                self.last_error_code = "entry_size_limit"
+                return False
+            candidate = self._entries.copy()
+            encoded_candidate = self._encoded_entries.copy()
+            old_entry = encoded_candidate.get(normalized_key)
+            payload_size = self._total_payload_bytes
+            if old_entry is None:
+                if candidate:
+                    payload_size += 1
+            else:
+                payload_size -= len(old_entry)
+            candidate[normalized_key] = record
+            encoded_candidate[normalized_key] = encoded_entry
+            payload_size += len(encoded_entry)
+            candidate.move_to_end(normalized_key)
+            while len(candidate) > self.max_entries or payload_size > DEFAULT_MAX_TOTAL_BYTES:
+                payload_size = _drop_oldest(candidate, encoded_candidate, payload_size)
+            if normalized_key not in candidate:
+                self.last_error_code = "total_size_limit"
+                return False
+            encoded_candidate = {
+                item_key: encoded_candidate[item_key]
+                for item_key in candidate
+            }
+            self._entries = candidate
+            self._encoded_entries = encoded_candidate
+            self._total_payload_bytes = payload_size
+            try:
+                self._write_payload(_encoded_payload(encoded_candidate))
             except Exception:
                 self.last_error_code = "write_failed"
                 return False
@@ -153,7 +243,9 @@ class PersistentTranslationCache:
             ],
         }
 
-    def _write_payload(self, payload: Mapping[str, Any]) -> None:
+    def _write_payload(self, encoded_payload: bytes) -> None:
+        if len(encoded_payload) > DEFAULT_MAX_TOTAL_BYTES:
+            raise ValueError("total_size_limit")
         target_dir = self.path.parent
         target_dir.mkdir(parents=True, exist_ok=True)
         fd, temporary_path = tempfile.mkstemp(
@@ -162,8 +254,8 @@ class PersistentTranslationCache:
             suffix=".tmp",
         )
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(encoded_payload)
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary_path, self.path)

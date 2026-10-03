@@ -9,6 +9,56 @@ import pytest
 from ci.corpus_policy import missing_files_for_test
 
 
+def _drain_open_controller_shutdowns():
+    widgets = sys.modules.get("PySide6.QtWidgets")
+    ui = sys.modules.get("cloudhime_ui")
+    if widgets is None or ui is None:
+        return
+    app = widgets.QApplication.instance()
+    if app is None:
+        return
+    controllers = [
+        widget for widget in app.topLevelWidgets()
+        if isinstance(widget, ui.Controller)
+    ]
+    for controller in controllers:
+        try:
+            controller.close_app()
+        except (RuntimeError, AttributeError):
+            continue
+    pending = [
+        controller for controller in controllers
+        if getattr(controller, "_close_app_started", False)
+        and not getattr(controller, "_close_app_finished", False)
+    ]
+    if not pending:
+        return
+
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    poll = QTimer()
+    poll.setInterval(10)
+
+    def check_finished():
+        if all(getattr(controller, "_close_app_finished", False) for controller in pending):
+            loop.quit()
+
+    poll.timeout.connect(check_finished)
+    poll.start()
+    QTimer.singleShot(15000, loop.quit)
+    loop.exec()
+    poll.stop()
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item):
+    # pytest-qt closes registered widgets in its teardown hook. Complete any
+    # async controller close first so child Qt objects remain valid meanwhile.
+    _drain_open_controller_shutdowns()
+    return (yield)
+
+
 @pytest.fixture(scope="session")
 def _qt_session_safety():
     # Session lifetime is intentional: Controller queues a 500 ms callback.
@@ -39,8 +89,12 @@ def _disable_native_hotkey_side_effects_for_tests(request, _qt_session_safety):
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_controller_threads_after_ui_test():
+def _cleanup_controller_threads_after_ui_test(request):
     """Do not import Qt merely to clean up a test that never used it."""
+    # Make this fixture tear down before qtbot deletes registered widgets.
+    # Otherwise an asynchronous close could target wrappers already destroyed
+    # by qtbot's own finalizer.
+    qtbot = request.getfixturevalue("qtbot") if "qtbot" in request.fixturenames else None
     yield
     widgets = sys.modules.get("PySide6.QtWidgets")
     ui = sys.modules.get("cloudhime_ui")
@@ -56,6 +110,32 @@ def _cleanup_controller_threads_after_ui_test():
             except (RuntimeError, AttributeError):
                 # qtbot may already have deleted the native object.
                 continue
+    pending = []
+    for widget in list(app.topLevelWidgets()):
+        if isinstance(widget, ui.Controller) and getattr(widget, "_close_app_started", False):
+            if not getattr(widget, "_close_app_finished", False):
+                pending.append(widget)
+    if pending:
+        if qtbot is not None:
+            for widget in pending:
+                qtbot.waitUntil(lambda widget=widget: getattr(widget, "_close_app_finished", False), timeout=10000)
+        else:
+            from PySide6.QtCore import QEventLoop, QTimer
+
+            loop = QEventLoop()
+            poll = QTimer()
+            poll.setInterval(10)
+
+            def drain_or_timeout():
+                app.processEvents()
+                if all(getattr(widget, "_close_app_finished", False) for widget in pending):
+                    loop.quit()
+
+            poll.timeout.connect(drain_or_timeout)
+            poll.start()
+            QTimer.singleShot(10000, loop.quit)
+            loop.exec()
+            poll.stop()
     app.processEvents()
 
 

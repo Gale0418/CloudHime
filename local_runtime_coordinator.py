@@ -51,9 +51,6 @@ class LocalVisionRuntimeLease:
         return self._coordinator.set_gpu_layers(self, gpu_layers)
 
     def release(self) -> None:
-        if self._released:
-            return
-        self._released = True
         self._coordinator.release(self)
 
 
@@ -189,6 +186,9 @@ class LocalVisionRuntimeCoordinator:
     def release(self, lease) -> None:
         cleanup_runtime = None
         with self._lock:
+            if lease._coordinator is not self or lease._released:
+                return
+            lease._released = True
             entry = self._entries.get(lease._key)
             if entry is None:
                 return

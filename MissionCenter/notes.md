@@ -353,3 +353,11 @@
 - Reason：主人定案雲朵並 GO；依實際產物而非舊預覽驗證。
 - Impact：保留 Review／Backlog，未更新私人 Store 舊安裝；未宣稱一般 GUI 啟動後偏好 hash 完全不變。正式評議 not dispatched: approval/budget missing。
 - Evidence：reviews/2026-10-03-ocr-cloud-release.md；docs/release-two-track.md；output/cloud-release-20261003/artifact-verification.json。
+
+## 2026-10-04T00:29:43+08:00：CH-T117 來源修復與評議 checkpoint
+
+- Timestamp：2026-10-04T00:29:43+08:00
+- Change：修復Google transport、租約release、快取容量/LRU、背景關閉。來源1623 passed／6 skipped；CodeRabbit修正審查0issues。
+- Reason：使用者全面抓蟲與已核准正式評議。
+- Impact：三評論／仲裁判limited，resources實作coverage不足且席次工具用完；Review保留，未Done或發布。另有Antigravity越界憑證事件待owner rotation，token值未保存。
+- Evidence：reviews/2026-10-04-hardening.md；output/mission-center-critique/CH-T117-hardening-20261004.json。
