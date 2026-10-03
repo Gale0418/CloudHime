@@ -425,3 +425,14 @@
 - Impact：SettingsWindowRevamp由Controller持有QObject parent，保留Qt.Tool與close/hide/reopen；新215案UI回歸通過，CDB相同單檔15案通過且每案設定窗殘留0。歷史NULL首次失效物件仍未知，未宣稱上述三個已修缺陷就是共同原生根因；沒有新EXE、Store替換或任務Done轉移。
 - Review：ownership2檔CodeRabbit0issues，最終SHA256匹配。此小時3次實際審查各2檔，另1個CLI指令因git base前置失敗沒有送審，未超過3次／150檔，沒有第四次實際送審。
 - Evidence：reviews/2026-10-04-qt-native-diagnosis.md；output/qt-crash-20261004/settings-survivor-observation-survivors.jsonl、settings-owner-red-clean.xml、settings-owner-green.xml、settings-owned-observation-survivors.jsonl、coderabbit-ownership.ndjson、ownership-review-scope.json、hotkey-ci-receipt.json。
+
+
+## 2026-10-04T07:28:20+08:00：Qt 調查 checkpoint／main 與 CI 回執
+
+- Timestamp：2026-10-04T07:28:20+08:00
+- Completed：三個直接red/green確認的生命週期缺陷已修並推上main來源eb5ee34eb67bb40c0e5d5dc0d39e951b5d2b7c2d，遠端ref相同；CodeRabbit最後2檔0issues且bytes匹配。本時段3次實際審查，另1次base前置失敗沒有送審，遵守每小時3次／150檔。
+- Smoke tests：215個相關UI案例通過；最終CDB20輪Controller／設定／native joins／刪除／GC完整1pass；CI37161687605 completed/success，八必要工作成功、兩手動frozen跳過。設定窗跨案殘留6→0。
+- Unfinished／Risks：原始retrieveMetaObject NULL的最初失效wrapper仍未知，07:02較早來源的原生AV反證保留，後續來源通過不等於完整根因確定。未重建EXE／替換Store，既有產物不含新修正；不把原生事故或全面可販售任務標Done。
+- Retro：下次原始NULL故障需要含self heap的任務隔離full dump，才能確認type／BindingManager；避免將一般Qt斷言修正、單次CI綠燈或不同native stack混為同根因。
+- Evidence：https://github.com/Gale0418/CloudHime/actions/runs/37161687605；reviews/2026-10-04-qt-native-diagnosis.md；output/qt-crash-20261004/final-github-receipt.json、ownership-verification.json、lifetime-final-ownership.xml與cycles.jsonl。回執文件提交採[skip ci]；CI針對來源eb5ee34。
+- Cleanup：本次測試／CDB／CodeRabbit子程序均結束，未清除其他MCP程序。dump只保存在本機ignored目錄，未加入Git、未送CodeRabbit；使用者原有untracked assets/cloudhime_logo_v2.png保持原狀。

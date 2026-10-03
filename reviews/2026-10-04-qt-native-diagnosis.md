@@ -6,6 +6,8 @@
 
 後續快捷鍵修正提交 `685fd91fc25fac041516d6b770f94161117c7375` 的 [CI 37161334665](https://github.com/Gale0418/CloudHime/actions/runs/37161334665) **八個必要工作成功、兩個手動 frozen 跳過**。這是新來源未再現的證據；歷史問題具間歇性，一次成功不證明因果或完整根治。再後續設定視窗 ownership 修正的遠端回執另行核對。
 
+最終來源 `eb5ee34eb67bb40c0e5d5dc0d39e951b5d2b7c2d` 已推上 main、遠端 ref 一致；[CI 37161687605](https://github.com/Gale0418/CloudHime/actions/runs/37161687605) **completed／success，八必要工作成功、兩手動 frozen 跳過**。最終 `lifetime-final-ownership` 在 CDB 下完成 **20 輪／1 passed**，JUnit、cycles 與無 native marker 對帳一致；沒有額外保留 filter／method。三個已確認生命週期缺陷已修，最新版來源驗證未再現；**完整歷史 NULL 根因仍未查明，未重建 EXE**。此 checkpoint 不是原生事故根治或產品發行的 Done。後續只修改回執文件的提交使用 `[skip ci]`，CI 對應上述來源 SHA。
+
 ## 結論與範圍
 
 找到並修正一個可獨立重現的設定頁生命週期問題：`_ProviderDisclosure.resizeEvent()` 使用沒有 QObject context 的 `QTimer.singleShot(0, bound_method)`。元件刪除後，排隊的高度調整仍會讀取已刪除的 QLabel。修正為由 disclosure 持有的單次 QTimer，接到明確的 `@Slot()`；Qt 刪除元件時同時取消計時器，連續 resize 也只保留一次待執行調整。
