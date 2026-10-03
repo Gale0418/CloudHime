@@ -60,3 +60,19 @@ CodeRabbit 完整與差異審查原始 NDJSON SHA-256 分別為 `7a38bea2788b01f
 Store 0.1.2.0 為本機候選號，尚未核對 Partner Center 是否已使用；既有 Store 0.1.1.0 未改。新一般 GUI 已啟動且有回應／CloudHime 視窗 handle；未宣稱看見實際畫面。正式 critic_full、WACK 與新候選安裝仍未執行。
 
 Mission Center sync 與 doctor 通過；doctor 的既有 completion-passport legacy warnings 仍保留，不宣稱警告為零。E6／E8 已做唯讀範圍與依賴對帳，缺口與下一步寫回 tasks.md；不自動將 Epic 改為 Done。本次只補文件、checkpoint 與 SHA-256 清單，發行的程式／圖示來源仍是 bff0c4f。
+
+## 2026-10-03 正式評議與使用者回測補記
+
+使用者已核准 10,000 tokens、20 次工具、15 分鐘的本輪正式評議預算，並明確確認「目前翻譯系統沒問題」。先前缺少核准的紀錄是當時狀態，現已補足授權。
+
+三位独立 Luna 在同一凍結快照檢查成功流程、雲朵圖示與失敗處理，未提出有實證的新缺陷；獨立仲裁結論為 **limited**，CH-T117 維持 **Review**。44／150 像素雲朵已實際檢視；真實工作列是否顯示新圖示尚未確認。主引擎與 Google 同時失敗時的 GUI 原文呈現未直接觀察，不能冒稱實測通過。
+
+本輪未完成正式 contract validator：在席位工具上限內未定位到安裝版的 `critic_contract.py`。已保存三席封存報告及獨立仲裁訊息轉錄，並逐檔重新比對快照清單雜湊；轉錄不等於仲裁者產生的已驗證 contract。證據紀錄：[本輪評議](../output/mission-center-critique/CH-T117-cloud-20261003-102449.json)。
+
+後續由 Codex 完成正式契約／最終收尾；實際工作列圖示仍待可用的本機畫面能力或使用者確認。沒有必要的程式修正，也未重跑既有 238 個案例。WACK、乾淨安裝、Store 版本核對、簽章與上傳仍未完成，本輪不把 CH-T55／CH-T56 關閉。
+
+## 工作列圖示人眼驗收補記
+
+使用者回覆「(｀・ω・´)ゞ是雲朵」，確認目前執行中的翻譯姬工作列已顯示雲朵圖示。連同先前「目前翻譯系統沒問題」的回測，這兩項實機確認均已完成，不再要求使用者重複確認。
+
+這是既有封存評議之後的補充證據，原始評論與快照不覆寫；[圖示確認紀錄](../output/mission-center-critique/CH-T117-cloud-20261003-102449-taskbar-acceptance.json)。CH-T117 仍保留 Review，待 Codex 完成正式契約驗證與最終收尾；本次未新增程式變更或重跑測試，也未完成 Store／WACK。
