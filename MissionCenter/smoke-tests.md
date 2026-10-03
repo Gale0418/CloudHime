@@ -587,3 +587,12 @@
 | 2026-10-03 | CH-T65 | 漫畫／插件／自動 Research 採用決策文件核對 | Luna 唯讀 repo 評估；Codex 對照 decisions.md:902、CH-T43 與 T51 evidence，修正 grid accepted/anchor 混用；Rust critic skip record 與 completion passport transition | 有具體需求界線、效能預算／未核准標記、隱私授權與維護成本、三候選採用決策及重啟條件；不為文件任務新增產品功能 | reviews/2026-10-03-feature-decisions.md 已保存；公開 paired run baseline/grid anchor 皆0/6、grid accepted2/6，數字對應同輪；三候選暫不採用，既有能力保留。Rust validator valid=true/errors=[]；Review→Done committed；沒有執行模型、GPU、外部 API 或產品測試 | Pass（文件與證據核對） | research, decision, documentation, privacy, maintenance |
 | 2026-10-03 | CH-T43 | 既有 GPU product-path 晚期驗收對帳 | 核對 ch-t43-owner-product-path-paired-20260906.md 與原 passport/task digest；補記晚期 report，refresh digest，Mission Center doctor | 晚於 8/24 中止的完整 paired report 不遺漏；accuracy/stability 與 latency 邊界清楚；既有 Done passport 仍有效 | 4 cases×5 repeats、exit0、quality 0.1957581248→0.3027848582、coverage1、regressions[]；candidate avg/p9511909.9664/20806.6523ms，未作 latency promotion。doctor pass（歷史缺 passport warnings 保留）；本輪未重跑 GPU | Pass（既有證據核對） | evidence, benchmark, reconciliation |
 | 2026-10-03 | CH-T117 | 受控雙provider失敗的正式Qt顯示鏈 | Python3.10.11執行隔離 failure-render/harness.py，primary ValueError與Google TooManyRequests mock；真實Controller/Overlay/cache，Qt offscreen | 原文持續可畫、錯誤status非done、失敗不寫cache | QLabel實際text Hello、96×42PNG；providers各call1；真實persistent lookup miss、remember0、file absent；preferred/HUD空。Codex修正初版固定空值查詢的不充分assert後必要重跑。source LF-normalized與bff0c4f相符；非live Google／Windows desktop | Pass（受控路徑；不代表正式評議Done） | rendering, failure, cache, isolated, evidence |
+
+## 2026-10-03 管理員與全新 Sandbox 實測
+
+| 日期 | Task ID | 名稱 | 指令／動作 | 預期 | 觀察 | 結果 | Tags |
+|---|---|---|---|---|---|---|---|
+| 2026-10-03 | CH-T55 | development light MSIX 管理員驗收 | Windows UAC／PS5.1、SignTool、WACK、安裝啟動及移除；獨立 public cert／package 清理核對 | WACK XML PASS、實際可安裝啟動並移除；保留既有Store | WACK PASS，WindowsApps啟動3秒，移除；本輪cert物件／信任／CER不存在，Store0.1.1.0保留。private key殘留查核不完整、追加UAC取消，未列清理Pass。非完整Store候選驗收 | Pass（明列gate；私鑰查核未確認） | wack, development-msix, install, cleanup-limited |
+| 2026-10-03 | CH-T55 | 全新Windows Sandbox完整frozen dist | 網路／vGPU停用，guest複製完整dist核對EXE SHA；import、CPU Vision、GUI20秒；精確關閉本輪程序 | 無主機profile或Python／模型服務依賴仍可運行 | Windows10 Enterprise19041、初始profile不存在、六指令Get-Command空；import passed、CPU technical_coverage1/1、GUI20秒passed；owned launcher/client已清理。非GPU／accuracy／StoreMSIX安裝 | Pass（乾淨Windows技術覆蓋） | sandbox, frozen, cpu, vision, clean-machine |
+
+證據與 hashes：[管理員與 Sandbox 驗收](../reviews/2026-10-03-admin-sandbox-acceptance.md)。

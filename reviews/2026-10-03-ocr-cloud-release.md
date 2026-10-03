@@ -76,3 +76,9 @@ Mission Center sync 與 doctor 通過；doctor 的既有 completion-passport leg
 使用者回覆「(｀・ω・´)ゞ是雲朵」，確認目前執行中的翻譯姬工作列已顯示雲朵圖示。連同先前「目前翻譯系統沒問題」的回測，這兩項實機確認均已完成，不再要求使用者重複確認。
 
 這是既有封存評議之後的補充證據，原始評論與快照不覆寫；[圖示確認紀錄](../output/mission-center-critique/CH-T117-cloud-20261003-102449-taskbar-acceptance.json)。CH-T117 仍保留 Review，待 Codex 完成正式契約驗證與最終收尾；本次未新增程式變更或重跑測試，也未完成 Store／WACK。
+
+## 管理員與乾淨 Windows 後續驗收
+
+2026-10-03 使用者授權管理員工作後，development light MSIX 副本的簽章、WACK XML PASS、實際安裝／啟動／移除均通過。全新 Windows Sandbox 的完整 frozen dist import、隨包模型 CPU Vision 1/1 與 GUI 20 秒 liveness 亦通過，本輪 Sandbox 程序已精確關閉。原產品來源與產物沒有重建。以上取代前文當時的「WACK／乾淨 Windows 尚未執行」，不代表完整 Store MSIX 的安裝、認證或更新已完成。
+
+本輪憑證物件／信任／公開CER已清理，但 backing private key 不可由此推論已刪除；公鑰查核不完整，追加唯讀 UAC 啟動取消，沒有刪除私鑰。完整證據及限制見 [管理員與 Sandbox 驗收](2026-10-03-admin-sandbox-acceptance.md)。CH-T55／CH-T117 保留 Review，差異評議額度及實際 Store 發行 gate 仍待完成。

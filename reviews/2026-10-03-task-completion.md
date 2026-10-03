@@ -20,7 +20,11 @@ T116/T65 僅為低風險、非感知的調查／決策文件，本輪未選 Full
 
 Chrome 使用既有登入工作階段唯讀核對 Partner Center。CloudHime 的現行 Submission 2 套件為 `CloudHime-0.1.1.0-x64.msixupload`、x64 `0.1.1.0`，未見正在編輯的 submission。這不證明所有歷史上傳都沒有使用 `0.1.2.0`；本輪未建立更新、未上傳、未發布。既有 Store 安裝為 `WindSheep.CloudHime`、0.1.1.0、Store 簽章及 Status Ok；新預覽的使用者驗收不冒充新 Store 版本驗收。
 
-已準備可審閱的 `output/task-completion-20261003/run-admin-development-gate.ps1`，語法解析通過，SHA-256 `1f64a65ef691bc4d92943b734e3b2c1be77fb44f47592c7a0fb389dbdafed9df`。它只簽 development light MSIX 的副本，使用一天、不可匯出私鑰的獨立開發憑證，精確清理本輪 package 與 cert。尚未提升權限或執行；開發輕量包即使通過也不替代完整 Store 候選、乾淨 Windows、Store 認證與更新 gate。Windows Appx 操作需使用原生 Windows PowerShell 5.1，實際 PowerShell 7 無法載入該 Appx 模組。
+使用者授權管理員驗收後，經 Windows UAC 執行原始 `output/task-completion-20261003/run-admin-development-gate.ps1`，SHA-256 `1f64a65ef691bc4d92943b734e3b2c1be77fb44f47592c7a0fb389dbdafed9df`，執行後沒有改寫。development light MSIX 只簽副本；簽章驗證、WACK XML `OVERALL_RESULT=PASS`、實際安裝與啟動、移除均通過。原始 unsigned 與 Store 候選不納入此次簽章操作。Windows Appx 驗收使用原生 Windows PowerShell 5.1。
+
+獨立查核確認本輪開發 package、CurrentUser My 憑證、LocalMachine TrustedPeople 信任與公開 CER 已移除，既有 Store `WindSheep.CloudHime` 0.1.1.0／Ok／Store 保留。原清理腳本未使用 `-DeleteKey`，因此不能由憑證已移除推論 backing private key 也已刪除。公鑰比對查核遇到 managed lookup `NTE_BAD_KEYSET`，結果不完整；追加唯讀管理員啟動由 Windows 回報 UAC 取消，使用者表示沒有看到提示。沒有執行私鑰刪除，也未重複要求 UAC。證據：[管理員與 Sandbox 驗收](2026-10-03-admin-sandbox-acceptance.md)。
+
+全新 Windows Sandbox 的完整 frozen dist 驗收亦通過：Windows 10 Enterprise 19041、初始沒有 CloudHime profile；python／python3／py／pip／conda／ollama 指令均未找到。相同 EXE SHA-256 經核對，真實 frozen import、隨包模型與 projector 的 CPU Vision 1 image／1 case／1 success，以及 20 秒 GUI liveness 全部通過。使用隨包公開美術 fixture；網路、vGPU 與剪貼簿停用，沒有映射主機憑證或使用者設定。測試程序及本輪 Sandbox launcher/client 已精確清理。這是完整 frozen dist 的乾淨 Windows 技術覆蓋驗收，不是 GPU、準確度提升或 Store MSIX 安裝／認證證據。
 
 T117 追加差異評議封包已準備，僅核對錯誤 SHA 引用、後補人眼驗收、資產綁定與失敗處理證據，沒有新一輪全面找問題。預算請求為總 4,000 tokens／每席 800／整合 800、總 20 工具／每席 3、10 分鐘；核准尚未收到，因此未派送四席正式 closure。原評議的三個未收斂項保留，limited 不寫成 Done。依安裝版 Mission Center `references/completion-critic-council.md`「Resource budgets and platform limits still apply and are not reset per wave.」，額度不會按新 wave 自動重置。
 
@@ -32,4 +36,4 @@ CH-E6 的 21 個子任務均 Done，已更正 T43 舊狀態；Epic 尚待範圍�
 
 ## 恢復順序
 
-先讀本 checkpoint 與 `output/task-completion-20261003/closure-review-packet.md`，確認待核准問題的答案。核准後才執行相應正式評議／UAC 測試；核實結果與精確清理後再處理 T55 的完整候選版本／上傳準備。最後完成 T56 及 E7/E8 的依賴收尾。原產物與測試日誌均保留，不需要重新建置未變更的來源。
+先讀本 checkpoint、管理員與 Sandbox 驗收紀錄及 `output/task-completion-20261003/closure-review-packet.md`。development WACK／安裝與完整 frozen dist 乾淨 Windows gate 已完成，不重跑；私鑰查核維持未確認，不以廣泛掃描或刪除補洞。正式差異評議仍須等待明確額度核准，再處理 T55 完整 Store 候選的 package gate、版本核對與具體上傳確認。最後完成 T56 及 E7/E8 的依賴收尾。原產物與測試日誌均保留，不需要重新建置未變更的來源。
