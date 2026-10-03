@@ -3587,8 +3587,8 @@ class Controller(QWidget):
             self._remote_model_shutdown_finished = True
             return
         self._remote_model_shutdown_finished = False
-        # It can outlive this widget briefly while an in-flight network request
-        # returns. Keep it alive and use its finished signal as a GUI-side gate.
+        # An in-flight request may still be returning. Retain the thread until
+        # the GUI-side poll confirms its native shutdown join.
         thread.setParent(None)
         self._remote_model_shutdown_thread = thread
         _ACTIVE_REMOTE_SHUTDOWN_THREADS.add(thread)

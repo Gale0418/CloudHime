@@ -355,6 +355,10 @@ class LocalVisionRuntime:
         self._stop_owned_process()
         return self._state
 
+    def request_stop(self) -> None:
+        """非阻塞通知啟動流程取消；process cleanup 由啟動流程或 stop() 負責。"""
+        self._cancel_event.set()
+
     def _stop_owned_process(self) -> None:
         with self._state_lock:
             self._cancel_event.set()

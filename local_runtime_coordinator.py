@@ -114,6 +114,13 @@ class LocalVisionRuntimeCoordinator:
                 if entry.starting:
                     entry.stop_after_start = True
                     entry.stopped = True
+                    request_stop = getattr(entry.runtime, "request_stop", None)
+                    if callable(request_stop):
+                        try:
+                            request_stop()
+                        except Exception:
+                            # 保留延後 stop 請求，啟動結束後仍會補做資源清理。
+                            pass
                     return getattr(entry.runtime, "state", getattr(entry.runtime, "_state", None))
                 result = entry.runtime.stop()
                 entry.stopped = True

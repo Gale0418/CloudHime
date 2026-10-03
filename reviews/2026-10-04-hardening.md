@@ -1,6 +1,6 @@
 # 2026-10-04 CloudHime 程式檢查與修復
 
-本輪來源修復仍在收尾，正式多專家評議為 **limited**，CH-T117 保留 Review。提交 e3dae59 的 GitHub CI 發現 UI 原生存取違規；後續定稿已完成本機來源雜湊綁定驗證，待新提交 CI 與獨立最終裁定。這份紀錄不代表新的 frozen EXE、Store 套件或上架驗收通過。
+本輪來源修復仍在收尾，正式多專家評議為 **limited**，CH-T117 保留 Review。提交 e3dae59 的 GitHub CI 發現 UI 原生存取違規；後續 f2e492f 已通過 UI 群組，但完整 runtime 群組揭露取消契約回歸，現已補修並重新驗證，待新提交 CI 與獨立最終裁定。這份紀錄不代表新的 frozen EXE、Store 套件或上架驗收通過。
 
 ## 已修復
 
@@ -53,6 +53,14 @@ CodeRabbit 首審 13 檔、2 issues：標點空值已修；逾時直接退出且
 `final-verification-stable/summary.json`：七份 UI 檔依 CI 逐檔隔離，加上租約／快取／知識服務／builder／inventory，**229 passed、0 skipped／failure／error、exit 0、sourceUnchanged=true**。前一輪 deferred 驗證各程序雖 exit 0，但 conftest 在途中新增 fail-closed guards，整體 sourceUnchanged=false／fail；紀錄保留，不算定稿成功。
 
 新 `ch-t117-final-success-20261004`／`ch-t117-final-failure-20261004` harness 皆 exit 0：正式 Worker→Controller→Qt paint 成功字幕與 provider 失敗原文，失敗不寫持久快取，實際 timer 關閉完成並確認 OCR native join。兩者均 mock OCR／provider、offscreen；source-binding.json 綁定目前來源與純雲朵資產，沒有 live 或新版 frozen 產物聲稱。CodeRabbit 本輪外部額度已耗完，後續 Qt／資源修復未再跑外部審查，改由授權範圍內的獨立專家驗證；這不等同 CodeRabbit 新版 clean。
+
+## 完整 CI 揭露的取消相容性回歸
+
+[CI 37143016536](https://github.com/Gale0418/CloudHime/actions/runs/37143016536) UI 與其餘六個必需工作成功；runtime 一項失敗，191 passed／2 skipped：`test_coordinator_stop_can_cancel_blocked_start` 預期 stopped，實際 failed。完整失敗紀錄保留，未只重跑 CI 來掩蓋。
+
+已新增 `LocalVisionRuntime.request_stop()` 的非阻塞取消通知；coordinator 在啟動中立即設取消事件，同時保留 stop-after-start，涵蓋尚未進入 runtime 的啟動交錯。既有 stopped 期待不改弱。root 依真正 CI JSON 的九份 runtime 檔加上 coordinator 重跑，**207 passed／2 skipped／0 errors、exit0、sourceUnchanged=true**，見 `runtime-final-root/summary.json`／`result.xml`。代理的 124 passed 屬受影響 runtime 相關檔，並非完整 CI inventory，兩者區分記錄。
+
+先前 229 pass 對應 f2e492f 定稿階段；後續 runtime 變更以上述 207 pass 與新 CI 驗證，UI 只有修正過時註解，沒有行為差異。`ch-t117-closure-success-20261004`／`ch-t117-closure-failure-20261004` 已在最新來源各自重跑 exit0，更新實際 Qt paint／native join 與 source-binding。CodeRabbit 額度不重置。
 
 ## 另外的憑證事件
 
