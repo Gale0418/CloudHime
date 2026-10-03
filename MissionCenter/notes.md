@@ -371,3 +371,10 @@
 - Evidence：reviews/2026-10-04-hardening.md；output/audit-hardening-20261003/join-diagnosis-result.json；output/mission-center-critique/CH-T117-hardening-20261004/resources-closure-report.json。
 
 - 2026-10-04 CH-T117：定稿 229 案來源雜湊固定驗證通過；stop/start 競態、知識 worker 真正終止與 Qt DeferredDelete 排序修復。使用者授權任務內持續收尾；新 CI 和 final council 完成前仍 Review。
+
+## 2026-10-04T02:56:59+08:00：CH-T117 最終來源收尾
+
+- 來源 cfee16c 已同步 main；CI37143598031八必需成功、兩手動frozen skipped。
+- 三評論與全新獨立仲裁核對255項manifest，最終passed；13項finding為10 fixed／3具體反證駁回，沒有未處置P0／P1或已確認範圍內P2／P3。原limited、失敗與超額用量保留。
+- CH-T117完成來源驗收，passport與原生transition為正式生命週期證據；續讀reviews/2026-10-04-hardening.md與output/mission-center-critique/CH-T117-closure-proof-20261004.json。
+- 沒有新EXE／Store／live／實體桌面驗收；其他任務gate維持。PAT事件仍需owner撤銷替換憑證、確認Antigravity當次工作停止，沒有聲稱解除；同一任務的追加收尾已獲持續授權。

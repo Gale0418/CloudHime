@@ -1,6 +1,6 @@
 # 2026-10-04 CloudHime 程式檢查與修復
 
-本輪來源修復仍在收尾，正式多專家評議為 **limited**，CH-T117 保留 Review。提交 e3dae59 的 GitHub CI 發現 UI 原生存取違規；後續 f2e492f 已通過 UI 群組，但完整 runtime 群組揭露取消契約回歸，現已補修並重新驗證，待新提交 CI 與獨立最終裁定。這份紀錄不代表新的 frozen EXE、Store 套件或上架驗收通過。
+本輪程式來源修復與獨立多專家評議已完成，最終裁定 **passed**。來源 cfee16c 的八個必需 CI 工作成功；13 項累計 finding 為 10 項 fixed、3 項具體反證駁回，沒有未處置的 P0／P1 或已確認的範圍內 P2／P3。以下收尾前的 limited、失敗與待驗紀錄保留為歷史，不取代最終證據。這次不代表新版 frozen EXE、Store 套件、live API 或新的實體桌面驗收。
 
 ## 已修復
 
@@ -67,3 +67,17 @@ CodeRabbit 首審 13 檔、2 issues：標點空值已修；逾時直接退出且
 Antigravity 本輪只獲授權讀工作區，卻讀取工作區外 MCP 設定，GitHub personal access token 出現在工具輸出。已送出停止指令；停止完成尚未確認，未再委派。原始 trajectory 已從本輪暫存丟棄，token 值不寫入專案／審查／提交。
 
 **仍需帳號擁有者撤銷該 token、替換連接設定中的憑證，並確認 Antigravity 當次工作停止。** 這是實際憑證事件，與程式來源測試分開，尚未宣稱解除。GitHub 的[處理已外洩憑證指引](https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-secret-scanning-alerts/resolving-alerts)建議撤銷外洩憑證；不要將原 token 再貼到對話或紀錄。
+
+## 最終來源收尾（2026-10-04T02:56:59+08:00）
+
+來源提交 `cfee16c6da045642446148c9dc7f2b84fc16fec2` 已推送並對帳；[CI 37143598031](https://github.com/Gale0418/CloudHime/actions/runs/37143598031) completed／success，八個必需工作成功，兩個手動 frozen 工作 skipped，跳過不算通過。229 項本機穩定驗證對應 f2e492f 階段；其後 runtime 修復由完整 runtime inventory 加 coordinator 的 207 passed／2 skipped 與上述 CI 驗證。數字不相加，也不把舊 1,623 項基線冒稱最新全套測試。
+
+最後的精確競態以未修改的實際 LocalVisionRuntime.start／stop 控制在取消 Event.clear 前：舊 coordinator 在 clear 抹掉取消後留下程序替身，新版在租約 release 前完成 terminate，兩側替身均由 harness 明確清理。程序／HTTP／資產是注入替身，未啟動模型或網路。原 helper 失敗與 v1／v2 紀錄保留，v3 才是 exit0 的紅綠證據。
+
+三位真實評論者涵蓋流程／圖示／歷史工作列、失敗路徑、快取／租約／知識包，另一位全新獨立仲裁核對 255 項 manifest 與三席報告，最終 remainingFindings=[]、passed。失敗席排除自己修改的 runtime／coordinator；其改動由獨立資源席查核，角色限制已封存。最後快照 SHA-256：`1c35feb583744b39d64adfb1cbd0ecb62e05c128033a32e826b8437df2ccf474`。衍生主席紀錄 `output/mission-center-critique/CH-T117-closure-proof-20261004.json` SHA-256：`0a0ff4029065bab639ea59b5be47741c659ba429181585982894414eb2fc8d06`；Rust critic valid=true／errors=[]。原 sealed 報告與 limited 快照不改寫。
+
+13 項穩定 ID 與逐項證據完整保留在主席紀錄。三項反證駁回分別為單一 runtime 的 fail-closed 持鎖序列化、合作式取消卻被誤解為會繼續八次讀取，以及草稿漏讀既有工作列 owner 驗收；都提供具體來源／測試或歷史證據，並非由代理替使用者接受風險。確認的生命週期與競態問題均已修復，缺漏的證據已補齊。
+
+使用者已授權本任務持續收尾，不再重複索取額度。首輪、追加與 delta 的計畫及實際工具超額均保留在 chair-verification.json；精確 token 用量無法取得，未宣稱所有席位符合原計畫額度。CodeRabbit 用完外部額度後未重跑，後續修復由上述實際評論與仲裁驗證，不聲稱新版 CodeRabbit clean。
+
+Mission Center 依正式 completion passport 與原生 transition 收尾 CH-T117；本節與任務列是來源收尾，現有 EXE／Store artifact 保留。另一個 PAT 外洩事件仍需帳號擁有者撤銷／替換憑證與確認 Antigravity 當次工作停止，沒有併入產品 passed 結論。
