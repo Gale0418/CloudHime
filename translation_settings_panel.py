@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -58,6 +58,9 @@ class _ProviderDisclosure(QFrame):
 
     def __init__(self, provider_id, provider_name, capability, parent=None):
         super().__init__(parent)
+        self._capability_height_timer = QTimer(self)
+        self._capability_height_timer.setSingleShot(True)
+        self._capability_height_timer.timeout.connect(self._sync_capability_height)
         self.provider_id = str(provider_id)
         self.provider_name = str(provider_name)
         self.capability = str(capability)
@@ -114,6 +117,7 @@ class _ProviderDisclosure(QFrame):
         self.header.setAccessibleName(f"{self.provider_name}: {status}")
         self.header.setAccessibleDescription(self.capability)
 
+    @Slot()
     def _sync_capability_height(self):
         width = self.capability_label.width()
         if width <= 0 or not self.capability_label.wordWrap():
@@ -128,7 +132,7 @@ class _ProviderDisclosure(QFrame):
         # QScrollArea may assign the narrowed content width after the parent
         # layout pass; refresh once the child geometry is settled so wrapped
         # capability text cannot be clipped vertically.
-        QTimer.singleShot(0, self._sync_capability_height)
+        self._capability_height_timer.start(0)
 
     def _set_expanded(self, expanded):
         expanded = bool(expanded)

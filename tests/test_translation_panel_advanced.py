@@ -2,16 +2,25 @@ from pathlib import Path
 from types import SimpleNamespace
 import pytest
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QSizePolicy
+from PySide6.QtCore import QCoreApplication, QEvent, QSize, Qt
+from PySide6.QtGui import QResizeEvent
+from PySide6.QtWidgets import QApplication, QComboBox, QSizePolicy
 
-from translation_settings_panel import TranslationSettingsPanel
+from translation_settings_panel import TranslationSettingsPanel, _ProviderDisclosure
 from themes import resolve_theme
 
 class DummyWorker:
     google_api_key = ""
     use_gemma_translation = True
     gemma_auto_switch_enabled = False
+
+
+def test_pending_provider_disclosure_resize_is_cancelled_on_delete(qtbot):
+    disclosure = _ProviderDisclosure("google", "Google", "Description")
+    disclosure.resizeEvent(QResizeEvent(QSize(240, 120), QSize(440, 120)))
+    disclosure.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    QApplication.instance().processEvents()
 
 
 class DummyController:

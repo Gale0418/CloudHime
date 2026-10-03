@@ -397,3 +397,12 @@
 - Impact：文件回執提交使用 [skip ci]，來源 CI 對應上述程式碼 SHA，未宣稱文件 SHA 有新程式碼驗證。沒有新產品 EXE／正式 Store 發行；本機 Qt 原生 crash 的失敗紀錄保留，遠端成功不證明根因已修。
 - Evidence：output/main-sync-20261004/github-receipt.json；審查原始 NDJSON、21 檔最終來源 manifest、七份 245-pass JUnit 均同目錄。任務狀態保持 canonical tasks.md，不將來源同步冒充新全面可販售 Epic 完成。
 - Cleanup：本次兩個 projection 已封存為 review-148-snapshot.zip／review-final-snapshot.zip；遞迴刪除被自動批准審查拒絕，僅回 blocked by policy，因此臨時資料夾保留、不重試刪除。所有本次測試／CodeRabbit 執行已結束，未終止其他程序。
+
+## 2026-10-04T06:59:01.5019898+08:00：Qt 原生崩潰追查與設定頁回呼修正
+
+- Timestamp：2026-10-04T06:59:01.5019898+08:00
+- Change：從 Windows Application1000 與本地 CDB minidump 核對歷史故障；相同 PySide 空指標簽章最早可查 9/21 21:14，當次 Python 專案未知；9/24 08:26 明確影響 Store0.1.0.0 EXE，10/4 03:19／04:36 的 Python3.10 仍同位置。舊 dump 證實 retrieveMetaObject+0x24 讀 NULL，但未含 self heap，最後失效 wrapper 未確認。
+- Reason：主人追問何時發生、現在是否仍會，以及未重建 EXE 的含義；不將來源／CI 通過冒充產品 EXE 根治。
+- Impact：獨立 red 重現設定頁 contextless QTimer.singleShot 在元件刪除後仍讀 QLabel；改成元件持有的單次 timer／QObject slot，green 與207案UI回歸通過。原生 Controller／設定關閉刪除GC壓力修正前第5～6輪AV，修正後CDB20輪／一般程序40輪通過。歷史NULL簽章與本次原生壓力故障尚未併因；任務生命週期不變，沒有重建EXE／替換Store，原產物不含此修正。
+- Review：CodeRabbit 基準分支前置失敗未送審，明確 --base main 後審查2檔／0 issues；本時段2個CLI指令、1次實際審查，未用credits。排除未修改大檔、models、assets、dumps、settings與憑證。
+- Evidence：reviews/2026-10-04-qt-native-diagnosis.md；output/qt-crash-20261004/windows-native-events.json、historical-043627-native.txt、lifetime-retain-object.txt、disclosure-red.xml、disclosure-green.xml、provider-fix-validation.xml、lifetime-after-timer.xml、lifetime-fixed-normal.xml、coderabbit-base-main.ndjson、review-scope.json。main／最後去除診斷參照的對照結果於後續回執補登。
