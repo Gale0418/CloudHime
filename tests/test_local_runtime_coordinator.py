@@ -238,7 +238,7 @@ def test_stop_then_release_during_inflight_start_stops_runtime_after_it_becomes_
     assert not thread.is_alive()
     assert result['state'].name == 'ready'
     assert created[0].state.name == 'stopped'
-    assert created[0].stop_calls == 2
+    assert created[0].stop_calls == 1
 
     replacement = coordinator.acquire(_assets(), profile='vision')
     assert replacement.runtime is not created[0]
@@ -284,3 +284,126 @@ def test_concurrent_release_of_one_lease_does_not_consume_another_lease():
     assert second.released is False
     second.release()
     assert created[0].stop_calls == 1
+
+
+def test_stop_requested_before_runtime_start_entry_is_applied_after_start():
+    created = []
+
+    class BlockingBeforeStartRuntime(FakeRuntime):
+        def __init__(self, assets, *, profile='vision', **kwargs):
+            super().__init__(assets, profile=profile, **kwargs)
+            self.start_entered = threading.Event()
+            self.allow_start = threading.Event()
+
+        def start(self):
+            self.start_entered.set()
+            assert self.allow_start.wait(timeout=2)
+            self.state = SimpleNamespace(name='ready')
+            return self.state
+
+    def factory(assets, **kwargs):
+        runtime = BlockingBeforeStartRuntime(assets, **kwargs)
+        created.append(runtime)
+        return runtime
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=factory)
+    lease = coordinator.acquire(_assets(), profile='vision')
+    start_result = {}
+    start_thread = threading.Thread(
+        target=lambda: start_result.setdefault('state', lease.start()),
+        daemon=True,
+    )
+    start_thread.start()
+    assert created[0].start_entered.wait(timeout=1)
+
+    lease.stop()
+    created[0].allow_start.set()
+    start_thread.join(timeout=2)
+
+    assert not start_thread.is_alive()
+    assert start_result['state'].name == 'ready'
+    assert created[0].state.name == 'stopped'
+    assert created[0].stop_calls == 1
+    lease.stop()
+    assert created[0].stop_calls == 1
+
+
+def test_deferred_stop_failure_can_be_retried_while_lease_is_retained():
+    class FailOnceStopRuntime(BlockingReadyRuntime):
+        def stop(self):
+            self.stop_calls += 1
+            if self.stop_calls == 1:
+                raise OSError("transient cleanup failure")
+            self.state = SimpleNamespace(name='stopped')
+            return self.state
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=FailOnceStopRuntime)
+    lease = coordinator.acquire(_assets(), profile='vision')
+    start_result = {}
+
+    def start_and_capture_error():
+        try:
+            start_result["state"] = lease.start()
+        except OSError as exc:
+            start_result["error"] = str(exc)
+
+    start_thread = threading.Thread(target=start_and_capture_error, daemon=True)
+    start_thread.start()
+    assert lease.runtime.start_entered.wait(timeout=1)
+    lease.stop()
+    lease.runtime.allow_start.set()
+    start_thread.join(timeout=2)
+
+    assert not start_thread.is_alive()
+    assert start_result["error"] == "transient cleanup failure"
+    assert lease.runtime.state.name == "ready"
+    lease.stop()
+    assert lease.runtime.stop_calls == 2
+    assert lease.runtime.state.name == "stopped"
+
+
+@pytest.mark.parametrize("operation", ["stop", "set_profile"])
+def test_blocking_stop_serializes_acquire_until_cleanup_is_complete(operation):
+    stop_entered = threading.Event()
+    allow_stop = threading.Event()
+    acquire_finished = threading.Event()
+    acquire_result = {}
+
+    class BlockingStopRuntime(FakeRuntime):
+        def stop(self):
+            self.stop_calls += 1
+            stop_entered.set()
+            assert allow_stop.wait(timeout=2)
+            self.state = SimpleNamespace(name='stopped')
+            return self.state
+
+    coordinator = LocalVisionRuntimeCoordinator(runtime_factory=BlockingStopRuntime)
+    lease = coordinator.acquire(_assets(), profile='vision')
+    operation_call = lease.stop if operation == "stop" else lambda: lease.set_profile("text")
+    operation_thread = threading.Thread(target=operation_call, daemon=True)
+    operation_thread.start()
+    assert stop_entered.wait(timeout=1)
+
+    def acquire_while_cleanup_runs():
+        try:
+            coordinator.acquire(_assets(), profile='vision')
+        except RuntimeError as exc:
+            acquire_result["error"] = str(exc)
+        finally:
+            acquire_finished.set()
+
+    acquire_thread = threading.Thread(target=acquire_while_cleanup_runs, daemon=True)
+    acquire_thread.start()
+    completed_while_cleanup_blocked = acquire_finished.wait(timeout=0.2)
+    allow_stop.set()
+    operation_thread.join(timeout=1)
+    acquire_thread.join(timeout=1)
+
+    assert not operation_thread.is_alive()
+    assert not acquire_thread.is_alive()
+    assert completed_while_cleanup_blocked is False
+    assert acquire_result == {"error": "shared_runtime_stopped"}
+    if operation == "set_profile":
+        assert lease.runtime.profile_name == "text"
+    assert coordinator.active_lease_count == 1
+    lease.release()

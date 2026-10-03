@@ -1,6 +1,6 @@
 # 2026-10-04 CloudHime 程式檢查與修復
 
-本輪修復已完成來源驗證，正式多專家評議為 **limited**，CH-T117 保留 Review。這份紀錄不代表新的 frozen EXE、Store 套件或上架驗收通過。
+本輪來源修復仍在收尾，正式多專家評議為 **limited**，CH-T117 保留 Review。提交 e3dae59 的 GitHub CI 發現 UI 原生存取違規；後續定稿已完成本機來源雜湊綁定驗證，待新提交 CI 與獨立最終裁定。這份紀錄不代表新的 frozen EXE、Store 套件或上架驗收通過。
 
 ## 已修復
 
@@ -26,9 +26,33 @@ CodeRabbit 首審 13 檔、2 issues：標點空值已修；逾時直接退出且
 
 仲裁判定五項歷史 finding 有支持關閉的證據，controlled Qt／圖示／既有工作列確認可成立。resources 席只完成宣告及片段檢查，cache／lease／knowledge 實作覆蓋仍 partial／unknown；兩席用完工具額度前未成功寫檔，主席以明確標示的 receipt 保存實際 final 回覆，未冒稱其有完整封存報告。**沒有零問題即通過的推論，也沒有 Done／passport／正式發布。**
 
-要完成正式評議，仍需額外授權的獨立 resources 覆蓋與最終證據裁定。依 [Mission Center 評議規則](C:/Users/USER/.codex/plugins/cache/mission-center-local/mission-center/0.5.2/skills/mission-center/references/completion-critic-council.md)，「Resource budgets and platform limits still apply and are not reset per wave.」原席次工具上限已用完，不能自行加額。
+使用者已核准精簡收尾額度 4,000 tokens／12 tools／10 分鐘，並明確授權本任務持續修復、評議至沒有 P0／P1，不再重複詢問同一授權。原席次及追加用量分別累計，不把上一輪 limited 改稱通過；獨立 resources 覆蓋與最終證據裁定繼續進行。
+
+## CI 與關閉生命週期後續
+
+來源 e3dae59 的 [CI 37137115838](https://github.com/Gale0418/CloudHime/actions/runs/37137115838) 七個必需群組成功，UI 群組失敗：建立後續 Controller 的 QThread 時 Windows 原生 access violation。先前 1,623 個本機成功案例是當時的來源基線，不能替代這次失敗，也不是後續修復的最終驗證。
+
+補查發現 QThread.finished 不能代替原生執行緒完整 join；OCR、背景清理及遠端查詢須 wait(0) 確認後才放掉強參照。新增回歸已證明舊清理 callback 會提早標記完成。候選修復的四檔合併 UI 診斷仍在設定取消後的 teardown 卡住，180 秒後只回收本次啟動的測試程序樹，保留 stack／timeout 紀錄；目前正在查證訊號執行緒及關閉事件，不宣稱此候選已修好 CI。
+
+後續實際 Controller 回呼探針全部在 GUI 執行緒，未支持「缺少 Slot 就是根因」的假說，未因此重寫訊號路由。移除探針後四檔合併 119 項通過（27.78 秒），仍以後續最終來源與遠端 CI 為驗收準據。
+
+獨立資源席另提出啟動／停止競態與清理持鎖兩項 P2，正以阻塞 runtime 重現；知識包席提出關閉只等 daemon worker 2 秒的生命週期缺口，修復席正在補實際終止門檻與阻塞研究回歸。
+
+知識服務取消屬合作式，已進入的同步 provider 呼叫先返回，再拒絕後續階段，沒有宣稱 DNS 或整次呼叫的硬截止時間。評論中「取消可能仍等 8×15 秒來源讀取」已有反證：新回歸在第一筆讀取阻塞時取消，八個網址只 dispatch 一次，不呼叫模型，服務／builder 共 21 項通過。原評論報告保留，最終仲裁會核對此處置。
+
+最終獨立逐檔驗證再現產品測試關閉卡住，180 秒後按本次 Popen 程序樹回收，來源前後雜湊相同。既有 Windows SDK CDB 非侵入診斷取得原生 stack：GUI 等在 Qt QObject connect mutex，另一個 QThread 等 Python GIL；動態訊號連接／回呼生命週期的互鎖正在查證。記錄在 `native-hang-cdb.log`、`final-verification/summary.json`，這次驗證結果為 fail，不因之前一次合併成功而結案。
 
 本地原始紀錄：`output/audit-hardening-20261003/`；正式紀錄：`output/mission-center-critique/CH-T117-hardening-20261004.json` 與同名資料夾。舊紀錄與套件保留。
+
+## 定稿修復與本機重驗（2026-10-04）
+
+第二份非侵入 CDB stack 另定位 GUI 處理 DeferredDelete 的 QWidget 子物件析構與背景 QObject 析構同時等待 Qt mutex／Python GIL；不宣稱已證明特定 upstream bug 或 mutex instance。production 改用建構期預連接的 Slot／timer 輪詢，QThread wait(0) 確認真正 join 後才放掉強參照；測試 teardown 先完成所有 shutdown gates，再明確 flush DeferredDelete，逾時與 close veto 都 fail-closed。
+
+知識研究取消後改於背景等 wait_for_all 真正完成，關閉期間拒絕新研究。模型 stop 在 start 尚未進入 runtime 的交錯已於舊版重現 stopped 預期落成 ready；新版記住 stop-after-start，完成後補 stop，失敗保留重試路徑。正常 stop／profile 的持鎖是單一 runtime fail-closed 序列化，阻塞測試證明 acquire 不會建立第二台 server；交由獨立資源席判斷，不用偏好直接擴大重構。
+
+`final-verification-stable/summary.json`：七份 UI 檔依 CI 逐檔隔離，加上租約／快取／知識服務／builder／inventory，**229 passed、0 skipped／failure／error、exit 0、sourceUnchanged=true**。前一輪 deferred 驗證各程序雖 exit 0，但 conftest 在途中新增 fail-closed guards，整體 sourceUnchanged=false／fail；紀錄保留，不算定稿成功。
+
+新 `ch-t117-final-success-20261004`／`ch-t117-final-failure-20261004` harness 皆 exit 0：正式 Worker→Controller→Qt paint 成功字幕與 provider 失敗原文，失敗不寫持久快取，實際 timer 關閉完成並確認 OCR native join。兩者均 mock OCR／provider、offscreen；source-binding.json 綁定目前來源與純雲朵資產，沒有 live 或新版 frozen 產物聲稱。CodeRabbit 本輪外部額度已耗完，後續 Qt／資源修復未再跑外部審查，改由授權範圍內的獨立專家驗證；這不等同 CodeRabbit 新版 clean。
 
 ## 另外的憑證事件
 

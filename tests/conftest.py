@@ -2,11 +2,45 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 from ci.corpus_policy import missing_files_for_test
+
+
+def _wait_for_controller_shutdown(controllers, timeout_ms=15000):
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    while any(not getattr(controller, "_close_app_finished", False) for controller in controllers):
+        remaining_ms = int((deadline - time.monotonic()) * 1000)
+        if remaining_ms <= 0:
+            pytest.fail("Controller shutdown did not drain before UI fixture teardown")
+        # The production timer is preconnected; driving its slot directly lets
+        # background QThreads finish without processing unrelated DeferredDelete
+        # events for QtBot-owned widgets during their QObject teardown.
+        for controller in controllers:
+            if not getattr(controller, "_close_app_finished", False):
+                controller._poll_app_shutdown_threads()
+        time.sleep(min(0.01, remaining_ms / 1000.0))
+    return True
+
+
+def _allow_test_controller_shutdown(controller):
+    # Assertions about save vetoes have already run by fixture teardown. Let
+    # the harness close the window so its QThreads cannot outlive QtBot widgets.
+    controller._persist_pending_api_key = lambda: True
+    controller._persist_pending_openai_api_key = lambda: True
+    controller.save_settings = lambda: True
+
+
+def _is_fully_initialized_controller(controller, ui):
+    return (
+        isinstance(controller, ui.Controller)
+        and hasattr(controller, "worker")
+        and hasattr(controller, "ocr_thread")
+        and callable(getattr(controller, "_persist_pending_api_key", None))
+    )
 
 
 def _drain_open_controller_shutdowns():
@@ -19,44 +53,37 @@ def _drain_open_controller_shutdowns():
         return
     controllers = [
         widget for widget in app.topLevelWidgets()
-        if isinstance(widget, ui.Controller)
+        if _is_fully_initialized_controller(widget, ui)
     ]
     for controller in controllers:
         try:
+            _allow_test_controller_shutdown(controller)
             controller.close_app()
         except (RuntimeError, AttributeError):
             continue
     pending = [
         controller for controller in controllers
-        if getattr(controller, "_close_app_started", False)
-        and not getattr(controller, "_close_app_finished", False)
+        if not getattr(controller, "_close_app_finished", False)
     ]
     if not pending:
         return
+    if any(not getattr(controller, "_close_app_started", False) for controller in pending):
+        pytest.fail("Controller shutdown was vetoed during UI fixture teardown")
 
-    from PySide6.QtCore import QEventLoop, QTimer
-
-    loop = QEventLoop()
-    poll = QTimer()
-    poll.setInterval(10)
-
-    def check_finished():
-        if all(getattr(controller, "_close_app_finished", False) for controller in pending):
-            loop.quit()
-
-    poll.timeout.connect(check_finished)
-    poll.start()
-    QTimer.singleShot(15000, loop.quit)
-    loop.exec()
-    poll.stop()
+    _wait_for_controller_shutdown(pending)
 
 
 @pytest.hookimpl(wrapper=True, tryfirst=True)
 def pytest_runtest_teardown(item):
-    # pytest-qt closes registered widgets in its teardown hook. Complete any
-    # async controller close first so child Qt objects remain valid meanwhile.
+    # Let controller and QtBot fixture finalizers run first; afterwards drain
+    # all native QThreads before processing their queued widget deletions.
+    yield
     _drain_open_controller_shutdowns()
-    return (yield)
+    widgets = sys.modules.get("PySide6.QtWidgets")
+    if widgets is not None and widgets.QApplication.instance() is not None:
+        from PySide6.QtCore import QCoreApplication, QEvent
+
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 @pytest.fixture(scope="session")
@@ -91,9 +118,7 @@ def _disable_native_hotkey_side_effects_for_tests(request, _qt_session_safety):
 @pytest.fixture(autouse=True)
 def _cleanup_controller_threads_after_ui_test(request):
     """Do not import Qt merely to clean up a test that never used it."""
-    # Make this fixture tear down before qtbot deletes registered widgets.
-    # Otherwise an asynchronous close could target wrappers already destroyed
-    # by qtbot's own finalizer.
+    # Keep qtbot alive through controller shutdown and native thread joins.
     qtbot = request.getfixturevalue("qtbot") if "qtbot" in request.fixturenames else None
     yield
     widgets = sys.modules.get("PySide6.QtWidgets")
@@ -104,39 +129,21 @@ def _cleanup_controller_threads_after_ui_test(request):
     if app is None:
         return
     for widget in list(app.topLevelWidgets()):
-        if isinstance(widget, ui.Controller):
+        if _is_fully_initialized_controller(widget, ui):
             try:
+                _allow_test_controller_shutdown(widget)
                 widget.close_app()
             except (RuntimeError, AttributeError):
                 # qtbot may already have deleted the native object.
                 continue
     pending = []
     for widget in list(app.topLevelWidgets()):
-        if isinstance(widget, ui.Controller) and getattr(widget, "_close_app_started", False):
-            if not getattr(widget, "_close_app_finished", False):
-                pending.append(widget)
+        if _is_fully_initialized_controller(widget, ui) and not getattr(widget, "_close_app_finished", False):
+            pending.append(widget)
     if pending:
-        if qtbot is not None:
-            for widget in pending:
-                qtbot.waitUntil(lambda widget=widget: getattr(widget, "_close_app_finished", False), timeout=10000)
-        else:
-            from PySide6.QtCore import QEventLoop, QTimer
-
-            loop = QEventLoop()
-            poll = QTimer()
-            poll.setInterval(10)
-
-            def drain_or_timeout():
-                app.processEvents()
-                if all(getattr(widget, "_close_app_finished", False) for widget in pending):
-                    loop.quit()
-
-            poll.timeout.connect(drain_or_timeout)
-            poll.start()
-            QTimer.singleShot(10000, loop.quit)
-            loop.exec()
-            poll.stop()
-    app.processEvents()
+        if any(not getattr(widget, "_close_app_started", False) for widget in pending):
+            pytest.fail("Controller shutdown was vetoed during UI fixture teardown")
+        _wait_for_controller_shutdown(pending, timeout_ms=10000)
 
 
 def pytest_addoption(parser):

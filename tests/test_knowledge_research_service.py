@@ -86,6 +86,51 @@ def test_service_checks_cancellation_before_each_stage():
         service.build_research_draft("Work", cancel_event)
 
 
+def test_cancel_during_source_read_prevents_remaining_network_calls():
+    entered = threading.Event()
+    release = threading.Event()
+    cancel_event = threading.Event()
+    calls = []
+    errors = []
+
+    class BlockingReader:
+        def read(self, url):
+            calls.append(url)
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError("test reader was not released")
+            return "Public facts."
+
+    model = FakeModel()
+    service = KnowledgeResearchService(
+        search_provider=FakeSearch(), reader_provider=BlockingReader(),
+        model_provider=model, max_sources=8,
+    )
+    urls = [f"https://example.com/source-{index}" for index in range(8)]
+
+    def build():
+        try:
+            service.build_research_draft("Work", cancel_event, source_urls=urls)
+        except Exception as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=build)
+    thread.start()
+    try:
+        assert entered.wait(2)
+        cancel_event.set()
+        # Cancellation is cooperative: the entered call must return first,
+        # then every subsequent source is rejected before network dispatch.
+        assert thread.is_alive()
+    finally:
+        release.set()
+        thread.join(3)
+    assert not thread.is_alive()
+    assert calls == urls[:1]
+    assert len(errors) == 1 and "cancelled" in str(errors[0])
+    assert model.prompts == []
+
+
 def test_service_forwards_explicit_sources_and_validates_model():
     search = FakeSearch()
     reader = FakeReader()

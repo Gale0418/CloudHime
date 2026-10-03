@@ -22,6 +22,8 @@ class _RuntimeEntry:
     leases: int = 0
     stopped: bool = False
     starting: int = 0
+    stopping: bool = False
+    stop_after_start: bool = False
     cleanup_after_start: bool = False
 
 
@@ -109,6 +111,10 @@ class LocalVisionRuntimeCoordinator:
             if entry.stopped:
                 return getattr(entry.runtime, "state", getattr(entry.runtime, "_state", None))
             if entry.leases == 1:
+                if entry.starting:
+                    entry.stop_after_start = True
+                    entry.stopped = True
+                    return getattr(entry.runtime, "state", getattr(entry.runtime, "_state", None))
                 result = entry.runtime.stop()
                 entry.stopped = True
                 return result
@@ -122,6 +128,8 @@ class LocalVisionRuntimeCoordinator:
                 return
             if entry.leases != 1:
                 raise RuntimeError("shared_runtime_profile_conflict")
+            if entry.starting:
+                raise RuntimeError("shared_runtime_starting")
             entry.runtime.stop()
             entry.stopped = True
             entry.runtime.set_profile(profile)
@@ -129,6 +137,8 @@ class LocalVisionRuntimeCoordinator:
     def start(self, lease, *args, **kwargs):
         with self._lock:
             entry = self._entry_for(lease)
+            if entry.stopping or entry.stop_after_start:
+                raise RuntimeError("shared_runtime_stopping")
             entry.starting += 1
             entry.stopped = False
 
@@ -143,6 +153,7 @@ class LocalVisionRuntimeCoordinator:
     def _finish_start(self, lease, entry, state) -> None:
         cleanup_runtime = None
         remove_entry = False
+        stop_after_start = False
         with self._lock:
             entry.starting = max(0, entry.starting - 1)
             current = self._entries.get(lease._key) is entry
@@ -150,6 +161,13 @@ class LocalVisionRuntimeCoordinator:
                 return
             if getattr(state, "name", "") not in ("ready", "starting"):
                 entry.stopped = True
+            if entry.starting == 0 and entry.stop_after_start:
+                entry.stop_after_start = False
+                if getattr(state, "name", "") in ("ready", "starting") and entry.leases:
+                    entry.stopping = True
+                    entry.stopped = True
+                    cleanup_runtime = entry.runtime
+                    stop_after_start = True
             if entry.leases == 0 and entry.starting == 0:
                 needs_cleanup = (
                     not entry.stopped
@@ -166,6 +184,21 @@ class LocalVisionRuntimeCoordinator:
         try:
             if cleanup_runtime is not None:
                 cleanup_runtime.stop()
+        except BaseException:
+            if stop_after_start:
+                with self._lock:
+                    if self._entries.get(lease._key) is entry:
+                        entry.stopping = False
+                        entry.stopped = entry.leases == 0
+            raise
+        else:
+            if stop_after_start:
+                with self._lock:
+                    if self._entries.get(lease._key) is entry:
+                        entry.stopping = False
+                        entry.stopped = True
+                        if entry.leases == 0:
+                            self._entries.pop(lease._key, None)
         finally:
             if remove_entry:
                 with self._lock:
@@ -203,7 +236,7 @@ class LocalVisionRuntimeCoordinator:
                 cleanup_runtime = entry.runtime
             # Keep a stopped entry visible while cleanup is still in progress.
             # A concurrent acquire must fail closed instead of spawning a second server.
-            if cleanup_runtime is None and not entry.starting:
+            if cleanup_runtime is None and not entry.starting and not entry.stopping:
                 self._entries.pop(lease._key, None)
 
         if cleanup_runtime is not None:

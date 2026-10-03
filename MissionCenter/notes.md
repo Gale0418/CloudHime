@@ -361,3 +361,13 @@
 - Reason：使用者全面抓蟲與已核准正式評議。
 - Impact：三評論／仲裁判limited，resources實作coverage不足且席次工具用完；Review保留，未Done或發布。另有Antigravity越界憑證事件待owner rotation，token值未保存。
 - Evidence：reviews/2026-10-04-hardening.md；output/mission-center-critique/CH-T117-hardening-20261004.json。
+
+## 2026-10-04T01:13:07+08:00：CH-T117 CI 與資源收尾續作
+
+- Timestamp：2026-10-04T01:13:07+08:00
+- Change：e3dae59 的 CI37137115838 七項成功、UI 群組原生 access violation。native join補查有舊callback提早完成的red證據；候選合併UI仍timeout180秒，保留stack且僅回收自己測試程序樹。
+- Reason：使用者核准追加4000tokens／12工具／10分鐘並要求本任務持續至無P0/P1、不再重複詢問。保留先前limited／工具用量，不把授權當驗證結果。
+- Impact：Review保留；獨立資源席補查cache／lease／retrieval／packstore，提出兩項P2待重現；增派限定知識包資源覆蓋3000tokens／6工具／10分鐘，計入追加用量。UI及runtime修復分檔獨立進行。
+- Evidence：reviews/2026-10-04-hardening.md；output/audit-hardening-20261003/join-diagnosis-result.json；output/mission-center-critique/CH-T117-hardening-20261004/resources-closure-report.json。
+
+- 2026-10-04 CH-T117：定稿 229 案來源雜湊固定驗證通過；stop/start 競態、知識 worker 真正終止與 Qt DeferredDelete 排序修復。使用者授權任務內持續收尾；新 CI 和 final council 完成前仍 Review。

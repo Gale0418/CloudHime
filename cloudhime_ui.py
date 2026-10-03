@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
                                QSpinBox, QSizePolicy, QSplitter, QScrollArea,
                                QGraphicsOpacityEffect, QGridLayout)
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
-                            QAbstractNativeEventFilter, QEvent)
+                            QAbstractNativeEventFilter, QEvent, Slot)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient, QShortcut, QKeySequence
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
@@ -79,7 +79,11 @@ class _ShutdownCleanupThread(QThread):
                 logger.error(f"[Shutdown] worker cleanup failed: {type(exc).__name__}")
         if self._knowledge_worker is not None:
             try:
-                self._knowledge_worker.wait_for_all(2.0)
+                # Knowledge builds use cooperative cancellation. Keep shutdown
+                # pending until their callback path and worker thread have
+                # actually drained; never tear down the controller underneath
+                # a still-running build.
+                self._knowledge_worker.wait_for_all()
             except Exception as exc:
                 logger.error(f"[Shutdown] knowledge wait failed: {type(exc).__name__}")
 
@@ -3227,6 +3231,12 @@ class Controller(QWidget):
         self._stream_render_timer.setSingleShot(True)
         self._stream_render_timer.setInterval(STREAM_RENDER_INTERVAL_MS)
         self._stream_render_timer.timeout.connect(self._flush_stream_updates)
+        # Connect the shutdown poll before any worker QThread starts. Teardown
+        # must not create Python signal connections while a worker is entering
+        # or leaving Python through the GIL.
+        self._shutdown_poll_timer = QTimer(self)
+        self._shutdown_poll_timer.setInterval(10)
+        self._shutdown_poll_timer.timeout.connect(self._poll_app_shutdown_threads)
         self.local_runtime_coordinator = LocalVisionRuntimeCoordinator()
         
         self.setWindowTitle("雲朵翻譯姬")
@@ -3570,21 +3580,27 @@ class Controller(QWidget):
     def _shutdown_remote_model_availability(self):
         self._remote_model_availability_generation += 1
         thread = self.remote_model_availability_thread
-        if not _qt_object_is_valid(thread) or not thread.isRunning():
+        if not _qt_object_is_valid(thread):
+            self._remote_model_shutdown_finished = True
+            return
+        if thread.wait(0):
             self._remote_model_shutdown_finished = True
             return
         self._remote_model_shutdown_finished = False
         # It can outlive this widget briefly while an in-flight network request
         # returns. Keep it alive and use its finished signal as a GUI-side gate.
         thread.setParent(None)
+        self._remote_model_shutdown_thread = thread
         _ACTIVE_REMOTE_SHUTDOWN_THREADS.add(thread)
-        thread.finished.connect(
-            lambda thread=thread: _ACTIVE_REMOTE_SHUTDOWN_THREADS.discard(thread)
-        )
-        thread.finished.connect(self._on_remote_model_availability_shutdown_finished)
         thread.quit()
 
     def _on_remote_model_availability_shutdown_finished(self):
+        thread = getattr(self, "_remote_model_shutdown_thread", None)
+        if _qt_object_is_valid(thread) and not thread.wait(0):
+            return
+        if thread is not None:
+            _ACTIVE_REMOTE_SHUTDOWN_THREADS.discard(thread)
+        self._remote_model_shutdown_thread = None
         self._remote_model_shutdown_finished = True
         self.remote_model_availability_thread = None
         self.remote_model_availability_worker = None
@@ -3986,6 +4002,12 @@ class Controller(QWidget):
         model_name=DEFAULT_GEMMA4_MODEL,
     ):
         """Start an explicit DDGS -> Jina -> Gemma4 candidate build."""
+        if (
+            getattr(self, "_shutdown_pending", False)
+            or getattr(self, "_close_app_started", False)
+            or getattr(self, "_close_app_finished", False)
+        ):
+            return False
         normalized_title = " ".join(str(title or "").split())[:240]
         if not normalized_title:
             return False
@@ -5681,16 +5703,18 @@ class Controller(QWidget):
                 QApplication.instance().removeNativeEventFilter(self.hotkey_filter)
         self._shutdown_remote_model_availability()
         thread = getattr(self, "ocr_thread", None)
-        if thread is None or not thread.isRunning():
+        if not _qt_object_is_valid(thread):
             self._begin_shutdown_cleanup()
-            return
-        thread.finished.connect(self._on_ocr_thread_finished)
-        thread.quit()
+        elif thread.wait(0):
+            self._begin_shutdown_cleanup()
+        elif thread.isRunning():
+            thread.quit()
+        self._shutdown_poll_timer.start()
+        self._poll_app_shutdown_threads()
 
     def _on_ocr_thread_finished(self):
         thread = getattr(self, "ocr_thread", None)
         if thread is not None and not thread.wait(0):
-            QTimer.singleShot(0, self._on_ocr_thread_finished)
             return
         self._begin_shutdown_cleanup()
 
@@ -5704,15 +5728,44 @@ class Controller(QWidget):
         )
         self._shutdown_cleanup_thread = thread
         _ACTIVE_SHUTDOWN_THREADS.add(thread)
-        thread.finished.connect(
-            lambda thread=thread: _ACTIVE_SHUTDOWN_THREADS.discard(thread)
-        )
-        thread.finished.connect(self._on_shutdown_cleanup_finished)
         thread.start()
 
     def _on_shutdown_cleanup_finished(self):
+        thread = getattr(self, "_shutdown_cleanup_thread", None)
+        if _qt_object_is_valid(thread) and not thread.wait(0):
+            return
+        if thread is not None:
+            _ACTIVE_SHUTDOWN_THREADS.discard(thread)
+        self._shutdown_cleanup_thread = None
         self._shutdown_cleanup_finished = True
         self._maybe_finish_app_shutdown()
+
+    @Slot()
+    def _poll_app_shutdown_threads(self):
+        if not getattr(self, "_shutdown_pending", False):
+            self._shutdown_poll_timer.stop()
+            return
+
+        ocr_thread = getattr(self, "ocr_thread", None)
+        if (
+            not getattr(self, "_shutdown_cleanup_started", False)
+            and (not _qt_object_is_valid(ocr_thread) or ocr_thread.wait(0))
+        ):
+            self._begin_shutdown_cleanup()
+
+        remote_thread = getattr(self, "_remote_model_shutdown_thread", None)
+        if remote_thread is not None:
+            self._on_remote_model_availability_shutdown_finished()
+        elif not _qt_object_is_valid(getattr(self, "remote_model_availability_thread", None)):
+            self._remote_model_shutdown_finished = True
+
+        cleanup_thread = getattr(self, "_shutdown_cleanup_thread", None)
+        if cleanup_thread is not None:
+            self._on_shutdown_cleanup_finished()
+
+        self._maybe_finish_app_shutdown()
+        if getattr(self, "_close_app_finished", False):
+            self._shutdown_poll_timer.stop()
 
     def _maybe_finish_app_shutdown(self):
         if (
