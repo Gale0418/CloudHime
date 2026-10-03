@@ -146,3 +146,13 @@ UI 收尾中一次 product_experience 整檔仍出現 Windows access violation�
 - coderabbit-final.ndjson SHA-256：`bf7a811d842ae5491b55a85fc94d1afbbd0f1464648587c9eab3ffbb3f4b63c0`
 - final-review-scope.json SHA-256：`85777c640b1ee8f42991b7d87cf1c7557fb1348232832cd5007d391cd16b1726`
 - shipping-verification.json SHA-256：`4beade4033c6607e989b7ac6b77f95f0c69e30eeab8707da6a26ce1162458403`
+
+
+## 2026-10-04T04:49:33+08:00：GitHub main／CI 實際回執
+
+- Timestamp：2026-10-04T04:49:33+08:00
+- Change：來源提交 `f76f401c0bc76dd0b2626addd68ae87be3e8b312` 已推上 main，本機 git ls-remote 與 GitHub ref 均核對一致；[CI 37152671554](https://github.com/Gale0418/CloudHime/actions/runs/37152671554) completed／success，八必要工作全數成功、兩手動 frozen 工作 skipped。
+- Reason：完成主人授權的存 Git、CodeRabbit 查證修復、main 上傳與任務中心補登；以實際 provider 回執確認，不把預期結果當已完成。
+- Impact：文件回執提交使用 [skip ci]，來源 CI 對應上述程式碼 SHA，未宣稱文件 SHA 有新程式碼驗證。沒有新產品 EXE／正式 Store 發行；本機 Qt 原生 crash 的失敗紀錄保留，遠端成功不證明根因已修。
+- Evidence：output/main-sync-20261004/github-receipt.json；審查原始 NDJSON、21 檔最終來源 manifest、七份 245-pass JUnit 均同目錄。任務狀態保持 canonical tasks.md，不將來源同步冒充新全面可販售 Epic 完成。
+- Cleanup：本次兩個 projection 已封存為 review-148-snapshot.zip／review-final-snapshot.zip；遞迴刪除被自動批准審查拒絕，僅回 blocked by policy，因此臨時資料夾保留、不重試刪除。所有本次測試／CodeRabbit 執行已結束，未終止其他程序。

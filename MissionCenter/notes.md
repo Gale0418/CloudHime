@@ -387,3 +387,13 @@
 - Reason：主人要求存 Git、餵兔子、GitHub main 一次收尾；以每小時 3 次／每次 150 檔上限執行，排除未修改大檔與非來源資料。
 - Impact：不改既有任務生命週期；CH-T117 的先前正式完成證據保留，本新產品全面可販售任務草案尚未轉成正式 Epic。原生 Qt 崩潰根因未知、沒有新 EXE／Store／live 驗收，不能將來源同步等同正式發行。
 - Evidence：reviews/2026-10-04-sale-readiness.md；output/main-sync-20261004/shipping-verification.json、review-scope.json、final-review-scope.json、excluded-large-evidence.json、coderabbit-148.ndjson、coderabbit-final.ndjson、product-experience-native-crash.log。
+
+
+## 2026-10-04T04:49:33+08:00：GitHub main／CI 實際回執
+
+- Timestamp：2026-10-04T04:49:33+08:00
+- Change：來源提交 `f76f401c0bc76dd0b2626addd68ae87be3e8b312` 已推上 main，本機 git ls-remote 與 GitHub ref 均核對一致；[CI 37152671554](https://github.com/Gale0418/CloudHime/actions/runs/37152671554) completed／success，八必要工作全數成功、兩手動 frozen 工作 skipped。
+- Reason：完成主人授權的存 Git、CodeRabbit 查證修復、main 上傳與任務中心補登；以實際 provider 回執確認，不把預期結果當已完成。
+- Impact：文件回執提交使用 [skip ci]，來源 CI 對應上述程式碼 SHA，未宣稱文件 SHA 有新程式碼驗證。沒有新產品 EXE／正式 Store 發行；本機 Qt 原生 crash 的失敗紀錄保留，遠端成功不證明根因已修。
+- Evidence：output/main-sync-20261004/github-receipt.json；審查原始 NDJSON、21 檔最終來源 manifest、七份 245-pass JUnit 均同目錄。任務狀態保持 canonical tasks.md，不將來源同步冒充新全面可販售 Epic 完成。
+- Cleanup：本次兩個 projection 已封存為 review-148-snapshot.zip／review-final-snapshot.zip；遞迴刪除被自動批准審查拒絕，僅回 blocked by policy，因此臨時資料夾保留、不重試刪除。所有本次測試／CodeRabbit 執行已結束，未終止其他程序。
