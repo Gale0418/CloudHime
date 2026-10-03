@@ -82,3 +82,7 @@ Mission Center sync 與 doctor 通過；doctor 的既有 completion-passport leg
 2026-10-03 使用者授權管理員工作後，development light MSIX 副本的簽章、WACK XML PASS、實際安裝／啟動／移除均通過。全新 Windows Sandbox 的完整 frozen dist import、隨包模型 CPU Vision 1/1 與 GUI 20 秒 liveness 亦通過，本輪 Sandbox 程序已精確關閉。原產品來源與產物沒有重建。以上取代前文當時的「WACK／乾淨 Windows 尚未執行」，不代表完整 Store MSIX 的安裝、認證或更新已完成。
 
 本輪憑證物件／信任／公開CER已清理，但 backing private key 不可由此推論已刪除；公鑰查核不完整，追加唯讀 UAC 啟動取消，沒有刪除私鑰。完整證據及限制見 [管理員與 Sandbox 驗收](2026-10-03-admin-sandbox-acceptance.md)。CH-T55／CH-T117 保留 Review，差異評議額度及實際 Store 發行 gate 仍待完成。
+
+## 追加差異評議補記
+
+使用者核准追加4000tokens／20工具／10分鐘後，三獨立席與另一位仲裁真實完成，原三finding有修復證據；結果limited，成功GUI版本綁定unknown。主席另保留failure report hash筆誤及仲裁不同意見，Rust limited record valid=true/errors=[]。後補成功Qt顯示你好／translation_done局部驗收通過，但已超過本輪席位時限，尚未final closure。CH-T117保留Review；不代表Store gate完成。完整紀錄見 [追加評議](2026-10-03-closure-review.md)。

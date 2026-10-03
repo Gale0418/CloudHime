@@ -596,3 +596,11 @@
 | 2026-10-03 | CH-T55 | 全新Windows Sandbox完整frozen dist | 網路／vGPU停用，guest複製完整dist核對EXE SHA；import、CPU Vision、GUI20秒；精確關閉本輪程序 | 無主機profile或Python／模型服務依賴仍可運行 | Windows10 Enterprise19041、初始profile不存在、六指令Get-Command空；import passed、CPU technical_coverage1/1、GUI20秒passed；owned launcher/client已清理。非GPU／accuracy／StoreMSIX安裝 | Pass（乾淨Windows技術覆蓋） | sandbox, frozen, cpu, vision, clean-machine |
 
 證據與 hashes：[管理員與 Sandbox 驗收](../reviews/2026-10-03-admin-sandbox-acceptance.md)。
+
+## 2026-10-03 追加評議後的成功Qt顯示局部驗收
+
+| 日期 | Task ID | 名稱 | 指令／動作 | 預期 | 觀察 | 結果 | Tags |
+|---|---|---|---|---|---|---|---|
+| 2026-10-03 | CH-T117 | 受控成功翻譯的production Qt paint | Python3.10隔離success harness、deterministic OCR／mock Google TranslationResult；真實worker/controller/TransBubble QLabel | 譯文出現在Qt元件，status translation_done，可實際繪製 | QLabel你好、96×42PNG、✅ Translation complete；primary0／Google1；程序已關閉，未呼叫外部API。非live Google／physical desktop／frozenEXE點擊；此證據在正式評議後才補，未作四席final closure | Pass（局部驗收；非正式評議Done） | rendering, success, controlled, evidence |
+
+四席評議與局部證據：[追加差異評議](../reviews/2026-10-03-closure-review.md)。

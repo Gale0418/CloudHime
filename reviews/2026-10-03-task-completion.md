@@ -26,7 +26,7 @@ Chrome 使用既有登入工作階段唯讀核對 Partner Center。CloudHime 的
 
 全新 Windows Sandbox 的完整 frozen dist 驗收亦通過：Windows 10 Enterprise 19041、初始沒有 CloudHime profile；python／python3／py／pip／conda／ollama 指令均未找到。相同 EXE SHA-256 經核對，真實 frozen import、隨包模型與 projector 的 CPU Vision 1 image／1 case／1 success，以及 20 秒 GUI liveness 全部通過。使用隨包公開美術 fixture；網路、vGPU 與剪貼簿停用，沒有映射主機憑證或使用者設定。測試程序及本輪 Sandbox launcher/client 已精確清理。這是完整 frozen dist 的乾淨 Windows 技術覆蓋驗收，不是 GPU、準確度提升或 Store MSIX 安裝／認證證據。
 
-T117 追加差異評議封包已準備，僅核對錯誤 SHA 引用、後補人眼驗收、資產綁定與失敗處理證據，沒有新一輪全面找問題。預算請求為總 4,000 tokens／每席 800／整合 800、總 20 工具／每席 3、10 分鐘；核准尚未收到，因此未派送四席正式 closure。原評議的三個未收斂項保留，limited 不寫成 Done。依安裝版 Mission Center `references/completion-critic-council.md`「Resource budgets and platform limits still apply and are not reset per wave.」，額度不會按新 wave 自動重置。
+T117 追加差異評議已獲「准奏」核准：總 4,000 tokens／每席 800／整合 800、總 20 工具／每席 3、10 分鐘。三席與獨立仲裁真實完成，三項舊 finding 有修復證據；結論仍 limited，成功 GUI 版本綁定為 unknown。主席另核對出封存 failure report 的 evidence.md SHA 筆誤，保留作者更正及與仲裁的不同意見。Rust limited record valid=true/errors=[]，不以結構通過寫成 Done。評議後已補隔離成功 Qt 顯示「你好」及 translation_done 的局部驗收，但 10 分鐘時限已結束，未派送超額 final closure。完整結果與 hashes 見 [追加評議紀錄](2026-10-03-closure-review.md)。依安裝版 Mission Center `references/completion-critic-council.md`「Resource budgets and platform limits still apply and are not reset per wave.」，額度不會按新 wave 自動重置。
 
 CH-E6 的 21 個子任務均 Done，已更正 T43 舊狀態；Epic 尚待範圍收尾紀錄。CH-T55 保留 Review，CH-T56 的雙軌手冊已準備，但它與 CH-E7／CH-E8 仍受實際發行 gate 與依賴限制；不以文件完成代替 Store 更新驗收。
 
@@ -36,4 +36,4 @@ CH-E6 的 21 個子任務均 Done，已更正 T43 舊狀態；Epic 尚待範圍�
 
 ## 恢復順序
 
-先讀本 checkpoint、管理員與 Sandbox 驗收紀錄及 `output/task-completion-20261003/closure-review-packet.md`。development WACK／安裝與完整 frozen dist 乾淨 Windows gate 已完成，不重跑；私鑰查核維持未確認，不以廣泛掃描或刪除補洞。正式差異評議仍須等待明確額度核准，再處理 T55 完整 Store 候選的 package gate、版本核對與具體上傳確認。最後完成 T56 及 E7/E8 的依賴收尾。原產物與測試日誌均保留，不需要重新建置未變更的來源。
+先讀本 checkpoint、管理員與 Sandbox 驗收及追加評議紀錄。development WACK／安裝與完整 frozen dist 乾淨 Windows gate 已完成，不重跑；私鑰查核維持未確認，不以廣泛掃描或刪除補洞。T117 下一步是受控成功 Qt 證據與報告 metadata 的最終綁定，不再開全面找問題 wave；final closure 需要新的明確資源額度，舊 10 分鐘已過。之後處理 T55 完整 Store 候選的 package gate、版本核對與具體上傳確認，最後完成 T56 及 E7/E8 的依賴收尾。原產物與日誌均保留，不重建未變更來源。
