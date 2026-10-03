@@ -3260,6 +3260,9 @@ class Controller(QWidget):
         self._shutdown_poll_timer = QTimer(self)
         self._shutdown_poll_timer.setInterval(10)
         self._shutdown_poll_timer.timeout.connect(self._poll_app_shutdown_threads)
+        self._hotkey_activation_timer = QTimer(self)
+        self._hotkey_activation_timer.setSingleShot(True)
+        self._hotkey_activation_timer.timeout.connect(self.enable_hotkey)
         self.local_runtime_coordinator = LocalVisionRuntimeCoordinator()
         
         self.setWindowTitle("雲朵翻譯姬")
@@ -3293,7 +3296,7 @@ class Controller(QWidget):
         
         self.hotkey_filter = GlobalHotKeyFilter(self.on_hotkey_pressed)
         QApplication.instance().installNativeEventFilter(self.hotkey_filter)
-        QTimer.singleShot(500, self.enable_hotkey)
+        self._hotkey_activation_timer.start(500)
 
         self.old_pos = None
         mark("__init__ end")
@@ -3648,7 +3651,10 @@ class Controller(QWidget):
         self.remote_model_availability_worker = None
         self._maybe_finish_app_shutdown()
 
+    @Slot()
     def enable_hotkey(self):
+        if getattr(self, "_shutdown_pending", False):
+            return
         self.hotkey_filter.register_hotkey(self.winId())
         self.refresh_hotkey_button_text()
         # 讓主視窗在截圖時隱形 (WDA_EXCLUDEFROMCAPTURE = 0x11)
@@ -5833,6 +5839,7 @@ class Controller(QWidget):
         for timer_name in (
             "auto_timer", "display_timer", "cooldown_timer",
             "cooldown_progress_timer", "gemma_rate_timer", "_stream_render_timer",
+            "_hotkey_activation_timer",
         ):
             timer = getattr(self, timer_name, None)
             if timer is not None:

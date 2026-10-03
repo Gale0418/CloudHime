@@ -2,6 +2,8 @@
 
 日期：2026-10-04，台灣時間 UTC+8。調查基準 main `34b414194e0d4cb21e503153868e7ff5221456a5`；Python 3.10.11／PySide6 6.10.1。隔離 venv 的 `include-system-site-packages=true`，實際 Qt DLL 來自 Python310 的 site-packages；不是一套獨立安裝的 Qt。
 
+**最新反證：07:02:03，來源提交 `0373861710194bf63cd6918774978854f5c2274b` 的 [GitHub CI 37160325279](https://github.com/Gale0418/CloudHime/actions/runs/37160325279) 又發生原生存取違例。現在仍會；不能將下列本機通過結果稱為已根治。** 八個必要工作中七個成功、UI 群組失敗；兩個手動 frozen 工作跳過。設定外觀檔在獨立程序的第 12 案，建立 Controller 的 `setup_worker()`／`QThread()` 時失敗；CI 未產生 native dump，不能由 Python stack 判定為歷史同 RVA。這是在設定頁回呼修正之後、下述快捷鍵修正之前的來源。
+
 ## 結論與範圍
 
 找到並修正一個可獨立重現的設定頁生命週期問題：`_ProviderDisclosure.resizeEvent()` 使用沒有 QObject context 的 `QTimer.singleShot(0, bound_method)`。元件刪除後，排隊的高度調整仍會讀取已刪除的 QLabel。修正為由 disclosure 持有的單次 QTimer，接到明確的 `@Slot()`；Qt 刪除元件時同時取消計時器，連續 resize 也只保留一次待執行調整。
@@ -26,6 +28,7 @@
 | 10/4 03:15:26 | 本機 Python 3.10，PySide DLL | `0xc0000005`、`0x181cd`；dump stack 涉及動態 meta-method／signal connection |
 | 10/4 03:19:31、04:36:27 | 本機 Python 3.10／PySide6 6.10.1 | `retrieveMetaObject+0x24`，dump 確認 RAX=0、讀取 NULL；04:36 Python stack 位於 `setup_worker` 的 QThread 建立 |
 | 10/4 06:32、06:35 | 現行來源的刻意關閉／刪除／GC 壓力案例 | 原生 event filter override lookup AV；保留 filters 仍失敗 |
+| 10/4 07:02:03 | GitHub CI 37160325279、Python 3.10.11／PySide6 6.10.1 | 設定外觀第 12 案 `test_translation_provider_controls_remain_reachable_in_translation_page` 的 `QThread()` 原生 AV；UI 群組失敗 |
 
 Qt thread join／過早釋放的已知問題先前由 `f2e492f` 修正，證據見 `reviews/2026-10-04-hardening.md`；本次沒有將該修正冒充 PySide 空指標根因。
 
@@ -45,6 +48,15 @@ Qt thread join／過早釋放的已知問題先前由 `f2e492f` 修正，證據�
 - `lifetime-filter-disabled` 120 秒 timeout，約 60 輪、無 JUnit，不能算通過；縮小的 `lifetime-disabled-20` 雖無 native AV，仍有 deleted-label failure／teardown error。保留這些反證。
 - 早期診斷 harness 有 initial-break 配置與錯誤方法名／未設定屬性讀取問題，均不算產品重現或通過；已修正工具。CDB `q` 可能回傳 0，即使剛捕獲 AV，因此以 native marker、完整 JUnit 和 cycles 對帳，不能只看 exit code。
 - CodeRabbit 初次指令因臨時 repo 無法判斷 base branch 而在送審前失敗；明確 `--base main` 後 **2 檔、0 issues**。本時段 2 個 CLI 指令、1 次實際審查，未用 credits；payload 只含兩個修改程式檔，排除模型、資產、dump、設定與憑證。NDJSON 與 SHA-256 manifest 同診斷目錄。
+- CI 失敗後，本機 `settings-cold-native` 在 CDB 下冷啟相同單檔 **15 passed**；不能抹掉遠端失敗。新假說「worker 配置前完整 GC 是否使 stale wrapper 重用」的 `settings-before-worker-gc` 同樣 **15 passed**，未捕獲原始 NULL signature，不能據此修改 BindingManager 或宣布排除 GC 交互。
+
+## 關閉後快捷鍵重新啟用：另一個已確認缺陷
+
+`Controller.__init__()` 的 `QTimer.singleShot(500, self.enable_hotkey)` 沒有元件 context；`close_app()` 已移除 native filter、取消快捷鍵後，這個排隊回呼仍會重新註冊快捷鍵並讀取視窗。回歸 `test_delayed_hotkey_activation_is_cancelled_when_closing` 在原始碼明確失敗（關閉完成後 registrations 仍有一筆），並非由原生 stack 推測。
+
+修正為 Controller 持有的單次 `_hotkey_activation_timer`、`@Slot()`，關閉時停止；`enable_hotkey()` 也拒絕 shutdown 期間呼叫。新 `hotkey-validation` 的五檔同程序 **214 passed**，含這個回歸。一次指令誤用不存在的 smoke 檔名導致 exit 4、沒有執行案例；更正為已確認存在的檔案後才取得上述通過證據。這個修正尚未被證明解決歷史 NULL fault，不能把普通斷言 red/green 當原生根因。
+
+快捷鍵修改的 `cloudhime_ui.py`／`tests/test_shutdown_lifecycle.py` 另以獨立 projection 送 CodeRabbit，**2 檔、0 issues**；`coderabbit-hotkey.ndjson` 與 `hotkey-review-scope.json` 保存最終 bytes／SHA-256。此時段累計 3 個 CLI 審查指令、2 次實際審查，沒有超過 3 次／150 檔上限。修改的大 UI 檔必須審查，未修改的大檔與所有 dump、settings、models、assets 均排除。
 
 原始證據與可重跑診斷程式都在 ignored `output/qt-crash-20261004/`。full dump 限本地診斷；未放入 Git 或 CodeRabbit payload。所有本輪測試／debugger 子程序會於結束後核對，僅處理本次擁有的程序。
 

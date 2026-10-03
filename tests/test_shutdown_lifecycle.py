@@ -142,6 +142,23 @@ def test_stale_scan_result_is_not_rendered_while_shutdown_is_pending(qtbot, monk
     qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False), timeout=5000)
 
 
+def test_delayed_hotkey_activation_is_cancelled_when_closing(qtbot, monkeypatch):
+    registrations = []
+    monkeypatch.setattr(
+        "cloudhime_ui.GlobalHotKeyFilter.register_hotkey",
+        lambda self, hwnd: registrations.append(hwnd),
+    )
+    monkeypatch.setattr(
+        "cloudhime_ui.ctypes.windll.user32.SetWindowDisplayAffinity",
+        lambda *args: None,
+    )
+    controller = _make_controller(qtbot, monkeypatch)
+    controller.close_app()
+    qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False), timeout=5000)
+    qtbot.wait(600)
+    assert registrations == []
+
+
 def test_stopped_ocr_thread_still_waits_for_native_join(qtbot, monkeypatch):
     controller = _make_controller(qtbot, monkeypatch)
     ocr_thread = controller.ocr_thread

@@ -406,3 +406,13 @@
 - Impact：獨立 red 重現設定頁 contextless QTimer.singleShot 在元件刪除後仍讀 QLabel；改成元件持有的單次 timer／QObject slot，green 與207案UI回歸通過。原生 Controller／設定關閉刪除GC壓力修正前第5～6輪AV，修正後CDB20輪／一般程序40輪通過。歷史NULL簽章與本次原生壓力故障尚未併因；任務生命週期不變，沒有重建EXE／替換Store，原產物不含此修正。
 - Review：CodeRabbit 基準分支前置失敗未送審，明確 --base main 後審查2檔／0 issues；本時段2個CLI指令、1次實際審查，未用credits。排除未修改大檔、models、assets、dumps、settings與憑證。
 - Evidence：reviews/2026-10-04-qt-native-diagnosis.md；output/qt-crash-20261004/windows-native-events.json、historical-043627-native.txt、lifetime-retain-object.txt、disclosure-red.xml、disclosure-green.xml、provider-fix-validation.xml、lifetime-after-timer.xml、lifetime-fixed-normal.xml、coderabbit-base-main.ndjson、review-scope.json。main／最後去除診斷參照的對照結果於後續回執補登。
+
+
+## 2026-10-04T07:17:01+08:00：Qt CI 原生失敗反證與快捷鍵關閉回歸
+
+- Timestamp：2026-10-04T07:17:01+08:00
+- Change：來源 0373861710194bf63cd6918774978854f5c2274b 已上 main，但 GitHub CI37160325279 於 07:02:03 在設定外觀第12案建立 QThread 時發生 native AV；7必要工作成功、UI失敗、2手動frozen跳過，不能宣稱根治。本機相同單檔CDB冷啟15案通過，新GC前置診斷15案通過，仍未捕獲原始NULL的full heap證據。
+- Reason：主人問「什麼時候、現在還會嗎、原因」；9/24 08:26 Store EXE已證實同RVA1ba6c，今日遠端仍崩，必須保存反證。
+- Impact：另以red確認關閉後500ms快捷鍵回呼仍重新註冊；改由Controller持有單次timer、關閉停止、Slot和shutdown guard。214案相關UI／關閉回歸通過；此修正不是已確認的NULL根因。歷史根因未完成，不變更任務生命周期，不重建或替換EXE／Store。
+- Review：快捷鍵2檔CodeRabbit0 issues，SHA256匹配；本時段累計3個CLI審查指令／2次實際審查，排除無關大檔、資產、模型、dump、設定與憑證。沒有超過使用者限制。
+- Evidence：reviews/2026-10-04-qt-native-diagnosis.md；https://github.com/Gale0418/CloudHime/actions/runs/37160325279；output/qt-crash-20261004/hotkey-close-red.xml、hotkey-validation.xml、settings-cold-native.xml、settings-before-worker-gc.xml、coderabbit-hotkey.ndjson、hotkey-review-scope.json。來源上傳後續回執核對，不將本機214pass當完整CI成功。
