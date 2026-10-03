@@ -33,6 +33,30 @@ Python 3.13.11、PySide6 6.10.1、offscreen，分批執行，未宣稱完整 3.1
 
 ## 套件、CI 與未完成項
 
-本段先記錄來源準備；新套件建置、雜湊、frozen OCR／import、Store MSIX／upload、main／CI 對帳在取得結果後補登，不以舊 EXE 冒充新雲朵版。
+原始碼與五份雲朵資產已提交並同步 GitHub main：`bff0c4f005b9ebec7d3e00450f4ddfd00b31d53d`。由此 commit 的乾淨 Git archive 建置，306 檔 SHA-256 manifest、archive 與實際 derived spec 均保存於 `output/cloud-release-20261003/`；未採用人物稿不在快照內。僅為依賴對帳將 Git LF／工作檔 CRLF 正規化，其他內容必須一致。
 
-正式 critic_full 尚缺 total／per-seat／tool／wall-clock 明確預算，保留 CH-T117 Review；本機工作階段未提升權限，WACK 與需要權限的自簽安装驗證尚未執行。Store 準備包不代表 Partner Center 已上傳、認證或發行，CH-T55 Review、CH-T56 Backlog 保留。
+[CI run 37084989820](https://github.com/Gale0418/CloudHime/actions/runs/37084989820) 已完成 success，head SHA 與來源一致；八個必需工作成功，兩個手動 frozen-release 工作依設定 skipped，本輪 frozen gate 由本機另外執行。
+
+新 Python 3.10 雲朵 EXE：`output/cloud-release-20261003/dist/CloudHime/CloudHime.exe`，SHA-256 `810d9751d379afb77baa474fd6099bc59e698641f0e0a34b2f741439719e0028`。環境隔離 frozen Windows OCR 公開圖片辨識兩行、import 與 light dist verifier 通過；40-component provenance 驗證通過。PE 圖示群存在、與先前預覽圖示不同。此環境隔離結果不是全新 Windows VM 驗收。
+
+CodeRabbit 完整與差異審查原始 NDJSON SHA-256 分別為 `7a38bea2788b01f5780d3948e78be49a505ce23acb65810ef0171ad9048c42f9`、`c3a546d20364db80ecdc3dd89434215995e01118b08d2abb2c3090d2f75befd3`；分支錯誤的首次輸出 `55338cda5fc654debacb0009cbc13491c662393985dbe0b7a73e78811433f9a3` 不列通過。
+
+正式 critic_full 尚缺 total／per-seat／tool／wall-clock 明確預算，保留 CH-T117 Review；本機工作階段未提升權限，WACK 與需要權限的自簽安裝驗證尚未執行。Store 準備包不代表 Partner Center 已上傳、認證或發行，CH-T55 Review、CH-T56 Backlog 保留。
+
+## 新產物與完整離線 smoke
+
+- 新 frozen CPU Vision：1 張圖／1 case／1 成功請求，technical_coverage、非空輸出；測試程序與其模型服務已由 PID 樹清理，不代表翻譯準確度或 pristine VM。
+- full dist：375 檔、4,896,174,164 bytes、固定兩個模型及四份條款；provenance／完整模型大小與 SHA-256 通過。
+- light ZIP 與 development MSIX 均無模型；Store 候選 MSIX 含固定兩模型。兩個 MSIX 的 manifest identity／publisher／x64／0.1.2.0、無 AppxSignature、CRC、Foundation／Collections、主／44／50／150 圖示、EXE 與模型 SHA-256 通過。upload 僅含原 MSIX 且 hash 一致。未以 MakeAppx 解包測試冒稱實際安裝。
+
+| 產物 | Bytes | SHA-256 |
+|---|---:|---|
+| `output/cloud-release-20261003/dist/CloudHime/CloudHime.exe` | 5502275 | `810d9751d379afb77baa474fd6099bc59e698641f0e0a34b2f741439719e0028` |
+| `output/cloud-release-20261003/CloudHime-cloud-light.zip` | 868392382 | `d47446848989e78cc9db1e1737447105de554fc1160ef92b1e689c49fe7183ac` |
+| `output/cloud-release-20261003/dev/output/CloudHime-0.1.2.0-x64.msix` | 839206443 | `257544ceb06639904ce7e7c31cbd2d668586b02616984421b4c8fcf57fd6a64e` |
+| `output/cloud-release-20261003/store/output/CloudHime-0.1.2.0-x64.msix` | 3942272756 | `b3f51822aa84b01a05895ff1b48f80497442d438a55b1a3d7b9a0dcfbaf88216` |
+| `output/cloud-release-20261003/store/output/CloudHime-0.1.2.0-x64.msixupload` | 3940086304 | `1223f02197f7f62fbc42876410efdc9b86e87b3e6ef8c5cb35ef68e0fd2f6dff` |
+
+Store 0.1.2.0 為本機候選號，尚未核對 Partner Center 是否已使用；既有 Store 0.1.1.0 未改。新一般 GUI 已啟動且有回應／CloudHime 視窗 handle；未宣稱看見實際畫面。正式 critic_full、WACK 與新候選安裝仍未執行。
+
+Mission Center sync 與 doctor 通過；doctor 的既有 completion-passport legacy warnings 仍保留，不宣稱警告為零。E6／E8 已做唯讀範圍與依賴對帳，缺口與下一步寫回 tasks.md；不自動將 Epic 改為 Done。本次只補文件、checkpoint 與 SHA-256 清單，發行的程式／圖示來源仍是 bff0c4f。

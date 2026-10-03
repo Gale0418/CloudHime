@@ -49,6 +49,8 @@ $msix = Join-Path $run 'output/CloudHime-0.1.2.0-x64.msix'
 $certificate = New-SelfSignedCertificate `
   -Type CodeSigningCert `
   -Subject 'CN=CloudHime Development' `
+  -NotAfter (Get-Date).AddDays(1) `
+  -KeyExportPolicy NonExportable `
   -CertStoreLocation 'Cert:\CurrentUser\My'
 $cer = Join-Path $run 'cloudhime-dev.cer'
 Export-Certificate -Cert $certificate -FilePath $cer | Out-Null
@@ -107,13 +109,13 @@ pwsh -File packaging/build_msix.ps1 `
 
 ## 目前 checkpoint 與恢復順序
 
-截至 2026-10-03，Microsoft Store 私人群組已有 `0.1.1.0`；這是先前版本狀態，不是本輪發行結果。本輪 OCR 修正加入 WinRT Foundation／Collections 3.2.1，並處理 HTTP 429 提示與不快取失敗 fallback；雲朵來源 `assets/cloudhime_logo_cloud.png` 已套用主圖及 44／50／150 MSIX 圖示。舊 preview output 的凍結 OCR 修復曾通過 106 個相關測試與 frozen OCR 驗證，但它早於雲朵圖示，不能當成新雲朵版套件證據。新雲朵版尚待重建；沒有新的 Store 上傳／簽署／發布結果。
+截至 2026-10-03，先前已安裝的私人 Store 版本為 `0.1.1.0`，本輪未變更。雲朵來源及 OCR／限流修復已同步 main；乾淨來源 commit `bff0c4f005b9ebec7d3e00450f4ddfd00b31d53d` 的新 EXE 通過 frozen OCR 兩行、import、CPU 單圖 1/1、light/full payload 與 provenance 驗證，238 個相關測試及來源 CI 通過。新 light ZIP、unsigned 開發 MSIX 與完整 Store `0.1.2.0` 候選 MSIX／upload 已在 `output/cloud-release-20261003/` 建立並核對內容與雜湊。`0.1.2.0` 尚未核對 Partner Center 是否已使用；正式評議、本次安裝／WACK、上傳／認證／更新均未完成。完整來源、產物 SHA-256 與限制見 [雲朵版驗收紀錄](../reviews/2026-10-03-ocr-cloud-release.md)。
 
 恢復工作時依序處理：
 
 1. 完成 CH-T117 對本輪程式與雲朵圖示更新的 review，依其驗收條件確認後續工作所需的來源版本。
 2. 完成 CH-T55 的 Store 版本／設定頁 review，核實 Partner Center 現行版本與上傳條件。
-3. 保留既有預覽產物，從已核准來源重建新 frozen dist，重新跑相關 OCR／圖示 smoke 與 `-PreflightOnly`；記錄新結果及限制。
+3. 核對已建置候選與來源／雜湊紀錄；評議若修正程式或資產，才從新核准來源重建並重跑受影響 smoke。需要本機安裝／WACK 時使用獨立測試環境，不把自簽測試包覆蓋既有 Store 安裝。
 4. 依目的選軌道 A 或 B。Store 上傳前再核對 identity、版本、`release-two-track` 手冊與 upload 內容；只有實際 Partner Center 結果才能推進為發行完成證據。
 
 CH-T56 正式任務仍為 Backlog 並依賴 CH-T55 Review。本文件是發行操作草稿，不代表 T117、T55 或 T56 已完成，也不會因文件存在而改變 MissionCenter 狀態。

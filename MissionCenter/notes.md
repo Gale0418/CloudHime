@@ -345,3 +345,11 @@
 - Change：main 原始碼 7c93c153d345483ae489aae5a5c6dd07ba9abf48 已推送並對帳；GitHub CI 37005380465 completed／success，八個必需工作成功、兩個 frozen release 工作 skipped。
 - Reason：依實際遠端結果補登，本次純文件提交 [skip ci]，不把文件 SHA 當程式碼 CI SHA。
 - Impact：新本機 light EXE 與 CPU 單圖 smoke 各有獨立證據；完整 UI／Store 與正式評論仍未完成，CH-T117 Review 保留。
+
+## 2026-10-03T10:11:56+08:00：雲朵版來源、驗證與候選套件
+
+- Timestamp：2026-10-03T10:11:56+08:00
+- Change：2026-10-03 雲朵來源 bff0c4f 已同步 main，CI 37084989820 success／八項成功、兩項手動 skipped；CodeRabbit 15 檔初審一項 minor 已修、2 檔複審 0 issues；238 個不同測試通過。新 EXE frozen OCR 兩行、import、CPU Vision 1/1、light/full verifier 與 40-component provenance 通過；light ZIP、unsigned dev MSIX、完整 Store 0.1.2.0 候選 MSIX／upload 已建立並核對 CRC／manifest／模型與 EXE 雜湊；尚未上傳或發布，WACK／本次安裝與正式評議未執行。
+- Reason：主人定案雲朵並 GO；依實際產物而非舊預覽驗證。
+- Impact：保留 Review／Backlog，未更新私人 Store 舊安裝；未宣稱一般 GUI 啟動後偏好 hash 完全不變。正式評議 not dispatched: approval/budget missing。
+- Evidence：reviews/2026-10-03-ocr-cloud-release.md；docs/release-two-track.md；output/cloud-release-20261003/artifact-verification.json。
