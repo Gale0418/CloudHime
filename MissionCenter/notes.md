@@ -613,3 +613,10 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 ### 2026-10-05 含文案候選封裝與草稿
 
 來源 fe88bab 的 EXE cbbcf0b8…694e842 通過 host import／Windows OCR 兩行／CPU vision 1/1／GUI 20 秒／full provenance；自然 CPU 負載最高 90%，不是完整操作壓力驗收。main fb36dca CI 37220416100 八 required success、兩 manual skipped，shipping 218 inputs 與 build source byte-identical。0.1.2.0 MSIX／upload 已完成並核對 SHA、stage 清理；第一次 MakeAppx OOM 已保留，SDK /np 序列封裝成功。Gemini 四份商店更新說明已存草稿並重新讀取核對；未上傳套件或認證。九張 source offscreen 三語版面圖完成，僅 presentation fixture，不冒充 native GUI。最新完整人工操作、隔離更新／WACK及已核准正式評論仍待完成；CH-T55 Review／Smoke NO／Critic NO，正式 Store 0.1.1.0 保留。詳見 reviews/2026-10-05-gemini-ui-copy.md。
+
+
+### 2026-10-05 沙箱套件通過與 WACK 工具崩潰
+
+來源 fe88bab 的相同 0.1.2.0 MSIX 在斷網 Windows Sandbox 完成 0.1.1.0→0.1.2.0 更新，PFN 不變且合成 LocalState 保留；全新安裝／AUMID 20 秒啟動／移除通過。這不是實際使用者設定或翻譯功能驗收。WACK appcert.exe test 以 -532462766（0xE0434352）結束，沒有 wack.xml；錯誤碼只指向未處理 CLR 例外，工具／環境／測試相容性根因未明，不能判定套件認證 PASS 或套件本身失敗。guest 套件／短效憑證清理無錯，精確 PID／路徑／父程序／建立時間核對後已回收本次 Sandbox，殘留為零。最新相同 EXE 使用獨立英文 CPU-only 設定開啟，完整人工操作仍待主人回報；正式 24k 評議尚未啟動。Store 尚未上傳或送認證，CH-T55 保持 Review／Smoke NO／Critic NO。
+
+證據：`output/store-release-20261005-gemini-copy/package-sandbox/output/package-result.json`、`package-sandbox/disposal-receipt.json`、`manual-preview-launch.json`。

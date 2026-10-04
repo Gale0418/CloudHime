@@ -608,3 +608,5 @@
 四席評議與局部證據：[追加差異評議](../reviews/2026-10-03-closure-review.md)。
 
 | 2026-10-05 | CH-T55 | 含Gemini文案EXE／MSIX候選與草稿 | 固定fe88bab重建與host frozen verifier、SDK序列封裝；四份Store清單重新讀取 | EXE／套件／來源綁定，文案不冒稱模型就緒／Google路由；不擴大人工驗收 | import、OCR兩行、CPU vision1/1、GUI20秒及full provenance通過；MSIX／upload SHA核對，stage清理；main CI八required success、兩manual skipped；四份Gemini更新說明存草稿。最新人工GUI、沙箱更新／WACK、正式評論與認證未通過，未上傳 | Pass（上述局部範圍；CH-T55 Smoke仍NO） | release, localization, frozen, package, evidence |
+
+| 2026-10-05 | CH-T55 | 沙箱更新／安裝與WACK工具故障 | 固定fe88bab套件在隔離Sandbox短效簽署、更新、安裝／20秒啟動／移除、WACK | 更新保留合成LocalState；完整WACK報告PASS | 更新與全新安裝／啟動／移除通過；WACK appcert工具0xE0434352崩潰、無XML；guest套件／憑證及本次VM已清理，實際設定與翻譯功能未測 | Fail（WACK gate未通過；套件安裝局部通過） | release, sandbox, wack, diagnostic, evidence |

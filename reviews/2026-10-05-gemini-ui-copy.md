@@ -29,3 +29,10 @@ Gemini 更新說明已存入 Submission 3 的 zh-Hant-TW／zh-TW／en-US／ja-JP
 新增九張三語 source Qt offscreen 版面圖，visual-copy/final/render-receipt.json 逐張綁 SHA；模型 ready 是 presentation fixture，背景服務與 native hotkey 排除，不冒稱實機旅程。首次渲染輸出後 interpreter teardown 未退出，精確回收本次兩個 renderer PID；改為允許程式自身 cleanup thread 並完整 drain 後正常 exit 0，首輪中斷證據保留。前兩份視覺準備僅為 helper 前置／fixture 校正，不是新的產品崩潰證據。
 
 完整人工暫停保留字幕／繼續、框選取消、忙碌時 Settings／Stop 與正常關閉仍待最新 EXE 的實機結果；新候選沙箱更新／WACK、正式 24k 評議與 Store 認證尚未通過。歷史 Qt 原生 invalid wrapper 根因仍未確定，這些局部通過不作全面根因結案。CH-T55 保持 Review、Smoke NO、Critic NO。
+
+
+### 2026-10-05 沙箱套件通過與 WACK 工具崩潰
+
+來源 fe88bab 的相同 0.1.2.0 MSIX 在斷網 Windows Sandbox 完成 0.1.1.0→0.1.2.0 更新，PFN 不變且合成 LocalState 保留；全新安裝／AUMID 20 秒啟動／移除通過。這不是實際使用者設定或翻譯功能驗收。WACK appcert.exe test 以 -532462766（0xE0434352）結束，沒有 wack.xml；錯誤碼只指向未處理 CLR 例外，工具／環境／測試相容性根因未明，不能判定套件認證 PASS 或套件本身失敗。guest 套件／短效憑證清理無錯，精確 PID／路徑／父程序／建立時間核對後已回收本次 Sandbox，殘留為零。最新相同 EXE 使用獨立英文 CPU-only 設定開啟，完整人工操作仍待主人回報；正式 24k 評議尚未啟動。Store 尚未上傳或送認證，CH-T55 保持 Review／Smoke NO／Critic NO。
+
+證據：`output/store-release-20261005-gemini-copy/package-sandbox/output/package-result.json`、`package-sandbox/disposal-receipt.json`、`manual-preview-launch.json`。
