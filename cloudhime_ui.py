@@ -47,6 +47,7 @@ from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject,
                             QAbstractNativeEventFilter, QEvent, Slot)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient, QShortcut, QKeySequence
 from provider_health import local_model_failure_message
+from marquee_label import MarqueeLabel
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
@@ -3354,9 +3355,8 @@ class Controller(QWidget):
         inner_layout.addLayout(title_bar)
 
         engine_row = QHBoxLayout()
-        self.lbl_engine_summary = QLabel()
+        self.lbl_engine_summary = MarqueeLabel()
         self.lbl_engine_summary.setTextFormat(Qt.PlainText)
-        self.lbl_engine_summary.setWordWrap(True)
         self.lbl_engine_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.btn_engine_settings = QPushButton()
         self.btn_engine_settings.setMinimumHeight(28)
@@ -3365,21 +3365,18 @@ class Controller(QWidget):
         engine_row.addWidget(self.lbl_engine_summary, 1)
         engine_row.addWidget(self.btn_engine_settings)
         inner_layout.addLayout(engine_row)
-        self.lbl_engine_data = QLabel()
+        self.lbl_engine_data = MarqueeLabel()
         self.lbl_engine_data.setTextFormat(Qt.PlainText)
-        self.lbl_engine_data.setWordWrap(True)
         self.lbl_engine_data.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         inner_layout.addWidget(self.lbl_engine_data)
 
         status_row = QHBoxLayout()
-        self.lbl_status = QLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
+        self.lbl_status = MarqueeLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
         self.lbl_status.setTextFormat(Qt.PlainText)
         self.lbl_status.setObjectName("translationStatus")
         self.lbl_status.setProperty("semanticRole", "translation-status")
-        self.lbl_status.setAccessibleName("翻譯狀態")
         self.lbl_status.setAccessibleDescription("顯示目前擷取、翻譯與錯誤狀態")
         self.lbl_status.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        self.lbl_status.setWordWrap(True)
         self.lbl_status.setMinimumHeight(30)
         self.charge_bar = StatusChargeBar()
         self.charge_bar.setObjectName("translationQuotaCharge")
@@ -3438,8 +3435,7 @@ class Controller(QWidget):
         scan_mode_row.addWidget(self.btn_mode_region)
         inner_layout.addLayout(scan_mode_row)
 
-        self.lbl_scan_hint = QLabel()
-        self.lbl_scan_hint.setWordWrap(True)
+        self.lbl_scan_hint = MarqueeLabel()
         self.lbl_scan_hint.setObjectName("scanHint")
         inner_layout.addWidget(self.lbl_scan_hint)
 

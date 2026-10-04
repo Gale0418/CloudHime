@@ -91,3 +91,23 @@ CPU取樣在17:27附近42至72%，freeRAM約7.1GiB；先前100%只是單次值�
 bc6fb87 main push CI37192500697 success。2檔CodeRabbit複審17:34:10至17:35:01完成，提出1 minor：多模態尚未收到status callback且stopped時，保留分支可能沿用Google舊label。新參數化回歸RED為1 failed/1 passed，失敗label確實Google；改為主動依目前語言顯示Vision stopped，與on_local_vision_status共用label，不修改上方一般status message。純文字stopped仍Local Gemma3。allowlist／隔離profile／offscreen完整UI71案GREEN，worker/OCR295 unchanged，合計366不同案例；stopped-initial-red/green.xml與log、fix-receipt皆在output/store-release-20261004-release-ready/。
 
 該來源未啟動EXE build，沒有冒稱兔子0問題或成功release；新immutable候選改存output/store-release-20261004-release-ready-v2/。一小時三次Rabbit额度現已用完，下一次不早於18:05:52+08:00；會先做本機建置與驗收、約18:06後才能補審。Store更新仍未上傳／認證／發布，正式critic budget尚未啟動，CH-T55維持Review／Smoke NO／Critic NO。
+
+
+## 2026-10-04T18:11:31+08:00：新 EXE 忙碌 CPU 與主人翻譯驗收
+
+固定來源 0931ca0、EXE SHA 5e1aba948f48f69f531ac4e416f09168f521a23f5c3a12d6171d63cec5f1699f。BelowNormal 建置於 17:39:33 至 17:46:05 完成，exit 0；light 369 檔、full 375 檔、40 個元件來源核對、frozen import、Windows OCR 兩行、CPU Vision 單張圖片／單次請求皆通過。CPU 推論階段五次整體取樣皆為 100%，取樣窗口 17:49:24 至 17:50:20；這不是精確載入／請求耗時，也不是遊戲 FPS 或辨識準確度證據，限制保存於 stress-load-summary.json。
+
+取樣器 Get-Content 的讀取鎖撞到 verifier 最後的 Set-Content，導致原執行 exit 1。原 verification.log、orchestration 與 verification-before-observer-race.json 均保留。僅將 ignored 取樣器改為 FileShare ReadWrite/Delete；同一 EXE 補跑 GUI 20 秒成功，PID 19788，所屬殘留程序為零，verification completionRecovery 明確記錄恢復流程。第一次恢復誤把 ModelFiles 當六個，實際為兩個 GGUF 與四份授權文件，防護檢查在 GUI 啟動前拒絕；原日誌保留，校正後才成功。不重跑已通過的模型請求，也不隱瞞失敗。
+
+CodeRabbit 於 18:07:05 至 18:07:51 複審兩檔，0 issues，審查檔案 SHA 與固定來源一致。配額依完成時間保守計算，一小時內原兩次加本次一次，未超過三次。CI 37192858615 八項必要檢查成功，兩項手動 frozen 檢查 skipped。主人明示「成功翻譯而且都是英文~」；18:05:16 截圖確認 Local Gemma Model ready／Local Gemma3 狀態列沒有 Google 誤標。human-target-acceptance.json 保存來源、截圖 SHA、已確認與未確認項目。截圖未顯示字幕內容，英文目標語言的證據來自主人的文字回覆。
+
+主人要求將會換成兩行的地方改為跑馬燈。目前針對主視窗引擎摘要、資料處理提示、翻譯狀態與框選提示，規劃單行、溢出才滾動、短文靜止、滑鼠移入暫停與完整提示／無障礙文字。設定頁長說明與字幕不擴大改動。0931 候選仍可使用；最終發行須依新來源重建。原 wait_manual_sandbox 觀察程序 PID 16172 已精確停止，避免舊候選自動執行 VM；主人的 manual app PID 46592 未停止。
+
+Store 四份版本說明已加入翻譯目標、Local Gemma 狀態與 Windows OCR 修正，儲存後返回 overview；英文、日文、中文台灣重開確認持久化，繁體中文台灣待重讀。尚未上傳新 MSIX、送認證或發布。CH-T55 維持 Review／Smoke NO／Critic NO；24k tokens、32 次工具、30 分鐘正式評論尚未派送起算。
+
+
+## 2026-10-04T18:25:43+08:00：主視窗單行跑馬燈來源驗證
+
+主人要求長提示跑馬燈化；新增 MarqueeLabel，套用引擎摘要、資料處理提示、翻譯狀態與框選提示四處。超出才啟動 parent-owned QTimer，隱藏時停止、顯示時恢復，QObject slot 避免 contextless 回呼；短文靜止、滑鼠移入暫停，完整 tooltip／statusTip／accessibleName 隨文字更新。設定頁長段落與翻譯字幕不變。驗收補修同文字刷新保留位移，以及字型／樣式改變時重新計算；五個元件案例加既有兩組 UI 共 156 案、29.51 秒通過。首輪 155 與失敗診斷日誌保留，最新證據為 output/store-release-20261004-marquee/pytest-ui-final.xml、final-ui-binding.json，非整個測試 inventory。
+
+README、任務下一步與本紀錄已更新；新來源尚待固定 main 提交、重建 EXE、配額內三檔 CodeRabbit、實機與乾淨環境／MSIX／WACK／正式評論。0931 的 frozen 與兔子 0 issues 不冒充本次來源通過。Store 四語版本說明均重讀確認持久化；尚未上傳新套件或送認證。CH-T55 Review／Smoke NO／Critic NO；正式評論預算未開始。
