@@ -110,3 +110,22 @@ Qt thread join／過早釋放的已知問題先前由 `f2e492f` 修正，證據�
 原始 NULL 未完成；本輪仍沒有重建 EXE、替換 Store 或變更任務 lifecycle。新診斷只增加證據，產品來源仍為先前已驗證的 `eb5ee34`。
 
 14:25 的 `historical-settings-address-reuse-corrected` 在固定來源 0373861 以同一 QApplication 重複四輪設定頁案例，完整 REG／RELEASE 監看超過 180 秒而中止、沒有 JUnit，不算通過。第一次指令誤用不存在的檔名，exit 4／0 個案例；該失敗也保留。縮小監看至 constructor／meta 的 `historical-settings-narrow-reuse` 在 98.07 秒完成 **60 次案例執行／15 個不同案例** 並生成完整 JUnit，未觀察 wrapper mismatch 或 AV，但程序結束仍超過總時限 120 秒，因此整個 probe 為 timeout、不能當完整程序通過。沒有新 producer 證據，不繼續無限制重跑；保留日誌與 XML，收尾檢查只針對本次擁有的 Python／CDB。
+
+
+## 2026-10-04：translation-final 整合與發行狀態
+
+來源為 `main` `466780b`。整合收據 `second-line/integrated-receipt.json` 記錄 576 passed、31.23 秒；逐項輸出位於 `output/store-release-20261004-translation-final/verification-result.json`、`ci-result.json`、`coderabbit-receipt.json`、`source-text-probe.json`。最新 CI 是 8 required success、2 manual skipped。CodeRabbit 曾回報 2 minor 並已修正；來源 `466780b` 的 4 檔複審為 0 issues，僅涵蓋該次範圍，不能推論整個儲存庫沒有問題。
+
+新 EXE `1015aa86…fda1863` 在 host frozen 環境通過 OCR 兩行、CPU vision 1/1 與 20 秒 GUI 驗證。這不代表完整 GUI OCR journey 已通過：實際 公開測試句的 Gemma 單句與 batch 第 2 行都輸出英文（未使用 Google），已驗證的只有固定來源的模型文字呼叫。使用者 暫停／繼續／重新框選取消 完整操作驗收仍待完成。
+
+全新 sandbox OCR 仍失敗；identity MSIX 已證明成立，但執行仍是 `E_FAIL`。native-first guest stream 可成功 decode BGRA8，`RecognizeAsync` 失敗且 C Windows OCR 回傳空結果。缺少 payload 只是待控制實驗驗證的候選解釋；目前不能宣稱根因已定或全面修復。原始 raw failure 保留。
+
+目前 0.1.2.0 套件封裝 進行中，Store 現行仍為 0.1.1.0，尚未上傳或認證。正式評論 尚未派送，已核准額度維持不變。
+
+### 20:01 OCR 語言資源控制實驗
+
+原始 `sandbox/`、`ocr-identity/` 及 `ocr-native-first/` 的失敗保留。native-first 使用首次成功建立的同一 engine，Store／Flush／解碼均成功（1000×300、BGRA8），到 RecognizeAsync 才失敗，排除探針先丟棄 engine 的疑點。取得 MSIX 身分也未改善。
+
+`ocr-payload-control/` 首次寫入沙箱 Windows OCR 目錄遭拒，該失敗未覆蓋。`ocr-payload-control-v2/sandbox/output/result.json` 在僅限 WDAGUtilityAccount 的拋棄式沙箱補入主機既有 ja／zh OCR 資源後，原生辨識 2 行、同來源 frozen 程式初次與再次辨識均 2 行且 error 為空；owned 程序清理為 0。這確認沙箱語言資源缺失或不可用會造成本次失敗，並非只靠套件身分可修復。沒有變更產品 OCR 來源；未將 Windows 資源打包、上傳或當成正式 Windows capability 安裝。
+
+後續 `sandbox-ocr-prerequisite/` 明示「新沙箱＋診斷用 OCR 前置資源」，不替代原始未修改沙箱的失敗紀錄。啟動時因可用 RAM 未達 6 GiB 被 guard 拒絕；沒有啟動 VM，也沒有清理無關程式。待封裝與記憶體允許後繼續完整 EXE OCR／CPU／GUI，以及 MSIX 安裝／更新／WACK。CH-T55 保持 Review，Smoke NO、Critic NO；原 Store 0.1.1.0 保留。

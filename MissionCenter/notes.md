@@ -562,3 +562,27 @@ README、任務下一步與本紀錄已更新；新來源尚待固定 main 提�
 36e7838 已推 main；固定來源與 568 案測試逐檔 SHA／EOL binding 保存於 output/store-release-20261004-translation-ready/。CodeRabbit 11 檔、994036 bytes，排除模型／runtime／設定／憑證，配額依所有歷史 receipt 的完成時間保守計算；完整審查提出 2 minor issues，並非 0 issues。查證為 Controller 快取提示只辨認繁中 catalog，以及遠端／Google 批次等待仍寫死中文。新增三語輸入與雙引擎三語狀態回歸，RED 6 failed／3 passed；修正後 9 passed，JUnit、原始 log、receipt 在 second-line/review-delta-red 與 review-delta-green。保留原文字 trimming／狀態流程；沒有擴大到其他 UI。
 
 36e7838 的 BelowNormal PyInstaller 在 19:06:16 精確停止 owned PID 15960，parent 正常保存 exit 4294967295 與 build-cancelled.json；不使用部分產物、不執行舊 verifier。下一候選須以修正後新來源重建與複審。先前卡住的 Qt 混跑根因未定；最新全新 profile／verbose／faulthandler／硬逾時整合 576 passed，零 failure/error/skip、來源 SHA 前後一致，JUnit SHA c1bce6381ff9501ae0f90e428ec19aa24521602be6c42856f980065ec80103d8。Store 未上傳／認證／發布，CH-T55 仍 Review、Smoke NO、Critic NO，正式評論額度尚未起算。
+
+
+## 2026-10-04：translation-final 驗證更新
+
+來源 `main` `466780b`；整合結果為 576 passed、31.23 秒，收據 `second-line/integrated-receipt.json`。原始產物：
+
+- `output/store-release-20261004-translation-final/verification-result.json`
+- `output/store-release-20261004-translation-final/ci-result.json`
+- `output/store-release-20261004-translation-final/coderabbit-receipt.json`
+- `output/store-release-20261004-translation-final/source-text-probe.json`
+
+CI 最新為 8 required success、2 manual skipped。CodeRabbit 的 2 minor 已修正；來源 `466780b` 的 4 檔複審為 0 issues，僅涵蓋該次範圍，不能推論整個儲存庫沒有問題。新 EXE `1015aa86…fda1863` 的 host frozen OCR 兩行、CPU vision 1/1、GUI 20 秒驗證通過；公開測試句的 Gemma 單句和 batch 第 2 行實際回傳英文，且未用 Google。此結果僅驗證固定來源的模型文字呼叫，尚未完成整段 GUI 操作驗收；使用者 暫停／繼續／重新框選取消 全流程驗收待完成。
+
+全新 sandbox OCR 失敗。identity MSIX 已獲證明，但仍回 `E_FAIL`。native-first guest stream 的 BGRA8 decode 成功，`RecognizeAsync` 失敗，C Windows OCR 為空；缺少 payload 仍是候選，控制實驗未完成，根因未定，也不能宣稱全面修復。raw failure 保留。
+
+Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。正式評論 尚未派送，核准額度未變。
+
+### 20:01 OCR 語言資源控制實驗
+
+原始 `sandbox/`、`ocr-identity/` 及 `ocr-native-first/` 的失敗保留。native-first 使用首次成功建立的同一 engine，Store／Flush／解碼均成功（1000×300、BGRA8），到 RecognizeAsync 才失敗，排除探針先丟棄 engine 的疑點。取得 MSIX 身分也未改善。
+
+`ocr-payload-control/` 首次寫入沙箱 Windows OCR 目錄遭拒，該失敗未覆蓋。`ocr-payload-control-v2/sandbox/output/result.json` 在僅限 WDAGUtilityAccount 的拋棄式沙箱補入主機既有 ja／zh OCR 資源後，原生辨識 2 行、同來源 frozen 程式初次與再次辨識均 2 行且 error 為空；owned 程序清理為 0。這確認沙箱語言資源缺失或不可用會造成本次失敗，並非只靠套件身分可修復。沒有變更產品 OCR 來源；未將 Windows 資源打包、上傳或當成正式 Windows capability 安裝。
+
+後續 `sandbox-ocr-prerequisite/` 明示「新沙箱＋診斷用 OCR 前置資源」，不替代原始未修改沙箱的失敗紀錄。啟動時因可用 RAM 未達 6 GiB 被 guard 拒絕；沒有啟動 VM，也沒有清理無關程式。待封裝與記憶體允許後繼續完整 EXE OCR／CPU／GUI，以及 MSIX 安裝／更新／WACK。CH-T55 保持 Review，Smoke NO、Critic NO；原 Store 0.1.1.0 保留。
