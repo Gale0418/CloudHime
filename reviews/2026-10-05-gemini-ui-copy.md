@@ -11,3 +11,7 @@
 證據位於 output/store-release-20261005-gemini-copy：gemini-copy-provenance.json、gemini-minor-repair-receipt.json、regression-receipt.json／regression.xml、coderabbit-scope.json／coderabbit-review.ndjson、coderabbit-recheck-scope.json／coderabbit-recheck.ndjson、verified-copy-checkpoint.json。最終回歸 XML SHA-256：d71adb11682a4fbe7056138853f57a4e83836cb96712cfc4e7aab24a6baad13e。
 
 本紀錄是來源文案與相關回歸驗證，尚未代表含本輪文案的新 EXE、完整人工操作、MSIX 更新／WACK、正式 24k 評議或 Store 上傳／認證通過。舊 adf8d39 EXE 證據仍只適用原來源；20:13 失敗候選不會復用。CH-T55 保持 Review、Smoke NO、Critic NO；Store 仍為 0.1.1.0。
+
+## CI 清單補正
+
+fe88bab 的遠端 CI 37220102524：七個必要工作成功，core 因新 tests/test_ui_copy.py 未加入明確測試清單失敗，兩個手動 frozen 工作 skipped。已將新檔分配至 UI 組，產品程式未變；相關清單與文案測試結果見 output/store-release-20261005-gemini-copy/ci-inventory-fix-receipt.json。這次 CI 失敗紀錄保留，後續 main CI 通過才作為新的驗證證據。CodeRabbit 審查範圍未包含此一行清單補正。
