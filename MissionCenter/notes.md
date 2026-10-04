@@ -609,3 +609,7 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 ### 2026-10-05 Gemini 全介面文案
 
 三語 624 目錄文字與 497 內嵌候選已審閱，337 目錄文字修改；OCR／快速鍵三語接線完成，未知診斷保留。最終相關回歸 428 passed；CodeRabbit 18 檔兩項 Minor 已修、兩檔複審零 issues。工具授權舊卡點已解除。CH-T55 保持 Review；含文案新 EXE／完整 GUI／MSIX／WACK／正式評論／Store 待驗收，未上傳。見 reviews/2026-10-05-gemini-ui-copy.md。
+
+### 2026-10-05 含文案候選封裝與草稿
+
+來源 fe88bab 的 EXE cbbcf0b8…694e842 通過 host import／Windows OCR 兩行／CPU vision 1/1／GUI 20 秒／full provenance；自然 CPU 負載最高 90%，不是完整操作壓力驗收。main fb36dca CI 37220416100 八 required success、兩 manual skipped，shipping 218 inputs 與 build source byte-identical。0.1.2.0 MSIX／upload 已完成並核對 SHA、stage 清理；第一次 MakeAppx OOM 已保留，SDK /np 序列封裝成功。Gemini 四份商店更新說明已存草稿並重新讀取核對；未上傳套件或認證。九張 source offscreen 三語版面圖完成，僅 presentation fixture，不冒充 native GUI。最新完整人工操作、隔離更新／WACK及已核准正式評論仍待完成；CH-T55 Review／Smoke NO／Critic NO，正式 Store 0.1.1.0 保留。詳見 reviews/2026-10-05-gemini-ui-copy.md。

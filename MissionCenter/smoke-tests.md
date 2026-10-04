@@ -606,3 +606,5 @@
 | 2026-10-03 | CH-T117 | 受控成功翻譯的production Qt paint | Python3.10隔離success harness、deterministic OCR／mock Google TranslationResult；真實worker/controller/TransBubble QLabel | 譯文出現在Qt元件，status translation_done，可實際繪製 | QLabel你好、96×42PNG、✅ Translation complete；primary0／Google1；程序已關閉，未呼叫外部API。非live Google／physical desktop／frozenEXE點擊；此證據在正式評議後才補，未作四席final closure | Pass（局部驗收；非正式評議Done） | rendering, success, controlled, evidence |
 
 四席評議與局部證據：[追加差異評議](../reviews/2026-10-03-closure-review.md)。
+
+| 2026-10-05 | CH-T55 | 含Gemini文案EXE／MSIX候選與草稿 | 固定fe88bab重建與host frozen verifier、SDK序列封裝；四份Store清單重新讀取 | EXE／套件／來源綁定，文案不冒稱模型就緒／Google路由；不擴大人工驗收 | import、OCR兩行、CPU vision1/1、GUI20秒及full provenance通過；MSIX／upload SHA核對，stage清理；main CI八required success、兩manual skipped；四份Gemini更新說明存草稿。最新人工GUI、沙箱更新／WACK、正式評論與認證未通過，未上傳 | Pass（上述局部範圍；CH-T55 Smoke仍NO） | release, localization, frozen, package, evidence |

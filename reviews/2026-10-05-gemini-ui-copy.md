@@ -15,3 +15,17 @@
 ## CI 清單補正
 
 fe88bab 的遠端 CI 37220102524：七個必要工作成功，core 因新 tests/test_ui_copy.py 未加入明確測試清單失敗，兩個手動 frozen 工作 skipped。已將新檔分配至 UI 組，產品程式未變；相關清單與文案測試結果見 output/store-release-20261005-gemini-copy/ci-inventory-fix-receipt.json。這次 CI 失敗紀錄保留，後續 main CI 通過才作為新的驗證證據。CodeRabbit 審查範圍未包含此一行清單補正。
+
+## 含文案候選與商店草稿
+
+固定來源 fe88bab940c02c7e271fefeea557bc004cb9d580 的新 EXE SHA-256 為 cbbcf0b8f755057115888caa3058b889429692a1092026facda1ef9cb694e842。light/full verifier、375 檔 4,896,209,698 bytes 的 provenance、frozen import、host Windows OCR 兩行、CPU vision 1/1、正常 GUI 20 秒啟動均通過，自己的 GUI／model 程序已清理。CPU vision 期間自然主機負載四筆最高 90%、平均 74.75%；沒有人工製造負載，這不是完整忙碌時操作驗收或翻譯準度提升證據。
+
+main fb36dca 的 GitHub CI 37220416100：八項 required success，兩項 manual frozen skipped。fe88bab 到 fb36dca 只改 CI 清單與此紀錄；218 個 shipping inputs 已以 Git blob 核對 byte-identical，EXE 不因清單／文件補正重建。證據：ci-verification.json、build-ci-source-equivalence.json、frozen-verification-checkpoint.json。
+
+完整 Store 候選 0.1.2.0：MSIX 3,942,297,874 bytes／SHA dabffe8fb2a5b94166a9919a0f35bf91dfe344607f5aecb8a5574604d30c3379；upload 3,940,114,354 bytes／SHA cee584dc409ad23374735d31bd8e10ec8d5dfcf4f2c4f6f25b41d77e98e80af7，暫存 stage 已清理。第一次 MakeAppx 平行封裝回報 0x8007000e，保留失敗紀錄；改用 SDK 自身 /np 序列封裝後成功，未改 payload 或略過驗證。平行記憶體壓力是目前支持的假說，不宣稱已證明唯一根因。Microsoft [MakeAppx 官方文件](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool) 與安裝 SDK pack /? 已核對。package-attempt1-result.json、packaging-memory-diagnosis.json、package-result.json／package-attempt2.log 保存完整狀態。
+
+Gemini 更新說明已存入 Submission 3 的 zh-Hant-TW／zh-TW／en-US／ja-JP 四份清單並重新開頁核對；長提示描述限定主視窗跑馬燈，未誇大到所有設定。store-copy-save-receipt.json、store-copy-proof-binding.json 與四張 saved 圖保存內容及雜湊；這只修改草稿，套件仍沿用 0.1.1.0，未上傳 0.1.2.0 或提交認證。
+
+新增九張三語 source Qt offscreen 版面圖，visual-copy/final/render-receipt.json 逐張綁 SHA；模型 ready 是 presentation fixture，背景服務與 native hotkey 排除，不冒稱實機旅程。首次渲染輸出後 interpreter teardown 未退出，精確回收本次兩個 renderer PID；改為允許程式自身 cleanup thread 並完整 drain 後正常 exit 0，首輪中斷證據保留。前兩份視覺準備僅為 helper 前置／fixture 校正，不是新的產品崩潰證據。
+
+完整人工暫停保留字幕／繼續、框選取消、忙碌時 Settings／Stop 與正常關閉仍待最新 EXE 的實機結果；新候選沙箱更新／WACK、正式 24k 評議與 Store 認證尚未通過。歷史 Qt 原生 invalid wrapper 根因仍未確定，這些局部通過不作全面根因結案。CH-T55 保持 Review、Smoke NO、Critic NO。
