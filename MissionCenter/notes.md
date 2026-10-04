@@ -445,3 +445,13 @@
 - Impact：原始9/24及10/4 retrieveMetaObject NULL dump顯示註冊wrapper與傳入wrapper不同，但缺舊self heap／live map，producer仍未知，不能與上述已確認故障合併。未改產品程式、未patch依賴、未重建EXE／替換Store、不轉Done；本輪僅診斷與文件，CodeRabbit實際送審次數維持先前三次，沒有上傳dump或設定。
 - Next：若原始NULL再發生，需捕獲精確C++ key的map entries／wrapper type與release順序；已有mismatch條件斷點及健康檢查。停止無新假說的重跑。先讀reviews/2026-10-04-qt-native-diagnosis.md後半部，對照ignored output/qt-crash-20261004/的本地證據。
 - Cleanup：本次narrow及full trace已停止，Windows程序查詢無相同probe標籤的Python／CDB殘留。既有untracked assets/cloudhime_logo_v2.png未修改。聊天平台的顯示限制提示非程式故障證據，觸發原因未知；不改寫完成狀態。
+
+
+## 2026-10-04T15:26:27+08:00：新版 Store 發行／成品與評論額度 checkpoint
+
+- Timestamp：2026-10-04T15:26:27+08:00
+- Change：主人將目前工作切至新版上架。從014e0e7隔離快照重建EXE，本機light/full、frozen import、Windows OCR兩行、CPU Vision1/1、GUI20秒通過；35檔CodeRabbit一次0issues。Submission3草稿已建立，沿用0.1.1.0現行私人群組／免費，0.1.2.0封裝與全新斷網CPU Sandbox進行中。
+- Reason：舊產物不含本次Qt生命週期修正，不能用舊WACK／Sandbox抵替新版證據。授權文件換行及OCR無字fixture的兩次驗證失敗已保留並修正測試材料，不改產品行為。
+- Impact：CH-T55維持Review、T56未Closeout；EXE SHA19df640299d1c6502b5e2ee93ed0833571cdf3c63838bb67fb113ef6629ccdba。正常GUI全流程因Windows capture timeout／geometry缺失未完成；測試GUI PID52820精確清理，未動原Store及主人設定。
+- Approval：主人明確採用本輪評論總24,000 tokens、四席各4,000、整合8,000、每席工具8／總32、30分鐘，含必要修正複核；成品與證據固定後才派送三Luna與獨立arbiter。
+- Next：收齊完整包／Sandbox、補Store package安裝更新與WACK、封存快照並正式評論；通過再上傳與送認證，取得實際Store更新回執。詳見reviews/2026-10-04-store-release.md；output/store-release-20261004/。
