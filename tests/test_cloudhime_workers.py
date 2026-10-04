@@ -1627,13 +1627,15 @@ def test_local_provider_server_model_does_not_switch_active_catalog_model():
     worker.use_gemma_translation = True
     worker.gemma_model = "gemma-3-4b-it-local"
     worker.active_gemma_model = worker.gemma_model
+    worker.translation_target_lang = "en"
     worker.convert_to_trad = lambda text: text
     worker.sync_gemma_call_timestamps_from_provider = lambda provider: None
 
     class Provider:
         name = "local_multimodal"
 
-        def translate(self, text):
+        def translate(self, text, *, target_lang):
+            assert target_lang == "en"
             return TranslationResult(
                 text="本地翻譯",
                 provider=self.name,
@@ -1654,13 +1656,15 @@ def test_worker_reports_actual_provider_from_gemma_result():
     worker = OCRWorker.__new__(OCRWorker)
     worker.gemma_model = "gemma-3-4b-it-local"
     worker.active_gemma_model = worker.gemma_model
+    worker.translation_target_lang = "en"
     worker.convert_to_trad = lambda text: text
     worker.normalize_gemma_model = lambda model: model
     worker.sync_gemma_call_timestamps_from_provider = lambda provider: None
     worker.get_current_ai_provider = lambda: "gemma-3"
 
     class Provider:
-        def translate(self, text):
+        def translate(self, text, *, target_lang):
+            assert target_lang == "en"
             return TranslationResult(
                 text="Google 翻譯",
                 provider="google",

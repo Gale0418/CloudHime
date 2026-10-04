@@ -3965,6 +3965,10 @@ class Controller(QWidget):
             return "local_gemma"
         return "online_gemma"
 
+    def _selected_local_runtime_state(self):
+        state_attr = "local_vision_state" if getattr(self, "local_multimodal_enabled", False) else "local_model_state"
+        return getattr(self, state_attr, "")
+
     def _refresh_main_engine_summary(self):
         if not hasattr(self, "lbl_engine_summary"):
             return
@@ -3973,7 +3977,7 @@ class Controller(QWidget):
         if provider == "google":
             state = "internet"
         elif provider == "local_gemma":
-            model_state = getattr(self, "local_vision_state" if self.local_multimodal_enabled else "local_model_state", "")
+            model_state = self._selected_local_runtime_state()
             state = {"ready": "ready", "starting": "preparing", "loading": "preparing",
                      "progress": "preparing", "failed": "failed"}.get(model_state, "unverified")
         else:
@@ -5552,7 +5556,8 @@ class Controller(QWidget):
             self.charge_bar.set_progress(progress, f"{current_label} {used}/{limit}")
         else:
             if self._selected_translation_provider() == "local_gemma":
-                if getattr(self, "local_model_state", "") in {"loading", "ready", "failed"}:
+                runtime_state = self._selected_local_runtime_state()
+                if runtime_state in {"loading", "ready", "failed", "starting", "progress", "missing"}:
                     return
                 colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
                 self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])

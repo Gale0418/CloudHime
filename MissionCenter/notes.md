@@ -496,3 +496,15 @@ Submission3 四語更新說明已按Save並返回overview；zh-tw與en-us重新�
 四份Store更新說明（zh-tw88、en-us4、ja-jp17、zh-hant-tw480）均重新開頁確認持久化；仍只是Submission3草稿，未上傳／認證／發布。package sandbox helper及source-derived hardlink staging wrapper已準備但未運行安裝閘門；只在guest副本做自簽、update與WACK，不動原Store。新產物將另存output/store-release-20261004-target-fixed/，固定新source、4檔CodeRabbit、重新建EXE及受影響gates。
 
 CH-T55保持Review／Smoke NO／Critic NO。正式24k／32工具／30分鐘評論尚未派送／起算。證據：target-routing-red／green.junit.xml、target-routing-fix-receipt、worker-regression.xml／log／receipt、local-indicator-red／green及receipt、manual-gui-reopen-result、vision-diagnostic/result、vision-diagnostic-240/，均在output/store-release-20261004-ocr-fixed/；主人截圖D:/Downloads/2026-10-04 16 48 36.png。
+
+## 2026-10-04T17:15:32+08:00：CodeRabbit minor 修正、測試替身與真實 CPU 壓力條件
+
+來源b10d3e5的4檔CodeRabbit17:05:52至17:07:01完成，提出1個minor：本機Vision未ready時indicator錯讀local_model_state覆蓋starting/progress。讀source與RED兩案確認有效，已共用local runtime state選擇，與engine summary一致；focused6案及full UI smoke69案通過。先前4檔0-finding binding assertion拒絕這1-finding結果，沒有生成passed binding，不把提出問題的審查說成0問題。修正需新來源，原b10 EXE收集階段已終止owned PyInstaller27496／parent25568正常保存非零build-result；build-cancelled.json記原因，產物不宣稱建置成功。
+
+GitHub b10 push CI37190933923為failure（7 required成功／OCR組失敗／2manual skipped）：tests/test_cloudhime_workers.py兩個__new__替身未建立translation_target_lang，fake translate也漏keyword。只補兩替身初始化與keyword契約並驗明收到en，保留原模型／provider attribution驗證；產品初始化已具target_lang，沒有修改正常流程迎合stub。完整CI OCR九檔295案通過，JUnit／原始log／workerSHA保存；加最新UI69，共364不同案例。這次main commit仍須新CI確認。
+
+主人指出其他使用者會同時玩遊戲，明確要求以當前忙碌CPU當壓力條件。17:12左右aggregate CPU讀值100%，freeRAM約8.97GiB；只有單次取樣，不能歸因某程序或代表整段負載。將在fresh frozen功能驗證期間採集aggregate CPU與freeRAM；不額外飽和CPU，不停止其他工作。240秒source診斷成功：startup158.761秒、request14.528秒、CPU image1/1。這支持90秒閘門太短；尚非新EXE／乾淨Sandbox驗收。下一次建置採BelowNormal優先權，產品測試保留正常priority／原production240秒啟動契約，重型gate排隊。
+
+Mission Center0.5.2本地未包附critic_contract.py；從插件作者官方repo取得相同immutable094c367556b56de1b6e9541ac782552978df4c8c的純JSON唯讀validator（預設分支與該commit內容相同、import僅stdlib、無network/subprocess/write），存ignored critic_contract.upstream.py。這是advisory record驗證補件，非Rust生命週期fallback／插件安裝，尚未宣稱正式critic contract通過。
+
+新候選將存output/store-release-20261004-final/；尚未上傳、認證或發布。CH-T55 Review／Smoke NO／Critic NO；正式24k／32tools／30min尚未開始。Evidence：output/store-release-20261004-target-fixed/coderabbit-review.ndjson、local-indicator-delta*.xml／stdout／receipt、ocr-group-fixture-regression.xml／log／receipt、ci-ocr-failed-excerpt.log、build-cancelled.json；source diagnostic在ocr-fixed/vision-diagnostic-240/result.json。

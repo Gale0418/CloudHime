@@ -435,6 +435,36 @@ def test_controller_local_multimodal_toggle_pushes_complete_config():
     assert controller.save_count == 1
 
 
+@pytest.mark.parametrize("state, detail, expected_label, expected_progress, indeterminate", [
+    ("starting", "", "Loading Gemma Vision", 0, True),
+    ("progress", "85|warming_up", "Warming up model 85%", 85, False),
+])
+def test_local_vision_status_survives_local_indicator_tick_when_multimodal_is_configured(qtbot, state, detail, expected_label, expected_progress, indeterminate):
+    controller = Controller.__new__(Controller)
+    controller.provider_chain = ["local_multimodal"]
+    controller.local_multimodal_enabled = True
+    controller.local_model_state = "stopped"
+    controller.theme_mode = "light"
+    controller.ui_language = "en"
+    controller.charge_bar = StatusChargeBar()
+    qtbot.addWidget(controller.charge_bar)
+    controller.lbl_status = SimpleNamespace(setText=lambda _text: None)
+    controller._refresh_translation_provider_health = lambda: None
+    controller.worker = SimpleNamespace(
+        use_gemma_translation=True,
+        gemma_model="gemma-3-4b-it-local",
+        prune_gemma_call_timestamps=lambda: None,
+        has_multimodal_ai=lambda: False,
+    )
+    Controller.on_local_vision_status(controller, state, detail)
+
+    Controller.update_gemma_rate_indicator(controller)
+
+    assert controller.charge_bar.label == expected_label
+    assert controller.charge_bar.progress == expected_progress
+    assert controller.charge_bar.indeterminate is indeterminate
+
+
 def test_local_text_gemma_indicator_keeps_local_label(qtbot):
     controller = Controller.__new__(Controller)
     controller.provider_chain = ["local_multimodal"]
