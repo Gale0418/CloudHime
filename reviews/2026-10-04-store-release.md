@@ -19,3 +19,23 @@ GUI 能力限制：新 EXE 的空白隔離 profile 已啟動，日誌確認 Wind
 原 Qt retrieveMetaObject NULL 最初失效物件仍未確定；已確認的 event-filter 借用引用釋放鏈與三項生命週期修正見 `reviews/2026-10-04-qt-native-diagnosis.md`。新版 frozen 檢查通過不等於全部歷史原生崩潰根治。
 
 本機證據：`build-result.json`、`source-manifest.json`、`verification-result.json`、`verification-initial-model-terms-failed.json`、`verification-wrong-fixture-failed.json`、`windows-ocr.json`、`cpu-vision.json`、`gui-result.json`、`coderabbit-scope.json`、`coderabbit-review.ndjson`、`coderabbit-receipt.json`、`store-draft.jpg`。沙箱與封裝進行中的紀錄另存其子目錄，待完成再追加。
+
+## 2026-10-04T16:08:19+08:00：乾淨沙箱 OCR 失敗與候選撤換
+
+來源014e0e7候選已完成封裝，MSIX SHA-256 `ca50072a169497914635c0607c03e572b071831b2b8d69105049de757768752e`，upload SHA-256 `ff86073c678353b5affaa623b835893728573b16d644d8472e9ef588376ad6cb`，stage 已清理；但這份候選因以下失敗撤換，未上傳，不能作為最終發行產物。
+
+全新斷網 Windows Sandbox 初始無 CloudHime profile、無 Python／python3／py／pip／Conda／Ollama。相同 EXE SHA 的 frozen import 通過；Windows OCR smoke exit2，因此 CPU Vision 與 GUI 存活未執行。失敗證據保留於 sandbox/output/result.json 與 windows-ocr.json。owned client21552／launcher51528 收回，沒有動原 Store0.1.1.0。
+
+第二個不複製產品 payload 的2GiB沙箱直接查原生 OcrEngine：AvailableRecognizerLanguages只有en-US；en-US supported／engineCreated=true，ja-JP與zh-TW=false；TryCreateFromUserProfileLanguages=false。Get-WindowsCapability inventory回報path not found，不能宣稱語言功能清單已成功盤點。probe任務status passed只表示診斷完成，不是產品smoke passed。owned client16972／launcher53628已結束、remaining0。
+
+讀取來源確認：日文不支援時只嘗試profile語言；profile無引擎時直接回空OCRResult，worker接著呈現NO_TEXT。新fake測試已證明三項原始失敗：已安裝英文引擎未被選到、全部引擎None未回錯誤、初始化例外被吞掉。最小修正與worker錯誤傳遞測試仍在執行；完成後會固定新來源、重建EXE／MSIX並補審，不能將本機兩行OCR通過抵替這項乾淨環境缺陷。Microsoft API也明訂無可對應profile OCR語言時回null：[官方契約](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr.ocrengine.trycreatefromuserprofilelanguages?view=winrt-26100)。
+
+正常GUI旅程仍未完成。正式評論尚未派送，保留主人已批准的24k／32工具／30分鐘額度；尚未開始計時，不以這次修正充作正式critic。CH-T55維持Review並將當前Smoke改NO，CH-T56不Closeout。商店草稿更新說明同步中，未送認證／發布。
+
+## 2026-10-04T16:19:36+08:00：OCR 最小修正與來源驗證
+
+已完成已安裝OCR語言後援、初始化錯誤傳遞、三語前置條件提示與正常空辨識保留；任一後端／候選有正常空結果時仍為NO_TEXT，成功文字後援仍優先。只在全部OCR嘗試失敗且均為Windows引擎初始化錯誤時顯示Windows語言提示，其他錯誤顯示一般辨識錯誤。引擎初始化在背景辨識與既有lock內進行；成功引擎沿用，失敗不永久快取，讓環境修好後可再試。
+
+Luna初始修正15案通過，其回執為stdout轉錄而非原始JUnit。主代理整合另先重現2案：generic故障仍顯示沒有引擎、初始化失敗快取妨礙後續語言支援恢復。第一個byte guard因預期CRLF與實際LF不符而拒絕寫入；當時再驗證仍2failed，該失敗保留、未計入通過。改用逐行位元組保護完成最小修正後，17案最終通過，actual JUnit與stdout保存為ocr-main-green-final.xml／.log，來源SHA記於receipt。git diff --check通過。未重跑未受影響的215 UI案例，也未以這17案聲稱正常GUI、frozen EXE或Sandbox已驗收。
+
+下一步固定這份來源，5個程式／測試檔focused CodeRabbit，再重建候選至output/store-release-20261004-ocr-fixed/。兩個大型模型只以同磁碟hardlink帶入新候選，完整verifier仍重新檢查固定模型SHA及授權原始bytes；避免再拷貝相同3.3GB模型。正式評論仍未派送／起算。

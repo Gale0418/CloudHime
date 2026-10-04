@@ -97,6 +97,128 @@ def test_windows_ocr_backend_serializes_engine_access(monkeypatch):
     assert max_active == 1
 
 
+def test_windows_ocr_backend_uses_available_language_after_profile_fallback(monkeypatch):
+    backend = WindowsOCRBackend()
+    language_attempts = []
+    engine = object()
+
+    class FakeOcrEngine:
+        available_recognizer_languages = [SimpleNamespace(language_tag="en-US")]
+
+        @staticmethod
+        def is_language_supported(language):
+            return language == "ja-JP"
+
+        @staticmethod
+        def try_create_from_language(language):
+            language_attempts.append(language)
+            return engine if language == "en-US" else None
+
+        @staticmethod
+        def try_create_from_user_profile_languages():
+            return None
+
+    backend._available = True
+    backend._Language = lambda language_tag: language_tag
+    backend._OcrEngine = FakeOcrEngine
+
+    assert backend.available() is True
+    assert backend._init_engine() is engine
+    assert language_attempts == ["ja-JP", "en-US"]
+
+
+def test_windows_ocr_backend_retries_when_language_support_becomes_available():
+    backend = WindowsOCRBackend()
+    engine = object()
+
+    class FakeOcrEngine:
+        available_recognizer_languages = []
+
+        @staticmethod
+        def is_language_supported(_language):
+            return False
+
+        @staticmethod
+        def try_create_from_language(_language):
+            return engine
+
+        @staticmethod
+        def try_create_from_user_profile_languages():
+            return None
+
+    backend._available = True
+    backend._Language = lambda language_tag: language_tag
+    backend._OcrEngine = FakeOcrEngine
+
+    assert backend._init_engine() is None
+    FakeOcrEngine.available_recognizer_languages = [SimpleNamespace(language_tag="en-US")]
+    assert backend._init_engine() is engine
+
+
+def test_windows_ocr_backend_reports_when_no_language_engine_can_be_created():
+    backend = WindowsOCRBackend()
+
+    class FakeOcrEngine:
+        available_recognizer_languages = [SimpleNamespace(language_tag="en-US")]
+
+        @staticmethod
+        def is_language_supported(_language):
+            return False
+
+        @staticmethod
+        def try_create_from_language(_language):
+            return None
+
+        @staticmethod
+        def try_create_from_user_profile_languages():
+            return None
+
+    backend._available = True
+    backend._Language = lambda language_tag: language_tag
+    backend._OcrEngine = FakeOcrEngine
+    result = backend.recognize(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert backend.available() is True
+    assert result.lines == ()
+    assert result.error == "windows_ocr_engine_unavailable"
+
+
+def test_windows_ocr_backend_bounds_engine_initialization_exception():
+    backend = WindowsOCRBackend()
+
+    class FakeOcrEngine:
+        available_recognizer_languages = []
+
+        @staticmethod
+        def is_language_supported(_language):
+            raise RuntimeError("simulated engine failure " + "x" * 500)
+
+        @staticmethod
+        def try_create_from_user_profile_languages():
+            return None
+
+    backend._available = True
+    backend._Language = lambda language_tag: language_tag
+    backend._OcrEngine = FakeOcrEngine
+    result = backend.recognize(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert result.error.startswith("windows_ocr_engine_init_failed: RuntimeError:")
+    assert len(result.error) <= 192
+
+
+def test_windows_ocr_backend_keeps_real_empty_recognition_as_empty(monkeypatch):
+    backend = WindowsOCRBackend()
+
+    async def empty_result(_image):
+        return SimpleNamespace(lines=[])
+
+    monkeypatch.setattr(backend, "_recognize_async", empty_result)
+    result = backend.recognize(np.zeros((8, 8, 3), dtype=np.uint8))
+
+    assert result.lines == ()
+    assert result.error == ""
+
+
 def test_tesseract_backend_caches_version_probe_for_available_and_recognize(monkeypatch):
     backend = TesseractBackend()
     probes = []

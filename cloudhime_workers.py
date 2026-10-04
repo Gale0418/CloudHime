@@ -67,7 +67,7 @@ from themes import (
     build_settings_styles,
     resolve_theme,
 )
-from ocr_backends import discover_backends
+from ocr_backends import OCRBackendFailure, OCRResult, discover_backends
 from ocr_quality import (
     evaluate_ocr_hint_consensus,
     normalize_ocr_confidence,
@@ -1667,12 +1667,27 @@ class OCRWorker(QObject):
         best_score = float("-inf")
         best_any_result = None
         best_any_score = float("-inf")
+        backend_error_results = []
+        first_empty_result = None
         for backend in self.ocr_backends:
             try:
                 result = backend.recognize(img_np)
-            except Exception:
+            except Exception as exc:
+                backend_name = str(getattr(backend, "name", "unknown") or "unknown")[:32]
+                backend_error_results.append(
+                    OCRResult(
+                        backend_name,
+                        (),
+                        error=f"ocr_backend_failed: {backend_name} {type(exc).__name__}"[:192],
+                    )
+                )
+                continue
+            if result is not None and getattr(result, "error", ""):
+                backend_error_results.append(result)
                 continue
             if not result or not result.lines:
+                if result is not None and first_empty_result is None:
+                    first_empty_result = result
                 continue
             raw_items = self.extract_raw_items(result, 1.0, 0, 0)
             score, filtered_items = self.score_ocr_items(raw_items)
@@ -1682,7 +1697,24 @@ class OCRWorker(QObject):
             if score > best_score and filtered_items:
                 best_score = score
                 best_result = result
-        return best_result or best_any_result
+        if best_result or best_any_result:
+            return best_result or best_any_result
+        if first_empty_result is not None:
+            return first_empty_result
+        if backend_error_results:
+            windows_engine_errors = all(
+                result.backend_name == "windows"
+                and result.error.startswith(("windows_ocr_engine_unavailable", "windows_ocr_engine_init_failed:"))
+                for result in backend_error_results
+            )
+            if not windows_engine_errors:
+                return OCRResult(
+                    "ocr",
+                    (),
+                    error="ocr_backend_failed: one or more OCR backends failed",
+                )
+            return backend_error_results[0]
+        return None
 
     def convert_to_trad(self, text):
         return translation_tools.convert_to_trad(text, self.cc)
@@ -4815,6 +4847,9 @@ class OCRWorker(QObject):
         base_threshold = int(self.binary_threshold)
         now_ms = time.monotonic() * 1000.0
         should_refresh_auto_threshold = force_bg_refresh
+        backend_errors = []
+        backend_successes = 0
+        backend_errors_lock = threading.Lock()
 
         def evaluate_thresholds(
             threshold_values,
@@ -4867,6 +4902,7 @@ class OCRWorker(QObject):
 
             # 並列 OCR：把所有（閥値, 區域索引, 方向）組合同時丟給 ThreadPoolExecutor
             def _run_one(task):
+                nonlocal backend_successes
                 if deadline is not None and time.perf_counter() >= deadline:
                     return None
                 threshold, region_idx, prepared, preprocess = task
@@ -4879,6 +4915,17 @@ class OCRWorker(QObject):
                     ocr_result = self._recognize_with_backends(img_for_ocr)
                 except Exception:
                     ocr_result = None
+                backend_error = str(getattr(ocr_result, "error", "") or "")
+                with backend_errors_lock:
+                    if backend_error:
+                        backend_errors.append(
+                            (
+                                str(getattr(ocr_result, "backend_name", "") or ""),
+                                backend_error[:192],
+                            )
+                        )
+                    elif ocr_result is not None:
+                        backend_successes += 1
                 region_items = self.extract_raw_items(
                     ocr_result,
                     prepared["scale_factor"],
@@ -5051,6 +5098,23 @@ class OCRWorker(QObject):
                         best_items = candidate["items"]
                         best_score = candidate["score"]
                         break
+
+        # A normal empty OCR result still means recognition ran; don't turn that into
+        # an engine failure just because another backend/threshold attempt failed.
+        if not best_items and backend_errors and not backend_successes:
+            windows_language_failure = all(
+                backend_name == "windows"
+                and error.startswith(("windows_ocr_engine_unavailable", "windows_ocr_engine_init_failed:"))
+                for backend_name, error in backend_errors
+            )
+            raise OCRBackendFailure(
+                backend_errors[0][1],
+                error_code=(
+                    "ocr_windows_language_unavailable"
+                    if windows_language_failure
+                    else "ocr_backend_failed"
+                ),
+            )
 
         if commit_threshold and best_threshold != self.binary_threshold:
             self.set_binary_threshold(best_threshold)
@@ -6433,18 +6497,31 @@ class OCRWorker(QObject):
                 if self._abort_stale_scan(ScanStage.OCR):
                     return
             except Exception as exc:
+                backend_failed = isinstance(exc, OCRBackendFailure)
                 self._record_scan_event(
                     ScanStage.OCR,
                     ScanOutcome.FAILURE,
                     started_at=ocr_started,
                     error_code=ScanErrorCode.OCR_FAILED,
-                    detail="ocr_optional_failed" if (is_region_vision_mode or is_fullscreen_vision_fallback) else "ocr_failed",
+                    detail=(
+                        exc.error_code if backend_failed
+                        else "ocr_optional_failed" if (is_region_vision_mode or is_fullscreen_vision_fallback)
+                        else "ocr_failed"
+                    ),
                     exception=exc,
                 )
                 if is_region_vision_mode or is_fullscreen_vision_fallback:
                     used_threshold, filtered_items = 0, []
                 else:
-                    self._emit_scan_status("❌ 辨識錯誤")
+                    self._emit_scan_status(
+                        self._scan_status_text(
+                            "worker.status.windows_ocr_unavailable"
+                            if backend_failed and exc.error_code == "ocr_windows_language_unavailable"
+                            else "worker.status.recognition_error"
+                        )
+                        if backend_failed
+                        else self._scan_status_text("worker.status.recognition_error")
+                    )
                     self._emit_scan_finished([])
                     self.show_ui.emit()
                     return

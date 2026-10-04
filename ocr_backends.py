@@ -53,6 +53,15 @@ class OCRBackend:
         raise NotImplementedError
 
 
+class OCRBackendFailure(RuntimeError):
+    """A bounded signal that all configured OCR attempts failed."""
+
+    def __init__(self, detail: str, *, error_code: str = "ocr_backend_failed"):
+        self.detail = str(detail or "ocr_backend_initialization_failed")[:192]
+        self.error_code = str(error_code or "ocr_backend_failed")[:64]
+        super().__init__(self.error_code)
+
+
 def _to_int_box(x: float, y: float, w: float, h: float) -> OCRBox:
     return OCRBox(int(x), int(y), max(1, int(w)), max(1, int(h)))
 
@@ -79,6 +88,7 @@ class WindowsOCRBackend(OCRBackend):
     def __init__(self):
         self._available = False
         self._engine = None
+        self._init_error = ""
         self._language = None
         self._mode = "winrt"
         self._recognize_lock = threading.Lock()
@@ -137,20 +147,71 @@ class WindowsOCRBackend(OCRBackend):
             return self._engine
         if not self._available:
             return None
-        lang = self._Language("ja-JP")
+        last_error = ""
+
+        def try_create(language):
+            nonlocal last_error
+            try:
+                self._engine = self._OcrEngine.try_create_from_language(language)
+            except Exception as exc:
+                last_error = self._bounded_exception_detail(exc)
+            return self._engine
+
         try:
-            if not self._OcrEngine.is_language_supported(lang):
-                self._engine = self._OcrEngine.try_create_from_user_profile_languages()
-            else:
-                self._engine = self._OcrEngine.try_create_from_language(lang)
-        except Exception:
+            preferred_language = self._Language("ja-JP")
+            if self._OcrEngine.is_language_supported(preferred_language):
+                if try_create(preferred_language) is not None:
+                    return self._engine
+        except Exception as exc:
+            last_error = self._bounded_exception_detail(exc)
+
+        try:
+            self._engine = self._OcrEngine.try_create_from_user_profile_languages()
+        except Exception as exc:
             self._engine = None
+            last_error = self._bounded_exception_detail(exc)
+        if self._engine is not None:
+            return self._engine
+
+        try:
+            available_languages = self._OcrEngine.available_recognizer_languages
+            for available_language in available_languages:
+                language_tag = str(getattr(available_language, "language_tag", "") or "").strip()
+                if not language_tag or language_tag.casefold() == "ja-jp":
+                    continue
+                try:
+                    language = self._Language(language_tag)
+                except Exception as exc:
+                    last_error = self._bounded_exception_detail(exc)
+                    continue
+                if try_create(language) is not None:
+                    return self._engine
+        except Exception as exc:
+            last_error = self._bounded_exception_detail(exc)
+
+        if last_error:
+            self._init_error = f"windows_ocr_engine_init_failed: {last_error}"[:192]
+        else:
+            self._init_error = "windows_ocr_engine_unavailable"
         return self._engine
+
+    @staticmethod
+    def _bounded_exception_detail(exc: BaseException) -> str:
+        try:
+            message = " ".join(str(exc).split())
+        except Exception:
+            message = ""
+        detail = f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+        return detail[:160]
 
     async def _recognize_async(self, image: np.ndarray):
         engine = self._init_engine()
         if engine is None:
-            return None
+            return OCRResult(
+                self.name,
+                (),
+                error=self._init_error or "windows_ocr_engine_unavailable",
+            )
         image = _ensure_bgr(image)
         success, encoded = cv2.imencode(".png", image)
         if not success:
@@ -172,7 +233,13 @@ class WindowsOCRBackend(OCRBackend):
         try:
             ocr_result = self._run_coroutine_sync(self._recognize_async(image))
         except Exception as exc:
-            return OCRResult(self.name, (), error=str(exc))
+            return OCRResult(
+                self.name,
+                (),
+                error=f"windows_ocr_recognition_failed: {self._bounded_exception_detail(exc)}"[:192],
+            )
+        if isinstance(ocr_result, OCRResult):
+            return ocr_result
         if not ocr_result:
             return OCRResult(self.name, ())
         lines: list[OCRLine] = []

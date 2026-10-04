@@ -455,3 +455,20 @@
 - Impact：CH-T55維持Review、T56未Closeout；EXE SHA19df640299d1c6502b5e2ee93ed0833571cdf3c63838bb67fb113ef6629ccdba。正常GUI全流程因Windows capture timeout／geometry缺失未完成；測試GUI PID52820精確清理，未動原Store及主人設定。
 - Approval：主人明確採用本輪評論總24,000 tokens、四席各4,000、整合8,000、每席工具8／總32、30分鐘，含必要修正複核；成品與證據固定後才派送三Luna與獨立arbiter。
 - Next：收齊完整包／Sandbox、補Store package安裝更新與WACK、封存快照並正式評論；通過再上傳與送認證，取得實際Store更新回執。詳見reviews/2026-10-04-store-release.md；output/store-release-20261004/。
+
+## 2026-10-04T16:08:19+08:00：CH-T55 新版乾淨環境失敗／改用語言能力診斷
+
+- Timestamp：2026-10-04T16:08:19+08:00
+- Change：014e0e7完整Store封裝通過但候選撤換，因本輪Sandbox Windows OCR exit2；import已通過，Vision／GUI未到達。2GiB原生診斷顯示只有en-US engine可建立、profile engine為null；OS capability inventory失敗單獨保留。
+- Reason：程式缺已安裝語言後援，且將engine初始化失敗轉成一般空文字。fake fail-first三案例已重現；最小修正、錯誤聚合與三語提示驗證進行中，未聲稱新來源已通過。
+- Impact：CH-T55維持Review、當前Smoke NO／Critic NO；待修正來源新EXE、MSIX、focused CodeRabbit與新Sandbox。已封裝候選不會上傳；Submission3更新說明同步，仍未認證／发布。
+- Cleanup：本輪兩個Sandbox owned client／launcher均remaining0；未移除使用者Store安裝、其他VM或原logo。
+- Evidence：reviews/2026-10-04-store-release.md；output/store-release-20261004/sandbox/output/result.json、sandbox-ocr-diagnosis/output/ocr-diagnosis.json、兩輪cleanup.json、package-result.json。評論額度已授權但尚未派送／起算。
+
+## 2026-10-04T16:19:36+08:00：CH-T55 OCR 修正／17案來源驗證
+
+- Timestamp：2026-10-04T16:19:36+08:00
+- Change：背景Windows OCR依日文、profile、已安裝語言選引擎；全部初始化失敗有三語Windows語言提示，generic OCR失敗不假稱未安裝，正常空結果與文字fallback保留。失敗初始化不永久快取，可在語言支援恢復後再試。
+- Verification：Luna15pass轉錄receipt；主代理delta先2failed，最終17pass actual JUnit／log。第一次write guard因換行假設拒絕寫入、當時green仍2failed，保留反證。diff --check通過；不重跑未受影響215UI、不宣稱frozen／Sandbox通過。
+- Next：直接main固定來源，5檔focused CodeRabbit與fresh EXE，驗證OS語言後援後完成Store full package／install-update／WACK及正式評論。模型以同磁碟hardlink避免重複大拷貝，仍full hash verify。CH-T55 Review／Smoke NO／Critic NO。
+- Evidence：output/store-release-20261004/ocr-source-verification-receipt.json、ocr-main-red.xml、ocr-main-green.xml（失敗）、ocr-main-green-final.xml與各.log／receipt；reviews/2026-10-04-store-release.md。

@@ -10,6 +10,7 @@ from PySide6.QtGui import QFont
 import cloudhime_workers as workers_module
 from translation_providers import LocalRequestCancelled, TranslationResult
 from scan_pipeline import ScanErrorCode, ScanOutcome, ScanStage
+from ocr_backends import OCRBackendFailure, OCRResult
 from cloudhime_ui import OverlayWindow
 from cloudhime_workers import (
     OCRWorker,
@@ -1620,6 +1621,176 @@ def test_preferred_ai_google_fallback_rate_limit_reports_actual_provider(monkeyp
         assert finished[0][0][0] == "Hello"
         assert worker.get_preferred_text_entry("Hello") is None
         assert worker.get_hud_memory("Hello") is None
+    finally:
+        worker.cleanup()
+
+
+@pytest.mark.parametrize(
+    "failure_code,status_key",
+    [
+        ("ocr_windows_language_unavailable", "worker.status.windows_ocr_unavailable"),
+        ("ocr_backend_failed", "worker.status.recognition_error"),
+    ],
+    ids=["windows-language", "generic-ocr"],
+)
+def test_backend_initialization_failure_is_not_reported_as_no_text(
+    qtbot, monkeypatch, failure_code, status_key
+):
+    image = np.zeros((40, 80, 3), dtype=np.uint8)
+    worker = OCRWorker()
+    _configure_region_cache_worker(worker, image)
+    worker.run_ocr_with_best_threshold = Mock(
+        side_effect=OCRBackendFailure(
+            "windows_ocr_engine_unavailable",
+            error_code=failure_code,
+        )
+    )
+    monkeypatch.setattr(workers_module.time, "sleep", lambda _seconds: None)
+    messages = []
+    worker.status_msg.connect(messages.append)
+
+    try:
+        worker.run_scan_once()
+
+        ocr_events = [
+            event for event in worker.last_scan_trace.events
+            if event.stage is ScanStage.OCR
+        ]
+        assert ocr_events[-1].outcome is ScanOutcome.FAILURE
+        assert ocr_events[-1].error_code is ScanErrorCode.OCR_FAILED
+        assert ocr_events[-1].detail == failure_code
+        assert ocr_events[-1].exception_token == "OCRBackendFailure"
+        assert worker._scan_status_text(status_key) in messages
+        messages_by_language = [
+            workers_module.localization.tr("worker.status.windows_ocr_unavailable", language)
+            for language in ("zh-TW", "en", "ja")
+        ]
+        assert all("OCR" in message or "Windows" in message for message in messages_by_language)
+        assert all("CloudHime" in message for message in messages_by_language)
+    finally:
+        worker.cleanup()
+
+
+def test_windows_backend_error_plus_successful_empty_backend_stays_no_text():
+    image = np.zeros((24, 24, 3), dtype=np.uint8)
+
+    class Backend:
+        def __init__(self, name, result):
+            self.name = name
+            self.result = result
+
+        def recognize(self, _image):
+            return self.result
+
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.ocr_backends = [
+        Backend("windows", OCRResult("windows", (), error="windows_ocr_engine_unavailable")),
+        Backend("rapidocr", OCRResult("rapidocr", ())),
+    ]
+
+    result = worker._recognize_with_backends(image)
+
+    assert result.backend_name == "rapidocr"
+    assert result.lines == ()
+    assert result.error == ""
+
+
+def test_windows_backend_error_preserves_text_from_fallback_backend():
+    image = np.zeros((24, 24, 3), dtype=np.uint8)
+    text_result = OCRResult("rapidocr", (SimpleNamespace(text="Hello"),))
+
+    class Backend:
+        def __init__(self, name, result):
+            self.name = name
+            self.result = result
+
+        def recognize(self, _image):
+            return self.result
+
+    worker = SimpleNamespace(
+        ocr_backends=[
+            Backend("windows", OCRResult("windows", (), error="windows_ocr_engine_unavailable")),
+            Backend("rapidocr", text_result),
+        ],
+        extract_raw_items=lambda result, *_args: [result.backend_name],
+        score_ocr_items=lambda items: (1.0, items),
+    )
+
+    result = OCRWorker._recognize_with_backends(worker, image)
+
+    assert result is text_result
+
+
+def test_threshold_scan_surfaces_windows_engine_initialization_failure(qtbot):
+    image = np.zeros((24, 24, 3), dtype=np.uint8)
+
+    class Backend:
+        name = "windows"
+
+        @staticmethod
+        def recognize(_image):
+            return OCRResult(
+                "windows",
+                (),
+                error="windows_ocr_engine_unavailable",
+            )
+
+    worker = OCRWorker()
+    worker.ocr_backends = [Backend()]
+    worker.get_ocr_scale_factor = lambda _width, _height: 1.0
+    worker.rotate_crop_for_ocr = lambda crop, _orientation: crop
+
+    try:
+        with pytest.raises(OCRBackendFailure) as caught:
+            worker.run_ocr_with_best_threshold(
+                image,
+                0,
+                0,
+                [(0, 0, image.shape[1], image.shape[0])],
+                candidate_thresholds=[120],
+                orientation_candidates=[0],
+                preprocess_candidates=["gray"],
+                commit_threshold=False,
+            )
+
+        assert caught.value.error_code == "ocr_windows_language_unavailable"
+        assert caught.value.detail == "windows_ocr_engine_unavailable"
+    finally:
+        worker.cleanup()
+
+
+def test_threshold_scan_keeps_successful_empty_fallback_as_no_text(qtbot):
+    image = np.zeros((24, 24, 3), dtype=np.uint8)
+
+    class Backend:
+        def __init__(self, name, result):
+            self.name = name
+            self.result = result
+
+        def recognize(self, _image):
+            return self.result
+
+    worker = OCRWorker()
+    worker.ocr_backends = [
+        Backend("windows", OCRResult("windows", (), error="windows_ocr_engine_unavailable")),
+        Backend("rapidocr", OCRResult("rapidocr", ())),
+    ]
+    worker.get_ocr_scale_factor = lambda _width, _height: 1.0
+    worker.rotate_crop_for_ocr = lambda crop, _orientation: crop
+
+    try:
+        _threshold, items = worker.run_ocr_with_best_threshold(
+            image,
+            0,
+            0,
+            [(0, 0, image.shape[1], image.shape[0])],
+            candidate_thresholds=[120],
+            orientation_candidates=[0],
+            preprocess_candidates=["gray"],
+            commit_threshold=False,
+        )
+
+        assert items == []
     finally:
         worker.cleanup()
 
