@@ -436,3 +436,12 @@
 - Retro：下次原始NULL故障需要含self heap的任務隔離full dump，才能確認type／BindingManager；避免將一般Qt斷言修正、單次CI綠燈或不同native stack混為同根因。
 - Evidence：https://github.com/Gale0418/CloudHime/actions/runs/37161687605；reviews/2026-10-04-qt-native-diagnosis.md；output/qt-crash-20261004/final-github-receipt.json、ownership-verification.json、lifetime-final-ownership.xml與cycles.jsonl。回執文件提交採[skip ci]；CI針對來源eb5ee34。
 - Cleanup：本次測試／CDB／CodeRabbit子程序均結束，未清除其他MCP程序。dump只保存在本機ignored目錄，未加入Git、未送CodeRabbit；使用者原有untracked assets/cloudhime_logo_v2.png保持原狀。
+
+## 2026-10-04T14:33:24.8210095+08:00：Qt 錯誤分支因果確認與未完成事故 checkpoint
+
+- Timestamp：2026-10-04T14:33:24.8210095+08:00
+- Change：舊來源34b4141於08:21第2輪捕獲設定頁已刪除QLabel例外；Shiboken Sbk_GetPyOverride錯誤分支對borrowed nativeEventFilter function減引用至0，class dict仍持有同一指標。原生指令、完整heap、Python traceback與官方6.10.1來源一致，確認此event filter故障鏈；此前parent-owned timer修正移除本程式已知觸發。
+- Verification：目前來源08:26相同hardware watch完成20輪／1passed，sessionfinish exitstatus0；function直到Py_FinalizeEx才由PyDict_Clear釋放。不是整個debugger程序正常退出的宣稱。舊設定頁重複四輪共60次／15不同案例、72個ctor/meta配對均一致，但程序收尾總時限120秒timeout；另一全量trace180秒timeout沒有JUnit，兩次都不算完整probe通過。
+- Impact：原始9/24及10/4 retrieveMetaObject NULL dump顯示註冊wrapper與傳入wrapper不同，但缺舊self heap／live map，producer仍未知，不能與上述已確認故障合併。未改產品程式、未patch依賴、未重建EXE／替換Store、不轉Done；本輪僅診斷與文件，CodeRabbit實際送審次數維持先前三次，沒有上傳dump或設定。
+- Next：若原始NULL再發生，需捕獲精確C++ key的map entries／wrapper type與release順序；已有mismatch條件斷點及健康檢查。停止無新假說的重跑。先讀reviews/2026-10-04-qt-native-diagnosis.md後半部，對照ignored output/qt-crash-20261004/的本地證據。
+- Cleanup：本次narrow及full trace已停止，Windows程序查詢無相同probe標籤的Python／CDB殘留。既有untracked assets/cloudhime_logo_v2.png未修改。聊天平台的顯示限制提示非程式故障證據，觸發原因未知；不改寫完成狀態。

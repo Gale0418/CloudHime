@@ -77,3 +77,36 @@ Qt thread join／過早釋放的已知問題先前由 `f2e492f` 修正，證據�
 原始 NULL fault 的首次失效 wrapper／最小原生重現尚未取得。若再次發生，優先保留含 heap 的任務隔離 native dump，查原始 self type 與 BindingManager 對照；不要以隨機改 ownership、全域停 GC、留住所有 filters 或未驗證的 Qt 升級當修法。既有 0.1.2.0 候選 EXE／Store 安裝沒有本次修正；新 frozen 產物及實際桌面驗收需獨立建立證據。
 
 官方對照：[PySide 6.10.1 SignalManager 原始碼](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/pyside6/libpyside/signalmanager.cpp#L697)、[type user data 原始碼](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/pyside6/libpyside/pyside.cpp#L453)、[QObject 物件樹與 ownership](https://doc.qt.io/qt-6/objecttrees.html)。公開 Qt Forum 的相似 signature 只有另一位作者的不同物件重現，未用作本程式已確認的根因或修法。
+
+## 08:21 原生寫入監看：event filter 故障鏈已確認
+
+以固定歷史來源 `34b414194e0d4cb21e503153868e7ff5221456a5` 重放完整 Controller／設定窗生命週期。UI 與 provider panel 的 SHA-256 由 manifest 核對；歷史模組僅在隔離診斷子程序中載入，主工作樹未回退。08:21:42 開始的 `native-method-first-release` 在第 2 輪、pytest 尚未結束時捕獲 `GlobalHotKeyFilter.nativeEventFilter` 的引用計數降為 0。硬體資料斷點沒有額外持有 function；以 gate 確認斷點安裝後才允許測試繼續。
+
+直接因果證據：
+
+- `Sbk_GetPyOverride+0x154` 的 `sub qword ptr [rdi],1` 將函式 `0x2ddd0dd5750` 減到 0，斷在 `+0x158`；尚未執行其 deallocator。原生堆疊來自 Qt event dispatcher 的 native filter lookup。
+- 當下 Python thread state 的待處理例外是 `RuntimeError: Internal C++ object (PySide6.QtWidgets.QLabel) already deleted.`；traceback 指向歷史 `translation_settings_panel.py` 第 118 行 `_sync_capability_height()` 的 `capability_label.width()`。
+- 同一完整 heap 中，`GlobalHotKeyFilter` 的 class dict 仍有 `nativeEventFilter` key，其 value 仍是上述引用計數已歸零的 function。這排除「程式先替換方法，正常釋放」的解釋。
+- 官方 6.10.1 `BindingManager::getOverride()` 回傳 `PyMethod_Function(method)` 的借用指標；`Sbk_GetPyOverride()` 的錯誤狀態分支卻執行 `Py_XDECREF(pyOverride)`。本機原生指令與此分支一致。後續 filter lookup 會使用已釋放的函式，解釋先前 `PyObject_GenericGetAttrWithDict` 的失效 descriptor 故障。
+
+因此，這條故障的應用層觸發是缺少 QObject context 的設定頁 timer，底層放大機制是 Shiboken 在錯誤分支減少借用指標的引用。先前已交付的 parent-owned timer／Slot 修正取消刪除後回呼，移除本程式已確認的觸發；本輪沒有修改已安裝 PySide DLL、套用二進位 patch 或新增全域保活措施。
+
+08:26:42 的相同 `native-method-current-compare` 在目前來源完成 **20 輪／1 passed**；`pytest_sessionfinish` 的 exitstatus 為 0，完整 JUnit 存在。首次歸零發生於 `PyDict_Clear → Py_FinalizeEx`，屬 Python 結束時的正常清理。CDB 為保存此證據而中止剩餘 interpreter cleanup，故 debugger exit 0／child 終止碼不作一般程序正常退出的證據；通過範圍以測試、session marker 與完整 20 輪紀錄為準。
+
+官方 6.10.2、6.10.3 與本輪查閱的 `dev` 仍保留相同 borrowed-return／錯誤分支 DECREF。沒有已驗證的官方修復可供直接升級；目前版通過亦不代表底層依賴的此缺陷已不存在。[6.10.1 getOverride](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/shiboken6/libshiboken/bindingmanager.cpp#L342)、[6.10.1 錯誤分支](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/shiboken6/libshiboken/basewrapper.cpp#L769)、[6.10.3 對照](https://github.com/pyside/pyside-setup/blob/v6.10.3/sources/shiboken6/libshiboken/basewrapper.cpp)。
+
+證據均限本機 ignored `output/qt-crash-20261004/`：`native-method-first-release-{cdb.log,native.dmp,ready.json,result.json,cycles.jsonl}`、`override-watch-analysis.log`、`pending-error-message.log`、`pending-error-frame.log`、`class-dict-at-zero.log`、`class-dict-method-key.log`、`native-method-current-compare-{cdb.log,result.json,session-finished.json,cycles.jsonl}` 與其 `.xml`。原始 dump、設定與診斷子程序環境未上傳。
+
+## 原始 NULL：確認錯取 wrapper，producer 仍待查
+
+10/4 04:36 的既存 dump 顯示，QThread 建構先註冊 wrapper `R14=0x2e86a5162c0`／C++ pointer `RDI=0x2e86c988500`，緊接著的 generated `metaObject()` 卻把另一 wrapper `RBX=0x2e86ac20ac0` 交給 `retrieveMetaObject()`。9/24 19:39 的獨立歷史 dump 也有相同差異：`R14=0x213f2f0f800`、`RDI=0x213e70b9380`、`RBX=0x213ed2f8c00`。兩份 dump 的 QtCore PE timestamp 均為 `0x691c81a8`，對應相同建構 caller `PyInit_QtCore+0x46e05`。
+
+官方生成器在 QObject `metaObject()` 使用 untyped `retrieveWrapper(this)`，而 BindingManager 用 multimap 容納同址物件，該查找只取第一項；這支持錯取 wrapper 的候選機制。但兩份 minidump 不含舊 wrapper heap，不能確認其類型、map equal-range、失效／刪除順序，也不能認定來源就是 native filter。[生成器](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/shiboken6/generator/shiboken/cppgenerator.cpp)、[BindingManager](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/shiboken6/libshiboken/bindingmanager.cpp#L327)。
+
+新診斷先發現 Windows venv 的 python redirector 另起子程序：設在 redirector 的 deferred breakpoint 不會自動套用子程序。改由同一 base Python 3.10 直接啟動、將既有測試套件加入 PYTHONPATH 後，健康檢查確認真正命中 QThread constructor／metaObject；兩者 Qt／Shiboken DLL 相同，但 sys.prefix 不同，保留此診斷限制。先前的子程序例外捕獲仍有效，沒有將未綁定的註冊斷點當成產品反證。
+
+`old-settings-thread-binding` 的 15 案通過、18 次 ctor／meta 成對且 wrapper 一致；`historical-lifetime-thread-binding` 在 event filter 原生 AV 前也有 8 對一致。REG／RELEASE export 歷史未找到 collision candidate，但 compiler-inlined release 可能未被記錄，不能拿這份近似歷史當成 live map 真相。解析器已補辨識實際 `CLOUDHIME_THREAD_META` marker，避免舊摘要錯顯 meta=0。
+
+原始 NULL 未完成；本輪仍沒有重建 EXE、替換 Store 或變更任務 lifecycle。新診斷只增加證據，產品來源仍為先前已驗證的 `eb5ee34`。
+
+14:25 的 `historical-settings-address-reuse-corrected` 在固定來源 0373861 以同一 QApplication 重複四輪設定頁案例，完整 REG／RELEASE 監看超過 180 秒而中止、沒有 JUnit，不算通過。第一次指令誤用不存在的檔名，exit 4／0 個案例；該失敗也保留。縮小監看至 constructor／meta 的 `historical-settings-narrow-reuse` 在 98.07 秒完成 **60 次案例執行／15 個不同案例** 並生成完整 JUnit，未觀察 wrapper mismatch 或 AV，但程序結束仍超過總時限 120 秒，因此整個 probe 為 timeout、不能當完整程序通過。沒有新 producer 證據，不繼續無限制重跑；保留日誌與 XML，收尾檢查只針對本次擁有的 Python／CDB。
