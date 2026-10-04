@@ -2515,7 +2515,7 @@ class OCRWorker(QObject):
             return TranslationResult(text="", provider="google")
         provider = self._get_translation_provider("google")
         if provider is not None:
-            return provider.translate(normalized_text)
+            return provider.translate(normalized_text, target_lang=self.translation_target_lang)
         translated = translation_tools.translate_text_google(
             normalized_text,
             self.translators,
@@ -2753,7 +2753,7 @@ class OCRWorker(QObject):
             return TranslationResult(text="", provider="gemma")
         provider = self._get_translation_provider("gemma")
         if provider is not None:
-            result = provider.translate(normalized_text)
+            result = provider.translate(normalized_text, target_lang=self.translation_target_lang)
             self._update_active_gemma_model_from_provider_result(result, provider)
             self.sync_gemma_call_timestamps_from_provider(provider)
             return TranslationResult(

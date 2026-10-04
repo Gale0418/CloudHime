@@ -5551,6 +5551,13 @@ class Controller(QWidget):
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(progress, f"{current_label} {used}/{limit}")
         else:
+            if self._selected_translation_provider() == "local_gemma":
+                if getattr(self, "local_model_state", "") in {"loading", "ready", "failed"}:
+                    return
+                colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
+                self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+                self.charge_bar.set_progress(0, "Local Gemma3")
+                return
             colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(0, "Google")

@@ -42,6 +42,33 @@ def _configure_text_worker(worker, image):
     worker.trigger_background_threshold_refresh = lambda *args, **kwargs: None
 
 
+@pytest.mark.parametrize("target_lang", ["en", "ja"])
+@pytest.mark.parametrize("provider_name", ["google", "gemma"])
+def test_single_text_provider_receives_translation_target_lang(target_lang, provider_name):
+    worker = OCRWorker()
+    received = []
+
+    class FakeProvider:
+        name = provider_name
+
+        def translate(self, text, *, target_lang):
+            received.append((text, target_lang))
+            return SimpleNamespace(text="translated", model=None, provider=provider_name)
+
+    worker.translation_target_lang = target_lang
+    worker._get_translation_provider = lambda _name: FakeProvider()
+    try:
+        if provider_name == "google":
+            result = worker._translate_text_google_result("source text")
+        else:
+            result = worker._translate_text_gemma_result("source text")
+
+        assert received == [("source text", target_lang)]
+        assert result.text == "translated"
+    finally:
+        worker.cleanup()
+
+
 @pytest.mark.parametrize("error", [RuntimeError("cache probe failed"), LocalRequestCancelled("cancelled")])
 def test_current_scan_failure_before_translation_releases_busy_state(qtbot, monkeypatch, error):
     worker = OCRWorker()

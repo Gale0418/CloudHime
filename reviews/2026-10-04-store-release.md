@@ -39,3 +39,27 @@ GUI 能力限制：新 EXE 的空白隔離 profile 已啟動，日誌確認 Wind
 Luna初始修正15案通過，其回執為stdout轉錄而非原始JUnit。主代理整合另先重現2案：generic故障仍顯示沒有引擎、初始化失敗快取妨礙後續語言支援恢復。第一個byte guard因預期CRLF與實際LF不符而拒絕寫入；當時再驗證仍2failed，該失敗保留、未計入通過。改用逐行位元組保護完成最小修正後，17案最終通過，actual JUnit與stdout保存為ocr-main-green-final.xml／.log，來源SHA記於receipt。git diff --check通過。未重跑未受影響的215 UI案例，也未以這17案聲稱正常GUI、frozen EXE或Sandbox已驗收。
 
 下一步固定這份來源，5個程式／測試檔focused CodeRabbit，再重建候選至output/store-release-20261004-ocr-fixed/。兩個大型模型只以同磁碟hardlink帶入新候選，完整verifier仍重新檢查固定模型SHA及授權原始bytes；避免再拷貝相同3.3GB模型。正式評論仍未派送／起算。
+
+## 2026-10-04T16:45:54+08:00：CH-T55 新候選本機反證與 GUI 實測進度
+
+新來源 `2ee51b9999e5462b9f2acdaca650ae0699855d7f` 已推送 main；GitHub push CI `37189052512` 為 success：8 個必要工作成功，2 個手動 frozen 工作 skipped，不能計為實際 frozen pass。5 個 OCR 程式／測試檔 focused CodeRabbit 16:23:05至16:24:25完成，0 findings；scope SHA 與不可變來源完全相符，回執 `review-binding.json`。
+
+新 EXE SHA-256 `cdd66015fbe7f568e6af7cbf446eaece2dec6e633af82c6a989432d694f9c099`，16:29:57重建完成。light/full verifier、40-component provenance、固定模型 hash、frozen import、Windows OCR兩行與獨立20秒GUI存活通過。CPU Vision exit2，故整體 `verification-result.json` 為 failed／stage cpu-vision；固定模型與runtime相同不足以證明只是資源問題。目前 generic smoke 輸出吞掉根因、原harness清除隔離profile；已準備 source diagnostic 保存redacted bounded stderr／階段耗時，不能把來源diagnostic替代frozen驗收。未在GUI模型操作同時跑VM或另一模型。
+
+一般GUI仍由主人操作驗證。16:42:53截圖顯示已框選測試圖、當前Google Translate，UI顯示rate limited；不能據此證明實際Google帳號配額用完或翻譯成功。已引導切換Local Gemma、開啟本機多模態與CPU-only。第一次隔離GUI PID51480正常退出code0；主人要求重開後，同一獨立profile PID1436再啟動，完整設定／翻譯／暫停旅程待回覆，不宣稱通過。
+
+Submission3 四語更新說明已按Save並返回overview；zh-tw與en-us重新開頁確認持久化，ja-jp與zh-hant-tw仍待重讀。沒有上傳新package、送認證或發布；私人／免費設定保留。正式評論尚未派送／起算，使用主人核准24k tokens、各席4k、整合8k、各席8工具／合計32、30分鐘。CH-T55 Review／Smoke NO／Critic NO；CH-T56不Closeout。
+
+證據：`output/store-release-20261004-ocr-fixed/` 的 build-result、ci-result、review-binding、verification-result、windows-ocr、cpu-vision、gui-liveness、manual-gui-result、manual-gui-reopen-result、vision-triage；主人截圖 `D:/Downloads/2026-10-04 16 42 53.png`。新MSIX尚未封裝／驗證，不使用前一撤換候選。
+
+## 2026-10-04T17:03:17+08:00：主人實測發現目標語言缺陷，候選再次撤換
+
+主人16:48:36截圖：英文UI、Local Gemma model ready；英文句被譯為中文、日文保留原文。isolated profile為ui_language=en／use_gemma_translation=true／provider_chain local_multimodal／local_multimodal_enabled=false，實際走本機純文字模式。正常關閉pid1436 exit0，沒有完成自動掃描暫停／繼續完整旅程。主代理起初口頭說UI與目標語言分開，與source不符，已向主人更正；localization契約en→en、ja→ja、zh-TW→zh-TW。
+
+已查證兩個單句provider呼叫漏傳worker.translation_target_lang；provider方法預設zh-TW覆蓋registry已設en。Google與Gemma兩處明傳target_lang；新增en／ja兩provider四例RED全失敗，GREEN及目標快取隔離5案通過。主代理整份worker matrix141案通過（actual JUnit／log／SHA）。UI rate indicator將本機純文字模式誤標Google也已RED重現；修正顯示Local Gemma3並保留loading／ready／failed既有進度。4案focused與完整UI smoke67案通過。共208個不同worker／UI案例通過；不表示fresh EXE／Sandbox／Store gate通過。
+
+原2ee51b9 EXE因上述GUI缺陷撤換，不上傳。日文特定句為何保留仍須新EXE實測，不以舊Google TooManyRequests warning直接歸因該張圖。本機Vision源碼診斷（相同固定runtime／模型、不是frozen驗收）在90秒health deadline失敗，redacted stderr停在模型載入；原production上限240秒，因此獨立240秒診斷正在執行，保留90秒反證，不宣稱根因已完全確定。
+
+四份Store更新說明（zh-tw88、en-us4、ja-jp17、zh-hant-tw480）均重新開頁確認持久化；仍只是Submission3草稿，未上傳／認證／發布。package sandbox helper及source-derived hardlink staging wrapper已準備但未運行安裝閘門；只在guest副本做自簽、update與WACK，不動原Store。新產物將另存output/store-release-20261004-target-fixed/，固定新source、4檔CodeRabbit、重新建EXE及受影響gates。
+
+CH-T55保持Review／Smoke NO／Critic NO。正式24k／32工具／30分鐘評論尚未派送／起算。證據：target-routing-red／green.junit.xml、target-routing-fix-receipt、worker-regression.xml／log／receipt、local-indicator-red／green及receipt、manual-gui-reopen-result、vision-diagnostic/result、vision-diagnostic-240/，均在output/store-release-20261004-ocr-fixed/；主人截圖D:/Downloads/2026-10-04 16 48 36.png。
