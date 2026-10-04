@@ -32,7 +32,7 @@ def test_local_only_warmup_keeps_captions_and_does_not_request_scan(controller, 
     assert not controller.scan_in_progress
     assert not emit.called
     assert controller.overlay.bubbles == captions
-    assert "still preparing" in controller.lbl_status.text()
+    assert "still warming up" in controller.lbl_status.text()
 
 
 @pytest.mark.parametrize("ready,chain", [(True, ("local_multimodal",)), (False, ("local_multimodal", "google"))])

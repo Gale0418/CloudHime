@@ -33,6 +33,7 @@
 
 | 日期 | 對應任務 ID | 測試名稱 | 測試方式 | 預期結果 | 實際結果 | 通過 / 失敗 | 類型 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-05 | CH-T55 | Gemini 三語全介面文案來源驗證 | 獨立 profile 的相關 pytest；目錄格式核對；CodeRabbit 18 檔初審及兩檔修正複審 | 不破壞設定／狀態／路由，保留格式與未知診斷 | 428 passed、0 errors／skip；624 目錄格式通過；2 Minor 查證修正、複審 0 issues；未宣稱新 EXE／人工 GUI／MSIX／Store PASS，見 reviews/2026-10-05-gemini-ui-copy.md | Pass | regression, copy, review |
 | 2026-10-04 | CH-T117 | 最終來源修復與獨立評議 | 隔離逐檔 UI／資源驗證、完整 runtime CI inventory、真實 Qt paint 受控 harness、具體 runtime clear 紅綠證據、遠端 CI、三評論＋獨立仲裁及原生 critic | 確認問題修復且全部 finding 有證據處置 | 229 pass 是 f2階段；最新runtime207 pass／2 skipped；cfee16c CI八必需成功／兩手動skipped；兩個paint harness exit0；255項雜湊核對、13項全處置、council passed／critic valid。非live、新EXE、Store或新實體桌面驗收，舊失敗保留；見reviews/2026-10-04-hardening.md | Pass | source, regression, ci, review, lifecycle |
 | 2026-10-03 | CH-T117 | 工作列圖示與 OCR 卡住修復 | 106 項相關 pytest；新 EXE Windows OCR／import smoke；light dist verifier；PE icon resource 對照 | OCR 不因缺少 WinRT 元件卡住，產品圖示嵌入，翻譯失敗不誤報完成或快取原文 | 106 passed；真 frozen OCR 兩行／含啟動約 3.84 秒；import exit 0；dist ready 368 files；40 components；產品圖示群組存在；Google TooManyRequests 與完整原生流程另記未通過 | Pass | regression, packaging, native-ocr |
 | 2026-10-02 | CH-T117 | 產品修整與歷史補審 | Offscreen 指定 pytest 分批、py_compile、CI inventory、CodeRabbit 初審與聚焦複審 | 真實完成審查、有效問題修復、受影響驗證通過 | 531 個不同案例通過；148 檔初審 12 issues，查證修復後 20 檔複審 0 issues；首次 too_many_files 不算通過；main 原始碼 2a80230 本地／遠端一致；GitHub CI 36997658191 success；正式評議與套件發行另記 | Pass | regression, review, source, lifecycle |

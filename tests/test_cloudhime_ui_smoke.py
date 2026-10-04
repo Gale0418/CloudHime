@@ -112,7 +112,7 @@ def test_controller_main_controls_match_available_actions(qtbot, monkeypatch):
     window.on_random_scan_settings_changed(23, 20)
     assert window.cmb_scan_interval.currentData() == 23
     window.set_ui_language("ja", persist=False)
-    assert window.btn_30.text() == "○ 自動スキャンを再開"
+    assert window.btn_30.text().startswith("○ 自動スキャン")
     assert window.cmb_scan_interval.currentText() == "約 23 秒"
     window.btn_stop.click()
     assert window.btn_30.text() == "○ 自動スキャン"
@@ -610,18 +610,20 @@ def test_controller_local_vision_states_update_ui(qtbot):
 
     Controller.on_local_vision_status(controller, "starting", "")
     assert controller.charge_bar.indeterminate is True
-    assert messages[-1] == "正在準備內嵌多模態引擎..."
+    assert messages[-1].startswith("正在準備內嵌多模態引擎")
 
     Controller.on_local_vision_status(controller, "progress", "85|warming_up")
     assert controller.charge_bar.indeterminate is False
     assert controller.charge_bar.progress == 85
-    assert "執行模型暖身" in controller.charge_bar.label
-    assert messages[-1] == "執行模型暖身... (85%)"
+    assert "模型暖身中" in controller.charge_bar.label
+    assert messages[-1].startswith("模型暖身中")
+    assert "85%" in messages[-1]
 
     Controller.on_local_vision_status(controller, "ready", "")
     assert controller.charge_bar.indeterminate is False
     assert controller.charge_bar.progress == 100
-    assert messages[-1] == "內嵌 Gemma Vision 已就緒"
+    assert "Gemma Vision" in messages[-1]
+    assert "就緒" in messages[-1]
 
     Controller.on_local_vision_status(controller, "missing", "path/to/model")
     assert controller.charge_bar.progress == 0
@@ -631,7 +633,8 @@ def test_controller_local_vision_states_update_ui(qtbot):
 
     Controller.on_local_vision_status(controller, "stopped", "")
     assert controller.charge_bar.progress == 0
-    assert messages[-1] == "內嵌多模態伺服器已停止"
+    assert "多模態伺服器" in messages[-1]
+    assert "停止" in messages[-1]
     colors = build_charge_bar_colors(resolve_theme("light"), "off")
     assert controller.charge_bar.fill_color == controller.charge_bar._parse_color(colors["fill_color"])
     assert len(health_refreshes) == 5
@@ -640,7 +643,7 @@ def test_controller_local_vision_states_update_ui(qtbot):
 @pytest.mark.parametrize("language, label, heading", [
     ("zh-TW", "缺少 Vision 執行元件", "找不到內嵌多模態執行元件"),
     ("en", "Vision runtime missing", "Embedded multimodal runtime files were not found"),
-    ("ja", "Vision ランタイムが見つかりません", "組み込みマルチモーダルランタイムのファイルが見つかりません"),
+    ("ja", "Vision ランタイムが見つかりません", "組み込みマルチモーダルランタイムが見つかりません"),
 ])
 def test_missing_vision_runtime_does_not_ask_for_model_files(qtbot, language, label, heading):
     controller = Controller.__new__(Controller)
@@ -653,7 +656,7 @@ def test_missing_vision_runtime_does_not_ask_for_model_files(qtbot, language, la
     controller._refresh_translation_provider_health = lambda: None
     Controller.on_local_vision_status(controller, "missing", "PRIVATE_PATH/runtime/llama-server.exe")
     assert controller.charge_bar.label == label
-    assert messages[-1].startswith(heading)
+    assert heading in messages[-1]
     assert "PRIVATE_PATH" not in messages[-1]
 
 
@@ -1185,7 +1188,8 @@ def test_english_ui_localizes_exact_frame_cache_status(qtbot, source_language):
         controller, 5, localization.tr("worker.status.exact_frame_cache", source_language)
     )
 
-    assert messages == ["Same screen as before (cached)"]
+    assert len(messages) == 1
+    assert messages[0].startswith("Same screen as before (cached)")
     assert controller.charge_bar.label == "Local Gemma3 is ready"
 
 
@@ -1395,7 +1399,8 @@ def test_settings_save_failure_rolls_back_work_context_and_stays_open():
     SettingsWindowRevamp.on_save_clicked(view)
 
     assert calls[:2] == ["New Work", "Old Work"]
-    assert calls[2] == ("status", "Settings could not be saved")
+    assert calls[2][0] == "status"
+    assert calls[2][1].startswith("Settings could not be saved")
     view.settings_tabs.setCurrentIndex.assert_called_once_with(2)
     assert view._knowledge_title_dirty is True
     view.hide.assert_not_called()
@@ -1501,7 +1506,8 @@ def test_settings_candidate_dialog_no_discards_without_promotion(monkeypatch):
 
     confirm.assert_not_called()
     discard.assert_called_once_with()
-    assert status == ["Candidate was not saved"]
+    assert len(status) == 1
+    assert status[0].startswith("Candidate was not saved")
 
 
 def test_explicit_research_remembers_existing_local_pack_id(monkeypatch):

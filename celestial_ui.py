@@ -215,31 +215,31 @@ def localize_settings(window, language):
     if not hasattr(window, "settings_tabs"):
         return
     if language == "ja":
-        save_hint = "設定は自動保存されます。作品名は「保存」で有効になります。"
+        save_hint = "設定は自動保存されます。作品名は「保存」で有効になりますよ (◍•ᴗ•◍)"
         labels = ("翻訳", "キャプチャと表示", "作品リサーチ", "外観")
         work_title, research_model = "作品名", "調査モデル"
         sources = "公開ソース URL（任意）"
         screenshot_prompt = "スクリーンショット翻訳プロンプト"
-        research_hint = "作品名を入力すると、登場人物や用語を調べて物語の文脈に沿った翻訳を支援します。公開ソース URL は任意です。"
-        appearance_hint = "読書のペースに合わせてライトとダークを切り替えられます。ハイコントラストではシンプルで読みやすい画面を表示します。"
+        research_hint = "作品名を入力すると登場人物や用語を調査し、物語の文脈に沿った翻訳を支援します。公開ソース URL は任意です (・ω・)"
+        appearance_hint = "読書のペースに合わせてライトとダークを切り替えられます。ハイコントラストでは見やすい画面を表示します (´▽｀)"
         theme_label, language_label = "テーマ", "表示言語"
     elif language == "en":
-        save_hint = "Options save automatically. Save to apply the work title."
+        save_hint = "Options save automatically. Click Save to apply the work title. (◍•ᴗ•◍)"
         labels = ("Translation", "Capture & display", "Work research", "Appearance")
         work_title, research_model = "Work title", "Research model"
         sources = "Public source URLs (optional)"
         screenshot_prompt = "Screenshot translation prompt"
-        research_hint = "Research characters and terminology to keep translations in context. Enter a work title; public source URLs are optional."
-        appearance_hint = "Choose daylight or starlight for your reading. High contrast uses a plain, readable surface."
+        research_hint = "Research characters and terminology to keep translations in context. Public source URLs are optional. (・ω・)"
+        appearance_hint = "Choose daylight or starlight for your reading. High contrast provides a clean, plain surface. (´▽｀)"
         theme_label, language_label = "Theme", "Language"
     else:
-        save_hint = "選項即時套用並自動儲存；作品名稱按「儲存」才啟用。"
+        save_hint = "選項即時套用並自動儲存；作品名稱點擊「儲存」後生效喔～ (◍•ᴗ•◍)"
         labels = ("翻譯引擎", "擷取與顯示", "作品研究", "外觀")
         work_title, research_model = "作品名稱", "研究模型"
         sources = "公開來源網址（選填）"
         screenshot_prompt = "截圖翻譯提示詞"
-        research_hint = "輸入作品名稱，整理角色與專有名詞，協助翻譯保留故事脈絡。可選填公開來源網址。"
-        appearance_hint = "白晝與星夜，隨你的閱讀步調切換。高對比模式提供純色操作介面。"
+        research_hint = "輸入作品名稱即可整理角色與專有名詞，協助翻譯保留故事脈絡喔～公開來源網址為選填 (・ω・)"
+        appearance_hint = "白晝與星夜，隨主人的閱讀步調自由切換；高對比模式提供乾淨純色介面喔～ (´▽｀)"
         theme_label, language_label = "主題", "語言"
     for index, text in enumerate(labels):
         window.settings_tabs.setTabText(index, text)

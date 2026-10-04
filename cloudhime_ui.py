@@ -48,6 +48,7 @@ from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject,
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient, QShortcut, QKeySequence
 from provider_health import local_model_failure_message, local_model_progress_message
 from marquee_label import MarqueeLabel
+from ui_copy import get_copy as get_visible_copy
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
 
@@ -300,7 +301,13 @@ class GlobalHotKeyFilter(QAbstractNativeEventFilter):
 
         err = ctypes.GetLastError()
         logger.error(f"[Hotkey] Registration failed after fallbacks (Error: {err})")
-        QMessageBox.warning(None, "熱鍵衝突", f"熱鍵註冊失敗 (Error: {err})\n可能與其他程式衝突！請關閉佔用該熱鍵的程式後重新啟動。")
+        owner = getattr(self.callback, "__self__", None)
+        language = translation_tools.get_ui_language(owner)
+        QMessageBox.warning(
+            None,
+            get_visible_copy("hotkey_conflict_title", language),
+            get_visible_copy("hotkey_conflict_body", language, error=err),
+        )
 
     def unregister_hotkey(self, hwnd):
         if self.is_registered:
@@ -1297,7 +1304,7 @@ class SettingsWindow(QWidget):
         header_text_layout.setSpacing(2)
         self.lbl_title = QLabel("設定頁面")
         self.lbl_title.setStyleSheet("font-size: 18px; font-weight: 800; background: transparent; border: none;")
-        self.lbl_subtitle = QLabel("把常用項目收整，少一點雜訊，多一點順手")
+        self.lbl_subtitle = QLabel("把常用項目收整，少一點雜訊，多一點順手喔～ (◍•ᴗ•◍)")
         self.lbl_subtitle.setStyleSheet("font-size: 11px; background: transparent; border: none;")
         header_text_layout.addWidget(self.lbl_title)
         header_text_layout.addWidget(self.lbl_subtitle)
@@ -1313,7 +1320,7 @@ class SettingsWindow(QWidget):
         badge_row = QHBoxLayout()
         badge_row.setSpacing(8)
         self.lbl_autosave = QLabel("自動儲存")
-        self.lbl_sync_state = QLabel("已同步到主程式")
+        self.lbl_sync_state = QLabel("已同步到主程式囉 (๑•̀ㅂ•́)و✧")
         badge_row.addWidget(self.lbl_autosave)
         badge_row.addWidget(self.lbl_sync_state)
         badge_row.addStretch()
@@ -1326,7 +1333,7 @@ class SettingsWindow(QWidget):
         translate_layout.setSpacing(12)
         self.lbl_translate = QLabel("翻譯")
         self.lbl_translate.setStyleSheet("font-weight: bold;")
-        self.lbl_translate_hint = QLabel("Google 免設定；AI 模式才需要 API Key 與模型")
+        self.lbl_translate_hint = QLabel("Google 翻譯免 Key 但需網路，本機 Gemma 免雲端 Key，線上 AI 則需設定 API Key (｡•̀ᴗ-)✧")
         self.lbl_translate_hint.setWordWrap(True)
         translate_layout.addWidget(self.lbl_translate)
         translate_layout.addWidget(self.lbl_translate_hint)
@@ -1361,7 +1368,7 @@ class SettingsWindow(QWidget):
         advanced_translate_layout.setContentsMargins(14, 14, 14, 14)
         advanced_translate_layout.setSpacing(10)
         self.lbl_advanced_translate = QLabel("進階翻譯設定")
-        self.lbl_advanced_hint = QLabel("只有 AI 模式會用到這些欄位")
+        self.lbl_advanced_hint = QLabel("只有 AI 模式會用到這些欄位喔～ (・ω・)ノ")
         self.lbl_advanced_hint.setWordWrap(True)
         advanced_translate_layout.addWidget(self.lbl_advanced_translate)
         advanced_translate_layout.addWidget(self.lbl_advanced_hint)
@@ -1370,7 +1377,7 @@ class SettingsWindow(QWidget):
         advanced_translate_layout.addWidget(self.lbl_api_key)
         self.input_api_key = QLineEdit()
         self.input_api_key.setEchoMode(QLineEdit.Password)
-        self.input_api_key.setPlaceholderText("輸入 Google API KEY")
+        self.input_api_key.setPlaceholderText("請在此輸入 Google API KEY (・ω・)")
         self.input_api_key.textChanged.connect(self.on_api_key_text_changed)
         advanced_translate_layout.addWidget(self.input_api_key)
 
@@ -1394,7 +1401,7 @@ class SettingsWindow(QWidget):
         ocr_layout.setSpacing(10)
         self.lbl_ocr = QLabel("OCR")
         self.lbl_ocr.setStyleSheet("font-weight: bold;")
-        self.lbl_ocr_hint = QLabel("閥值與字元清理會直接影響辨識品質")
+        self.lbl_ocr_hint = QLabel("閥值與字元清理會直接影響辨識品質喔～ (｡•ㅅ•｡)")
         self.lbl_ocr_hint.setWordWrap(True)
         ocr_layout.addWidget(self.lbl_ocr)
         ocr_layout.addWidget(self.lbl_ocr_hint)
@@ -1405,7 +1412,7 @@ class SettingsWindow(QWidget):
         auto_scan_layout.setSpacing(10)
         self.lbl_auto_scan = QLabel("10 秒按鈕")
         self.lbl_auto_scan.setStyleSheet("font-weight: bold;")
-        self.lbl_auto_scan_hint = QLabel("中心秒數與偏移幅度會同步到主畫面")
+        self.lbl_auto_scan_hint = QLabel("中心秒數與偏移幅度會同步到主畫面喔～ (◍•ᴗ•◍)")
         self.lbl_auto_scan_hint.setWordWrap(True)
         auto_scan_layout.addWidget(self.lbl_auto_scan)
         auto_scan_layout.addWidget(self.lbl_auto_scan_hint)
@@ -1481,7 +1488,7 @@ class SettingsWindow(QWidget):
         region_render_layout.setSpacing(10)
         self.lbl_region_render = QLabel("框選顯示")
         self.lbl_region_render.setStyleSheet("font-weight: bold;")
-        self.lbl_region_render_hint = QLabel("氣泡保留原本樣式，浮雕會貼近原文")
+        self.lbl_region_render_hint = QLabel("氣泡模式保留原本樣式，浮雕模式會貼近原文位置喔～ (´▽｀)")
         self.lbl_region_render_hint.setWordWrap(True)
         region_render_layout.addWidget(self.lbl_region_render)
         region_render_layout.addWidget(self.lbl_region_render_hint)
@@ -1508,7 +1515,7 @@ class SettingsWindow(QWidget):
         relief_layout.setSpacing(10)
         self.lbl_relief = QLabel("浮雕細節")
         self.lbl_relief.setStyleSheet("font-weight: bold;")
-        self.lbl_relief_hint = QLabel("只在浮雕模式啟用，X 與 Y 為 0 會對齊原位")
+        self.lbl_relief_hint = QLabel("只在浮雕模式下啟用，X 與 Y 設為 0 會精準對齊原位喔～ (・ω・)ノ")
         self.lbl_relief_hint.setWordWrap(True)
         relief_layout.addWidget(self.lbl_relief)
         relief_layout.addWidget(self.lbl_relief_hint)
@@ -2170,7 +2177,7 @@ class SettingsWindowRevamp(QWidget):
         ocr.setSpacing(4)
         ocr.setAlignment(Qt.AlignTop)
         self.lbl_ocr = QLabel("自動掃描")
-        self.lbl_ocr_hint = QLabel("你可以隨意修改自動掃描的秒數以及偏移幅度")
+        self.lbl_ocr_hint = QLabel("主人可以依喜好調整自動掃描的秒數與偏移幅度喔～ (◍•ᴗ•◍)")
         self.lbl_ocr_hint.setWordWrap(True)
         self.lbl_ocr_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_ocr.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -2180,14 +2187,14 @@ class SettingsWindowRevamp(QWidget):
         ocr.addWidget(self.ocr_backend_panel)
         self.ocr_backend_panel.setVisible(True)
         
-        self.chk_region_pass_through = QCheckBox("允許滑鼠穿透框選區 (點擊背景遊戲)")
+        self.chk_region_pass_through = QCheckBox("允許滑鼠穿透框選區 (可直接點擊背景遊戲) (・ω・)")
         self.chk_region_pass_through.setChecked(getattr(self.controller, "region_pass_through", False))
         self.chk_region_pass_through.toggled.connect(self.controller.on_region_pass_through_changed)
         ocr.addWidget(self.chk_region_pass_through)
 
         self.auto_scan_panel = QWidget()
         self.lbl_auto_scan = QLabel("掃描設定")
-        self.lbl_auto_scan_hint = QLabel("中心秒數與偏移幅度會同步到主畫面")
+        self.lbl_auto_scan_hint = QLabel("中心秒數與偏移幅度會同步到主畫面喔～ (◍•ᴗ•◍)")
         ocr.addWidget(self.lbl_auto_scan)
         ocr.addWidget(self.lbl_auto_scan_hint)
         center_row = QHBoxLayout()
@@ -2261,7 +2268,7 @@ class SettingsWindowRevamp(QWidget):
         render.setSpacing(4)
         render.setAlignment(Qt.AlignTop)
         self.lbl_region_render = QLabel("文字模式")
-        self.lbl_region_render_hint = QLabel("在框選模式下才會啟用，一共有三種文字顯示方式可以切換")
+        self.lbl_region_render_hint = QLabel("在框選模式下啟用，提供三種文字顯示方式供主人切換喔～ (´▽｀)")
         self.lbl_region_render_hint.setWordWrap(True)
         self.lbl_region_render_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_region_render.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -2301,7 +2308,7 @@ class SettingsWindowRevamp(QWidget):
         render.addWidget(self.lbl_region_render_summary)
 
         self.input_screenshot_gemma_prompt = QPlainTextEdit()
-        self.input_screenshot_gemma_prompt.setPlaceholderText("此為截圖模式專用的系統提示詞（選填）。\n如果不填，將使用預設的截圖翻譯指令。")
+        self.input_screenshot_gemma_prompt.setPlaceholderText("此為截圖模式專用的系統提示詞（選填）。\n留空則自動使用預設的截圖翻譯指令喔～ (・ω・)")
         self.input_screenshot_gemma_prompt.setTabChangesFocus(True)
         self.input_screenshot_gemma_prompt.setMinimumHeight(122)
         self.input_screenshot_gemma_prompt.textChanged.connect(self.controller.on_screenshot_gemma_prompt_changed)
@@ -2314,7 +2321,7 @@ class SettingsWindowRevamp(QWidget):
         relief.setSpacing(8)
         relief.setAlignment(Qt.AlignTop)
         self.lbl_relief = QLabel("浮雕細節")
-        self.lbl_relief_hint = QLabel("只在浮雕模式才啟用，X 與 Y 為 0 會對齊原位")
+        self.lbl_relief_hint = QLabel("只在浮雕模式下啟用，X 與 Y 為 0 會精準對齊原位喔～ (・ω・)ノ")
         self.lbl_relief_hint.setWordWrap(True)
         self.lbl_relief_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_relief.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -3409,7 +3416,7 @@ class Controller(QWidget):
         for label, model_name in SUPPORTED_AI_MODELS:
             self.cmb_ai_model.addItem(label, model_name)
         self.cmb_ai_model.currentIndexChanged.connect(self.on_ai_model_changed)
-        self.btn_ai_mode = QPushButton("準確AI翻譯")
+        self.btn_ai_mode = QPushButton("AI 翻譯")
         self.btn_ai_mode.setCheckable(True)
         self.btn_ai_mode.setCursor(Qt.PointingHandCursor)
         self.btn_ai_mode.clicked.connect(self.toggle_ai_translation)
@@ -5046,11 +5053,11 @@ class Controller(QWidget):
         if desired_enabled and not (has_luna_key if is_luna else (has_key or is_local_model)):
             language = self.get_ui_language()
             if language == "ja":
-                self._set_status_message("Luna 用 OpenAI API キーを入力してください" if is_luna else "Google API キーを入力するか、ローカルモデルに切り替えてください")
+                self._set_status_message("Luna 用の OpenAI API キーを入力してくださいね (｡•ㅅ•｡)" if is_luna else "Google API キーを入力するか、ローカルモデル（キー不要）に切り替えてね (｡•ㅅ•｡)")
             elif language == "en":
-                self._set_status_message("Enter your OpenAI API key for Luna" if is_luna else "Enter a Google API key or switch to the local model")
+                self._set_status_message("Please enter your OpenAI API key for Luna (｡•ㅅ•｡)" if is_luna else "Enter a Google API key, or switch to the local model (no key needed) (｡•ㅅ•｡)")
             else:
-                self._set_status_message("請先輸入 Luna 的 OpenAI API 金鑰" if is_luna else "請先輸入 Google API KEY，或切換到本地模型")
+                self._set_status_message("請先為 Luna 輸入 OpenAI API 金鑰喔 (｡•ㅅ•｡)" if is_luna else "請先輸入 Google API KEY，或切換到本機模型（免金鑰）喔 (｡•ㅅ•｡)")
             desired_enabled = False
         self.worker.set_gemma_enabled(desired_enabled)
         if self.btn_ai_mode.isChecked() != desired_enabled:
@@ -5474,9 +5481,9 @@ class Controller(QWidget):
                 self._set_status_message(local_model_failure_message(detail, self.get_ui_language()))
             else:
                 self._set_status_message({
-                    "en": "Local Gemma is still preparing. Wait for Model ready, then translate again.",
-                    "ja": "Local Gemma は準備中です。準備完了後、もう一度翻訳してください。",
-                }.get(self.get_ui_language(), "Local Gemma 還在準備中；等模型就緒後，再按一次翻譯。"))
+                    "en": "Local Gemma is still warming up. Keeping subtitles intact—please translate again once ready. (*´∀`)",
+                    "ja": "Local Gemma はウォームアップ中です。元の字幕を残していますので、準備完了後にもう一度翻訳を押してね (*´∀`)",
+                }.get(self.get_ui_language(), "Local Gemma 還在準備中；等模型就緒後，請再按一次翻譯喔 (｡•́︿•̀｡)"))
             if self.current_auto_interval > 0:
                 self.schedule_next_scan()
             return
@@ -5735,9 +5742,9 @@ class Controller(QWidget):
             }.get(language, "Local Gemma3 載入中")
             self.charge_bar.set_indeterminate(True, label)
             self._set_status_message({
-                "en": "Checking the bundled model and preparing local inference...",
-                "ja": "組み込みモデルを確認し、ローカル推論を準備しています...",
-            }.get(language, "正在檢查內附模型並準備本機推論..."))
+                "en": "Checking model assets and preparing local inference... (｡•ㅅ•｡)",
+                "ja": "モデルファイルを確認し、ローカル推論を準備しています… (｡•ㅅ•｡)",
+            }.get(language, "正在檢查本機模型並準備推論環境..."))
             return
         if state == "ready":
             colors = build_charge_bar_colors(theme, "normal")
@@ -5747,9 +5754,9 @@ class Controller(QWidget):
                 "ja": "Local Gemma3 の準備ができました",
             }.get(language, "Local Gemma3 已就緒"))
             self._set_status_message({
-                "en": "Bundled Local Gemma3 is ready",
-                "ja": "組み込み Local Gemma3 の準備ができました",
-            }.get(language, "內嵌 Local Gemma3 已就緒"))
+                "en": "Local Gemma3 is ready for translation! (๑•̀ㅂ•́)و✧",
+                "ja": "Local Gemma3 の準備が完了しました！いつでも翻訳できますよ (๑•̀ㅂ•́)و✧",
+            }.get(language, "本機 Local Gemma3 已就緒"))
             return
 
         colors = build_charge_bar_colors(theme, "danger")
@@ -5797,10 +5804,10 @@ class Controller(QWidget):
                 "starting_server": localized("Starting embedded server", "啟動內嵌伺服器", "組み込みサーバーを起動中"),
                 "loading_model": localized("Reading Gemma model", "讀取 Gemma 模型", "Gemma モデルを読み込み中"),
                 "loading_tensors": localized("Loading model weights", "載入模型權重", "モデルの重みを読み込み中"),
-                "initializing": localized("Initializing GPU and context", "初始化 GPU 與上下文", "GPU とコンテキストを初期化中"),
-                "warming_up": localized("Warming up model", "執行模型暖身", "モデルをウォームアップ中"),
-                "model_loaded": localized("Model loaded, checking service", "模型已載入，確認服務", "モデルを読み込みました。サービスを確認中"),
-                "ready": localized("Model warm-up complete", "模型暖身完成", "モデルのウォームアップが完了しました"),
+                "initializing": localized("Initializing inference runtime and context", "初始化推論環境與上下文", "推論環境とコンテキストを初期化中"),
+                "warming_up": localized("Warming up model", "模型暖身中", "モデルをウォームアップ中"),
+                "model_loaded": localized("Model loaded, checking service", "模型已載入，確認服務中", "モデルを読み込みました。サービスを確認中"),
+                "ready": localized("Model warm-up complete", "模型暖身完成囉！ (๑•̀ㅂ•́)و", "モデルのウォームアップが完了しました！ (๑•̀ㅂ•́)و"),
             }
             label = phase_labels.get(
                 phase,
@@ -5819,7 +5826,7 @@ class Controller(QWidget):
             label = localized("Loading Gemma Vision", "Gemma Vision 載入中", "Gemma Vision を読み込み中")
             self.charge_bar.set_indeterminate(True, label)
             self._set_status_message(
-                localized("Preparing the embedded multimodal engine...", "正在準備內嵌多模態引擎...", "組み込みマルチモーダルエンジンを準備中...")
+                localized("Preparing embedded multimodal engine... (｡•ㅅ•｡)", "正在準備內嵌多模態引擎，請稍候一下喔～ (｡•ㅅ•｡)", "組み込みマルチモーダルエンジンを準備中…少々お待ちくださいね (｡•ㅅ•｡)")
             )
             return
         if state == "ready":
@@ -5827,7 +5834,7 @@ class Controller(QWidget):
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
             self.charge_bar.set_progress(100, localized("Gemma Vision ready", "Gemma Vision 已就緒", "Gemma Vision の準備ができました"))
             self._set_status_message(
-                localized("Embedded Gemma Vision is ready", "內嵌 Gemma Vision 已就緒", "組み込み Gemma Vision の準備ができました")
+                localized("Embedded Gemma Vision is ready! (๑•̀ㅂ•́)و✧", "內嵌 Gemma Vision 已就緒，隨時可以為主人辨識囉！ (๑•̀ㅂ•́)و✧", "組み込み Gemma Vision の準備が完了しました！いつでも使えますよ (๑•̀ㅂ•́)و✧")
             )
             return
 
@@ -5838,14 +5845,14 @@ class Controller(QWidget):
             failure_kind = "runtime_missing" if "server" in detail.lower() or ".exe" in detail.lower() else "model_missing"
             if failure_kind == "runtime_missing":
                 bar_text = localized("Vision runtime missing", "缺少 Vision 執行元件", "Vision ランタイムが見つかりません")
-                status_text = localized("Embedded multimodal runtime files were not found", "找不到內嵌多模態執行元件", "組み込みマルチモーダルランタイムのファイルが見つかりません")
+                status_text = localized("Embedded multimodal runtime files were not found. Please verify asset setup. (｡•́︿•̀｡)", "找不到內嵌多模態執行元件，請確認組件安裝完整喔 (｡•́︿•̀｡)", "組み込みマルチモーダルランタイムが見つかりません。導入状況をご確認くださいね (｡•́︿•̀｡)")
             else:
                 bar_text = localized("Vision model missing", "缺少 Vision 模型", "Vision モデルが見つかりません")
-                status_text = localized("Embedded multimodal model files were not found", "找不到內嵌多模態模型檔案", "組み込みマルチモーダルモデルのファイルが見つかりません")
+                status_text = localized("Embedded multimodal model files were not found. Please verify model files. (｡•́︿•̀｡)", "找不到內嵌多模態模型檔案，請確認模型檔案是否存在喔 (｡•́︿•̀｡)", "組み込みマルチモーダルモデルが見つかりません。モデルファイルをご確認くださいね (｡•́︿•̀｡)")
             status_text += " — " + local_model_failure_message(failure_kind, lang)
         elif state == "stopped":
             bar_text = self._local_vision_stopped_label()
-            status_text = localized("Embedded multimodal server stopped", "內嵌多模態伺服器已停止", "組み込みマルチモーダルサーバーが停止しました")
+            status_text = localized("Embedded multimodal server stopped (・∀・)", "內嵌多模態伺服器已停止 (・∀・)", "組み込みマルチモーダルサーバーが停止しました (・∀・)")
         else:
             bar_text = localized("Gemma Vision failed", "Gemma Vision 啟動失敗", "Gemma Vision の起動に失敗しました")
             status_text = local_model_failure_message(detail, lang)

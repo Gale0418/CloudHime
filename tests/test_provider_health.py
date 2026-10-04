@@ -3,10 +3,10 @@ import pytest
 from provider_health import assess_provider_health, local_model_failure_message
 
 
-@pytest.mark.parametrize("language, expected", [("en", "has not been downloaded"), ("zh-TW", "尚未下載"), ("ja", "未ダウンロード")])
-def test_missing_model_is_download_guidance_instead_of_verification_failure(language, expected):
+@pytest.mark.parametrize("language, guidance", [("en", "download"), ("zh-TW", "下載"), ("ja", "ダウンロード")])
+def test_missing_model_is_download_guidance_instead_of_verification_failure(language, guidance):
     message = local_model_failure_message("model_missing", language)
-    assert expected in message
+    assert guidance in message
     assert message != local_model_failure_message("asset_hash_failed", language)
 
 
@@ -46,7 +46,8 @@ def test_remote_ai_distinguishes_missing_key_from_configured():
     assert missing.code == "remote_key_required"
     assert "Google API key" in missing.detail
     assert configured.code == "remote_configured"
-    assert "Connectivity is checked" in configured.detail
+    assert "Connectivity" in configured.detail
+    assert "checked when translation starts" in configured.detail
     assert "Ready" not in configured.summary
 
 
@@ -85,7 +86,7 @@ def test_local_timeout_is_actionable_without_exposing_raw_stderr():
     health = _health(local_vision_state="failed", local_vision_detail=detail)
 
     assert health.code == "local_failed"
-    assert "Close GPU-heavy apps" in health.detail
+    assert "Close heavy background apps" in health.detail
     assert "CPU fallback" in health.detail
     assert "PRIVATE" not in health.detail
     assert "USER TEXT" not in health.detail
@@ -110,7 +111,14 @@ def test_text_progress_ignores_vision_mode():
     )
 
     assert health.code == "local_progress"
-    assert "Initializing GPU" in health.summary
+    without_vision_mode = _health(
+        local_multimodal_enabled=False,
+        local_model_state="progress",
+        local_model_detail="70|initializing",
+    )
+    assert health.summary == without_vision_mode.summary
+    assert "Initializing inference runtime" in health.summary
+    assert "70%" in health.summary
 
 def test_missing_embedded_runtime_requests_repair():
     health = _health(embedded_runtime_available=False)
@@ -206,7 +214,7 @@ def test_local_text_without_vision_runtime_still_offers_managed_download():
             {"local_vision_state": "ready", "local_vision_mode": "cpu"},
             "local_ready_cpu",
             "CPU で利用可能",
-            "速度は低下",
+            "処理に時間がかかります",
         ),
         (
             {"local_vision_state": "ready", "local_vision_mode": "gpu"},
@@ -252,7 +260,7 @@ def test_japanese_health_states_localize_without_changing_state_or_tone(
         ("verifying", "", "ローカル Gemma を検証中"),
         ("loading_model", "", "ローカル Gemma を読み込み中"),
         ("loading_tensors", "", "モデルの重みを読み込み中"),
-        ("initializing", "gpu", "GPU を初期化中"),
+        ("initializing", "gpu", "推論環境を初期化中"),
         ("initializing", "cpu", "CPU を初期化中"),
         ("warming_up", "", "ローカル Gemma をウォームアップ中"),
         ("model_loaded", "", "ローカルサービスを確認中"),
@@ -284,9 +292,9 @@ def test_japanese_progress_localizes_phase_and_preserves_percent(phase, mode, ex
 @pytest.mark.parametrize(
     ("detail", "expected"),
     [
-        ("CUDA out of memory", "GPU を多く使用するアプリ"),
+        ("CUDA out of memory", "負荷の高いアプリ"),
         ("health_timeout", "タイムアウトしました"),
-        ("asset_hash_mismatch", "破損したファイル"),
+        ("asset_hash_mismatch", "破損ファイル"),
         ("runtime_missing", "内蔵推論ランタイム"),
         ("port_unavailable", "ループバックポート"),
         ("unknown_failure", "Google 翻訳は引き続き利用できます"),

@@ -604,3 +604,8 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 另用相同固定來源的實際 Controller、正常設定載入與該 EXE 的內附模型／runtime 做來源診斷：SHA 驗證進度 0→30→55%、模型載入、就緒，約 17.156 秒；「確認連線狀態」以 local_multimodal 翻成 Check Connection Status，未取快取，翻譯等待期間有 70 次 UI event tick。此診斷不是 frozen EXE 的完整人工旅程；offscreen 原生快捷鍵排除，不能推論暫停／繼續／取消框選全部通過。Controller cleanup 完成，自有 llama-server 已終止；其 wrapper exit 1，沒有冒稱正常 exit 0。證據：output/store-release-20261004-local-warmup/verification-result.json、controller-startup/result.json、verified-checkpoint.json。
 
 主人指定文案由 Gemini 撰寫，已透過 Antigravity Bridge 送出；同一 cascade 卡在 filesystem/describe 實際工具授權，已排入不使用工具的純文字後續要求，尚未取得文案，未以 Codex 代寫冒充。20:13 失敗候選維持退回。最新 MSIX／完整人工操作／沙箱前置環境／更新安裝／WACK／正式評論仍待完成，Store 0.1.1.0 保留，CH-T55 Review、Smoke NO、Critic NO；24k 正式評論尚未起算，尚未上傳或認證。
+
+
+### 2026-10-05 Gemini 全介面文案
+
+三語 624 目錄文字與 497 內嵌候選已審閱，337 目錄文字修改；OCR／快速鍵三語接線完成，未知診斷保留。最終相關回歸 428 passed；CodeRabbit 18 檔兩項 Minor 已修、兩檔複審零 issues。工具授權舊卡點已解除。CH-T55 保持 Review；含文案新 EXE／完整 GUI／MSIX／WACK／正式評論／Store 待驗收，未上傳。見 reviews/2026-10-05-gemini-ui-copy.md。

@@ -46,7 +46,7 @@ def test_translation_scan_status_uses_selected_text_provider(provider, expected)
     worker.has_ai_text_provider = lambda: provider != "google"
     worker.get_current_ai_provider = lambda: provider
 
-    assert OCRWorker._translation_scan_status_text(worker, "initial") == expected
+    assert OCRWorker._translation_scan_status_text(worker, "initial").startswith(expected)
 
 
 @pytest.mark.parametrize("language", ["en", "ja", "zh-TW"])

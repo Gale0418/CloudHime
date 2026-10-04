@@ -7,6 +7,7 @@ from ocr_backend_catalog import BACKEND_SPECS, optional_backend_names, summarize
 from ocr_backend_installer import detect_backend_state, install_backend_packages
 import translation_helpers as translation_tools
 from themes import resolve_theme
+from ui_copy import localize_ocr_detail
 
 
 class _BackendInstallWorker(QObject):
@@ -165,6 +166,7 @@ class OcrBackendSettingsPanel(QFrame):
         self.sync_from_controller()
         title = BACKEND_SPECS[backend_name].label if backend_name in BACKEND_SPECS else "OCR"
         body = message or (state.detail if state is not None else "") or "Install failed."
+        body = localize_ocr_detail(body, translation_tools.get_ui_language(self.controller))
         if success and state is not None and not state.available:
             QMessageBox.information(self, title, body)
         else:
@@ -185,7 +187,7 @@ class OcrBackendSettingsPanel(QFrame):
             else:
                 button.setText(BACKEND_SPECS[backend_name].label)
             detail = state.detail if state is not None and state.detail else BACKEND_SPECS[backend_name].install_note
-            button.setToolTip(detail)
+            button.setToolTip(localize_ocr_detail(detail, translation_tools.get_ui_language(self.controller)))
             button.setEnabled(True if self._busy_backend != backend_name else False)
         self._refresh_summary()
 
