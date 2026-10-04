@@ -1014,6 +1014,36 @@ def test_wack_report_reads_root_overall_result_attribute(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "PASS"
 
+@pytest.mark.parametrize(
+    "attributes,accepted",
+    [
+        ('OVERALL_RESULT="PASS" PARTIAL_RUN="FALSE"', True),
+        ('OVERALL_RESULT="PASS" PARTIAL_RUN="TRUE"', False),
+        ('OVERALL_RESULT="PASS"', False),
+        ('OVERALL_RESULT="PASS" PARTIAL_RUN="unknown"', False),
+        ('OVERALL_RESULT="FAIL" PARTIAL_RUN="FALSE"', False),
+    ],
+)
+def test_wack_report_rejects_partial_or_unknown_completion(tmp_path, attributes, accepted):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for WACK report validation")
+    script = (Path(__file__).resolve().parents[1] / "packaging/test_wack.ps1").read_text(encoding="utf-8")
+    validation = script[script.index("$overallResults ="):script.index("Write-Output 'Status: Passed'")]
+    report_path = tmp_path / "report.xml"
+    report_path.write_text(f"<REPORT {attributes}/>", encoding="utf-8")
+    report_literal = str(report_path).replace("'", "''")
+    command = (
+        "$ErrorActionPreference='Stop'; $report=[System.Xml.XmlDocument]::new(); "
+        f"$report.Load('{report_literal}'); try {{ {validation} }} catch {{ exit 1 }}"
+    )
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-Command", command],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+
+
 def test_wack_readme_sets_optional_deprecated_partner_center_boundary():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "packaging" / "README.md").read_text(encoding="utf-8").lower()

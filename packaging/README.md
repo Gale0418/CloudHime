@@ -98,6 +98,8 @@ Run it only from an elevated Administrator PowerShell in an active interactive u
 
 These correspond to the Microsoft CLI forms appcert.exe reset followed by appcert.exe test -appxpackagepath <path> -reportoutputpath <path> or appcert.exe test -packagefullname <full-name> -reportoutputpath <path>.
 
+The wrapper accepts only a report with `OVERALL_RESULT=PASS` and explicit `PARTIAL_RUN=FALSE`. Partial runs, missing completion markers, tool crashes, and absent reports do not count as a successful local check.
+
 Installed mode does not install or clean up packages. The caller must keep the installation and cleanup try/finally flow from packaging/test_msix_install.ps1; WACK itself requires admin and an active session.
 
 ## Environment-isolated packaged launch smoke

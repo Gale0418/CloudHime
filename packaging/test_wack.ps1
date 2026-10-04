@@ -126,6 +126,10 @@ $overallResult = [string]$overallResults[0].Value
 if ($overallResult -ine 'PASS') {
     throw "WACK OverallResult is not PASS: $overallResult"
 }
+$partialRuns = @($report.SelectNodes("/REPORT/@PARTIAL_RUN"))
+if ($partialRuns.Count -ne 1 -or $partialRuns[0].Value -ine 'FALSE') {
+    throw 'WACK report must explicitly confirm a complete run with PARTIAL_RUN=FALSE.'
+}
 
 Write-Output 'Status: Passed'
 Write-Output "Mode: $($PSCmdlet.ParameterSetName)"
