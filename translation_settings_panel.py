@@ -1834,7 +1834,7 @@ class TranslationSettingsPanel(QWidget):
         )
         vision_mode = str(getattr(runtime_state, "mode", "") or "")
 
-        local_provider = getattr(worker, "local_gemma_provider", None)
+        local_provider = getattr(worker, "local_multimodal_provider", None)
         try:
             local_text_ready = bool(local_provider is not None and local_provider.available())
         except Exception:

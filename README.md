@@ -169,3 +169,12 @@ MSIX 的本機開發自簽與 Microsoft Store 正式發行是兩條不同流程�
   ```bash
   python speed_benchmark.py benchmarks/ocr_accuracy_cases.json
   ```
+
+
+### 2026-10-04 本機模型準備與 Google 誤路由修正
+
+20:13 實機截圖顯示候選 EXE 停在 Preparing model、charge bar 誤寫 Google、框選中文未翻譯；這次驗收失敗，466780b 的候選 MSIX／upload 已退回且未上傳。封裝診斷確認兩個內附 GGUF 與 runtime 都存在，未選到受管下載路徑。完整來源 Controller 診斷顯示背景在首次 SHA 驗證讀模型；併行封裝 I/O 下未於時限內就緒，這僅解釋診斷中的等待，尚未證明實機失敗的全部根因。
+
+修正明列 local-only provider chain 時的隱性 Google fallback 與舊 Google 快取偷渡；設定頁改讀實際 local_multimodal provider。內附模型驗證增加實際位元組進度及區塊間取消，仍核對 SHA，只有成功驗證才寫 receipt。文字模式保留驗證階段，CPU 文案不再宣稱初始化 GPU；未就緒時按翻譯保留字幕並提示等待，明列 Google 的 fallback 保持可用。
+
+相關回歸 313 passed；CodeRabbit 僅審本輪 9 個程式／測試檔、0 issues，未包含模型、DLL、大型輸出或使用者另留的 logo。證據：output/store-release-20261004-local-warmup/checkpoint-evidence.json、regression.xml、coderabbit-scope.json 與 coderabbit-review.ndjson。新 EXE 完整啟動／翻譯、GUI 操作、沙箱／MSIX／WACK與正式評論仍待完成；Store 仍為 0.1.1.0，CH-T55 保持 Review。

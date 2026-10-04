@@ -123,6 +123,11 @@ def _progress_label(detail: str, language: str, mode: str = "") -> str:
     return label + suffix
 
 
+def local_model_progress_message(detail: str, ui_language: str, *, cpu_only=False) -> str:
+    """Describe asset/runtime progress without exposing raw diagnostic details."""
+    return _progress_label(detail, _language(ui_language), "cpu" if cpu_only else "")
+
+
 def assess_provider_health(
     *,
     ui_language: str = "zh-TW",

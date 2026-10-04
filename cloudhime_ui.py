@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import (Qt, QTimer, Signal, QThread, QObject, 
                             QAbstractNativeEventFilter, QEvent, Slot)
 from PySide6.QtGui import QCursor, QFontMetrics, QIcon, QPixmap, QColor, QPainter, QFont, QBrush, QFontDatabase, QLinearGradient, QShortcut, QKeySequence
-from provider_health import local_model_failure_message
+from provider_health import local_model_failure_message, local_model_progress_message
 from marquee_label import MarqueeLabel
 from PySide6.QtCore import QRect, QPoint
 from PySide6.QtGui import QPen
@@ -5463,6 +5463,23 @@ class Controller(QWidget):
             return
         if self.scan_in_progress:
             return
+        if (
+            self._selected_translation_provider() == "local_gemma"
+            and not self.worker._google_translation_fallback_allowed()
+            and not self.worker.has_ai_text_provider()
+        ):
+            state = self._selected_local_runtime_state()
+            if state == "failed":
+                detail = self.local_vision_detail if self.local_multimodal_enabled else self.local_model_detail
+                self._set_status_message(local_model_failure_message(detail, self.get_ui_language()))
+            else:
+                self._set_status_message({
+                    "en": "Local Gemma is still preparing. Wait for Model ready, then translate again.",
+                    "ja": "Local Gemma は準備中です。準備完了後、もう一度翻訳してください。",
+                }.get(self.get_ui_language(), "Local Gemma 還在準備中；等模型就緒後，再按一次翻譯。"))
+            if self.current_auto_interval > 0:
+                self.schedule_next_scan()
+            return
         self.scan_in_progress = True
         self.display_timer.stop()
         self._refresh_auto_scan_button()
@@ -5696,6 +5713,19 @@ class Controller(QWidget):
         theme = resolve_theme(self.theme_mode)
         language = self.get_ui_language()
 
+        if state == "progress":
+            label = local_model_progress_message(
+                detail, language, cpu_only=bool(getattr(self.worker, "local_multimodal_cpu_only", False))
+            )
+            try:
+                progress = max(0, min(100, int(detail.split("|", 1)[0])))
+            except (TypeError, ValueError):
+                progress = 0
+            colors = build_charge_bar_colors(theme, "normal")
+            self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+            self.charge_bar.set_progress(progress, label)
+            self._set_status_message(label)
+            return
         if state == "loading":
             colors = build_charge_bar_colors(theme, "normal")
             self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
@@ -5705,9 +5735,9 @@ class Controller(QWidget):
             }.get(language, "Local Gemma3 載入中")
             self.charge_bar.set_indeterminate(True, label)
             self._set_status_message({
-                "en": "Loading the bundled model and initializing the GPU...",
-                "ja": "組み込みモデルを読み込み、GPU を初期化しています...",
-            }.get(language, "正在讀取內嵌模型並初始化 GPU..."))
+                "en": "Checking the bundled model and preparing local inference...",
+                "ja": "組み込みモデルを確認し、ローカル推論を準備しています...",
+            }.get(language, "正在檢查內附模型並準備本機推論..."))
             return
         if state == "ready":
             colors = build_charge_bar_colors(theme, "normal")

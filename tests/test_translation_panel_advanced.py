@@ -339,6 +339,24 @@ def test_translation_panel_local_model_needs_no_key_and_shows_managed_download(q
     assert not panel.input_api_key.hasFocus()
 
 
+def test_translation_panel_recognizes_ready_local_text_provider_without_projector(qtbot):
+    controller = _health_controller(
+        model_id="gemma-3-4b-it-local",
+        ai_enabled=True,
+        runtime_state=SimpleNamespace(name="stopped", detail="", mode=""),
+    )
+    controller.worker.local_multimodal_provider = SimpleNamespace(
+        available=lambda: True
+    )
+    panel = TranslationSettingsPanel(controller, [("Gemma Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    panel.sync_from_controller()
+
+    health = panel._provider_health()
+
+    assert health.code == "local_ready"
+
+
 def test_translation_panel_local_model_discloses_appdata_and_gemma_terms(qtbot):
     controller = _health_controller(model_id="gemma-3-4b-it-local", ai_enabled=True)
     panel = TranslationSettingsPanel(controller, [("Gemma Local", "gemma-3-4b-it-local")])

@@ -1637,6 +1637,7 @@ def test_preferred_result_attributes_expected_ai_failure_to_google_cache_hit():
 
     worker = OCRWorker.__new__(OCRWorker)
     worker.translation_target_lang = "zh-TW"
+    worker.provider_chain = ("gemma", "google")
     worker.has_ai_text_provider = lambda: True
     worker.get_current_ai_provider = lambda: "local_multimodal"
     worker._translate_text_gemma_result = lambda _text: (_ for _ in ()).throw(
@@ -1655,6 +1656,113 @@ def test_preferred_result_attributes_expected_ai_failure_to_google_cache_hit():
     assert result.from_cache is True
     assert result.requested_provider == "local_multimodal"
     assert result.fallback_reason == "provider_error"
+
+
+def test_local_only_chain_does_not_google_fallback_after_provider_error():
+    from urllib import error
+    from translation_orchestrator import TranslationOrchestrationError
+
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.provider_chain = ("local_multimodal",)
+    worker.translation_target_lang = "en"
+    worker.has_ai_text_provider = lambda: True
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker._build_persistent_translation_cache_key = lambda *args, **kwargs: "key"
+    worker._get_persistent_translation_result = lambda *args, **kwargs: None
+    worker._translate_text_gemma_result = lambda _text: (_ for _ in ()).throw(
+        error.URLError("local runtime unavailable")
+    )
+    google_calls = []
+    worker._translate_text_google_result = lambda text: (
+        google_calls.append(text) or workers_module.TranslationResult(
+            text="Google translation", provider="google"
+        )
+    )
+
+    with pytest.raises(TranslationOrchestrationError):
+        OCRWorker._translate_text_preferred_result(worker, "source")
+
+    assert google_calls == []
+
+
+def test_local_only_chain_does_not_route_to_google_while_runtime_is_unavailable():
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.provider_chain = ("local_multimodal",)
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.translation_target_lang = "en"
+    worker._build_persistent_translation_cache_key = lambda *args, **kwargs: "key"
+    worker._get_persistent_translation_result = lambda *args, **kwargs: None
+    worker._remember_persistent_translation_result = lambda *args, **kwargs: None
+    google_calls = []
+    worker._translate_text_google_result = lambda text: (
+        google_calls.append(text) or workers_module.TranslationResult(
+            text="Google translation", provider="google"
+        )
+    )
+
+    with pytest.raises(ValueError, match="translation_provider_unavailable"):
+        OCRWorker._translate_text_preferred_result(worker, "source")
+
+    assert google_calls == []
+
+
+def test_local_only_batch_chain_does_not_route_to_google_while_runtime_is_unavailable():
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.provider_chain = ("local_multimodal",)
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker._build_persistent_translation_cache_key = lambda *args, **kwargs: "key"
+    worker._get_persistent_translation_result = lambda *args, **kwargs: None
+    google_calls = []
+    worker.translate_text_google_batch = lambda texts: (
+        google_calls.append(list(texts)) or ["Google translation"]
+    )
+
+    result = OCRWorker.translate_text_batch_with_provider(worker, ["source"])
+
+    assert result == ([], "")
+    assert google_calls == []
+
+
+def test_local_only_chain_ignores_persisted_google_preferred_result():
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.provider_chain = ("local_multimodal",)
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker.translation_target_lang = "en"
+    worker._build_persistent_translation_cache_key = lambda *args, **kwargs: "local-key"
+    worker._get_persistent_translation_result = lambda *args, **kwargs: (
+        workers_module.TranslationResult(
+            text="stale Google result", provider="google", from_cache=True
+        )
+    )
+    worker._remember_persistent_translation_result = lambda *args, **kwargs: None
+
+    with pytest.raises(ValueError, match="translation_provider_unavailable"):
+        OCRWorker._translate_text_preferred_result(worker, "source")
+
+
+def test_local_only_batch_chain_ignores_persisted_google_result():
+    worker = make_worker_stub()
+    worker.use_gemma_translation = True
+    worker.provider_chain = ("local_multimodal",)
+    worker.has_ai_text_provider = lambda: False
+    worker.get_current_ai_provider = lambda: "local_multimodal"
+    worker._build_persistent_translation_cache_key = lambda *args, **kwargs: "local-key"
+    worker._get_persistent_translation_result = lambda *args, **kwargs: (
+        workers_module.TranslationResult(
+            text="stale Google result", provider="google", from_cache=True
+        )
+    )
+
+    result = OCRWorker.translate_text_batch_with_provider(worker, ["source"])
+
+    assert result == ([], "")
 
 def test_local_provider_server_model_does_not_switch_active_catalog_model():
     from translation_contracts import TranslationResult
@@ -1920,7 +2028,7 @@ def test_server_status_continues_local_model_status_for_text_profile():
     ]
     assert model_statuses == [
         ("loading", ""),
-        ("loading", "42|model_download"),
+        ("progress", "42|model_download"),
         ("ready", ""),
     ]
 

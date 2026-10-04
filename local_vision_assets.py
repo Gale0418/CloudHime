@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from managed_asset_store import AssetSpec, ensure_managed_assets
+from managed_asset_store import AssetDownloadCancelled, AssetSpec, ensure_managed_assets
 from local_runtime_profiles import ALL_RUNTIME_ASSET_FIELDS
 
 
@@ -159,6 +159,8 @@ def ensure_vision_model_assets(
     fields = _normalize_required_fields(required_fields)
     is_default = fields == ALL_RUNTIME_ASSET_FIELDS
     if not assets.managed:
+        if cancel_event is not None and cancel_event.is_set():
+            raise AssetDownloadCancelled("asset verification cancelled")
         with _ASSET_LOCK:
             if is_default:
                 receipt_matches = _legacy_receipt_matches(assets, None)
@@ -172,10 +174,24 @@ def ensure_vision_model_assets(
                 return assets
             if progress_callback:
                 progress_callback("checking_disk", 0)
-            if is_default:
-                failures = _verify_resolved_assets(assets)
+            if cancel_event is None and progress_callback is None:
+                if is_default:
+                    failures = _verify_resolved_assets(assets)
+                else:
+                    failures = _verify_resolved_assets(assets, required_fields=fields)
+            elif is_default:
+                failures = _verify_resolved_assets(
+                    assets,
+                    cancel_event=cancel_event,
+                    progress_callback=progress_callback,
+                )
             else:
-                failures = _verify_resolved_assets(assets, required_fields=fields)
+                failures = _verify_resolved_assets(
+                    assets,
+                    required_fields=fields,
+                    cancel_event=cancel_event,
+                    progress_callback=progress_callback,
+                )
             if failures:
                 raise VisionAssetError(
                     "legacy_asset_invalid",
@@ -221,7 +237,14 @@ def ensure_vision_model_assets(
     return assets
 
 
-def verify_asset(path: Path, expected_sha256: Optional[str], minimum_bytes: int) -> None:
+def verify_asset(
+    path: Path,
+    expected_sha256: Optional[str],
+    minimum_bytes: int,
+    *,
+    cancel_event=None,
+    progress_callback=None,
+) -> None:
     if not path.exists():
         raise VisionAssetError("asset_missing", path=path)
     if minimum_bytes > 0:
@@ -233,7 +256,11 @@ def verify_asset(path: Path, expected_sha256: Optional[str], minimum_bytes: int)
                 detail=f"got {actual_bytes}, want >={minimum_bytes}",
             )
     if expected_sha256 is not None:
-        actual_sha = _sha256_file(path)
+        actual_sha = _sha256_file(
+            path,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
+        )
         if actual_sha != expected_sha256.lower():
             raise VisionAssetError(
                 "asset_sha256_mismatch",
@@ -242,7 +269,13 @@ def verify_asset(path: Path, expected_sha256: Optional[str], minimum_bytes: int)
             )
 
 
-def _verify_resolved_assets(assets: VisionAssets, *, required_fields=None) -> list[str]:
+def _verify_resolved_assets(
+    assets: VisionAssets,
+    *,
+    required_fields=None,
+    cancel_event=None,
+    progress_callback=None,
+) -> list[str]:
     fields = _normalize_required_fields(required_fields)
     paths = {
         "server_path": assets.server_path,
@@ -250,14 +283,53 @@ def _verify_resolved_assets(assets: VisionAssets, *, required_fields=None) -> li
         "projector_path": assets.projector_path,
     }
     failures = []
+    hash_sizes = {}
+    for field_name in fields:
+        if ASSET_SHA256[field_name] is None:
+            continue
+        try:
+            if paths[field_name].is_file():
+                hash_sizes[field_name] = paths[field_name].stat().st_size
+        except OSError:
+            pass
+    total_hash_bytes = sum(hash_sizes.values())
+    hashed_bytes = 0
+    last_percent = -1
+
+    def report_hash_progress(file_base: int, file_bytes: int, _file_size: int) -> None:
+        nonlocal last_percent
+        if not progress_callback or total_hash_bytes <= 0:
+            return
+        percent = min(79, int((file_base + file_bytes) * 80 / total_hash_bytes))
+        if percent != last_percent:
+            last_percent = percent
+            progress_callback("verifying", percent)
+
+    report_hash_progress(0, 0, 0)
     for field_name in fields:
         path = paths[field_name]
         try:
-            verify_asset(
-                path,
-                ASSET_SHA256[field_name],
-                ASSET_MINIMUM_BYTES[field_name],
-            )
+            if cancel_event is None and progress_callback is None:
+                verify_asset(
+                    path,
+                    ASSET_SHA256[field_name],
+                    ASSET_MINIMUM_BYTES[field_name],
+                )
+            else:
+                callback = None
+                if ASSET_SHA256[field_name] is not None:
+                    callback = lambda current, total, base=hashed_bytes: report_hash_progress(
+                        base, current, total
+                    )
+                verify_asset(
+                    path,
+                    ASSET_SHA256[field_name],
+                    ASSET_MINIMUM_BYTES[field_name],
+                    cancel_event=cancel_event,
+                    progress_callback=callback,
+                )
+                if field_name in hash_sizes:
+                    hashed_bytes += hash_sizes[field_name]
         except VisionAssetError as exc:
             failures.append(f"  [ERROR] {field_name}: {path} -> {exc.code}")
     return failures
@@ -421,11 +493,28 @@ def _write_receipt(root: Path, manifest=None) -> None:
                 pass
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, *, cancel_event=None, progress_callback=None) -> str:
     digest = hashlib.sha256()
+    size = path.stat().st_size
+    bytes_read = 0
+    last_percent = -1
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(_SHA256_CHUNK_BYTES), b""):
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise AssetDownloadCancelled("asset verification cancelled")
+            chunk = stream.read(_SHA256_CHUNK_BYTES)
+            if not chunk:
+                break
             digest.update(chunk)
+            bytes_read += len(chunk)
+            if progress_callback:
+                percent = int(bytes_read * 100 / max(1, size))
+                # Report real byte counts at most once per percentage point.
+                if percent != last_percent:
+                    last_percent = percent
+                    progress_callback(bytes_read, size)
+    if cancel_event is not None and cancel_event.is_set():
+        raise AssetDownloadCancelled("asset verification cancelled")
     return digest.hexdigest()
 
 

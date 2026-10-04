@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from pathlib import Path
 
 import pytest
@@ -137,6 +138,45 @@ def test_verify_asset_skips_sha256_when_none(tmp_path):
     verify_asset(path, None, minimum_bytes=0)  # must not raise
 
 
+def test_verify_asset_reports_throttled_hash_progress(tmp_path, monkeypatch):
+    path = tmp_path / "model.gguf"
+    content = b"0123456789" * 25
+    path.write_bytes(content)
+    monkeypatch.setattr(vision_assets_module, "_SHA256_CHUNK_BYTES", 10)
+    progress = []
+
+    verify_asset(
+        path,
+        hashlib.sha256(content).hexdigest(),
+        minimum_bytes=0,
+        progress_callback=lambda read, total: progress.append((read, total)),
+    )
+
+    assert progress
+    assert progress[-1] == (len(content), len(content))
+    assert [read for read, _ in progress] == sorted(read for read, _ in progress)
+    assert len(progress) <= 100
+
+
+def test_verify_asset_can_cancel_sha256(tmp_path, monkeypatch):
+    path = tmp_path / "model.gguf"
+    path.write_bytes(b"x" * 100)
+    monkeypatch.setattr(vision_assets_module, "_SHA256_CHUNK_BYTES", 10)
+    cancelled = threading.Event()
+
+    def cancel_after_first_progress(_read, _total):
+        cancelled.set()
+
+    with pytest.raises(vision_assets_module.AssetDownloadCancelled):
+        verify_asset(
+            path,
+            "0" * 64,
+            minimum_bytes=0,
+            cancel_event=cancelled,
+            progress_callback=cancel_after_first_progress,
+        )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # VisionAssetError 本身
 # ──────────────────────────────────────────────────────────────────────────────
@@ -245,6 +285,59 @@ def test_ensure_legacy_assets_writes_receipt_after_verification(tmp_path, monkey
 
     assert ensure_vision_model_assets(assets) is assets
     assert writes == [(assets, None)]
+
+
+def test_ensure_legacy_assets_reports_real_hash_progress(tmp_path, monkeypatch):
+    assets = resolve_vision_assets(tmp_path / "app")
+    assets.server_path.parent.mkdir(parents=True)
+    assets.model_path.parent.mkdir(parents=True)
+    assets.server_path.write_bytes(b"server")
+    assets.model_path.write_bytes(b"model payload" * 100)
+    model_sha = hashlib.sha256(assets.model_path.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        vision_assets_module,
+        "ASSET_SHA256",
+        {"server_path": None, "model_path": model_sha, "projector_path": None},
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "ASSET_MINIMUM_BYTES",
+        {"server_path": 1, "model_path": 1, "projector_path": 1},
+    )
+    monkeypatch.setattr(
+        vision_assets_module, "_legacy_receipt_matches", lambda *_args, **_kwargs: False
+    )
+    monkeypatch.setattr(
+        vision_assets_module,
+        "_legacy_receipt_path",
+        lambda local=None: tmp_path / "local" / "receipt.json",
+    )
+    progress = []
+
+    ensure_vision_model_assets(
+        assets,
+        progress_callback=lambda stage, percent: progress.append((stage, percent)),
+        required_fields=("server_path", "model_path"),
+    )
+
+    disk_progress = [percent for stage, percent in progress if stage == "verifying"]
+    assert disk_progress[0] == 0
+    assert disk_progress == sorted(disk_progress)
+    assert max(disk_progress) == 79
+    assert progress[-1] == ("checking_assets", 80)
+
+    (tmp_path / "local" / "receipt.json").unlink()
+    cancelled = threading.Event()
+    with pytest.raises(vision_assets_module.AssetDownloadCancelled):
+        ensure_vision_model_assets(
+            assets,
+            progress_callback=lambda stage, percent: (
+                cancelled.set() if stage == "verifying" and percent > 0 else None
+            ),
+            cancel_event=cancelled,
+            required_fields=("server_path", "model_path"),
+        )
+    assert not (tmp_path / "local" / "receipt.json").exists()
 
 def test_ensure_managed_assets_writes_and_reuses_verification_receipt(tmp_path, monkeypatch):
     assets = resolve_managed_vision_assets(tmp_path / "app", tmp_path / "local")

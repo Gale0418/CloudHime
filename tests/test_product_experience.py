@@ -16,6 +16,54 @@ from ocr_backend_panel import OcrBackendSettingsPanel
 from provider_health import local_model_failure_message
 
 
+def test_local_only_warmup_keeps_captions_and_does_not_request_scan(controller, monkeypatch, qtbot):
+    controller.worker.use_gemma_translation = True
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.worker.provider_chain = controller.provider_chain = ("local_multimodal",)
+    controller.local_model_state = "loading"
+    controller.set_ui_language("en", persist=False)
+    monkeypatch.setattr(controller.worker, "has_ai_text_provider", lambda: False)
+    emit = Mock()
+    monkeypatch.setattr(controller, "_emit_scan_signal", emit)
+    controller.on_scan_complete([("Existing caption", 100, 100, 180, 40)])
+    captions = list(controller.overlay.bubbles)
+    controller.trigger_scan_sequence()
+    qtbot.wait(80)
+    assert not controller.scan_in_progress
+    assert not emit.called
+    assert controller.overlay.bubbles == captions
+    assert "still preparing" in controller.lbl_status.text()
+
+
+@pytest.mark.parametrize("ready,chain", [(True, ("local_multimodal",)), (False, ("local_multimodal", "google"))])
+def test_local_ready_or_explicit_google_fallback_can_request_scan(controller, monkeypatch, qtbot, ready, chain):
+    controller.worker.use_gemma_translation = True
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.worker.provider_chain = controller.provider_chain = chain
+    monkeypatch.setattr(controller.worker, "has_ai_text_provider", lambda: ready)
+    emit = Mock()
+    monkeypatch.setattr(controller, "_emit_scan_signal", emit)
+    controller.trigger_scan_sequence()
+    qtbot.wait(80)
+    assert controller.scan_in_progress
+    emit.assert_called_once()
+
+
+def test_local_text_progress_shows_verification_and_cpu_initialization(controller):
+    controller.set_ui_language("en", persist=False)
+    controller.worker.use_gemma_translation = True
+    controller.worker.gemma_model = "gemma-3-4b-it-local"
+    controller.worker.local_multimodal_cpu_only = True
+    controller.local_multimodal_enabled = False
+    controller.provider_chain = ("local_multimodal",)
+    controller.on_local_model_status("progress", "42|verifying")
+    assert controller.lbl_status.text() == "Verifying local Gemma 42%"
+    controller.on_local_model_status("progress", "90|initializing")
+    assert controller.lbl_status.text() == "Initializing CPU 90%"
+    controller.update_gemma_rate_indicator()
+    assert "Google" not in controller.charge_bar.label
+
+
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
 @pytest.mark.parametrize("vision", [False, True])
 def test_local_startup_failure_shows_safe_recovery(controller, language, vision):

@@ -1100,7 +1100,7 @@ class OCRWorker(QObject):
                 pass
         if getattr(self, "_local_runtime_profile", None) == "text":
             status, *details = args
-            if status in {"starting", "progress"}:
+            if status == "starting":
                 status = "loading"
             OCRWorker._emit_local_model_status(self, status, *details)
 
@@ -2194,6 +2194,16 @@ class OCRWorker(QObject):
             not in {"", "google"}
         )
 
+    def _google_translation_fallback_allowed(self):
+        """Honor an explicit provider chain instead of adding Google implicitly."""
+        chain = tuple(getattr(self, "provider_chain", ()) or ())
+        if not chain:
+            return True
+        return any(
+            str(provider or "").strip().casefold() == "google"
+            for provider in chain
+        )
+
     def _is_local_model_active(self):
         provider_chain = tuple(getattr(self, "provider_chain", ()) or ())
         if provider_chain and str(provider_chain[0]).strip().casefold() not in {
@@ -3160,10 +3170,16 @@ class OCRWorker(QObject):
             requested_provider,
         )
         cached = self._get_persistent_translation_result(persistent_key, normalized_text)
-        if cached is not None:
+        if cached is not None and (
+            self._google_translation_fallback_allowed()
+            or str(getattr(cached, "provider", "") or "").strip().casefold()
+            != "google"
+        ):
             return cached
 
         if not has_ai_provider:
+            if not self._google_translation_fallback_allowed():
+                raise ValueError("translation_provider_unavailable")
             result = self._translate_text_google_result(normalized_text)
             self._remember_persistent_translation_result(
                 persistent_key,
@@ -3200,7 +3216,9 @@ class OCRWorker(QObject):
             requested_provider=requested_provider,
             primary=primary,
             fallback_provider="google",
-            fallback=fallback,
+            fallback=(
+                fallback if self._google_translation_fallback_allowed() else None
+            ),
             fallback_reason="provider_error",
             cancelled=self._translation_route_cancelled,
         )
@@ -3243,7 +3261,11 @@ class OCRWorker(QObject):
             batch=True,
         )
         cached = self._get_persistent_translation_result(persistent_key, combined_source)
-        if cached is not None:
+        if cached is not None and (
+            self._google_translation_fallback_allowed()
+            or str(getattr(cached, "provider", "") or "").strip().casefold()
+            != "google"
+        ):
             batch_result = self.split_translated_lines(
                 cached.text,
                 len(normalized_texts),
@@ -3253,6 +3275,9 @@ class OCRWorker(QObject):
                 for source, translated in zip(normalized_texts, batch_result)
             ):
                 return batch_result, cached.provider
+
+        if not has_ai_provider and not self._google_translation_fallback_allowed():
+            return [], ""
 
         if has_ai_provider:
             try:
@@ -3284,6 +3309,8 @@ class OCRWorker(QObject):
             except (error.URLError, error.HTTPError, TimeoutError):
                 pass
 
+        if not self._google_translation_fallback_allowed():
+            return [], ""
         batch_result = self.translate_text_google_batch(normalized_texts)
         if len(batch_result) == len(normalized_texts) and all(
             self._is_usable_text_fallback(source, translated)
