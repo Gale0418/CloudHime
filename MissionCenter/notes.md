@@ -595,3 +595,12 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 修正明列 local-only provider chain 時的隱性 Google fallback 與舊 Google 快取偷渡；設定頁改讀實際 local_multimodal provider。內附模型驗證增加實際位元組進度及區塊間取消，仍核對 SHA，只有成功驗證才寫 receipt。文字模式保留驗證階段，CPU 文案不再宣稱初始化 GPU；未就緒時按翻譯保留字幕並提示等待，明列 Google 的 fallback 保持可用。
 
 相關回歸 313 passed；CodeRabbit 僅審本輪 9 個程式／測試檔、0 issues，未包含模型、DLL、大型輸出或使用者另留的 logo。證據：output/store-release-20261004-local-warmup/checkpoint-evidence.json、regression.xml、coderabbit-scope.json 與 coderabbit-review.ndjson。新 EXE 完整啟動／翻譯、GUI 操作、沙箱／MSIX／WACK與正式評論仍待完成；Store 仍為 0.1.1.0，CH-T55 保持 Review。
+
+
+### 2026-10-04T21:21+08:00：本機準備修正版 EXE 與實際 Controller 驗證
+
+固定來源 adf8d39 新 EXE 已重建，SHA 931d24c73099cead2fa016523afc6efb71365cbd0614a5975a2bad88496af846。模型完整性、frozen import、host Windows OCR 兩行、CPU vision 1/1 與正常 GUI 20 秒啟動均通過；GitHub CI 37203714789 八個必要工作成功、兩個手動 frozen 工作跳過。本輪回歸 313 passed、CodeRabbit 九檔零 issues；這些不是全專案或完整 GUI 操作驗收。
+
+另用相同固定來源的實際 Controller、正常設定載入與該 EXE 的內附模型／runtime 做來源診斷：SHA 驗證進度 0→30→55%、模型載入、就緒，約 17.156 秒；「確認連線狀態」以 local_multimodal 翻成 Check Connection Status，未取快取，翻譯等待期間有 70 次 UI event tick。此診斷不是 frozen EXE 的完整人工旅程；offscreen 原生快捷鍵排除，不能推論暫停／繼續／取消框選全部通過。Controller cleanup 完成，自有 llama-server 已終止；其 wrapper exit 1，沒有冒稱正常 exit 0。證據：output/store-release-20261004-local-warmup/verification-result.json、controller-startup/result.json、verified-checkpoint.json。
+
+主人指定文案由 Gemini 撰寫，已透過 Antigravity Bridge 送出；同一 cascade 卡在 filesystem/describe 實際工具授權，已排入不使用工具的純文字後續要求，尚未取得文案，未以 Codex 代寫冒充。20:13 失敗候選維持退回。最新 MSIX／完整人工操作／沙箱前置環境／更新安裝／WACK／正式評論仍待完成，Store 0.1.1.0 保留，CH-T55 Review、Smoke NO、Critic NO；24k 正式評論尚未起算，尚未上傳或認證。
