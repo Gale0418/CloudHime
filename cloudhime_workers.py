@@ -613,8 +613,13 @@ class OCRWorker(QObject):
         prefix = "AI" if provider not in {"google", None} else "Google"
         icon = "🧠" if prefix == "AI" else "🌐"
         if stage == "batch":
-            return f"{icon} {prefix} 批次補翻 {params['count']} 段..."
-        return f"{icon} {prefix} {params['index']}/{params['count']}"
+            return self._scan_status_text(
+                "worker.status.batch_translate", icon=icon, prefix=prefix, count=params["count"]
+            )
+        return self._scan_status_text(
+            "worker.status.segment_progress", icon=icon, prefix=prefix,
+            current=params["index"], total=params["count"]
+        )
 
     @staticmethod
     def _is_rate_limit_error(exc):

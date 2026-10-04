@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import localization
 import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -1159,7 +1160,8 @@ def test_controller_rejects_stale_status_at_generation_admission():
     controller.update_status.assert_called_once_with("current")
 
 
-def test_english_ui_localizes_exact_frame_cache_status(qtbot):
+@pytest.mark.parametrize("source_language", ["zh-TW", "en", "ja"])
+def test_english_ui_localizes_exact_frame_cache_status(qtbot, source_language):
     controller = Controller.__new__(Controller)
     controller.scan_generation = 5
     controller.ui_language = "en"
@@ -1180,7 +1182,7 @@ def test_english_ui_localizes_exact_frame_cache_status(qtbot):
     messages.clear()
 
     Controller.update_scan_status_for_generation(
-        controller, 5, "♻️ 完全相同畫面（快取）"
+        controller, 5, localization.tr("worker.status.exact_frame_cache", source_language)
     )
 
     assert messages == ["Same screen as before (cached)"]

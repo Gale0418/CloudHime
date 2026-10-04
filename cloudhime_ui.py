@@ -5492,7 +5492,10 @@ class Controller(QWidget):
         self.update_status(message)
 
     def update_status(self, msg):
-        if msg == localization.tr("worker.status.exact_frame_cache", "zh-TW"):
+        if msg in {
+            localization.tr("worker.status.exact_frame_cache", language)
+            for language in localization.SUPPORTED_UI_LANGUAGES
+        }:
             msg = self._tr("worker.status.exact_frame_cache").strip()
         self._set_status_message(msg)
         self.update_gemma_rate_indicator()

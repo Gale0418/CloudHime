@@ -49,6 +49,23 @@ def test_translation_scan_status_uses_selected_text_provider(provider, expected)
     assert OCRWorker._translation_scan_status_text(worker, "initial") == expected
 
 
+@pytest.mark.parametrize("language", ["en", "ja", "zh-TW"])
+@pytest.mark.parametrize("provider", ["google", "gemma"])
+def test_remote_translation_wait_status_is_localized(language, provider):
+    worker = make_worker_stub()
+    worker.translation_target_lang = language
+    worker.has_ai_text_provider = lambda: provider != "google"
+    worker.get_current_ai_provider = lambda: provider
+    icon = "🌐" if provider == "google" else "🧠"
+    prefix = "Google" if provider == "google" else "AI"
+    assert OCRWorker._translation_scan_status_text(worker, "batch", count=3) == workers_module.localization.tr(
+        "worker.status.batch_translate", language, icon=icon, prefix=prefix, count=3
+    )
+    assert OCRWorker._translation_scan_status_text(worker, "progress", index=2, count=3) == workers_module.localization.tr(
+        "worker.status.segment_progress", language, icon=icon, prefix=prefix, current=2, total=3
+    )
+
+
 def _prepare_registry_worker():
     worker = make_worker_stub()
     worker._refresh_translation_registry = OCRWorker._refresh_translation_registry.__get__(worker, OCRWorker)

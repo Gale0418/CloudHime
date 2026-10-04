@@ -555,3 +555,10 @@ README、任務下一步與本紀錄已更新；新來源尚待固定 main 提�
 品質 guard RED 3 案、持久快取／批次 RED 4 案與英文快取提示 RED 1 案均保留。首次整合 568 案為 565 passed／3 failed，確認是兩個 __new__ 替身缺少目標語言與一個英文測試卻回傳中文的 mock；補正測試輸入，未放寬產品品質檢查。第二輪同 profile 卡在產品體驗第 68 案附近，超過八分鐘無進展；保存 integrated-hung.log／receipt，精確停止本輪三個 owned PID，未生成 passing receipt。無 stack，Qt 卡住根因仍未確認。改用全新唯一 profile、verbose／60 秒 faulthandler 與 150 秒硬逾時，15 檔整合 568 passed in 32.14s，零 failure/error/skip，來源 SHA 前後一致；JUnit SHA 026e9f985df23e6499e048dd3837a6154876857708643ea1b7c8da0f5e55f9ef。證據在 output/store-release-20261004-second-line/。
 
 14ae2df 跑馬燈 EXE 雖完成建置、三檔 CodeRabbit 0 issues，但已因上述新反證撤換；舊觀察程序已停止，未送沙箱／封裝／上傳。6e1a14f 只補 CI inventory，CI 37195667976 success；這不是最新修正的 CI 證據。接著固定 main 新來源、配額內聚焦審查、重建 EXE 與驗收。原 0931 隔離視窗於 18:32:46 正常 exit 0，只證明正常退出，不代表暫停／繼續／取消框選皆完成。Store 仍私人免費 Submission 3 草稿，尚未上傳新套件／認證／發布，現行版 0.1.1.0；CH-T55 Review／Smoke NO／Critic NO，正式評論預算未開始。
+
+
+## 2026-10-04T19:09:32+08:00：11 檔兔子補審與本地化差異修正
+
+36e7838 已推 main；固定來源與 568 案測試逐檔 SHA／EOL binding 保存於 output/store-release-20261004-translation-ready/。CodeRabbit 11 檔、994036 bytes，排除模型／runtime／設定／憑證，配額依所有歷史 receipt 的完成時間保守計算；完整審查提出 2 minor issues，並非 0 issues。查證為 Controller 快取提示只辨認繁中 catalog，以及遠端／Google 批次等待仍寫死中文。新增三語輸入與雙引擎三語狀態回歸，RED 6 failed／3 passed；修正後 9 passed，JUnit、原始 log、receipt 在 second-line/review-delta-red 與 review-delta-green。保留原文字 trimming／狀態流程；沒有擴大到其他 UI。
+
+36e7838 的 BelowNormal PyInstaller 在 19:06:16 精確停止 owned PID 15960，parent 正常保存 exit 4294967295 與 build-cancelled.json；不使用部分產物、不執行舊 verifier。下一候選須以修正後新來源重建與複審。先前卡住的 Qt 混跑根因未定；最新全新 profile／verbose／faulthandler／硬逾時整合 576 passed，零 failure/error/skip、來源 SHA 前後一致，JUnit SHA c1bce6381ff9501ae0f90e428ec19aa24521602be6c42856f980065ec80103d8。Store 未上傳／認證／發布，CH-T55 仍 Review、Smoke NO、Critic NO，正式評論額度尚未起算。
