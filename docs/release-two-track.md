@@ -109,13 +109,17 @@ pwsh -File packaging/build_msix.ps1 `
 
 ## 目前 checkpoint 與恢復順序
 
-截至 2026-10-03，先前已安裝的私人 Store 版本為 `0.1.1.0`，本輪未變更。雲朵來源及 OCR／限流修復已同步 main；乾淨來源 commit `bff0c4f005b9ebec7d3e00450f4ddfd00b31d53d` 的新 EXE 通過 frozen OCR 兩行、import、CPU 單圖 1/1、light/full payload 與 provenance 驗證，238 個相關測試及來源 CI 通過。新 light ZIP、unsigned 開發 MSIX 與完整 Store `0.1.2.0` 候選 MSIX／upload 已在 `output/cloud-release-20261003/` 建立並核對內容與雜湊。`0.1.2.0` 尚未核對 Partner Center 是否已使用；正式評議、本次安裝／WACK、上傳／認證／更新均未完成。完整來源、產物 SHA-256 與限制見 [雲朵版驗收紀錄](../reviews/2026-10-03-ocr-cloud-release.md)。
+截至 2026-10-05，主機私人 Store 版仍為 `0.1.1.0`。目前產品候選固定於來源 `fe88bab940c02c7e271fefeea557bc004cb9d580`，位於 `output/store-release-20261005-gemini-copy/`；10/03 的候選是歷史產物，不用來接續本輪發行。新候選已通過 frozen import、Windows OCR 兩行、CPU Vision 1/1、GUI 啟動存活與 full provenance 驗證；隔離環境的合成 LocalState 更新保留、全新安裝／啟動／移除也已通過。
+
+正式 SDK 隔離環境的完整 WACK 已取得 exit 0、`OVERALL_RESULT=PASS`、`PARTIAL_RUN=FALSE`；13 個 required 測項全 PASS。另有 10 個 optional PASS、1 個 optional FAIL：blocked executable 掃描器回報 `OverflowException`，未定位觸發檔案。這不是全部測項通過或 Windows S 模式相容的證據；[Microsoft 的 Desktop Bridge 規則](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-desktop-bridge-app-tests)以 required 測項決定總判定。完整報告、來源／產物雜湊及限制見 [10/05 驗收紀錄](../reviews/2026-10-05-wack-critique.md)。
+
+四席正式評論保留 `limited`：完整 GUI 操作、真實使用設定升級、Partner Center 認證與實際 Store 更新尚未驗收。Submission 3 已保存免費私人預覽草稿；本輪 `0.1.2.0` 尚未上傳，草稿與本機 WACK 不能替代認證結果。
 
 恢復工作時依序處理：
 
-1. 完成 CH-T117 對本輪程式與雲朵圖示更新的 review，依其驗收條件確認後續工作所需的來源版本。
-2. 完成 CH-T55 的 Store 版本／設定頁 review，核實 Partner Center 現行版本與上傳條件。
-3. 核對已建置候選與來源／雜湊紀錄；評議若修正程式或資產，才從新核准來源重建並重跑受影響 smoke。需要本機安裝／WACK 時使用獨立測試環境，不把自簽測試包覆蓋既有 Store 安裝。
-4. 依目的選軌道 A 或 B。Store 上傳前再核對 identity、版本、`release-two-track` 手冊與 upload 內容；只有實際 Partner Center 結果才能推進為發行完成證據。
+1. 使用固定候選 `dist/CloudHime/CloudHime.exe` 完成完整操作旅程：框選 → OCR／翻譯 → 字幕、取消框選、暫停保留字幕 → 繼續、忙碌時設定／停止、正常關閉。原生工具目前能讀元件名稱，但擷取／點擊失敗；自動化與合成結果不能替代這項實際操作證據。記錄使用引擎、操作步驟與結果；遇到異常先保留可重現步驟。
+2. 在獨立測試環境驗證實際使用設定的升級保留；既有合成 LocalState 雜湊相同只證明合成資料保留。不要用自簽測試包覆蓋主機 Store 安裝。
+3. 上傳前重新核對 Partner Center 現行 identity、版本是否未用、免費私人預覽範圍及 upload 雜湊。評議若修正產品程式或資產，才從新來源重建並重跑受影響 smoke；只改發行 helper／文件不會改變固定產品候選。
+4. 完成私人預覽認證後，保存實際 Partner Center 結果，再驗證 Store 安裝／版本更新與無 SmartScreen 警告。上述操作與正式評論未收斂前，不將 CH-T55 標為 Done，也不進行公開發行。
 
-CH-T56 正式任務仍為 Backlog 並依賴 CH-T55 Review。本文件是發行操作草稿，不代表 T117、T55 或 T56 已完成，也不會因文件存在而改變 MissionCenter 狀態。
+CH-T56 正式任務仍為 Backlog 並依賴 CH-T55 Review。本文件是發行操作草稿，不代表 T55 或 T56 已完成，也不會因文件存在而改變 MissionCenter 狀態。
