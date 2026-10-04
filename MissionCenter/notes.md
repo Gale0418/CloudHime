@@ -508,3 +508,12 @@ GitHub b10 push CI37190933923為failure（7 required成功／OCR組失敗／2man
 Mission Center0.5.2本地未包附critic_contract.py；從插件作者官方repo取得相同immutable094c367556b56de1b6e9541ac782552978df4c8c的純JSON唯讀validator（預設分支與該commit內容相同、import僅stdlib、無network/subprocess/write），存ignored critic_contract.upstream.py。這是advisory record驗證補件，非Rust生命週期fallback／插件安裝，尚未宣稱正式critic contract通過。
 
 新候選將存output/store-release-20261004-final/；尚未上傳、認證或發布。CH-T55 Review／Smoke NO／Critic NO；正式24k／32tools／30min尚未開始。Evidence：output/store-release-20261004-target-fixed/coderabbit-review.ndjson、local-indicator-delta*.xml／stdout／receipt、ocr-group-fixture-regression.xml／log／receipt、ci-ocr-failed-excerpt.log、build-cancelled.json；source diagnostic在ocr-fixed/vision-diagnostic-240/result.json。
+
+
+## 2026-10-04T17:31:40+08:00：停止狀態複審修正與候選撤換
+
+2b3a60f main push CI37191591138 success，八個required job成功，兩個manual frozen job skipped；ci-result.json保存清單，不將skip當成EXE驗收。17:24:32至17:25:30的3檔CodeRabbit複審完成，提出1個minor：Vision stopped狀態會被indicator timer覆蓋為Local Gemma3。source on_local_vision_status與RED回歸確認有效；只在多模態模式保留stopped，純文字模式原有label行為保留。完整UI smoke70案通過，與既有OCR295合計365個不同案例；RED/原始log/JUnit/receipt在output/store-release-20261004-final-ui-delta/。首次測試使用base Python沒有pytest，該入口錯誤不算RED；改用既有isolated test-venv取得實際failure。
+
+2b低優先build在COLLECT階段因修正需要新固定來源而精確停止owned PyInstaller15192，build-result exit4294967295與build-cancelled.json保存；partial EXE不得當新候選使用。下一個完整候選另存output/store-release-20261004-release-ready/，先完成本次focused修正複審再建置，避免同時替換正在建置的source。Rabbit quota保持一小時最多3次/一次150檔案。
+
+CPU取樣在17:27附近42至72%，freeRAM約7.1GiB；先前100%只是單次值，負載仍波動，會在實際frozen/mannual翻譯期間保存aggregate CPU/freeRAM的bounded取樣。沒有製造額外負載或停止其他工作。所有旧候選均未上傳；Store Submission3仍草稿/private/free。CH-T55 Review／Smoke NO／Critic NO；正式評論24k/32工具/30分鐘尚未開始。

@@ -5557,7 +5557,9 @@ class Controller(QWidget):
         else:
             if self._selected_translation_provider() == "local_gemma":
                 runtime_state = self._selected_local_runtime_state()
-                if runtime_state in {"loading", "ready", "failed", "starting", "progress", "missing"}:
+                if runtime_state in {"loading", "ready", "failed", "starting", "progress", "missing"} or (
+                    getattr(self, "local_multimodal_enabled", False) and runtime_state == "stopped"
+                ):
                     return
                 colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
                 self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
