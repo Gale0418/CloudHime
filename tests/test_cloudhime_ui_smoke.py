@@ -485,7 +485,8 @@ def test_local_text_gemma_indicator_keeps_local_label(qtbot):
     assert controller.charge_bar.progress == 0
 
 
-def test_local_vision_stopped_status_survives_local_indicator_tick(qtbot):
+@pytest.mark.parametrize("notify_status", [True, False])
+def test_local_vision_stopped_status_survives_local_indicator_tick(qtbot, notify_status):
     controller = Controller.__new__(Controller)
     controller.provider_chain = ["local_multimodal"]
     controller.local_multimodal_enabled = True
@@ -502,7 +503,11 @@ def test_local_vision_stopped_status_survives_local_indicator_tick(qtbot):
         prune_gemma_call_timestamps=lambda: None,
         has_multimodal_ai=lambda: False,
     )
-    Controller.on_local_vision_status(controller, "stopped", "")
+    if notify_status:
+        Controller.on_local_vision_status(controller, "stopped", "")
+    else:
+        controller.local_vision_state = "stopped"
+        controller.charge_bar.set_progress(0, "Google")
 
     Controller.update_gemma_rate_indicator(controller)
 

@@ -5499,6 +5499,12 @@ class Controller(QWidget):
         self._set_status_message(msg)
         self.update_gemma_rate_indicator()
 
+    def _local_vision_stopped_label(self):
+        return {
+            "en": "Vision stopped",
+            "ja": "Vision を停止しました",
+        }.get(self.get_ui_language(), "Vision 已停止")
+
     def update_gemma_rate_indicator(self):
         self._refresh_main_engine_summary()
         if not hasattr(self, "charge_bar") or not hasattr(self, "worker"):
@@ -5557,9 +5563,12 @@ class Controller(QWidget):
         else:
             if self._selected_translation_provider() == "local_gemma":
                 runtime_state = self._selected_local_runtime_state()
-                if runtime_state in {"loading", "ready", "failed", "starting", "progress", "missing"} or (
-                    getattr(self, "local_multimodal_enabled", False) and runtime_state == "stopped"
-                ):
+                if getattr(self, "local_multimodal_enabled", False) and runtime_state == "stopped":
+                    colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
+                    self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
+                    self.charge_bar.set_progress(0, self._local_vision_stopped_label())
+                    return
+                if runtime_state in {"loading", "ready", "failed", "starting", "progress", "missing"}:
                     return
                 colors = build_charge_bar_colors(resolve_theme(self.theme_mode), "off")
                 self.charge_bar.set_theme_colors(colors["base_bg"], colors["border_color"], colors["fill_color"], colors["text_color"])
@@ -5804,7 +5813,7 @@ class Controller(QWidget):
                 status_text = localized("Embedded multimodal model files were not found", "找不到內嵌多模態模型檔案", "組み込みマルチモーダルモデルのファイルが見つかりません")
             status_text += " — " + local_model_failure_message(failure_kind, lang)
         elif state == "stopped":
-            bar_text = localized("Vision stopped", "Vision 已停止", "Vision を停止しました")
+            bar_text = self._local_vision_stopped_label()
             status_text = localized("Embedded multimodal server stopped", "內嵌多模態伺服器已停止", "組み込みマルチモーダルサーバーが停止しました")
         else:
             bar_text = localized("Gemma Vision failed", "Gemma Vision 啟動失敗", "Gemma Vision の起動に失敗しました")

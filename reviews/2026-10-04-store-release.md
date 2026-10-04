@@ -84,3 +84,10 @@ Mission Center0.5.2本地未包附critic_contract.py；從插件作者官方repo
 2b低優先build在COLLECT階段因修正需要新固定來源而精確停止owned PyInstaller15192，build-result exit4294967295與build-cancelled.json保存；partial EXE不得當新候選使用。下一個完整候選另存output/store-release-20261004-release-ready/，先完成本次focused修正複審再建置，避免同時替換正在建置的source。Rabbit quota保持一小時最多3次/一次150檔案。
 
 CPU取樣在17:27附近42至72%，freeRAM約7.1GiB；先前100%只是單次值，負載仍波動，會在實際frozen/mannual翻譯期間保存aggregate CPU/freeRAM的bounded取樣。沒有製造額外負載或停止其他工作。所有旧候選均未上傳；Store Submission3仍草稿/private/free。CH-T55 Review／Smoke NO／Critic NO；正式評論24k/32工具/30分鐘尚未開始。
+
+
+## 2026-10-04T17:39:22+08:00：停止狀態初始化邊界修正
+
+bc6fb87 main push CI37192500697 success。2檔CodeRabbit複審17:34:10至17:35:01完成，提出1 minor：多模態尚未收到status callback且stopped時，保留分支可能沿用Google舊label。新參數化回歸RED為1 failed/1 passed，失敗label確實Google；改為主動依目前語言顯示Vision stopped，與on_local_vision_status共用label，不修改上方一般status message。純文字stopped仍Local Gemma3。allowlist／隔離profile／offscreen完整UI71案GREEN，worker/OCR295 unchanged，合計366不同案例；stopped-initial-red/green.xml與log、fix-receipt皆在output/store-release-20261004-release-ready/。
+
+該來源未啟動EXE build，沒有冒稱兔子0問題或成功release；新immutable候選改存output/store-release-20261004-release-ready-v2/。一小時三次Rabbit额度現已用完，下一次不早於18:05:52+08:00；會先做本機建置與驗收、約18:06後才能補審。Store更新仍未上傳／認證／發布，正式critic budget尚未啟動，CH-T55維持Review／Smoke NO／Critic NO。
