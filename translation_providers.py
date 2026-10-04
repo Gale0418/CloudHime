@@ -80,6 +80,7 @@ LOCAL_MULTIMODAL_DEFAULT_OCR_PROMPT = (
     "Copy uncertain characters as seen instead of substituting a likely word.\n"
     "Return plain OCR text only, with no explanation."
 )
+from ocr_refinement import translation_fallback_reason
 
 LOCAL_RUNTIME_METRIC_KEYS = frozenset({
     "prompt_tokens",
@@ -1573,14 +1574,18 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         )
         cached = self._translation_cache.get(cache_key)
         if cached is not None:
-            self._translation_cache.move_to_end(cache_key)
-            return TranslationResult(
-                text=cached.text,
-                provider=self.name,
-                model=self.model_name,
-                raw_text=cached.raw_text,
-                from_cache=True,
-            )
+            if not translation_fallback_reason(
+                normalized, cached.text, target_lang=resolved_target
+            ):
+                self._translation_cache.move_to_end(cache_key)
+                return TranslationResult(
+                    text=cached.text,
+                    provider=self.name,
+                    model=self.model_name,
+                    raw_text=cached.raw_text,
+                    from_cache=True,
+                )
+            self._translation_cache.pop(cache_key, None)
 
         dictionary_hint = build_dictionary_prompt_hint(normalized, self._dictionary)
         prompt = build_gemma_prompt_with_override(
@@ -1591,17 +1596,40 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         )
         evidence = self._knowledge_evidence_for_texts((normalized,), max_chars=1_800)
         prompt = self._prepend_knowledge_evidence(prompt, evidence)
-        raw_text = self._request_chat_completion(
-            self._build_chat_payload(
-                prompt=prompt,
-                image_parts=(),
-                response_format="text",
-                max_tokens=512,
-            )
+        payload = self._build_chat_payload(
+            prompt=prompt,
+            image_parts=(),
+            response_format="text",
+            max_tokens=512,
         )
-        translated = clean_model_output_multiline(raw_text).strip()
-        if not translated:
-            raise ValueError("empty_local_multimodal_response")
+        for attempt in range(2):
+            raw_text = self._request_chat_completion(payload)
+            translated = clean_model_output_multiline(raw_text).strip()
+            if not translated:
+                raise ValueError("empty_local_multimodal_response")
+            quality_reason = translation_fallback_reason(
+                normalized, translated, target_lang=resolved_target
+            )
+            if not quality_reason:
+                break
+            if attempt:
+                raise ValueError(
+                    "low_quality_local_multimodal_translation: " + quality_reason
+                )
+            payload["messages"].extend(
+                [
+                    {"role": "assistant", "content": translated},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"The previous answer left source text untranslated ({quality_reason}). "
+                            f"Translate every source line into {resolved_target}. "
+                            "Keep short names or brand names only when needed; do not copy full source phrases.\n"
+                            f"Source text:\n{normalized}\nPrevious answer:\n{translated}"
+                        ),
+                    },
+                ]
+            )
         result = TranslationResult(
             text=translated,
             provider=self.name,

@@ -32,6 +32,23 @@ def make_worker_stub():
     return worker
 
 
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    [
+        ("local_multimodal", "🧠 Local Gemma translating..."),
+        ("gemma", "🧠 AI large-image translation..."),
+        ("google", "🌐 Google translating..."),
+    ],
+)
+def test_translation_scan_status_uses_selected_text_provider(provider, expected):
+    worker = make_worker_stub()
+    worker.translation_target_lang = "en"
+    worker.has_ai_text_provider = lambda: provider != "google"
+    worker.get_current_ai_provider = lambda: provider
+
+    assert OCRWorker._translation_scan_status_text(worker, "initial") == expected
+
+
 def _prepare_registry_worker():
     worker = make_worker_stub()
     worker._refresh_translation_registry = OCRWorker._refresh_translation_registry.__get__(worker, OCRWorker)
@@ -536,6 +553,7 @@ def test_local_gemma_model_id_selects_local_runtime():
 
 def test_translate_text_preferred_uses_local_ai_without_google_api_key():
     worker = make_worker_stub()
+    worker.translation_target_lang = "en"
     worker.use_gemma_translation = True
     worker.gemma_model = "gemma-3-4b-it-local"
     worker.active_gemma_model = worker.gemma_model
@@ -1601,6 +1619,7 @@ def test_preferred_result_attributes_expected_ai_failure_to_google_cache_hit():
     from translation_contracts import TranslationResult
 
     worker = OCRWorker.__new__(OCRWorker)
+    worker.translation_target_lang = "zh-TW"
     worker.has_ai_text_provider = lambda: True
     worker.get_current_ai_provider = lambda: "local_multimodal"
     worker._translate_text_gemma_result = lambda _text: (_ for _ in ()).throw(

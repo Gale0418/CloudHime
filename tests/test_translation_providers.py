@@ -241,7 +241,7 @@ def test_local_multimodal_translate_uses_target_for_prompt_and_cache():
 
     def fake_request(payload):
         payloads.append(payload)
-        return "翻譯結果"
+        return "Translation result"
 
     provider._request_chat_completion = fake_request
 

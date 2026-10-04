@@ -59,6 +59,32 @@ class TestOcrRefinement(unittest.TestCase):
         self.assertEqual(translation_fallback_reason("Hello", "\u3053\u308c\u306f\u8a66\u9a13\u3067\u3059", "zh-TW"), "source_script_retained")
         self.assertEqual(translation_fallback_reason("\u3053\u308c\u306f\u65e5\u672c\u8a9e\u3067\u3059", "\u3053\u308c\u306f\u65e5\u672c\u8a9e\u3067\u3059", "zh-TW"), "source_script_retained")
         self.assertEqual(translation_fallback_reason("Hello", "\u904a\u6232\u300a\u30c4\u30fc\u30dd\u30a4\u30f3\u30c8\u300b", "zh-TW"), "")
+
+    def test_english_target_detects_retained_cjk_in_mixed_script_lines(self):
+        source = "Corrected Bridge Skill Version Sync\n研究 Gemini 橋接方案升級"
+
+        self.assertEqual(
+            translation_fallback_reason(source, source, "en"),
+            "source_script_retained",
+        )
+        self.assertEqual(
+            translation_fallback_reason(
+                source,
+                "Corrected Bridge Skill Version Sync\nResearch Gemini 橋接方案升級",
+                "en",
+            ),
+            "source_script_retained",
+        )
+
+    def test_english_target_allows_short_cjk_names_and_english_echo(self):
+        source = "Corrected Bridge Skill Version Sync\nResearch with 李雷"
+
+        self.assertEqual(translation_fallback_reason(source, source, "en"), "")
+        self.assertEqual(
+            translation_fallback_reason("Welcome to CloudHime", "Welcome to CloudHime", "en"),
+            "",
+        )
+
     def test_is_suspiciously_short_translation_only_flags_multiline_missing_coverage(self):
         if is_suspiciously_short_translation is None:
             self.fail("ocr_refinement module or function not implemented")

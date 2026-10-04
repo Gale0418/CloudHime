@@ -1159,6 +1159,34 @@ def test_controller_rejects_stale_status_at_generation_admission():
     controller.update_status.assert_called_once_with("current")
 
 
+def test_english_ui_localizes_exact_frame_cache_status(qtbot):
+    controller = Controller.__new__(Controller)
+    controller.scan_generation = 5
+    controller.ui_language = "en"
+    controller.provider_chain = ["local_multimodal"]
+    controller.theme_mode = "light"
+    controller.charge_bar = StatusChargeBar()
+    qtbot.addWidget(controller.charge_bar)
+    messages = []
+    controller.lbl_status = SimpleNamespace(setText=messages.append)
+    controller._refresh_translation_provider_health = lambda: None
+    controller.worker = SimpleNamespace(
+        use_gemma_translation=True,
+        gemma_model="gemma-3-4b-it-local",
+        prune_gemma_call_timestamps=lambda: None,
+        has_multimodal_ai=lambda: False,
+    )
+    Controller.on_local_model_status(controller, "ready", "")
+    messages.clear()
+
+    Controller.update_scan_status_for_generation(
+        controller, 5, "♻️ 完全相同畫面（快取）"
+    )
+
+    assert messages == ["Same screen as before (cached)"]
+    assert controller.charge_bar.label == "Local Gemma3 is ready"
+
+
 def test_emit_scan_signal_rejects_old_timer_after_new_generation_started():
     controller = Controller.__new__(Controller)
     controller.scan_in_progress = True

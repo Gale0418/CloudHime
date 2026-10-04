@@ -27,19 +27,40 @@ def _is_chinese_target(target_lang):
     return str(target_lang or "").lower().replace("_", "-").split("-", 1)[0] == "zh"
 
 
+def _cjk_runs(text):
+    normalized = normalize_ocr_text(text)
+    return re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]+", normalized)
+
+
+def _retains_source_cjk_phrase(source_text, translated_text):
+    """Detect a substantial CJK source phrase copied into a mixed translation."""
+    source_runs = [run for run in _cjk_runs(source_text) if len(run) >= 4]
+    translated_runs = _cjk_runs(translated_text)
+    return any(
+        source_run in translated_run
+        for source_run in source_runs
+        for translated_run in translated_runs
+    )
+
+
 def _source_is_clearly_not_target(source_text, target_lang):
     flags = _script_flags(source_text)
     if _is_english_target(target_lang):
-        return not flags["ascii_letters"] and (flags["cjk"] or flags["kana"])
+        return (
+            not flags["ascii_letters"] and (flags["cjk"] or flags["kana"])
+        ) or any(len(run) >= 4 for run in _cjk_runs(source_text))
     if _is_chinese_target(target_lang):
         return flags["kana"] or (flags["ascii_letters"] and not flags["cjk"])
     return False
 
 
-def _translation_retains_source_script(translated_text, target_lang):
+def _translation_retains_source_script(translated_text, target_lang, source_text=""):
     flags = _script_flags(translated_text)
     if _is_english_target(target_lang):
-        return (flags["cjk"] or flags["kana"]) and not flags["ascii_letters"]
+        return (
+            ((flags["cjk"] or flags["kana"]) and not flags["ascii_letters"])
+            or _retains_source_cjk_phrase(source_text, translated_text)
+        )
     if _is_chinese_target(target_lang):
         return flags["hiragana"] or (flags["kana"] and not flags["cjk"])
     return False
@@ -70,7 +91,7 @@ def translation_fallback_reason(source, translated, target_lang="zh-TW"):
         return "empty"
     if not source_norm or not translated_norm:
         return ""
-    if _translation_retains_source_script(translated, target_lang):
+    if _translation_retains_source_script(translated, target_lang, source):
         return "source_script_retained"
     if _source_is_clearly_not_target(source, target_lang):
         similarity = difflib.SequenceMatcher(None, source_norm, translated_norm).ratio()

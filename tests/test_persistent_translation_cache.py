@@ -254,6 +254,67 @@ def _make_worker_for_persistent_route(cache):
     return worker
 
 
+def test_worker_ignores_persisted_untranslated_mixed_language_result(tmp_path):
+    from cloudhime_workers import OCRWorker
+
+    worker = _make_worker_for_persistent_route(PersistentTranslationCache(tmp_path / "cache.json"))
+    worker.translation_target_lang = "en"
+    source = "研究 Gemini 橋接方案升級"
+    key = worker._build_persistent_translation_cache_key(source, "gemma")
+    worker.persistent_translation_cache.remember(
+        key, TranslationResult(text=source, provider="gemma"), requested_provider="gemma"
+    )
+    calls = []
+    worker._translate_text_gemma_result = lambda text: calls.append(text) or TranslationResult(
+        text="Research an upgrade to the Gemini bridge", provider="gemma"
+    )
+
+    result = OCRWorker._translate_text_preferred_result(worker, source)
+
+    assert result.text == "Research an upgrade to the Gemini bridge"
+    assert calls == [source]
+    assert worker.persistent_translation_cache.get(key).text == result.text
+
+
+def test_worker_rejects_partial_batch_before_persisting_it(tmp_path):
+    from cloudhime_workers import OCRWorker
+
+    worker = _make_worker_for_persistent_route(PersistentTranslationCache(tmp_path / "cache.json"))
+    worker.translation_target_lang = "en"
+    worker.split_translated_lines = lambda text, count: text.splitlines()
+    worker.translate_text_gemma_with_provider = lambda text: (
+        "Corrected Bridge Skill Version Sync\n研究 Gemini 橋接方案升級", "gemma"
+    )
+    worker.translate_text_google_batch = lambda texts: pytest.fail("Retry incomplete items separately")
+
+    result = OCRWorker.translate_text_batch_with_provider(
+        worker, ["修正橋接技能版本同步", "研究 Gemini 橋接方案升級"]
+    )
+
+    assert result == ([], "")
+    assert len(worker.persistent_translation_cache) == 0
+
+
+@pytest.mark.parametrize("target_lang", ["en", "ja"])
+def test_worker_google_batch_explicitly_passes_target_language(tmp_path, target_lang):
+    from cloudhime_workers import OCRWorker
+
+    worker = _make_worker_for_persistent_route(PersistentTranslationCache(tmp_path / "cache.json"))
+    worker.translation_target_lang = target_lang
+    calls = []
+
+    class Provider:
+        def translate_batch(self, texts, *, target_lang="zh-TW"):
+            calls.append(target_lang)
+            return [TranslationResult(text="translated", provider="google") for _ in texts]
+
+    worker._get_translation_provider = lambda name: Provider()
+    worker.log_translation_debug = lambda message: None
+
+    assert worker.translate_text_google_batch(["source"])
+    assert calls == [target_lang]
+
+
 def test_worker_persists_primary_result_and_hits_it_after_restart(tmp_path):
     from cloudhime_workers import OCRWorker
 

@@ -598,6 +598,24 @@ class OCRWorker(QObject):
     def _scan_status_text(self, key, **params):
         return localization.tr(key, getattr(self, "translation_target_lang", localization.DEFAULT_UI_LANGUAGE), **params)
 
+    def _translation_scan_status_text(self, stage, **params):
+        provider = self.get_current_ai_provider() if self.has_ai_text_provider() else "google"
+        if provider == "local_multimodal":
+            key = {
+                "initial": "worker.status.local_gemma_translation",
+                "batch": "worker.status.local_gemma_batch",
+                "progress": "worker.status.local_gemma_progress",
+            }[stage]
+            return self._scan_status_text(key, **params)
+        if stage == "initial":
+            key = "worker.status.ai_big_translation" if provider not in {"google", None} else "worker.status.google_translation"
+            return self._scan_status_text(key)
+        prefix = "AI" if provider not in {"google", None} else "Google"
+        icon = "🧠" if prefix == "AI" else "🌐"
+        if stage == "batch":
+            return f"{icon} {prefix} 批次補翻 {params['count']} 段..."
+        return f"{icon} {prefix} {params['index']}/{params['count']}"
+
     @staticmethod
     def _is_rate_limit_error(exc):
         error_name = type(exc).__name__
@@ -2302,23 +2320,27 @@ class OCRWorker(QObject):
             context["provider_config"] = {"dictionary_revision": "dictionary-v1"}
         return build_translation_cache_key(context)
 
-    def _get_persistent_translation_result(self, cache_key):
+    def _get_persistent_translation_result(self, cache_key, source_text=None):
         store = getattr(self, "persistent_translation_cache", None)
         getter = getattr(store, "get", None)
         if not callable(getter):
             return None
         try:
-            return getter(cache_key)
+            result = getter(cache_key)
+            if result is not None and source_text is not None and not self._is_usable_text_fallback(source_text, result.text):
+                return None
+            return result
         except Exception:
             return None
 
-    def _remember_persistent_translation_result(self, cache_key, result, requested_provider):
+    def _remember_persistent_translation_result(self, cache_key, result, requested_provider, source_text=None):
         if (
             result is None
             or not getattr(result, "text", "")
             or str(getattr(result, "provider", "")).strip().lower()
             != str(requested_provider or "").strip().lower()
             or getattr(result, "fallback_reason", None)
+            or (source_text is not None and not self._is_usable_text_fallback(source_text, result.text))
         ):
             return
         store = getattr(self, "persistent_translation_cache", None)
@@ -2538,7 +2560,7 @@ class OCRWorker(QObject):
             normalized_texts = [normalize_ocr_text(text) for text in source_texts]
             if not normalized_texts or any(not text for text in normalized_texts):
                 return []
-            results = provider.translate_batch(normalized_texts)
+            results = provider.translate_batch(normalized_texts, target_lang=self.translation_target_lang)
             if len(results) != len(normalized_texts):
                 return []
             cache_hits = sum(1 for item in results if getattr(item, "from_cache", False))
@@ -3132,7 +3154,7 @@ class OCRWorker(QObject):
             normalized_text,
             requested_provider,
         )
-        cached = self._get_persistent_translation_result(persistent_key)
+        cached = self._get_persistent_translation_result(persistent_key, normalized_text)
         if cached is not None:
             return cached
 
@@ -3142,6 +3164,7 @@ class OCRWorker(QObject):
                 persistent_key,
                 result,
                 requested_provider,
+                normalized_text,
             )
             return result
 
@@ -3176,10 +3199,13 @@ class OCRWorker(QObject):
             fallback_reason="provider_error",
             cancelled=self._translation_route_cancelled,
         )
+        if not self._is_usable_text_fallback(normalized_text, result.text):
+            raise ValueError("translation_quality_failed")
         self._remember_persistent_translation_result(
             persistent_key,
             result,
             requested_provider,
+            normalized_text,
         )
         return result
 
@@ -3211,13 +3237,16 @@ class OCRWorker(QObject):
             requested_provider,
             batch=True,
         )
-        cached = self._get_persistent_translation_result(persistent_key)
+        cached = self._get_persistent_translation_result(persistent_key, combined_source)
         if cached is not None:
             batch_result = self.split_translated_lines(
                 cached.text,
                 len(normalized_texts),
             )
-            if len(batch_result) == len(normalized_texts):
+            if len(batch_result) == len(normalized_texts) and all(
+                self._is_usable_text_fallback(source, translated)
+                for source, translated in zip(normalized_texts, batch_result)
+            ):
                 return batch_result, cached.provider
 
         if has_ai_provider:
@@ -3225,6 +3254,13 @@ class OCRWorker(QObject):
                 translated, provider = self.translate_text_gemma_with_provider(combined_source)
                 batch_result = self.split_translated_lines(translated, len(normalized_texts))
                 if len(batch_result) == len(normalized_texts):
+                    if not all(
+                        self._is_usable_text_fallback(source, translated)
+                        for source, translated in zip(normalized_texts, batch_result)
+                    ):
+                        # Let the caller retry incomplete items individually rather
+                        # than recording a partly untranslated batch as success.
+                        return [], ""
                     self._remember_persistent_translation_result(
                         persistent_key,
                         TranslationResult(
@@ -3232,15 +3268,22 @@ class OCRWorker(QObject):
                             provider=provider,
                         ),
                         requested_provider,
+                        combined_source,
                     )
                     return batch_result, provider
             except LocalRequestCancelled:
                 raise
-            except (error.URLError, error.HTTPError, TimeoutError, ValueError):
+            except ValueError as exc:
+                if str(exc).startswith("low_quality_local_multimodal_translation:"):
+                    return [], ""
+            except (error.URLError, error.HTTPError, TimeoutError):
                 pass
 
         batch_result = self.translate_text_google_batch(normalized_texts)
-        if len(batch_result) == len(normalized_texts):
+        if len(batch_result) == len(normalized_texts) and all(
+            self._is_usable_text_fallback(source, translated)
+            for source, translated in zip(normalized_texts, batch_result)
+        ):
             self._remember_persistent_translation_result(
                 persistent_key,
                 TranslationResult(
@@ -3248,6 +3291,7 @@ class OCRWorker(QObject):
                     provider="google",
                 ),
                 requested_provider,
+                combined_source,
             )
             return batch_result, "google"
         return [], ""
@@ -6213,7 +6257,7 @@ class OCRWorker(QObject):
                 self.last_combined_text = cached_image_result.state_token
                 self.last_provider = cached_image_result.provider
                 self.last_results = cached_results
-                self._emit_scan_status("♻️ 完全相同畫面（快取）")
+                self._emit_scan_status(self._scan_status_text("worker.status.exact_frame_cache"))
                 if not is_screenshot_mode:
                     self.trigger_background_threshold_refresh(img, offset_x, offset_y, self.scan_mode)
                 self._emit_scan_finished(cached_results)
@@ -6971,7 +7015,7 @@ class OCRWorker(QObject):
         translation_started = time.perf_counter()
         self._emit_product_path_stage("translation_start")
         try:
-            self._emit_scan_status("🧠 AI 大圖翻譯..." if self.has_any_multimodal_ai() else "🌐 Google...")
+            self._emit_scan_status(self._translation_scan_status_text("initial"))
             if _use_google_ocr_refine:
                 if _google_ocr_future is not None:
                     _log("⑤ 等待 Google OCR 預取結果...")
@@ -7082,9 +7126,7 @@ class OCRWorker(QObject):
 
             missing_indexes = [index for index, text in enumerate(translated_list) if not text]
             if missing_indexes:
-                prefix = "AI" if self.has_any_multimodal_ai() else "Google"
-                icon = "🧠" if prefix == "AI" else "🌐"
-                self._emit_scan_status(f"{icon} {prefix} 批次補翻 {len(missing_indexes)} 段...")
+                self._emit_scan_status(self._translation_scan_status_text("batch", count=len(missing_indexes)))
                 batch_source = [source_texts[index] for index in missing_indexes]
                 batch_result, batch_providers = self.translate_items_in_batches_with_providers(batch_source, batch_size=8)
                 for offset, translated in enumerate(batch_result):
@@ -7103,9 +7145,7 @@ class OCRWorker(QObject):
                     trans_text = known_text
                     provider = known_provider
                 if not trans_text:
-                    prefix = "AI" if self.has_any_multimodal_ai() else "Google"
-                    icon = "🧠" if prefix == "AI" else "🌐"
-                    self._emit_scan_status(f"{icon} {prefix} {i+1}/{len(merged_items)}")
+                    self._emit_scan_status(self._translation_scan_status_text("progress", index=i + 1, count=len(merged_items)))
                     try:
                         trans_text, provider = self.translate_text_preferred_with_provider(source_text)
                     except LocalRequestCancelled:

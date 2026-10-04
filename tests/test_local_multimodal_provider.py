@@ -303,6 +303,79 @@ def test_translate_text_reuses_multimodal_runtime_and_cache():
     assert payloads[0]["response_format"] == {"type": "text"}
 
 
+def test_translate_retries_mixed_script_echo_locally_and_caches_valid_retry():
+    provider = make_provider()
+    source = "Corrected Bridge Skill Version Sync\n研究 Gemini 橋接方案升級"
+    responses = [source, "Corrected Bridge Skill Version Sync\nResearch Gemini bridge upgrade"]
+    requests = []
+
+    def fake_request(payload):
+        requests.append(payload)
+        return responses.pop(0)
+
+    provider._request_chat_completion = fake_request
+
+    result = provider.translate(source, target_lang="en")
+    cached = provider.translate(source, target_lang="en")
+
+    assert result.text == "Corrected Bridge Skill Version Sync\nResearch Gemini bridge upgrade"
+    assert result.from_cache is False
+    assert cached.text == result.text
+    assert cached.from_cache is True
+    assert len(requests) == 2
+
+
+def test_translate_does_not_cache_after_bounded_local_retry_fails():
+    provider = make_provider()
+    source = "Corrected Bridge Skill Version Sync\n研究 Gemini 橋接方案升級"
+    requests = []
+
+    def fake_request(payload):
+        requests.append(payload)
+        return source
+
+    provider._request_chat_completion = fake_request
+
+    with pytest.raises(ValueError, match="low_quality_local_multimodal_translation"):
+        provider.translate(source, target_lang="en")
+
+    assert len(requests) == 2
+    assert "Translate every source line into en" in requests[1]["messages"][-1]["content"]
+    assert not provider._translation_cache
+
+
+def test_translate_skips_preexisting_bad_mixed_script_cache_entry():
+    provider = make_provider()
+    source = "Corrected Bridge Skill Version Sync\n研究 Gemini 橋接方案升級"
+    cache_key = (
+        provider.base_url,
+        provider.model_name,
+        source,
+        "en",
+        provider.temperature,
+        provider.repeat_penalty,
+        provider.knowledge_revision_token,
+    )
+    provider._translation_cache[cache_key] = providers_module.TranslationResult(
+        text=source,
+        provider=provider.name,
+        model=provider.model_name,
+        raw_text=source,
+    )
+    requests = []
+
+    def fake_request(payload):
+        requests.append(payload)
+        return "Corrected Bridge Skill Version Sync\nResearch Gemini bridge upgrade"
+
+    provider._request_chat_completion = fake_request
+    result = provider.translate(source, target_lang="en")
+
+    assert result.text == "Corrected Bridge Skill Version Sync\nResearch Gemini bridge upgrade"
+    assert result.from_cache is False
+    assert len(requests) == 1
+
+
 def test_clear_cache_forces_a_new_text_request_without_changing_runtime():
     provider = make_provider()
     payloads = []

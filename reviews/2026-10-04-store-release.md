@@ -111,3 +111,14 @@ Store 四份版本說明已加入翻譯目標、Local Gemma 狀態與 Windows OC
 主人要求長提示跑馬燈化；新增 MarqueeLabel，套用引擎摘要、資料處理提示、翻譯狀態與框選提示四處。超出才啟動 parent-owned QTimer，隱藏時停止、顯示時恢復，QObject slot 避免 contextless 回呼；短文靜止、滑鼠移入暫停，完整 tooltip／statusTip／accessibleName 隨文字更新。設定頁長段落與翻譯字幕不變。驗收補修同文字刷新保留位移，以及字型／樣式改變時重新計算；五個元件案例加既有兩組 UI 共 156 案、29.51 秒通過。首輪 155 與失敗診斷日誌保留，最新證據為 output/store-release-20261004-marquee/pytest-ui-final.xml、final-ui-binding.json，非整個測試 inventory。
 
 README、任務下一步與本紀錄已更新；新來源尚待固定 main 提交、重建 EXE、配額內三檔 CodeRabbit、實機與乾淨環境／MSIX／WACK／正式評論。0931 的 frozen 與兔子 0 issues 不冒充本次來源通過。Store 四語版本說明均重讀確認持久化；尚未上傳新套件或送認證。CH-T55 Review／Smoke NO／Critic NO；正式評論預算未開始。
+
+
+## 2026-10-04T19:02:53+08:00：混合語言漏翻與本機等待訊息修正
+
+主人 18:32:22 截圖顯示上行已翻英文，下行「研究 Gemini 橋接方案升級」仍中文；等待時顯示 Google 的證據來自主人的文字回報，該截圖本身是完成／快取狀態。已從隔離 profile 的舊快取重建完整 context，來源正是該中文句、目標 en、provider local_multimodal，計算 key 與錯誤快取完全一致（parent-cache-context.json）。先前主人確認的英文翻譯只代表單句局部成功，不能當成所有內容驗收。
+
+原品質檢查因句中有 Gemini 英文字而漏掉保留中文的結果。現在英文品質檢查會識別原文連續四字以上中文片段，保留短人名與原本英文；這是有範圍的品質防護，非翻譯準確度保證。LocalMultimodalProvider 不使用不合格記憶體快取，首次不合格會以同一本機模型重試一次，仍失敗則不快取；持久快取讀取、新結果寫入與批次逐行皆檢查，半套翻譯會改走逐項處理。Google 批次補上明確目標語言。文字掃描的初始、批次與逐項等待狀態改依實際引擎，本機 Gemma 三語提示與相同畫面快取提示已本地化。
+
+品質 guard RED 3 案、持久快取／批次 RED 4 案與英文快取提示 RED 1 案均保留。首次整合 568 案為 565 passed／3 failed，確認是兩個 __new__ 替身缺少目標語言與一個英文測試卻回傳中文的 mock；補正測試輸入，未放寬產品品質檢查。第二輪同 profile 卡在產品體驗第 68 案附近，超過八分鐘無進展；保存 integrated-hung.log／receipt，精確停止本輪三個 owned PID，未生成 passing receipt。無 stack，Qt 卡住根因仍未確認。改用全新唯一 profile、verbose／60 秒 faulthandler 與 150 秒硬逾時，15 檔整合 568 passed in 32.14s，零 failure/error/skip，來源 SHA 前後一致；JUnit SHA 026e9f985df23e6499e048dd3837a6154876857708643ea1b7c8da0f5e55f9ef。證據在 output/store-release-20261004-second-line/。
+
+14ae2df 跑馬燈 EXE 雖完成建置、三檔 CodeRabbit 0 issues，但已因上述新反證撤換；舊觀察程序已停止，未送沙箱／封裝／上傳。6e1a14f 只補 CI inventory，CI 37195667976 success；這不是最新修正的 CI 證據。接著固定 main 新來源、配額內聚焦審查、重建 EXE 與驗收。原 0931 隔離視窗於 18:32:46 正常 exit 0，只證明正常退出，不代表暫停／繼續／取消框選皆完成。Store 仍私人免費 Submission 3 草稿，尚未上傳新套件／認證／發布，現行版 0.1.1.0；CH-T55 Review／Smoke NO／Critic NO，正式評論預算未開始。
