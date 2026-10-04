@@ -87,6 +87,7 @@
     {
       "name": "ui",
       "test_files": [
+        "tests/test_marquee_label.py",
         "tests/test_ui_fonts.py",
         "tests/test_cloudhime_ui_smoke.py",
         "tests/test_product_experience.py",
