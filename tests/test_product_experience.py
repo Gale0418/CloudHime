@@ -215,6 +215,42 @@ def test_luna_connection_without_key_never_dispatches(controller):
 
 
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_luna_verification_refreshes_every_status_and_key_change_resets_it(controller, language):
+    controller.set_ui_language(language, persist=False)
+    controller.worker.use_gemma_translation = True
+    controller.provider_chain = ("openai",)
+    controller.openai_enabled = True
+    controller.openai_api_key = "PRIVATE_TEST_KEY"
+    controller.toggle_settings_window()
+    panel = controller.settings_window.translation_panel
+    panel.sync_from_controller()
+    controller._luna_connection_generation = 1
+    controller._luna_connection_active_generation = 1
+    controller._luna_connection_checking = True
+    controller.on_luna_connection_finished(1, LunaConnectionResult(status="verified"))
+    verified = {"zh-TW": "已驗證", "en": "Verified", "ja": "確認済み"}[language]
+    assert panel.provider_status_rows["luna"]["status"].text() == verified
+    assert panel.provider_choice_rows["luna"].status_label.text() == verified
+    assert verified in panel.provider_disclosures["luna"].header.text()
+    assert controller._tr("controller.engine.state.connection_verified") in controller.lbl_engine_summary.text()
+    panel.input_luna_api_key.setText("PRIVATE_REPLACEMENT_KEY")
+    controller.openai_api_key_save_timer.stop()
+    assert controller.luna_connection_result.status == "unchecked"
+    assert controller._tr("controller.engine.state.configured") in controller.lbl_engine_summary.text()
+    assert panel.provider_status_rows["luna"]["status"].text() != verified
+    assert "PRIVATE_" not in controller.lbl_engine_summary.text()
+    controller._luna_connection_checking = True
+    controller._update_luna_connection_panel()
+    assert controller._tr("controller.engine.state.connection_checking") in controller.lbl_engine_summary.text()
+    assert panel.provider_status_rows["luna"]["status"].text() != verified
+    controller._luna_connection_checking = False
+    controller.luna_connection_result = LunaConnectionResult(status="invalid_key")
+    controller._update_luna_connection_panel()
+    assert controller._tr("controller.engine.state.connection_failed") in controller.lbl_engine_summary.text()
+    assert panel.provider_status_rows["luna"]["status"].text() != verified
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
 def test_cooldown_preserves_progress_and_terminal_status(controller, monkeypatch, language):
     controller.set_ui_language(language, persist=False)
     monkeypatch.setattr(controller, "trigger_scan_sequence", lambda: setattr(controller, "scan_in_progress", True))

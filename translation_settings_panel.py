@@ -1480,7 +1480,7 @@ class TranslationSettingsPanel(QWidget):
     def _status_tone(status):
         """Map canonical/localized status text to a semantic visual tone."""
         value = str(status or "").strip().lower().replace("-", "_")
-        if value in {"ready", "已就緒", "available", "idle"}:
+        if value in {"ready", "已就緒", "available", "idle", "verified", "已驗證", "確認済み"}:
             return "operational"
         if value in {"using", "使用中", "active", "in_use"}:
             return "accent"
@@ -1630,6 +1630,13 @@ class TranslationSettingsPanel(QWidget):
 
         luna_key = self.input_luna_api_key.text().strip()
         luna_status = unverified if self.chk_luna_enabled.isChecked() and luna_key else needs_setup
+        if self.chk_luna_enabled.isChecked() and luna_key:
+            if self._luna_connection_checking:
+                luna_status = "Checking" if is_en else ("確認中" if is_ja else "檢查中")
+            elif self._luna_connection_status == "verified":
+                luna_status = "Verified" if is_en else ("確認済み" if is_ja else "已驗證")
+            elif self._luna_connection_status not in {"unchecked", "checking"}:
+                luna_status = "Check failed" if is_en else ("確認失敗" if is_ja else "檢查失敗")
         self._set_provider_choice_status("google", ready)
         self._set_provider_choice_status("luna", luna_status)
         self._set_provider_row("luna", luna_status, "Text + image input" if is_en else ("テキストと画像の入力に対応" if is_ja else "支援文字與圖片輸入"), "")

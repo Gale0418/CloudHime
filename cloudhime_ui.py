@@ -3639,6 +3639,7 @@ class Controller(QWidget):
         self._apply_remote_model_availability(result)
 
     def _update_luna_connection_panel(self):
+        self._refresh_main_engine_summary()
         panel = getattr(getattr(self, "settings_window", None), "translation_panel", None)
         if panel is not None:
             panel.set_luna_connection_state(self.luna_connection_result.status, self._luna_connection_checking)
@@ -3828,10 +3829,10 @@ class Controller(QWidget):
         if str(text or "").strip() != getattr(self, "openai_api_key", ""):
             self._luna_connection_generation += 1
             self.luna_connection_result = LunaConnectionResult(status="unchecked")
-            self._update_luna_connection_panel()
         self.openai_api_key = str(text or "").strip()
         self.luna_api_key = self.openai_api_key
         self.pending_openai_api_key = self.openai_api_key
+        self._update_luna_connection_panel()
         timer = getattr(self, "openai_api_key_save_timer", None)
         if timer is not None:
             timer.start(500)
@@ -4035,6 +4036,15 @@ class Controller(QWidget):
         else:
             key = self.openai_api_key if provider == "luna" else self.worker.google_api_key
             state = "configured" if key.strip() else "setup"
+            if provider == "luna" and key.strip():
+                result = getattr(self, "luna_connection_result", None)
+                status = getattr(result, "status", "unchecked")
+                if getattr(self, "_luna_connection_checking", False):
+                    state = "connection_checking"
+                elif status == "verified":
+                    state = "connection_verified"
+                elif status not in {"unchecked", "checking"}:
+                    state = "connection_failed"
         pending = getattr(self, "pending_translation_provider_id", None)
         state_text = self._tr(f"controller.engine.state.{state}")
         if pending in {"luna", "online_gemma"}:
