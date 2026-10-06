@@ -617,3 +617,5 @@
 
 | 2026-10-06 | CH-E6 | 已列研究範圍收尾對帳 | 唯讀核對21子任務、T32/T43原始報告、passport與既有smoke；Rust transition逐格Review→Done | 完成結論與既有研究證據一致，不擴大品質／速度承諾 | T43晚期完整4案例×5輪報告通過，品質與延遲代價保留；crop/grid仍default-off；current E6 passport pass。未重跑GPU或benchmark | Pass（歷史證據對帳） | research, closeout, reconciliation |
 | 2026-10-06 | CH-T55 | 最新來源及公開發行政策 | 457案影響範圍測試、19檔CodeRabbit；74案source-only政策契約；核對GitHub公開release API | 翻譯／設定修正具局部驗證，GitHub僅留原始碼 | 457 passed／CodeRabbit 0 issues；政策74 passed、19 deselected；4份二進位附件先備份核對後依主人批准移除，public API剩餘binary assets=0；main20f7226已推送。新完整凍結版另行驗證中，未宣稱新MSIX/WACK/人工GUI通過 | Pass（上述局部範圍；CH-T55仍Review） | source, distribution, release, evidence |
+
+| 2026-10-06 | CH-T55 | 第三方授權副本與生產wheel收集 | report核對40套件、固定license hash驗證、漏檔／竄改negative及大小寫碰撞RED→GREEN | 缺件可觀測，不用Commercial文字冒充Qt授權，不覆寫Windows同名檔 | 廣泛66pass／1fail為舊dist缺NOTICE；針對副本4pass；收集器final12＋副本2共14pass。CodeRabbit4檔0issues、新增3檔1minor已驗證修正；完整授權與最終發行仍未通過 | Pass（局部工具／文件契約；CH-T55 Smoke仍NO） | release, licenses, provenance, evidence |

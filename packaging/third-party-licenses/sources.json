@@ -1,0 +1,35 @@
+{
+  "retrievedUtc": "2026-10-06T14:46:09.692285+00:00",
+  "files": [
+    {
+      "path": "qt-6.10.1/LGPL-3.0-only.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/v6.10.1/LICENSES/LGPL-3.0-only.txt",
+      "bytes": 7651,
+      "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+    },
+    {
+      "path": "qt-6.10.1/GPL-3.0-only.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/v6.10.1/LICENSES/GPL-3.0-only.txt",
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "path": "llama-1d1d9a9ed/LICENSE",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/1d1d9a9ed/LICENSE",
+      "bytes": 1078,
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "path": "primp-1.3.1/LICENSE",
+      "url": "https://raw.githubusercontent.com/deedy5/primp/v1.3.1/LICENSE",
+      "bytes": 1063,
+      "sha256": "64f0fdb426abd21f75b48e2ff93b9976b8c374bab3538af33d3c6d3f7c7efae7"
+    },
+    {
+      "path": "pywinrt-3.2.1/LICENSE",
+      "url": "https://raw.githubusercontent.com/pywinrt/pywinrt/v3.2.1/LICENSE",
+      "bytes": 1225,
+      "sha256": "6e898069e8b3c6d8d23dc70ac7067cc2b7c9db14c36df873026758db82c0891d"
+    }
+  ]
+}

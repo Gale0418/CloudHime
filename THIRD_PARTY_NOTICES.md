@@ -1,6 +1,28 @@
 # Third-Party Notices
 
-CloudHime's full MSIX includes the pinned Gemma model and projector, with their terms and notices in `_internal/models`. The lightweight ZIP excludes these weights and can download them to the user's local application-data directory after the local feature is enabled. CloudHime does not require or communicate with Ollama.
+CloudHime's full MSIX includes the pinned Gemma model and projector, with their terms and notices in `_internal/models`. A locally built lightweight dist excludes these weights and can download them to the user's local application-data directory after the local feature is enabled. GitHub provides source code, not official binary ZIPs. CloudHime does not require or communicate with Ollama.
+
+## Qt / Qt for Python
+
+CloudHime uses PySide6 and Shiboken 6.10.1, with dynamically linked Qt 6.10.1
+libraries. Their license terms are separate from CloudHime's Apache 2.0 license.
+The GNU LGPL v3 and incorporated GNU GPL v3 texts are preserved verbatim in
+`packaging/third-party-licenses/qt-6.10.1/`; `sources.json` records their pinned
+upstream URLs and SHA-256 digests. The wheel's `LicenseRef-Qt-Commercial.txt`
+alone does not establish a commercial Qt license or satisfy the LGPL path.
+
+Qt and Qt for Python copyright belongs to The Qt Company Ltd. and the respective
+contributors. Module and third-party attribution must be checked against the
+actual bundled files; not every Qt add-on is available under LGPL.
+
+- Qt obligations: https://www.qt.io/development/open-source-lgpl-obligations
+- Qt for Python licensing: https://doc.qt.io/qtforpython-6.10/commercial/index.html
+- Qt 6.10.1 corresponding source: https://download.qt.io/official_releases/qt/6.10/6.10.1/
+- PySide 6.10.1 corresponding source: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.10.1-src/
+
+These links identify upstream sources. They are not a claim that a binary release
+has satisfied source delivery, library replacement, installation-information,
+or Store terms requirements. A release must verify those obligations separately.
 
 ## GenSen Rounded UI fonts
 
@@ -29,6 +51,12 @@ CloudHime uses the pinned, unmodified model and projector files from the officia
 - License: MIT
 - Releases: https://github.com/ggml-org/llama.cpp/releases
 
+The currently verified runtime is pinned to commit `1d1d9a9ed` (build 9968).
+Its full MIT license, including the ggml authors' copyright line, is preserved at
+`packaging/third-party-licenses/llama-1d1d9a9ed/LICENSE` with a hash and source URL
+in `packaging/third-party-licenses/sources.json`. This license does not cover
+NVIDIA CUDA or other separately licensed runtime libraries.
+
 The llama.cpp runtime executable and its required libraries are application runtime components. They are bundled with the application package rather than downloaded as executable code after installation.
 
 ## Knowledge research providers
@@ -53,6 +81,14 @@ The pinned `ddgs==9.14.4` wheel declares these base runtime dependencies; option
 - `certifi` — MPL-2.0
 - `anyio`, `brotli`, `h11`, `h2`, `hpack`, `hyperframe` — MIT
 - `idna` — BSD-3-Clause; `socksio` — see its upstream license file
+
+The pinned `primp` 1.3.1 source license is preserved at
+`packaging/third-party-licenses/primp-1.3.1/LICENSE`. The pinned PyWinRT 3.2.1
+source license for `winrt-runtime` and its Windows API projection packages is
+preserved at `packaging/third-party-licenses/pywinrt-3.2.1/LICENSE`.
+Their source URLs and hashes are recorded in the adjacent `sources.json`.
+These copies supplement wheel metadata that omits the upstream license file;
+embedded native dependencies still require their own attribution inventory.
 
 The release build resolves these packages from the pinned DDGS dependency graph and must preserve the corresponding wheel license files in the release audit. CloudHime does not install them after Store installation.
 

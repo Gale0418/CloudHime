@@ -230,6 +230,7 @@ jobs:
           foreach ($releaseFile in @("dictionary.json", "LICENSE", "NOTICE", "AUTHORS.md", "BRANDING.md", "THIRD_PARTY_NOTICES.md")) {
             Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $releaseFile) -Destination (Join-Path $internalRoot $releaseFile)
           }
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "packaging/third-party-licenses") -Destination (Join-Path $internalRoot "third-party-licenses") -Recurse
           $runtimeFiles = @(
             "llama-server.exe", "llama-server-impl.dll", "llama-common.dll",
             "llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu-x64.dll",

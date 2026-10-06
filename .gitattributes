@@ -5,3 +5,6 @@
 /translation_e2e_benchmark.py -text
 # Preserve exact bytes of this sealed, SHA-256-addressed review evidence.
 /output/mission-center-critique/CH-T35-* -text
+# Upstream license copies are authenticated as bytes in sources.json.
+/packaging/third-party-licenses/**/*.txt -text
+/packaging/third-party-licenses/**/LICENSE -text

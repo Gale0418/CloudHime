@@ -256,6 +256,17 @@ $noticeRelativePath = Find-NonEmptyFile @("THIRD_PARTY_NOTICES.md", "_internal\T
 if (-not $noticeRelativePath) {
     throw "Release dist is missing a non-empty THIRD_PARTY_NOTICES.md"
 }
+
+# This authenticates the required license copies only. Source delivery, relinking,
+# module-specific terms and Store publication eligibility are separate gates.
+$licenseSources = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'third-party-licenses\sources.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+foreach ($entry in $licenseSources.files) {
+    $relativeLicense = "third-party-licenses\$($entry.path)"
+    $licensePath = Find-NonEmptyFile @($relativeLicense, "_internal\$relativeLicense")
+    if (-not $licensePath) { throw "Release dist is missing third-party license copy: $($entry.path)" }
+    $actualHash = Get-Sha256Hex -Path (Join-Path $dist $licensePath)
+    if ($actualHash -ne $entry.sha256) { throw "Release dist third-party license copy hash mismatch: $($entry.path)" }
+}
 $noticeText = [IO.File]::ReadAllText((Join-Path $dist $noticeRelativePath))
 $requiredNoticeMarkers = @(
     "## Knowledge research providers",

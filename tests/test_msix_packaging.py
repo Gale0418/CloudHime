@@ -423,6 +423,7 @@ foreach ($runtimeFile in @({runtime_literal})) {{
     )
     _write_runtime_manifest(root / "_internal" / "runtime")
     source_root = Path(__file__).resolve().parents[1]
+    shutil.copytree(source_root / "packaging" / "third-party-licenses", root / "_internal" / "third-party-licenses")
     shutil.copyfile(
         source_root / "THIRD_PARTY_NOTICES.md",
         root / "_internal" / "THIRD_PARTY_NOTICES.md",
@@ -495,6 +496,32 @@ def test_release_dist_preflight_rejects_missing_project_attribution(filename):
         )
         assert rejected.returncode != 0
         assert f"missing a non-empty {filename}" in rejected.stdout + rejected.stderr
+    finally:
+        _remove_release_fixture(powershell, temp_root)
+
+
+@pytest.mark.parametrize("change", ["missing", "tampered"])
+def test_release_dist_preflight_rejects_invalid_third_party_license_copy(change):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+    root = Path(__file__).resolve().parents[1]
+    temp_root = root / f".tmp-license-preflight-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    try:
+        _write_release_fixture(powershell, fixture)
+        license_path = fixture / "_internal/third-party-licenses/qt-6.10.1/LGPL-3.0-only.txt"
+        if change == "missing":
+            license_path.unlink()
+        else:
+            license_path.write_bytes(b"This is not the upstream LGPL license.")
+        rejected = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File",
+             str(root / "packaging/verify_release_dist.ps1"), "-DistDir", str(fixture)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+        )
+        assert rejected.returncode != 0
+        assert ("missing third-party license copy" if change == "missing" else "license copy hash mismatch") in rejected.stdout + rejected.stderr
     finally:
         _remove_release_fixture(powershell, temp_root)
 
