@@ -1,0 +1,17 @@
+CloudHime
+
+Project maintainer: Gale0418
+Original project: https://github.com/Gale0418/CloudHime
+
+This file contains attribution and distribution information for the
+CloudHime project. It is provided for informational purposes and does not
+modify, add to, or restrict the Apache License 2.0 terms in LICENSE.
+
+CloudHime project source is licensed under the Apache License, Version 2.0.
+The license permits redistribution, including commercial redistribution,
+subject to its terms. This notice does not prohibit lawful free or paid
+redistribution.
+
+Third-party components, fonts, runtimes, and models remain subject to their
+own licenses and terms. See THIRD_PARTY_NOTICES.md, assets/fonts/OFL.txt,
+packaging/model-licenses/, and the applicable upstream notices for details.

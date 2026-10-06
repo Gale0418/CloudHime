@@ -245,7 +245,7 @@ foreach ($logoSize in @(44, 50, 150)) {
 }
 Write-Verbose "Release logos verified."
 
-foreach ($requiredFile in @("dictionary.json", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
+foreach ($requiredFile in @("dictionary.json", "LICENSE", "NOTICE", "AUTHORS.md", "BRANDING.md", "THIRD_PARTY_NOTICES.md")) {
     $relativePath = Find-NonEmptyFile @($requiredFile, "_internal\$requiredFile")
     if (-not $relativePath) {
         throw "Release dist is missing a non-empty $requiredFile"

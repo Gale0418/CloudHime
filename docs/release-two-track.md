@@ -1,6 +1,12 @@
 # CloudHime 雙軌發行手冊
 
-GitHub 免費發行僅提供原始碼，不提供 EXE 或模型。Microsoft Store 是付費通路，提供完整 EXE 與模型包；價格與上架狀態以 Store 頁面為準。本手冊說明 MSIX 本機開發驗證與 Microsoft Store 發行的界線。開發憑證只供本機 sideload；Store 上傳包使用 Partner Center 指定的 identity，由 Microsoft Store 簽署後發行。兩條流程共用凍結版建置及 payload 驗證，但簽章、信任與發行結果不能互相代替。
+GitHub 免費提供完整原始碼，不提供官方 EXE、runtime 或模型二進位；Microsoft Store 規劃提供付費的完整 EXE、runtime 與模型 MSIX。原始碼依 `LICENSE` 的 Apache License 2.0 發行，任何人都可依該授權合法免費或收費再散布原始碼及衍生作品，並須遵守其中條件；第三方元件與模型仍受各自授權或使用條款約束。詳見 [`NOTICE`](../NOTICE)、[`AUTHORS.md`](../AUTHORS.md)、[`BRANDING.md`](../BRANDING.md) 與 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
+
+規劃售價為 NT$249，自正式公開可購買日起前 30 天規劃以 NT$199 首發。目前 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)仍是私人預覽，尚未正式公開可購買；因此尚未開始收費，首發 30 天也尚未起算。實際價格與供應狀態以 Store 頁面為準。原始碼可於 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
+
+本手冊說明 MSIX 本機開發驗證與 Microsoft Store 發行的界線。開發憑證只供本機 sideload；Store 上傳包使用 Partner Center 指定的 identity，由 Microsoft Store 簽署後發行。兩條流程共用凍結版建置及 payload 驗證，但簽章、信任與發行結果不能互相代替。
+
+本文件與 `NOTICE` 僅提供發行及署名資訊，不修改 `LICENSE` 條款。Apache 2.0 第 4 節說明 NOTICE 僅供告知，且不得被解讀為修改授權；第 6 節不授予商標權。這些聲明不限制 Apache 2.0 所授予的合法免費或付費再散布權利。
 
 ## 開始前：建立凍結版
 

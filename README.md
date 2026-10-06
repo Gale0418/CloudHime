@@ -102,7 +102,11 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 2026-10-04 的 CodeRabbit 補審涵蓋本次變更與較早的小檔案，共 148 檔；六項建議已逐項查證與修復，處置及複審結果見[產品體驗驗收紀錄](reviews/2026-10-04-sale-readiness.md)。2026-10-02 的歷史範圍另見[原始碼審查紀錄](reviews/2026-10-02-coderabbit-main-sync.md)。
 
 ### 取得 CloudHime
-GitHub 免費提供原始碼，不提供 EXE 或模型下載。請依下方「從原始碼運行」安裝與啟動。Microsoft Store 為付費版本，提供完整 EXE 與模型包；實際價格及上架狀態以 Store 頁面為準。
+CloudHime 採雙軌發行：GitHub 免費提供完整原始碼，不提供官方二進位；Microsoft Store 預計以付費 MSIX 提供完整 EXE、runtime 與模型。依 Apache License 2.0，任何人都可在遵守該授權及各第三方元件／模型適用條款的前提下，免費或收費再散布專案原始碼或衍生作品。
+
+目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。規劃售價為 NT$249；自正式公開可購買日起的前 30 天，規劃以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。原始碼與發行資訊見 [GitHub 專案](https://github.com/Gale0418/CloudHime)。
+
+官方包採一次性買斷，無應用程式訂閱；第三方雲端 AI 需自行提供 API Key，服務費用不包含在售價中。兩種取得方式共用原始碼與核心功能。維護者為 Gale0418；署名、品牌與第三方告知見 [NOTICE](NOTICE)、[AUTHORS.md](AUTHORS.md)、[BRANDING.md](BRANDING.md) 與 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
 MSIX 的本機開發自簽與 Microsoft Store 正式發行是兩條不同流程；請依[雙軌發行手冊](docs/release-two-track.md)操作。歷史驗收紀錄中的預覽包或未簽名的 Store 上傳輸入，都不代表已完成 Store 發行。

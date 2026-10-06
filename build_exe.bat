@@ -42,7 +42,7 @@ if not exist "assets\cloudhime_logo.png" (
   echo Missing assets\cloudhime_logo.png
   goto :failure
 )
-for %%F in (dictionary.json LICENSE THIRD_PARTY_NOTICES.md) do (
+for %%F in (dictionary.json LICENSE NOTICE AUTHORS.md BRANDING.md THIRD_PARTY_NOTICES.md) do (
   if not exist "%%F" (
     echo Missing %%F
     goto :failure

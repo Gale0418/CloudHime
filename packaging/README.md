@@ -12,6 +12,8 @@ makeappx.exe 由 Windows SDK 提供。預設開發 Publisher 只適合本機驗�
 
 GitHub 免費發行只提供原始碼，不提供 EXE 或模型。Microsoft Store 付費版本使用 full dist，內含 EXE 與固定模型／projector。建置會先驗證輕量 dist，再依 `CLOUDHIME_RELEASE_FLAVOR=full` 將模型加入供 MSIX 使用的 dist 並重新驗證 full；模型不進 GitHub，也不做分卷。GitHub Actions 可執行 frozen build 與驗證，但不會上傳 EXE artifact；非二進位的 dependency reports／SBOM 仍可作為 CI artifact。模型版本不變時可保留 `_internal/models`，但目前沒有宣稱已實作自動差異更新器。THIRD_PARTY_NOTICES.md 與 LICENSE 由 PyInstaller release bundle 隨包提供。
 
+LICENSE、NOTICE、AUTHORS.md、BRANDING.md 與 THIRD_PARTY_NOTICES.md 均隨 PyInstaller release bundle 提供；dist preflight 會拒絕缺少或空白的告知檔。專案署名告知不改變 Apache 2.0 條款；模型與第三方元件沿用各自條款。
+
 CreateUpload also produces a manually assembled .msixupload archive containing the MSIX. Public symbols are optional and are not included by this builder yet.
 
 ## Store release identity guard

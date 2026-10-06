@@ -406,7 +406,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $root '_internal\\assets'),
 Set-Content -LiteralPath (Join-Path $root 'CloudHime.exe') -Value 'exe' -Encoding ascii
 Set-Content -LiteralPath (Join-Path $root '_internal\\certifi\\cacert.pem') -Value 'public CA bundle' -Encoding ascii
 Set-Content -LiteralPath (Join-Path $root '_internal\\assets\\cloudhime_logo.png') -Value 'png' -Encoding ascii
-foreach ($releaseFile in @('dictionary.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) {{
+foreach ($releaseFile in @('dictionary.json', 'LICENSE', 'NOTICE', 'AUTHORS.md', 'BRANDING.md', 'THIRD_PARTY_NOTICES.md')) {{
     Set-Content -LiteralPath (Join-Path $root "_internal\\$releaseFile") -Value 'fixture' -Encoding ascii
 }}
 foreach ($runtimeFile in @({runtime_literal})) {{
@@ -476,6 +476,28 @@ def _write_runtime_manifest(runtime_root):
         json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
     )
+
+@pytest.mark.parametrize("filename", ["NOTICE", "AUTHORS.md", "BRANDING.md"])
+def test_release_dist_preflight_rejects_missing_project_attribution(filename):
+    powershell = _powershell_executable()
+    if not powershell:
+        pytest.skip("PowerShell is required for the release preflight script")
+    root = Path(__file__).resolve().parents[1]
+    temp_root = root / f".tmp-attribution-preflight-{uuid.uuid4().hex}"
+    fixture = temp_root / "CloudHime"
+    try:
+        _write_release_fixture(powershell, fixture)
+        (fixture / "_internal" / filename).unlink()
+        rejected = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-File",
+             str(root / "packaging" / "verify_release_dist.ps1"), "-DistDir", str(fixture)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+        )
+        assert rejected.returncode != 0
+        assert f"missing a non-empty {filename}" in rejected.stdout + rejected.stderr
+    finally:
+        _remove_release_fixture(powershell, temp_root)
+
 
 def test_release_dist_preflight_validates_optional_runtime_source_metadata():
     powershell = _powershell_executable()
