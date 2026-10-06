@@ -27,6 +27,7 @@ def provider_module(monkeypatch):
         "ja": "natural Japanese",
         "zh-TW": "natural Traditional Chinese used in Taiwan",
     }[lang]
+    helpers._target_language_lock = lambda lang: f"\nTarget language: {helpers.target_lang_instruction(lang)}."
     regions = ModuleType("vision_region")
     regions.VisionRegionResult = SimpleNamespace
     regions.build_region_vision_prompt = lambda *a, **k: "unused"

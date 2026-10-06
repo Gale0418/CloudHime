@@ -12,4 +12,10 @@ Store 草稿 Submission 3 唯讀可見套件 0.1.1.0；0.1.2.0 候選封裝中�
 
 新增 NOTICE／AUTHORS.md／BRANDING.md，以及 spec、build必要檔案、dist preflight要求；55個相關打包測試通過、12 deselected。測試cache有既有目錄寫入權限warning，沒有影響案例結果。產品Python與既有EXE不變；下一份署名包須以新來源組成、核對所有沿用產品檔案並保留原始EXE建置來源，不把它冒稱重新編譯或沿用未核對的套件結果。
 
+署名資源候選已在 `output/release-20261006-attribution/` 組成：compiled source維持8792e8a，assembly source為297d822，105份產品／資源Git blob一致；原始凍結來源檔與manifest雜湊另核對，文字檔僅明列LF／CRLF等價。NOTICE等三檔以297d822來源加入，EXE不變。378檔／4,896,213,165 bytes完整dist及新告知檔雜湊驗證通過，原EXE功能smoke明列沿用且未重跑。官方MSIX可直接上傳，因此本輪不另產生outer upload ZIP；舊封裝pipeline在完成MSIX後因候選被取代而精確取消冗餘ZIP，回執記為superseded，沒有冒稱完整packaging PASS。
+
+297d822的CI run37475737487有兩個測試環境失敗：msix-contract假資料未加入NOTICE；core的dependency-free provider替身漏了新`_target_language_lock`。後者本機-x重現ImportError後修復；CI foreach告知清單補齊，115個相關測試通過、12 deselected。CI／test fixture改動不影響產品Python、模型、EXE或既有候選來源，不需重新編譯；尚待修正後的CI回傳。不是將不可重現原生崩潰視為新bug，也沒有以重跑掩蓋錯誤。
+
+四份Store清單（zh-tw／zh-hant-tw／en-us／ja-jp）已保存免費原始碼／官方預建包互導、一次性購買、雲端API費用另計、Apache2.0與維護者說明；逐份重新開啟後與保存內容完全相同，原介紹、影像、copyright與開發者欄位保留。回執 `store-copy-draft-receipt.json`，僅草稿，尚未送認證。
+
 CH-E6 已依既有 21 子任務原始證據核對、current passport 及 Rust 逐格轉換完成；詳見 `2026-10-06-e6-closeout.md`。CH-T55 仍 Review，CH-T56／CH-E7／CH-E8 依正式發行結果保留未完成。新 MSIX、安裝／更新／WACK、完整人工 GUI、真實設定升級、正式發行評議及私人預覽認證各自尚待完成，舊候選的通過結果不能替代本輪候選。
