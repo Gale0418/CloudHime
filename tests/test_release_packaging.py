@@ -406,18 +406,19 @@ def test_release_build_uses_the_spec_as_packaging_source_of_truth():
     assert "CloudHime.py" not in build_command
 
 
-def test_release_build_runs_preflight_before_creating_zip():
+def test_release_build_verifies_dist_and_stages_full_models_without_creating_zip():
     root = Path(__file__).resolve().parents[1]
     build_script = (root / "build_exe.bat").read_text(encoding="utf-8")
 
     pyinstaller_index = build_script.index("%PYTHON% -m PyInstaller --noconfirm --clean CloudHime.spec")
     preflight_index = build_script.index("packaging\\verify_release_dist.ps1")
-    zip_index = build_script.index("packaging\\release_archive.py zip")
-    assert pyinstaller_index < preflight_index < zip_index
-    assert "Release preflight failed." in build_script[preflight_index:zip_index]
+    assert pyinstaller_index < preflight_index
+    assert "Release preflight failed." in build_script[preflight_index:]
     stage_index = build_script.index("packaging\\release_archive.py stage")
-    assert zip_index < stage_index
-    assert '--flavor light' in build_script[zip_index:stage_index]
+    assert preflight_index < stage_index
+    assert "release_archive.py zip" not in build_script
+    assert "ZIP_FILE" not in build_script
+    assert 'echo Done: %DIST_DIR%' in build_script
     assert '-ModelBundle full' in build_script[stage_index:]
 
 

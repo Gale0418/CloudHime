@@ -101,7 +101,10 @@ def test_ci_exposes_opt_in_reproducible_real_release_build_gate():
     assert "-ModelBundle light" in build_job
     assert r"packaging\test_clean_machine.ps1" in build_job
     assert "-ExecutablePath dist\\CloudHime\\CloudHime.exe" in build_job
-    assert "actions/upload-artifact@v4" in build_job
+    assert "actions/upload-artifact@v4" not in build_job
+    assert "dist/CloudHime.zip" not in build_job
+    assert "release_archive.py zip" not in build_job
+    assert "dist/CloudHime.zip" not in ci
 
 def test_ci_msix_signing_prefers_x64_signtool():
     root = Path(__file__).resolve().parents[1]

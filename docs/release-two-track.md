@@ -1,6 +1,6 @@
 # CloudHime 雙軌發行手冊
 
-本手冊說明 MSIX 本機開發驗證與 Microsoft Store 發行的界線。開發憑證只供本機 sideload；Store 上傳包使用 Partner Center 指定的 identity，由 Microsoft Store 簽署後發行。兩條流程共用凍結版建置及 payload 驗證，但簽章、信任與發行結果不能互相代替。
+GitHub 免費發行僅提供原始碼，不提供 EXE 或模型。Microsoft Store 是付費通路，提供完整 EXE 與模型包；價格與上架狀態以 Store 頁面為準。本手冊說明 MSIX 本機開發驗證與 Microsoft Store 發行的界線。開發憑證只供本機 sideload；Store 上傳包使用 Partner Center 指定的 identity，由 Microsoft Store 簽署後發行。兩條流程共用凍結版建置及 payload 驗證，但簽章、信任與發行結果不能互相代替。
 
 ## 開始前：建立凍結版
 
@@ -11,13 +11,13 @@ py -3.10-64 -m pip install --require-hashes -r requirements-lock-win-amd64-py310
 py -3.10-64 -m pip install --require-hashes -r requirements-build-win-amd64-py310.txt
 ```
 
-`build_exe.bat` 會執行 provenance 準備、PyInstaller、啟動 import smoke、release dist 驗證及 GitHub ZIP 封裝。預設 `CLOUDHIME_RELEASE_FLAVOR=full`，會把固定模型與 projector 放入 MSIX 用的 `dist\CloudHime`；設為 `light` 才不附模型，程式仍可使用受管 AppData 模型路徑。`CLOUDHIME_MODEL_SOURCE` 可指定 full 模型來源，`LLAMA_RUNTIME_COMMIT` 或 `runtime\llama-runtime-commit.txt` 必須提供 runtime commit provenance。
+`build_exe.bat` 會執行 provenance 準備、PyInstaller、啟動 import smoke 與 release dist 驗證。預設 `CLOUDHIME_RELEASE_FLAVOR=full`，會把固定模型與 projector 放入供 Microsoft Store/MSIX 使用的 `dist\CloudHime`；設為 `light` 才不附模型，程式仍可使用受管 AppData 模型路徑。一般本機及 GitHub Actions 建置都不會建立 EXE ZIP；CI 只在 runner 上建置及驗證 frozen dist，dependency reports／SBOM 等非二進位報告仍可作為 Actions artifact。`CLOUDHIME_MODEL_SOURCE` 可指定 full 模型來源，`LLAMA_RUNTIME_COMMIT` 或 `runtime\llama-runtime-commit.txt` 必須提供 runtime commit provenance。
 
 ```powershell
 & .\build_exe.bat
 ```
 
-**重建前先保留需要的舊產物。** 此入口會刪除並重建 `dist\CloudHime`、`dist\CloudHime.zip`，也會重建 `build\runtime` 與 `build\provenance`；失敗時只清理它自己的 runtime staging，並不會還原先前的 dist 或 ZIP。每次建置請序列執行，保留原始錯誤輸出；依失敗階段修復後再從本節重跑。缺 runtime provenance、模型大小／雜湊不符、依賴鎖或 dist preflight 失敗時都應停下，不要把部分產物當作可發布版本。
+**重建前先保留需要的舊產物。** 此入口會刪除並重建 `dist\CloudHime`，也會重建 `build\runtime` 與 `build\provenance`；失敗時只清理它自己的 runtime staging，並不會還原先前的 dist。每次建置請序列執行，保留原始錯誤輸出；依失敗階段修復後再從本節重跑。缺 runtime provenance、模型大小／雜湊不符、依賴鎖或 dist preflight 失敗時都應停下，不要把部分產物當作可發布版本。
 
 要在尚未有 Windows SDK 的機器先驗 dist，可執行：
 
@@ -107,9 +107,9 @@ pwsh -File packaging/build_msix.ps1 `
 
 `build_msix.ps1` 在打包前執行 release dist 驗證；Store identity 或版本 guard、dist preflight、SDK 或打包任一失敗都應視為未完成。它在失敗時會移除此次目標套件／upload 檔與暫存目錄，但不會修復 dist；為避免碰到舊檔，必須為每次執行指定新的專屬 `OutputDir`，不要讓不同建置同時執行。檢查設定、版本與失敗階段後，使用新目錄重跑；不要手動把開發簽章套件改成 Store 輸入。
 
-## 目前 checkpoint 與恢復順序
+## 歷史驗收快照與恢復順序
 
-截至 2026-10-05，主機私人 Store 版仍為 `0.1.1.0`。目前產品候選固定於來源 `fe88bab940c02c7e271fefeea557bc004cb9d580`，位於 `output/store-release-20261005-gemini-copy/`；10/03 的候選是歷史產物，不用來接續本輪發行。新候選已通過 frozen import、Windows OCR 兩行、CPU Vision 1/1、GUI 啟動存活與 full provenance 驗證；隔離環境的合成 LocalState 更新保留、全新安裝／啟動／移除也已通過。
+以下內容是截至 2026-10-05 的歷史快照，不代表目前 Store／GitHub 發行狀態。當時主機私人 Store 版仍為 `0.1.1.0`。產品候選固定於來源 `fe88bab940c02c7e271fefeea557bc004cb9d580`，位於 `output/store-release-20261005-gemini-copy/`；10/03 的候選是歷史產物，不用來接續本輪發行。該候選已通過 frozen import、Windows OCR 兩行、CPU Vision 1/1、GUI 啟動存活與 full provenance 驗證；隔離環境的合成 LocalState 更新保留、全新安裝／啟動／移除也已通過。
 
 正式 SDK 隔離環境的完整 WACK 已取得 exit 0、`OVERALL_RESULT=PASS`、`PARTIAL_RUN=FALSE`；13 個 required 測項全 PASS。另有 10 個 optional PASS、1 個 optional FAIL：blocked executable 掃描器回報 `OverflowException`，未定位觸發檔案。這不是全部測項通過或 Windows S 模式相容的證據；[Microsoft 的 Desktop Bridge 規則](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-desktop-bridge-app-tests)以 required 測項決定總判定。完整報告、來源／產物雜湊及限制見 [10/05 驗收紀錄](../reviews/2026-10-05-wack-critique.md)。
 

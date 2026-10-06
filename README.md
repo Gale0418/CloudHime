@@ -35,6 +35,8 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 
 字體很小、低對比、背景複雜、特效字或文字排列特殊時，OCR 可能漏字或辨識錯誤；翻譯也可能失去角色語氣、上下文或專有名詞。顯示縮放、擷取範圍和所選引擎都會影響結果。重要內容請回看原文核對。
 
+> 以下 2026-10-04／10-05 的驗收與版本描述是當日歷史紀錄，不代表目前 Store 或 GitHub 的發行狀態。
+
 2026-10-04 已修正設定頁延遲回呼與快捷鍵物件生命週期；另一路 QThread 原生崩潰的最初失效物件仍未確認，詳見 [Qt 原生診斷紀錄](reviews/2026-10-04-qt-native-diagnosis.md)。主視窗長提示已支援溢出才滾動的單行跑馬燈，保留完整提示與無障礙文字。
 
 20:13 實機回報模型準備期間未翻譯，舊候選已退回。修正版 `adf8d39` 增加內附模型驗證進度與取消、等待提示，並修正純本機路由及舊 Google 快取；313 項相關回歸與九檔 CodeRabbit 審查通過。新 EXE 已通過模型完整性、host Windows OCR 兩行、CPU 圖像功能 1/1 與 20 秒啟動驗證；相同來源的實際 Controller 診斷約 17 秒就緒，將「確認連線狀態」翻為英文，等待時 UI event loop 持續運作。來源診斷未涵蓋 frozen EXE 的完整人工操作；暫停／繼續／取消框選、沙箱與 MSIX／WACK 驗收仍待完成。原始全新沙箱有 OCR 語言資源問題，補入診斷用資源的控制實驗不能當成未修改沙箱的通過。Store 現行仍為 0.1.1.0，新版尚未上傳或認證。
@@ -99,11 +101,11 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 
 2026-10-04 的 CodeRabbit 補審涵蓋本次變更與較早的小檔案，共 148 檔；六項建議已逐項查證與修復，處置及複審結果見[產品體驗驗收紀錄](reviews/2026-10-04-sale-readiness.md)。2026-10-02 的歷史範圍另見[原始碼審查紀錄](reviews/2026-10-02-coderabbit-main-sync.md)。
 
-### 下載預覽版本
-前往 [GitHub Releases](https://github.com/Gale0418/CloudHime/releases) 查看打包版本；README 的 2026-10-02 紀錄中，公開版本標示為 Pre-release（預覽版），這不是目前線上版本的查核結果。若下載的是打包檔，解壓縮後執行其中的 `CloudHime.exe`；本機原始碼目錄下的 `dist/CloudHime/CloudHime.exe` 僅適用於已建置的版本。
+### 取得 CloudHime
+GitHub 免費提供原始碼，不提供 EXE 或模型下載。請依下方「從原始碼運行」安裝與啟動。Microsoft Store 為付費版本，提供完整 EXE 與模型包；實際價格及上架狀態以 Store 頁面為準。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
-MSIX 的本機開發自簽與 Microsoft Store 正式發行是兩條不同流程；請依[雙軌發行手冊](docs/release-two-track.md)操作。原始碼、預覽包或未簽名的 Store 上傳輸入，都不代表已完成 Store 發行。
+MSIX 的本機開發自簽與 Microsoft Store 正式發行是兩條不同流程；請依[雙軌發行手冊](docs/release-two-track.md)操作。歷史驗收紀錄中的預覽包或未簽名的 Store 上傳輸入，都不代表已完成 Store 發行。
 
 ### 從原始碼運行 (Source)
 1. 建議使用 Python 3.10（Windows CI 與鎖定依賴的已驗證版本）。其他版本尚未列入 CI；本機 Python 3.13 曾在單一程序混跑全部 Qt 測試時發生 PySide6 native crash，請勿將 3.10 的測試結果視為 3.13 相容性保證。

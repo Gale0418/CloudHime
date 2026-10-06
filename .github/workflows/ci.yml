@@ -528,12 +528,6 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File packaging\test_clean_machine.ps1 -ExecutablePath dist\CloudHime\CloudHime.exe -LaunchWaitSeconds 20
 
-      - name: Upload real frozen release artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloudhime-real-frozen-release
-          path: dist/CloudHime.zip
-          if-no-files-found: error
   real-release-smoke:
     name: Real frozen release Vision smoke
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_release }}

@@ -8,7 +8,6 @@ set "PSModulePath=%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules;%ProgramF
 
 set "APP_NAME=CloudHime"
 set "DIST_DIR=dist\%APP_NAME%"
-set "ZIP_FILE=dist\%APP_NAME%.zip"
 set "RUNTIME_STAGE=build\runtime"
 set "BUILD_EXIT_CODE=0"
 set "PYTHON=py -3.10-64"
@@ -122,7 +121,6 @@ if errorlevel 1 (
 )
 
 if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
-if exist "%ZIP_FILE%" del /f /q "%ZIP_FILE%"
 
 rem Keep the release independent from optional TensorFlow/Keras OCR environments.
 pwsh -NoLogo -NoProfile -File "packaging\prepare_release_provenance.ps1"
@@ -146,12 +144,6 @@ set "CLOUDHIME_PACKAGED_IMPORT_SMOKE="
 powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -ModelBundle light
 if errorlevel 1 (
   echo Release preflight failed.
-  goto :failure
-)
-
-rem GitHub ZIP never contains weights. Stage models only AFTER this archive is complete.
-%PYTHON% packaging\release_archive.py zip --dist "%DIST_DIR%" --output "%ZIP_FILE%" --flavor light
-if errorlevel 1 (
   goto :failure
 )
 
@@ -182,6 +174,6 @@ if not "%BUILD_EXIT_CODE%"=="0" (
   exit /b 1
 )
 
-echo Done: %ZIP_FILE%
+echo Done: %DIST_DIR%
 endlocal
 exit /b 0

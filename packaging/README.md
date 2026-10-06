@@ -10,7 +10,7 @@ makeappx.exe 由 Windows SDK 提供。預設開發 Publisher 只適合本機驗�
 
 模型放在 `_internal/models`，執行時直接讀取，完整性 receipt 仍寫在使用者 AppData。隨附 `NOTICE.txt`、模型使用條款與官方條款／禁止使用政策副本。`CLOUDHIME_RELEASE_FLAVOR=light` 可明確建立不附模型的輕量包；此時沿用受管 AppData 下載路徑。MSIX 會沿用輸入 dist 的模型種類，真正 Store／乾淨機驗收仍須另做。
 
-GitHub ZIP 永遠不含模型：先驗證輕量 dist 並用 Python 標準庫 ZIP64 封裝 ZIP，再將模型加入 MSIX 用的 dist 並重新驗證 full。模型不進 Git、GitHub 附件或 EXE，也不做分卷。模型版本不變時可保留 `_internal/models`，但目前沒有宣稱已實作自動差異更新器。THIRD_PARTY_NOTICES.md 與 LICENSE 由 PyInstaller release bundle 隨包提供。
+GitHub 免費發行只提供原始碼，不提供 EXE 或模型。Microsoft Store 付費版本使用 full dist，內含 EXE 與固定模型／projector。建置會先驗證輕量 dist，再依 `CLOUDHIME_RELEASE_FLAVOR=full` 將模型加入供 MSIX 使用的 dist 並重新驗證 full；模型不進 GitHub，也不做分卷。GitHub Actions 可執行 frozen build 與驗證，但不會上傳 EXE artifact；非二進位的 dependency reports／SBOM 仍可作為 CI artifact。模型版本不變時可保留 `_internal/models`，但目前沒有宣稱已實作自動差異更新器。THIRD_PARTY_NOTICES.md 與 LICENSE 由 PyInstaller release bundle 隨包提供。
 
 CreateUpload also produces a manually assembled .msixupload archive containing the MSIX. Public symbols are optional and are not included by this builder yet.
 
@@ -129,7 +129,7 @@ The gate creates a unique `cloudhime-clean-machine-*` sandbox for TEMP/TMP/APPDA
 - CLOUDHIME_RELEASE_RUNTIME_SHA256
 - CLOUDHIME_RELEASE_RUNTIME_COMMIT
 
-它會先以 `packaging/fetch_runtime_assets.ps1` 驗證 archive hash、zip path safety、唯一 `llama-server.exe` 與 commit，再呼叫 `build_exe.bat`，並在上傳前執行 environment-isolated packaged launch smoke。這個 job 目前只是可重現建置入口；沒有配置 runner／repository variables 時不會執行，也不代表 Store、WACK、clean VM 或 GPU accuracy gate 已通過。
+它會先以 `packaging/fetch_runtime_assets.ps1` 驗證 archive hash、zip path safety、唯一 `llama-server.exe` 與 commit，再呼叫 `build_exe.bat`，並執行 environment-isolated packaged launch smoke；frozen EXE 僅供 runner 上驗證，不會作為 GitHub artifact 上傳。這個 job 目前只是可重現建置入口；沒有配置 runner／repository variables 時不會執行，也不代表 Store、WACK、clean VM 或 GPU accuracy gate 已通過。
 
 ## Release smoke orchestrator
 
