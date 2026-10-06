@@ -133,17 +133,37 @@ def test_pending_engine_keeps_actual_route_and_data_destination_visible(controll
     assert controller.lbl_engine_data.text() == controller._tr("controller.engine.data.google")
 
 
-def test_engine_settings_entry_can_be_used_again_without_closing_or_switching_route(controller, qtbot):
+def test_single_settings_entry_opens_and_closes_without_switching_route(controller, qtbot):
     controller.worker.use_gemma_translation = False
     chain = controller.provider_chain
-    qtbot.mouseClick(controller.btn_engine_settings, Qt.LeftButton)
+    assert not hasattr(controller, "btn_engine_settings")
+    assert controller.lbl_engine_summary.parent() is controller.charge_bar
+    qtbot.mouseClick(controller.btn_theme, Qt.LeftButton)
     assert controller.settings_window.isVisible()
     controller.settings_window.settings_tabs.setCurrentIndex(2)
-    qtbot.mouseClick(controller.btn_engine_settings, Qt.LeftButton)
+    qtbot.mouseClick(controller.btn_theme, Qt.LeftButton)
+    assert not controller.settings_window.isVisible()
+    qtbot.mouseClick(controller.btn_theme, Qt.LeftButton)
     assert controller.settings_window.isVisible()
-    assert controller.settings_window.settings_tabs.currentIndex() == 0
     assert controller.provider_chain == chain
     assert not controller.worker.use_gemma_translation
+
+
+def test_compact_engine_summary_keeps_progress_and_usage_visible(controller):
+    bar = controller.charge_bar
+    summary = bar.engine_summary
+    bar.set_progress(42, "Downloading model")
+    assert summary in bar.summary_label.text()
+    assert "42%" in bar.summary_label.text()
+    assert "Downloading model" in bar.summary_label.toolTip()
+    bar.set_progress(50, "Gemma 5/10")
+    assert "5/10" in bar.summary_label.text()
+    bar.set_indeterminate(True, "Loading model")
+    assert bar._animation_timer.isActive()
+    assert "Loading model" in bar.summary_label.toolTip()
+    bar.set_progress(100, "Ready")
+    assert not bar._animation_timer.isActive()
+    assert "42%" not in bar.summary_label.text()
 
 
 def test_selection_overlay_handles_synchronous_fullscreen_resize(qtbot, monkeypatch):

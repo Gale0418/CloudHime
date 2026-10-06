@@ -1190,6 +1190,12 @@ class StatusChargeBar(QWidget):
         super().__init__(parent)
         self.progress = 0
         self.label = ""
+        self.engine_summary = ""
+        self.summary_label = MarqueeLabel(parent=self)
+        self.summary_label.setAlignment(Qt.AlignCenter)
+        summary_layout = QHBoxLayout(self)
+        summary_layout.setContentsMargins(8, 0, 8, 0)
+        summary_layout.addWidget(self.summary_label)
         self.base_bg = QColor("#E8F8FB")
         self.border_color = QColor("#7FC8E8")
         self.fill_color = QColor("#4FC3F7")
@@ -1199,6 +1205,23 @@ class StatusChargeBar(QWidget):
         self._animation_timer = QTimer(self)
         self._animation_timer.timeout.connect(self._update_animation)
         self.setFixedHeight(18)
+        self._refresh_text()
+
+    def set_engine_summary(self, text):
+        self.engine_summary = str(text or "")
+        self._refresh_text()
+
+    def _refresh_text(self):
+        text = self.engine_summary or self.label or f"{self.progress}%"
+        if self.engine_summary and "/" in self.label:
+            text += f" · {self.label}"
+        elif self.engine_summary and not self.indeterminate and 0 < self.progress < 100:
+            text += f" · {self.progress}%"
+        self.summary_label.setText(text)
+        detail = "\n".join(dict.fromkeys(value for value in (self.engine_summary, self.label) if value))
+        self.setToolTip(detail)
+        self.summary_label.setToolTip(detail)
+        self.setAccessibleName(text)
 
     def _update_animation(self):
         self.indeterminate_offset = (self.indeterminate_offset + 5) % 100
@@ -1213,6 +1236,7 @@ class StatusChargeBar(QWidget):
                 self._animation_timer.start(30)
         else:
             self._animation_timer.stop()
+        self._refresh_text()
         self.update()
 
     def _parse_color(self, c_str):
@@ -1232,6 +1256,7 @@ class StatusChargeBar(QWidget):
         self.border_color = self._parse_color(border_color)
         self.fill_color = self._parse_color(fill_color)
         self.text_color = self._parse_color(text_color)
+        self.summary_label.setStyleSheet(f"color: {self.text_color.name()}; font-size:12px; font-weight:600; background: transparent; border: none;")
         self.update()
 
     def set_progress(self, progress, label=""):
@@ -1239,10 +1264,12 @@ class StatusChargeBar(QWidget):
             self.set_indeterminate(False)
         self.progress = max(0, min(100, int(progress)))
         self.label = label or self.label
+        self._refresh_text()
         self.update()
 
     def set_label(self, label):
         self.label = label
+        self._refresh_text()
         self.update()
 
     def paintEvent(self, event):
@@ -1270,8 +1297,6 @@ class StatusChargeBar(QWidget):
                 painter.setBrush(self.fill_color)
                 painter.drawRoundedRect(fill_rect, 8, 8)
 
-        painter.setPen(self.text_color)
-        painter.drawText(rect, Qt.AlignCenter, self.label or f"{self.progress}%")
         painter.end()
 
 
@@ -3286,7 +3311,7 @@ class Controller(QWidget):
         
         self.setWindowTitle("雲朵翻譯姬")
         self.setMinimumWidth(440)
-        self.resize(440, 360)
+        self.resize(440, 320)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
@@ -3372,21 +3397,9 @@ class Controller(QWidget):
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
-        engine_row = QHBoxLayout()
-        self.lbl_engine_summary = MarqueeLabel()
-        self.lbl_engine_summary.setTextFormat(Qt.PlainText)
-        self.lbl_engine_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        self.btn_engine_settings = QPushButton()
-        self.btn_engine_settings.setMinimumHeight(28)
-        self.btn_engine_settings.setCursor(Qt.PointingHandCursor)
-        self.btn_engine_settings.clicked.connect(self.show_translation_engine_settings)
-        engine_row.addWidget(self.lbl_engine_summary, 1)
-        engine_row.addWidget(self.btn_engine_settings)
-        inner_layout.addLayout(engine_row)
         self.lbl_engine_data = MarqueeLabel()
         self.lbl_engine_data.setTextFormat(Qt.PlainText)
         self.lbl_engine_data.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        inner_layout.addWidget(self.lbl_engine_data)
 
         status_row = QHBoxLayout()
         self.lbl_status = MarqueeLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
@@ -3397,6 +3410,7 @@ class Controller(QWidget):
         self.lbl_status.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_status.setMinimumHeight(30)
         self.charge_bar = StatusChargeBar()
+        self.lbl_engine_summary = self.charge_bar.summary_label
         self.charge_bar.setObjectName("translationQuotaCharge")
         self.charge_bar.setProperty("semanticRole", "quota-usage")
         self.charge_bar.setAccessibleName("翻譯額度狀態")
@@ -3412,6 +3426,7 @@ class Controller(QWidget):
         title_bar.insertWidget(title_bar.count() - 2, self.btn_theme)
         inner_layout.addLayout(status_row)
         inner_layout.addWidget(self.charge_bar)
+        inner_layout.addWidget(self.lbl_engine_data)
 
         ai_key_row = QHBoxLayout()
         self.input_api_key = QLineEdit()
@@ -4049,13 +4064,8 @@ class Controller(QWidget):
         state_text = self._tr(f"controller.engine.state.{state}")
         if pending in {"luna", "online_gemma"}:
             state_text = self._tr("controller.engine.pending", name=self._tr(f"controller.engine.{pending}"))
-        self.lbl_engine_summary.setText(self._tr("controller.engine.summary", name=name, state=state_text))
+        self.charge_bar.set_engine_summary(self._tr("controller.engine.summary", name=name, state=state_text))
         self.lbl_engine_data.setText(self._tr(f"controller.engine.data.{provider}"))
-        self.btn_engine_settings.setText(self._tr("controller.engine.change"))
-        description = self._tr("controller.engine.settings_description")
-        self.btn_engine_settings.setToolTip(description)
-        self.btn_engine_settings.setAccessibleName(self.btn_engine_settings.text())
-        self.btn_engine_settings.setAccessibleDescription(description)
 
     def show_translation_engine_settings(self):
         if self._open_required_provider_setup():
@@ -5751,9 +5761,8 @@ class Controller(QWidget):
         self.lbl_status.setStyleSheet(f"color:{theme.text}; background:transparent; border:none; padding:2px;")
         hint_color = theme.text if theme.key == "high_contrast" else ("#C5C2D7" if theme.key == "dark" else "#615B72")
         self.lbl_scan_hint.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
-        self.lbl_engine_summary.setStyleSheet(f"color:{theme.text}; font-size:12px; font-weight:600; background:transparent; border:none;")
+        self.lbl_engine_summary.setStyleSheet(f"color:{self.charge_bar.text_color.name()}; font-size:12px; font-weight:600; background:transparent; border:none;")
         self.lbl_engine_data.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
-        self.btn_engine_settings.setStyleSheet(main_control_style)
         if self.settings_window is not None:
             self.settings_window.update_theme(theme.key)
             self.settings_window.sync_from_controller()
