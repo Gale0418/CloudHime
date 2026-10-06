@@ -11,6 +11,9 @@ set "DIST_DIR=dist\%APP_NAME%"
 set "RUNTIME_STAGE=build\runtime"
 set "BUILD_EXIT_CODE=0"
 set "PYTHON=py -3.10-64"
+rem Optional absolute interpreter path for an isolated hash-locked build venv.
+if defined CLOUDHIME_BUILD_PYTHON if not exist "%CLOUDHIME_BUILD_PYTHON%" goto :failure
+if defined CLOUDHIME_BUILD_PYTHON set PYTHON="%CLOUDHIME_BUILD_PYTHON%"
 rem Full offline release is the default. Set CLOUDHIME_RELEASE_FLAVOR=light to omit models.
 if not defined CLOUDHIME_RELEASE_FLAVOR set "CLOUDHIME_RELEASE_FLAVOR=full"
 if not "%CLOUDHIME_RELEASE_FLAVOR%"=="full" if not "%CLOUDHIME_RELEASE_FLAVOR%"=="light" goto :failure
@@ -120,8 +123,6 @@ if errorlevel 1 (
   goto :failure
 )
 
-if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
-
 rem Keep the release independent from optional TensorFlow/Keras OCR environments.
 pwsh -NoLogo -NoProfile -File "packaging\prepare_release_provenance.ps1"
 if errorlevel 1 (
@@ -129,6 +130,12 @@ if errorlevel 1 (
   goto :failure
 )
 echo Building %APP_NAME% release...
+%PYTHON% -m pip download --require-hashes --no-deps --dest "build\production-wheels" -r requirements-lock-win-amd64-py310.txt
+if errorlevel 1 goto :failure
+%PYTHON% packaging\verify_installed_dependencies.py --report "build\provenance\production-pip-report.json" --wheel-dir "build\production-wheels"
+if errorlevel 1 goto :failure
+
+if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
 %PYTHON% -m PyInstaller --noconfirm --clean CloudHime.spec
 if errorlevel 1 (
   goto :failure

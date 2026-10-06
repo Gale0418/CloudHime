@@ -7,3 +7,5 @@ pyinstaller==6.18.0 --hash=sha256:976fabd90ecfbda47571c87055ad73413ec615ff7dea35
 pyinstaller-hooks-contrib==2026.6 --hash=sha256:fd13b8ac126b35361175edacd41a0d97080b75dd5f4b594ecefefff969509dd3
 pywin32-ctypes==0.2.3 --hash=sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8
 setuptools==65.5.0 --hash=sha256:f62ea9da9ed6289bfe868cd6845968a2c854d1427f8548d52cae02a42b4f0356
+# PNG-to-ICO conversion by PyInstaller; build-only.
+Pillow==12.3.0 --hash=sha256:300557495eb45ebb8aec96c2da9c4be642fbf7cd937278b4013ba894ea8eb0eb

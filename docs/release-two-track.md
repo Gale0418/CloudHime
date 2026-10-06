@@ -10,12 +10,17 @@ GitHub 免費提供完整原始碼，不提供官方 EXE、runtime 或模型二�
 
 ## 開始前：建立凍結版
 
-發行工具鎖定 CPython 3.10、Windows x64。先在 Windows PowerShell 7 執行以下命令安裝正式依賴與 PyInstaller 建置工具：
+發行工具鎖定 CPython 3.10、Windows x64。先在 Windows PowerShell 7 建立專用環境，避免既有 OpenCV／OCR 套件覆寫相同 namespace：
 
 ```powershell
-py -3.10-64 -m pip install --require-hashes -r requirements-lock-win-amd64-py310.txt
-py -3.10-64 -m pip install --require-hashes -r requirements-build-win-amd64-py310.txt
+py -3.10-64 -m venv .venv-release
+$env:CLOUDHIME_BUILD_PYTHON = (Resolve-Path '.venv-release/Scripts/python.exe').Path
+& $env:CLOUDHIME_BUILD_PYTHON -m pip install --upgrade pip
+& $env:CLOUDHIME_BUILD_PYTHON -m pip install --require-hashes -r requirements-lock-win-amd64-py310.txt
+& $env:CLOUDHIME_BUILD_PYTHON -m pip install --require-hashes -r requirements-build-win-amd64-py310.txt
 ```
+
+`build_exe.bat` 會先從 hash lock 下載可信 wheel，核對實際建置環境的 wheel bytes，拒絕 OpenCV 共用 namespace 衝突。Pillow 只用於 PNG 圖示轉換，不納入正式 runtime；生產報告與 SBOM 不包含建置工具。完整性檢查失敗時不刪除既有 dist。
 
 `build_exe.bat` 會執行 provenance 準備、PyInstaller、啟動 import smoke 與 release dist 驗證。預設 `CLOUDHIME_RELEASE_FLAVOR=full`，會把固定模型與 projector 放入供 Microsoft Store/MSIX 使用的 `dist\CloudHime`；設為 `light` 才不附模型，程式仍可使用受管 AppData 模型路徑。一般本機及 GitHub Actions 建置都不會建立 EXE ZIP；CI 只在 runner 上建置及驗證 frozen dist，dependency reports／SBOM 等非二進位報告仍可作為 Actions artifact。`CLOUDHIME_MODEL_SOURCE` 可指定 full 模型來源，`LLAMA_RUNTIME_COMMIT` 或 `runtime\llama-runtime-commit.txt` 必須提供 runtime commit provenance。
 

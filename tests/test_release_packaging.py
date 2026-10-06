@@ -116,6 +116,7 @@ def test_release_build_uses_a_separate_hash_pinned_tool_lock():
         "altgraph",
         "packaging",
         "pefile",
+        "pillow",
         "pyinstaller",
         "pyinstaller-hooks-contrib",
         "pywin32-ctypes",
@@ -261,7 +262,7 @@ def test_production_release_excludes_in_process_llama_binding():
     excludes = spec.split("excludes=[", 1)[1].split("]", 1)[0]
     assert "llama_cpp" in excludes
     assert "_llama_cpp" in excludes
-    for dev_only_module in ("pytest", "pytest-qt", "pluggy", "iniconfig", "pygments"):
+    for dev_only_module in ("PIL", "pytest", "pytest-qt", "pluggy", "iniconfig", "pygments"):
         assert dev_only_module in excludes
     assert "('build\\\\runtime', 'runtime')" in spec
     for production_module in ("CloudHime.py", "cloudhime_core.py", "cloudhime_ui.py", "cloudhime_workers.py"):
