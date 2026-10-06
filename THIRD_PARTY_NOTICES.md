@@ -24,6 +24,21 @@ These links identify upstream sources. They are not a claim that a binary releas
 has satisfied source delivery, library replacement, installation-information,
 or Store terms requirements. A release must verify those obligations separately.
 
+The Widgets release excludes the unused Qt Virtual Keyboard input plugin and
+its QML/Quick dependencies, along with the unused PDF image plugin. A release
+inventory rejects these files and additional unreviewed Qt libraries. The
+reviewed library set is Core, Gui, Network, OpenGL, Svg, and Widgets; ordinary
+Windows input remains available through the native Windows platform plugin.
+
+Original wheel license files are collected from the exact production dependency
+report into `_internal/dependency-licenses`. Its manifest records
+unresolved metadata omissions as well as the hashes of original files and
+supplements; those omissions are not automatically cleared by a supplement.
+Qt library replacement and source access are described in
+`third-party-licenses/QT-LIBRARY-REPLACEMENT.md`.
+The native component versions, source notices, and verification limits are
+listed in `third-party-licenses/NATIVE-RUNTIME-NOTICES.md`.
+
 ## GenSen Rounded UI fonts
 
 - Project: https://github.com/ButTaiwan/gensen-font

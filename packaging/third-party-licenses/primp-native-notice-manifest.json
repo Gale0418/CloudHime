@@ -1,0 +1,2008 @@
+{
+  "kind": "Windows normal dependency tree source notices; build dependencies and exact wheel build attestation not assessed",
+  "treeSha256": "56122f7632f144b7912a997c768805bdea543df3cba47452fda6253f9909f941",
+  "packages": [
+    {
+      "name": "adler2",
+      "version": "2.0.1",
+      "declaredLicense": "0BSD OR MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/adler2-2.0.1/LICENSE-0BSD",
+        "primp-native-notices/adler2-2.0.1/LICENSE-APACHE",
+        "primp-native-notices/adler2-2.0.1/LICENSE-MIT"
+      ],
+      "crateSha256": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+    },
+    {
+      "name": "alloc-no-stdlib",
+      "version": "2.0.4",
+      "declaredLicense": "BSD-3-Clause",
+      "files": [
+        "primp-native-notices/alloc-no-stdlib-2.0.4/LICENSE"
+      ],
+      "crateSha256": "cc7bb162ec39d46ab1ca8c77bf72e890535becd1751bb45f64c597edb4c8c6b3"
+    },
+    {
+      "name": "alloc-stdlib",
+      "version": "0.2.2",
+      "declaredLicense": "BSD-3-Clause",
+      "files": [
+        "primp-native-notices/alloc-stdlib-0.2.2/LICENSE"
+      ],
+      "crateSha256": "94fb8275041c72129eb51b7d0322c29b8387a0386127718b096429201a5d6ece"
+    },
+    {
+      "name": "anyhow",
+      "version": "1.0.102",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/anyhow-1.0.102/LICENSE-APACHE",
+        "primp-native-notices/anyhow-1.0.102/LICENSE-MIT"
+      ],
+      "crateSha256": "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+    },
+    {
+      "name": "arc-swap",
+      "version": "1.9.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/arc-swap-1.9.1/LICENSE-APACHE",
+        "primp-native-notices/arc-swap-1.9.1/LICENSE-MIT"
+      ],
+      "crateSha256": "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+    },
+    {
+      "name": "async-compression",
+      "version": "0.4.42",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/async-compression-0.4.42/LICENSE-APACHE",
+        "primp-native-notices/async-compression-0.4.42/LICENSE-MIT"
+      ],
+      "crateSha256": "e79b3f8a79cccc2898f31920fc69f304859b3bd567490f75ebf51ae1c792a9ac"
+    },
+    {
+      "name": "async-trait",
+      "version": "0.1.89",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/async-trait-0.1.89/LICENSE-APACHE",
+        "primp-native-notices/async-trait-0.1.89/LICENSE-MIT"
+      ],
+      "crateSha256": "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
+    },
+    {
+      "name": "atomic-waker",
+      "version": "1.1.2",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/atomic-waker-1.1.2/LICENSE-APACHE",
+        "primp-native-notices/atomic-waker-1.1.2/LICENSE-MIT",
+        "primp-native-notices/atomic-waker-1.1.2/LICENSE-THIRD-PARTY"
+      ],
+      "crateSha256": "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+    },
+    {
+      "name": "aws-lc-rs",
+      "version": "1.17.0",
+      "declaredLicense": "ISC AND (Apache-2.0 OR ISC)",
+      "files": [
+        "primp-native-notices/aws-lc-rs-1.17.0/LICENSE"
+      ],
+      "crateSha256": "5ec2f1fc3ec205783a5da9a7e6c1509cc69dedf09a1949e412c1e18469326d00"
+    },
+    {
+      "name": "aws-lc-sys",
+      "version": "0.41.0",
+      "declaredLicense": "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)",
+      "files": [
+        "primp-native-notices/aws-lc-sys-0.41.0/aws-lc/LICENSE",
+        "primp-native-notices/aws-lc-sys-0.41.0/aws-lc/third_party/fiat/LICENSE",
+        "primp-native-notices/aws-lc-sys-0.41.0/LICENSE"
+      ],
+      "crateSha256": "1a2f9779ce85b93ab6170dd940ad0169b5766ff848247aff13bb788b832fe3f4"
+    },
+    {
+      "name": "base64",
+      "version": "0.22.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/base64-0.22.1/LICENSE-APACHE",
+        "primp-native-notices/base64-0.22.1/LICENSE-MIT"
+      ],
+      "crateSha256": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+    },
+    {
+      "name": "bitflags",
+      "version": "2.11.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/bitflags-2.11.1/LICENSE-APACHE",
+        "primp-native-notices/bitflags-2.11.1/LICENSE-MIT"
+      ],
+      "crateSha256": "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
+    },
+    {
+      "name": "brotli",
+      "version": "8.0.2",
+      "declaredLicense": "BSD-3-Clause AND MIT",
+      "files": [
+        "primp-native-notices/brotli-8.0.2/LICENSE.MIT"
+      ],
+      "crateSha256": "4bd8b9603c7aa97359dbd97ecf258968c95f3adddd6db2f7e7a5bef101c84560"
+    },
+    {
+      "name": "brotli-decompressor",
+      "version": "5.0.0",
+      "declaredLicense": "BSD-3-Clause/MIT",
+      "files": [
+        "primp-native-notices/brotli-decompressor-5.0.0/LICENSE"
+      ],
+      "crateSha256": "874bb8112abecc98cbd6d81ea4fa7e94fb9449648c93cc89aa40c81c24d7de03"
+    },
+    {
+      "name": "bytes",
+      "version": "1.11.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/bytes-1.11.1/LICENSE"
+      ],
+      "crateSha256": "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/cfg-if-1.0.4/LICENSE-APACHE",
+        "primp-native-notices/cfg-if-1.0.4/LICENSE-MIT"
+      ],
+      "crateSha256": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+    },
+    {
+      "name": "chacha20",
+      "version": "0.10.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/chacha20-0.10.0/LICENSE-APACHE",
+        "primp-native-notices/chacha20-0.10.0/LICENSE-MIT"
+      ],
+      "crateSha256": "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
+    },
+    {
+      "name": "compression-codecs",
+      "version": "0.4.38",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/compression-codecs-0.4.38/LICENSE-APACHE",
+        "primp-native-notices/compression-codecs-0.4.38/LICENSE-MIT"
+      ],
+      "crateSha256": "ce2548391e9c1929c21bf6aa2680af86fe4c1b33e6cea9ac1cfeec0bd11218cf"
+    },
+    {
+      "name": "compression-core",
+      "version": "0.4.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/compression-core-0.4.32/LICENSE-APACHE",
+        "primp-native-notices/compression-core-0.4.32/LICENSE-MIT"
+      ],
+      "crateSha256": "cc14f565cf027a105f7a44ccf9e5b424348421a1d8952a8fc9d499d313107789"
+    },
+    {
+      "name": "cookie",
+      "version": "0.18.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/cookie-0.18.1/LICENSE-APACHE",
+        "primp-native-notices/cookie-0.18.1/LICENSE-MIT"
+      ],
+      "crateSha256": "4ddef33a339a91ea89fb53151bd0a4689cfce27055c291dfa69945475d22c747"
+    },
+    {
+      "name": "cookie_store",
+      "version": "0.22.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/cookie_store-0.22.1/LICENSE-APACHE",
+        "primp-native-notices/cookie_store-0.22.1/LICENSE-MIT"
+      ],
+      "crateSha256": "15b2c103cf610ec6cae3da84a766285b42fd16aad564758459e6ecf128c75206"
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.3.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/cpufeatures-0.3.0/LICENSE-APACHE",
+        "primp-native-notices/cpufeatures-0.3.0/LICENSE-MIT"
+      ],
+      "crateSha256": "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
+    },
+    {
+      "name": "crc32fast",
+      "version": "1.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/crc32fast-1.5.0/LICENSE-APACHE",
+        "primp-native-notices/crc32fast-1.5.0/LICENSE-MIT"
+      ],
+      "crateSha256": "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
+    },
+    {
+      "name": "critical-section",
+      "version": "1.2.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/critical-section-1.2.0/LICENSE-APACHE",
+        "primp-native-notices/critical-section-1.2.0/LICENSE-MIT"
+      ],
+      "crateSha256": "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
+    },
+    {
+      "name": "crossbeam-channel",
+      "version": "0.5.15",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/crossbeam-channel-0.5.15/LICENSE-APACHE",
+        "primp-native-notices/crossbeam-channel-0.5.15/LICENSE-MIT",
+        "primp-native-notices/crossbeam-channel-0.5.15/LICENSE-THIRD-PARTY"
+      ],
+      "crateSha256": "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+    },
+    {
+      "name": "crossbeam-epoch",
+      "version": "0.9.18",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/crossbeam-epoch-0.9.18/LICENSE-APACHE",
+        "primp-native-notices/crossbeam-epoch-0.9.18/LICENSE-MIT"
+      ],
+      "crateSha256": "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+    },
+    {
+      "name": "crossbeam-utils",
+      "version": "0.8.21",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/crossbeam-utils-0.8.21/LICENSE-APACHE",
+        "primp-native-notices/crossbeam-utils-0.8.21/LICENSE-MIT"
+      ],
+      "crateSha256": "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+    },
+    {
+      "name": "data-encoding",
+      "version": "2.11.0",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/data-encoding-2.11.0/LICENSE"
+      ],
+      "crateSha256": "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
+    },
+    {
+      "name": "deranged",
+      "version": "0.5.8",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/deranged-0.5.8/LICENSE-Apache",
+        "primp-native-notices/deranged-0.5.8/LICENSE-MIT"
+      ],
+      "crateSha256": "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+    },
+    {
+      "name": "displaydoc",
+      "version": "0.2.5",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/displaydoc-0.2.5/LICENSE-APACHE",
+        "primp-native-notices/displaydoc-0.2.5/LICENSE-MIT"
+      ],
+      "crateSha256": "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
+    },
+    {
+      "name": "document-features",
+      "version": "0.2.12",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/document-features-0.2.12/LICENSE-APACHE",
+        "primp-native-notices/document-features-0.2.12/LICENSE-MIT"
+      ],
+      "crateSha256": "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
+    },
+    {
+      "name": "either",
+      "version": "1.15.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/either-1.15.0/LICENSE-APACHE",
+        "primp-native-notices/either-1.15.0/LICENSE-MIT"
+      ],
+      "crateSha256": "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+    },
+    {
+      "name": "encoding_rs",
+      "version": "0.8.35",
+      "declaredLicense": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+      "files": [
+        "primp-native-notices/encoding_rs-0.8.35/COPYRIGHT",
+        "primp-native-notices/encoding_rs-0.8.35/LICENSE-APACHE",
+        "primp-native-notices/encoding_rs-0.8.35/LICENSE-MIT",
+        "primp-native-notices/encoding_rs-0.8.35/LICENSE-WHATWG"
+      ],
+      "crateSha256": "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+    },
+    {
+      "name": "equivalent",
+      "version": "1.0.2",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/equivalent-1.0.2/LICENSE-APACHE",
+        "primp-native-notices/equivalent-1.0.2/LICENSE-MIT"
+      ],
+      "crateSha256": "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+    },
+    {
+      "name": "flate2",
+      "version": "1.1.9",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/flate2-1.1.9/LICENSE-APACHE",
+        "primp-native-notices/flate2-1.1.9/LICENSE-MIT"
+      ],
+      "crateSha256": "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
+    },
+    {
+      "name": "fnv",
+      "version": "1.0.7",
+      "declaredLicense": "Apache-2.0 / MIT",
+      "files": [
+        "primp-native-notices/fnv-1.0.7/LICENSE-APACHE",
+        "primp-native-notices/fnv-1.0.7/LICENSE-MIT"
+      ],
+      "crateSha256": "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+    },
+    {
+      "name": "foldhash",
+      "version": "0.2.0",
+      "declaredLicense": "Zlib",
+      "files": [
+        "primp-native-notices/foldhash-0.2.0/LICENSE"
+      ],
+      "crateSha256": "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+    },
+    {
+      "name": "form_urlencoded",
+      "version": "1.2.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/form_urlencoded-1.2.2/LICENSE-APACHE",
+        "primp-native-notices/form_urlencoded-1.2.2/LICENSE-MIT"
+      ],
+      "crateSha256": "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+    },
+    {
+      "name": "futures-channel",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-channel-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-channel-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-core-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-core-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
+    },
+    {
+      "name": "futures-io",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-io-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-io-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "cecba35d7ad927e23624b22ad55235f2239cfa44fd10428eecbeba6d6a717718"
+    },
+    {
+      "name": "futures-macro",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-macro-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-macro-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "e835b70203e41293343137df5c0664546da5745f82ec9b84d40be8336958447b"
+    },
+    {
+      "name": "futures-sink",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-sink-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-sink-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893"
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-task-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-task-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393"
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.32",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/futures-util-0.3.32/LICENSE-APACHE",
+        "primp-native-notices/futures-util-0.3.32/LICENSE-MIT"
+      ],
+      "crateSha256": "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/getrandom-0.4.2/LICENSE-APACHE",
+        "primp-native-notices/getrandom-0.4.2/LICENSE-MIT"
+      ],
+      "crateSha256": "0de51e6874e94e7bf76d726fc5d13ba782deca734ff60d5bb2fb2607c7406555"
+    },
+    {
+      "name": "h2",
+      "version": "0.4.14",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/h2-0.4.14/LICENSE"
+      ],
+      "crateSha256": "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/hashbrown-0.17.1/LICENSE-APACHE",
+        "primp-native-notices/hashbrown-0.17.1/LICENSE-MIT"
+      ],
+      "crateSha256": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+    },
+    {
+      "name": "heck",
+      "version": "0.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/heck-0.5.0/LICENSE-APACHE",
+        "primp-native-notices/heck-0.5.0/LICENSE-MIT"
+      ],
+      "crateSha256": "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+    },
+    {
+      "name": "hickory-net",
+      "version": "0.26.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/hickory-net-0.26.1/LICENSE-APACHE",
+        "primp-native-notices/hickory-net-0.26.1/LICENSE-MIT"
+      ],
+      "crateSha256": "e2295ed2f9c31e471e1428a8f88a3f0e1f4b27c15049592138d1eebe9c35b183"
+    },
+    {
+      "name": "hickory-proto",
+      "version": "0.26.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/hickory-proto-0.26.1/LICENSE-APACHE",
+        "primp-native-notices/hickory-proto-0.26.1/LICENSE-MIT"
+      ],
+      "crateSha256": "0bab31817bfb44672a252e97fe81cd0c18d1b2cf892108922f6818820df8c643"
+    },
+    {
+      "name": "hickory-resolver",
+      "version": "0.26.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/hickory-resolver-0.26.1/LICENSE-APACHE",
+        "primp-native-notices/hickory-resolver-0.26.1/LICENSE-MIT"
+      ],
+      "crateSha256": "f0d58d28879ceecde6607729660c2667a081ccdc082e082675042793960f178c"
+    },
+    {
+      "name": "html2text",
+      "version": "0.16.7",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/html2text-0.16.7/LICENSE"
+      ],
+      "crateSha256": "12d23156ea4dbe6b37ad48fab2da56ff27b0f6192fb5db210c44eb07bfe6e787"
+    },
+    {
+      "name": "html5ever",
+      "version": "0.38.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/html5ever-0.38.0/LICENSE-APACHE",
+        "primp-native-notices/html5ever-0.38.0/LICENSE-MIT"
+      ],
+      "crateSha256": "1054432bae2f14e0061e33d23402fbaa67a921d319d56adc6bcf887ddad1cbc2"
+    },
+    {
+      "name": "http",
+      "version": "1.4.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/http-1.4.0/LICENSE-APACHE",
+        "primp-native-notices/http-1.4.0/LICENSE-MIT"
+      ],
+      "crateSha256": "e3ba2a386d7f85a81f119ad7498ebe444d2e22c2af0b86b069416ace48b3311a"
+    },
+    {
+      "name": "http-body",
+      "version": "1.0.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/http-body-1.0.1/LICENSE"
+      ],
+      "crateSha256": "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
+    },
+    {
+      "name": "http-body-util",
+      "version": "0.1.3",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/http-body-util-0.1.3/LICENSE"
+      ],
+      "crateSha256": "b021d93e26becf5dc7e1b75b1bed1fd93124b374ceb73f43d4d4eafec896a64a"
+    },
+    {
+      "name": "httparse",
+      "version": "1.10.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/httparse-1.10.1/LICENSE-APACHE",
+        "primp-native-notices/httparse-1.10.1/LICENSE-MIT"
+      ],
+      "crateSha256": "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+    },
+    {
+      "name": "icu_collections",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_collections-2.2.0/LICENSE"
+      ],
+      "crateSha256": "2984d1cd16c883d7935b9e07e44071dca8d917fd52ecc02c04d5fa0b5a3f191c"
+    },
+    {
+      "name": "icu_locale_core",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_locale_core-2.2.0/LICENSE"
+      ],
+      "crateSha256": "92219b62b3e2b4d88ac5119f8904c10f8f61bf7e95b640d25ba3075e6cac2c29"
+    },
+    {
+      "name": "icu_normalizer",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_normalizer-2.2.0/LICENSE"
+      ],
+      "crateSha256": "c56e5ee99d6e3d33bd91c5d85458b6005a22140021cc324cea84dd0e72cff3b4"
+    },
+    {
+      "name": "icu_normalizer_data",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_normalizer_data-2.2.0/LICENSE"
+      ],
+      "crateSha256": "da3be0ae77ea334f4da67c12f149704f19f81d1adf7c51cf482943e84a2bad38"
+    },
+    {
+      "name": "icu_properties",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_properties-2.2.0/LICENSE"
+      ],
+      "crateSha256": "bee3b67d0ea5c2cca5003417989af8996f8604e34fb9ddf96208a033901e70de"
+    },
+    {
+      "name": "icu_properties_data",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_properties_data-2.2.0/LICENSE"
+      ],
+      "crateSha256": "8e2bbb201e0c04f7b4b3e14382af113e17ba4f63e2c9d2ee626b720cbce54a14"
+    },
+    {
+      "name": "icu_provider",
+      "version": "2.2.0",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/icu_provider-2.2.0/LICENSE"
+      ],
+      "crateSha256": "139c4cf31c8b5f33d7e199446eff9c1e02decfc2f0eec2c8d71f65befa45b421"
+    },
+    {
+      "name": "idna",
+      "version": "1.1.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/idna-1.1.0/LICENSE-APACHE",
+        "primp-native-notices/idna-1.1.0/LICENSE-MIT"
+      ],
+      "crateSha256": "3b0875f23caa03898994f6ddc501886a45c7d3d62d04d2d90788d47be1b1e4de"
+    },
+    {
+      "name": "idna_adapter",
+      "version": "1.2.2",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/idna_adapter-1.2.2/LICENSE-APACHE",
+        "primp-native-notices/idna_adapter-1.2.2/LICENSE-MIT"
+      ],
+      "crateSha256": "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
+    },
+    {
+      "name": "indexmap",
+      "version": "2.14.0",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/indexmap-2.14.0/LICENSE-APACHE",
+        "primp-native-notices/indexmap-2.14.0/LICENSE-MIT"
+      ],
+      "crateSha256": "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
+    },
+    {
+      "name": "inventory",
+      "version": "0.3.24",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/inventory-0.3.24/LICENSE-APACHE",
+        "primp-native-notices/inventory-0.3.24/LICENSE-MIT"
+      ],
+      "crateSha256": "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+    },
+    {
+      "name": "ipconfig",
+      "version": "0.3.4",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/ipconfig-0.3.4/LICENSE-APACHE",
+        "primp-native-notices/ipconfig-0.3.4/LICENSE-MIT"
+      ],
+      "crateSha256": "4d40460c0ce33d6ce4b0630ad68ff63d6661961c48b6dba35e5a4d81cfb48222"
+    },
+    {
+      "name": "ipnet",
+      "version": "2.12.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/ipnet-2.12.0/LICENSE-APACHE",
+        "primp-native-notices/ipnet-2.12.0/LICENSE-MIT"
+      ],
+      "crateSha256": "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/itoa-1.0.18/LICENSE-APACHE",
+        "primp-native-notices/itoa-1.0.18/LICENSE-MIT"
+      ],
+      "crateSha256": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.186",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/libc-0.2.186/LICENSE-APACHE",
+        "primp-native-notices/libc-0.2.186/LICENSE-MIT"
+      ],
+      "crateSha256": "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+    },
+    {
+      "name": "litemap",
+      "version": "0.8.2",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/litemap-0.8.2/LICENSE"
+      ],
+      "crateSha256": "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
+    },
+    {
+      "name": "litrs",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/litrs-1.0.0/LICENSE-APACHE",
+        "primp-native-notices/litrs-1.0.0/LICENSE-MIT"
+      ],
+      "crateSha256": "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
+    },
+    {
+      "name": "lock_api",
+      "version": "0.4.14",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/lock_api-0.4.14/LICENSE-APACHE",
+        "primp-native-notices/lock_api-0.4.14/LICENSE-MIT"
+      ],
+      "crateSha256": "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
+    },
+    {
+      "name": "log",
+      "version": "0.4.29",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/log-0.4.29/LICENSE-APACHE",
+        "primp-native-notices/log-0.4.29/LICENSE-MIT"
+      ],
+      "crateSha256": "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+    },
+    {
+      "name": "markup5ever",
+      "version": "0.38.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/markup5ever-0.38.0/LICENSE-APACHE",
+        "primp-native-notices/markup5ever-0.38.0/LICENSE-MIT"
+      ],
+      "crateSha256": "8983d30f2915feeaaab2d6babdd6bc7e9ed1a00b66b5e6d74df19aa9c0e91862"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.0",
+      "declaredLicense": "Unlicense OR MIT",
+      "files": [
+        "primp-native-notices/memchr-2.8.0/COPYING",
+        "primp-native-notices/memchr-2.8.0/LICENSE-MIT"
+      ],
+      "crateSha256": "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
+    },
+    {
+      "name": "mime",
+      "version": "0.3.17",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/mime-0.3.17/LICENSE-APACHE",
+        "primp-native-notices/mime-0.3.17/LICENSE-MIT"
+      ],
+      "crateSha256": "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+    },
+    {
+      "name": "mime_guess",
+      "version": "2.0.5",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/mime_guess-2.0.5/LICENSE"
+      ],
+      "crateSha256": "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.8.9",
+      "declaredLicense": "MIT OR Zlib OR Apache-2.0",
+      "files": [
+        "primp-native-notices/miniz_oxide-0.8.9/LICENSE",
+        "primp-native-notices/miniz_oxide-0.8.9/LICENSE-APACHE.md",
+        "primp-native-notices/miniz_oxide-0.8.9/LICENSE-MIT.md",
+        "primp-native-notices/miniz_oxide-0.8.9/LICENSE-ZLIB.md"
+      ],
+      "crateSha256": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
+    },
+    {
+      "name": "mio",
+      "version": "1.2.0",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/mio-1.2.0/LICENSE"
+      ],
+      "crateSha256": "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
+    },
+    {
+      "name": "moka",
+      "version": "0.12.15",
+      "declaredLicense": "(MIT OR Apache-2.0) AND Apache-2.0",
+      "files": [
+        "primp-native-notices/moka-0.12.15/LICENSE-APACHE",
+        "primp-native-notices/moka-0.12.15/LICENSE-MIT",
+        "primp-native-notices/moka-0.12.15/NOTICE"
+      ],
+      "crateSha256": "957228ad12042ee839f93c8f257b62b4c0ab5eaae1d4fa60de53b27c9d7c5046"
+    },
+    {
+      "name": "new_debug_unreachable",
+      "version": "1.0.6",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/new_debug_unreachable-1.0.6/LICENSE-MIT"
+      ],
+      "crateSha256": "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+    },
+    {
+      "name": "num-conv",
+      "version": "0.2.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/num-conv-0.2.2/LICENSE-Apache",
+        "primp-native-notices/num-conv-0.2.2/LICENSE-MIT"
+      ],
+      "crateSha256": "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/num-traits-0.2.19/LICENSE-APACHE",
+        "primp-native-notices/num-traits-0.2.19/LICENSE-MIT"
+      ],
+      "crateSha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/once_cell-1.21.4/LICENSE-APACHE",
+        "primp-native-notices/once_cell-1.21.4/LICENSE-MIT"
+      ],
+      "crateSha256": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+    },
+    {
+      "name": "parking_lot",
+      "version": "0.12.5",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/parking_lot-0.12.5/LICENSE-APACHE",
+        "primp-native-notices/parking_lot-0.12.5/LICENSE-MIT"
+      ],
+      "crateSha256": "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
+    },
+    {
+      "name": "parking_lot_core",
+      "version": "0.9.12",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/parking_lot_core-0.9.12/LICENSE-APACHE",
+        "primp-native-notices/parking_lot_core-0.9.12/LICENSE-MIT"
+      ],
+      "crateSha256": "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
+    },
+    {
+      "name": "percent-encoding",
+      "version": "2.3.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/percent-encoding-2.3.2/LICENSE-APACHE",
+        "primp-native-notices/percent-encoding-2.3.2/LICENSE-MIT"
+      ],
+      "crateSha256": "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+    },
+    {
+      "name": "phf",
+      "version": "0.13.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/phf-0.13.1/LICENSE"
+      ],
+      "crateSha256": "c1562dc717473dbaa4c1f85a36410e03c047b2e7df7f45ee938fbef64ae7fadf"
+    },
+    {
+      "name": "phf_shared",
+      "version": "0.13.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/phf_shared-0.13.1/LICENSE"
+      ],
+      "crateSha256": "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/pin-project-lite-0.2.17/LICENSE-APACHE",
+        "primp-native-notices/pin-project-lite-0.2.17/LICENSE-MIT"
+      ],
+      "crateSha256": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+    },
+    {
+      "name": "portable-atomic",
+      "version": "1.13.1",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/portable-atomic-1.13.1/LICENSE-APACHE",
+        "primp-native-notices/portable-atomic-1.13.1/LICENSE-MIT"
+      ],
+      "crateSha256": "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
+    },
+    {
+      "name": "potential_utf",
+      "version": "0.1.5",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/potential_utf-0.1.5/LICENSE"
+      ],
+      "crateSha256": "0103b1cef7ec0cf76490e969665504990193874ea05c85ff9bab8b911d0a0564"
+    },
+    {
+      "name": "powerfmt",
+      "version": "0.2.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/powerfmt-0.2.0/LICENSE-Apache",
+        "primp-native-notices/powerfmt-0.2.0/LICENSE-MIT"
+      ],
+      "crateSha256": "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+    },
+    {
+      "name": "precomputed-hash",
+      "version": "0.1.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/precomputed-hash-0.1.1/LICENSE"
+      ],
+      "crateSha256": "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+    },
+    {
+      "name": "prefix-trie",
+      "version": "0.8.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/prefix-trie-0.8.4/LICENSE-APACHE",
+        "primp-native-notices/prefix-trie-0.8.4/LICENSE-MIT"
+      ],
+      "crateSha256": "4cf6e3177f0684016a5c209b00882e15f8bdd3f3bb48f0491df10cd102d0c6e7"
+    },
+    {
+      "name": "primp",
+      "version": "1.3.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/primp-1.3.1/LICENSE-MIT"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-h2",
+      "version": "0.4.15",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/primp-h2-0.4.15/LICENSE"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-hyper",
+      "version": "1.9.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/primp-hyper-1.9.1/LICENSE"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-hyper-rustls",
+      "version": "0.27.9",
+      "declaredLicense": "Apache-2.0 OR ISC OR MIT",
+      "files": [
+        "primp-native-notices/primp-hyper-rustls-0.27.9/LICENSE-APACHE",
+        "primp-native-notices/primp-hyper-rustls-0.27.9/LICENSE-MIT"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-hyper-util",
+      "version": "0.1.22",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/primp-hyper-util-0.1.22/LICENSE"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-python",
+      "version": "1.3.1",
+      "declaredLicense": null,
+      "files": [
+        "primp-native-notices/primp-python-1.3.1/LICENSE"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-reqwest",
+      "version": "0.13.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/primp-reqwest-0.13.4/LICENSE-APACHE",
+        "primp-native-notices/primp-reqwest-0.13.4/LICENSE-MIT"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-rustls",
+      "version": "0.23.40",
+      "declaredLicense": "Apache-2.0 OR ISC OR MIT",
+      "files": [
+        "primp-native-notices/primp-rustls-0.23.40/LICENSE",
+        "primp-native-notices/primp-rustls-0.23.40/LICENSE-APACHE",
+        "primp-native-notices/primp-rustls-0.23.40/LICENSE-ISC",
+        "primp-native-notices/primp-rustls-0.23.40/LICENSE-MIT"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "primp-tokio-rustls",
+      "version": "0.26.5",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/primp-tokio-rustls-0.26.5/LICENSE-APACHE",
+        "primp-native-notices/primp-tokio-rustls-0.26.5/LICENSE-MIT"
+      ],
+      "crateSha256": null
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.106",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/proc-macro2-1.0.106/LICENSE-APACHE",
+        "primp-native-notices/proc-macro2-1.0.106/LICENSE-MIT"
+      ],
+      "crateSha256": "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+    },
+    {
+      "name": "psl-types",
+      "version": "2.0.11",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/psl-types-2.0.11/LICENSE",
+        "primp-native-notices/psl-types-2.0.11/LICENSE-APACHE"
+      ],
+      "crateSha256": "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
+    },
+    {
+      "name": "publicsuffix",
+      "version": "2.3.0",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/publicsuffix-2.3.0/LICENSE",
+        "primp-native-notices/publicsuffix-2.3.0/LICENSE-APACHE"
+      ],
+      "crateSha256": "6f42ea446cab60335f76979ec15e12619a2165b5ae2c12166bef27d283a9fadf"
+    },
+    {
+      "name": "pyo3",
+      "version": "0.28.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/pyo3-0.28.3/LICENSE-APACHE",
+        "primp-native-notices/pyo3-0.28.3/LICENSE-MIT",
+        "primp-native-notices/pyo3-0.28.3/pyo3-runtime/LICENSE-APACHE",
+        "primp-native-notices/pyo3-0.28.3/pyo3-runtime/LICENSE-MIT"
+      ],
+      "crateSha256": "91fd8e38a3b50ed1167fb981cd6fd60147e091784c427b8f7183a7ee32c31c12"
+    },
+    {
+      "name": "pyo3-async-runtimes",
+      "version": "0.28.0",
+      "declaredLicense": "Apache-2.0",
+      "files": [
+        "primp-native-notices/pyo3-async-runtimes-0.28.0/LICENSE"
+      ],
+      "crateSha256": "9e7364a95bf00e8377bbf9b0f09d7ff9715a29d8fcf93b47d1a967363b973178"
+    },
+    {
+      "name": "pyo3-build-config",
+      "version": "0.28.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/pyo3-build-config-0.28.3/LICENSE-APACHE",
+        "primp-native-notices/pyo3-build-config-0.28.3/LICENSE-MIT"
+      ],
+      "crateSha256": "e368e7ddfdeb98c9bca7f8383be1648fd84ab466bf2bc015e94008db6d35611e"
+    },
+    {
+      "name": "pyo3-ffi",
+      "version": "0.28.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/pyo3-ffi-0.28.3/LICENSE-APACHE",
+        "primp-native-notices/pyo3-ffi-0.28.3/LICENSE-MIT"
+      ],
+      "crateSha256": "7f29e10af80b1f7ccaf7f69eace800a03ecd13e883acfacc1e5d0988605f651e"
+    },
+    {
+      "name": "pyo3-log",
+      "version": "0.13.3",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/pyo3-log-0.13.3/LICENSE-APACHE",
+        "primp-native-notices/pyo3-log-0.13.3/LICENSE-MIT"
+      ],
+      "crateSha256": "26c2ec80932c5c3b2d4fbc578c9b56b2d4502098587edb8bef5b6bfcad43682e"
+    },
+    {
+      "name": "pyo3-macros",
+      "version": "0.28.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/pyo3-macros-0.28.3/LICENSE-APACHE",
+        "primp-native-notices/pyo3-macros-0.28.3/LICENSE-MIT"
+      ],
+      "crateSha256": "df6e520eff47c45997d2fc7dd8214b25dd1310918bbb2642156ef66a67f29813"
+    },
+    {
+      "name": "pyo3-macros-backend",
+      "version": "0.28.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/pyo3-macros-backend-0.28.3/LICENSE-APACHE",
+        "primp-native-notices/pyo3-macros-backend-0.28.3/LICENSE-MIT"
+      ],
+      "crateSha256": "c4cdc218d835738f81c2338f822078af45b4afdf8b2e33cbb5916f108b813acb"
+    },
+    {
+      "name": "pythonize",
+      "version": "0.28.0",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/pythonize-0.28.0/LICENSE"
+      ],
+      "crateSha256": "0b79f670c9626c8b651c0581011b57b6ba6970bb69faf01a7c4c0cfc81c43f95"
+    },
+    {
+      "name": "quote",
+      "version": "1.0.45",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/quote-1.0.45/LICENSE-APACHE",
+        "primp-native-notices/quote-1.0.45/LICENSE-MIT"
+      ],
+      "crateSha256": "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+    },
+    {
+      "name": "rand",
+      "version": "0.10.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/rand-0.10.1/COPYRIGHT",
+        "primp-native-notices/rand-0.10.1/LICENSE-APACHE",
+        "primp-native-notices/rand-0.10.1/LICENSE-MIT"
+      ],
+      "crateSha256": "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
+    },
+    {
+      "name": "rand_core",
+      "version": "0.10.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/rand_core-0.10.1/COPYRIGHT",
+        "primp-native-notices/rand_core-0.10.1/LICENSE-APACHE",
+        "primp-native-notices/rand_core-0.10.1/LICENSE-MIT"
+      ],
+      "crateSha256": "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
+    },
+    {
+      "name": "resolv-conf",
+      "version": "0.7.6",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/resolv-conf-0.7.6/LICENSE-APACHE",
+        "primp-native-notices/resolv-conf-0.7.6/LICENSE-MIT"
+      ],
+      "crateSha256": "1e061d1b48cb8d38042de4ae0a7a6401009d6143dc80d2e2d6f31f0bdd6470c7"
+    },
+    {
+      "name": "rustls",
+      "version": "0.23.40",
+      "declaredLicense": "Apache-2.0 OR ISC OR MIT",
+      "files": [
+        "primp-native-notices/rustls-0.23.40/LICENSE-APACHE",
+        "primp-native-notices/rustls-0.23.40/LICENSE-ISC",
+        "primp-native-notices/rustls-0.23.40/LICENSE-MIT"
+      ],
+      "crateSha256": "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
+    },
+    {
+      "name": "rustls-native-certs",
+      "version": "0.8.3",
+      "declaredLicense": "Apache-2.0 OR ISC OR MIT",
+      "files": [
+        "primp-native-notices/rustls-native-certs-0.8.3/LICENSE",
+        "primp-native-notices/rustls-native-certs-0.8.3/LICENSE-APACHE",
+        "primp-native-notices/rustls-native-certs-0.8.3/LICENSE-ISC",
+        "primp-native-notices/rustls-native-certs-0.8.3/LICENSE-MIT"
+      ],
+      "crateSha256": "612460d5f7bea540c490b2b6395d8e34a953e52b491accd6c86c8164c5932a63"
+    },
+    {
+      "name": "rustls-pki-types",
+      "version": "1.14.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/rustls-pki-types-1.14.1/LICENSE-APACHE",
+        "primp-native-notices/rustls-pki-types-1.14.1/LICENSE-MIT"
+      ],
+      "crateSha256": "30a7197ae7eb376e574fe940d068c30fe0462554a3ddbe4eca7838e049c937a9"
+    },
+    {
+      "name": "rustls-webpki",
+      "version": "0.103.13",
+      "declaredLicense": "ISC",
+      "files": [
+        "primp-native-notices/rustls-webpki-0.103.13/LICENSE"
+      ],
+      "crateSha256": "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.22",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/rustversion-1.0.22/LICENSE-APACHE",
+        "primp-native-notices/rustversion-1.0.22/LICENSE-MIT"
+      ],
+      "crateSha256": "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+    },
+    {
+      "name": "ryu",
+      "version": "1.0.23",
+      "declaredLicense": "Apache-2.0 OR BSL-1.0",
+      "files": [
+        "primp-native-notices/ryu-1.0.23/LICENSE-APACHE",
+        "primp-native-notices/ryu-1.0.23/LICENSE-BOOST"
+      ],
+      "crateSha256": "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+    },
+    {
+      "name": "schannel",
+      "version": "0.1.29",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/schannel-0.1.29/LICENSE.md"
+      ],
+      "crateSha256": "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
+    },
+    {
+      "name": "scopeguard",
+      "version": "1.2.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/scopeguard-1.2.0/LICENSE-APACHE",
+        "primp-native-notices/scopeguard-1.2.0/LICENSE-MIT"
+      ],
+      "crateSha256": "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.228",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/serde-1.0.228/LICENSE-APACHE",
+        "primp-native-notices/serde-1.0.228/LICENSE-MIT"
+      ],
+      "crateSha256": "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.228",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/serde_core-1.0.228/LICENSE-APACHE",
+        "primp-native-notices/serde_core-1.0.228/LICENSE-MIT"
+      ],
+      "crateSha256": "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.228",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/serde_derive-1.0.228/LICENSE-APACHE",
+        "primp-native-notices/serde_derive-1.0.228/LICENSE-MIT"
+      ],
+      "crateSha256": "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.149",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/serde_json-1.0.149/LICENSE-APACHE",
+        "primp-native-notices/serde_json-1.0.149/LICENSE-MIT"
+      ],
+      "crateSha256": "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+    },
+    {
+      "name": "serde_urlencoded",
+      "version": "0.7.1",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/serde_urlencoded-0.7.1/LICENSE-APACHE",
+        "primp-native-notices/serde_urlencoded-0.7.1/LICENSE-MIT"
+      ],
+      "crateSha256": "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
+    },
+    {
+      "name": "simd-adler32",
+      "version": "0.3.9",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/simd-adler32-0.3.9/LICENSE.md"
+      ],
+      "crateSha256": "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
+    },
+    {
+      "name": "siphasher",
+      "version": "1.0.3",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/siphasher-1.0.3/COPYING"
+      ],
+      "crateSha256": "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/slab-0.4.12/LICENSE"
+      ],
+      "crateSha256": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+    },
+    {
+      "name": "smallvec",
+      "version": "1.15.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/smallvec-1.15.1/LICENSE-APACHE",
+        "primp-native-notices/smallvec-1.15.1/LICENSE-MIT"
+      ],
+      "crateSha256": "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+    },
+    {
+      "name": "socket2",
+      "version": "0.6.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/socket2-0.6.3/LICENSE-APACHE",
+        "primp-native-notices/socket2-0.6.3/LICENSE-MIT"
+      ],
+      "crateSha256": "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
+    },
+    {
+      "name": "stable_deref_trait",
+      "version": "1.2.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/stable_deref_trait-1.2.1/LICENSE-APACHE",
+        "primp-native-notices/stable_deref_trait-1.2.1/LICENSE-MIT"
+      ],
+      "crateSha256": "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+    },
+    {
+      "name": "string_cache",
+      "version": "0.9.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/string_cache-0.9.0/LICENSE-APACHE",
+        "primp-native-notices/string_cache-0.9.0/LICENSE-MIT"
+      ],
+      "crateSha256": "a18596f8c785a729f2819c0f6a7eae6ebeebdfffbfe4214ae6b087f690e31901"
+    },
+    {
+      "name": "subtle",
+      "version": "2.6.1",
+      "declaredLicense": "BSD-3-Clause",
+      "files": [
+        "primp-native-notices/subtle-2.6.1/LICENSE"
+      ],
+      "crateSha256": "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+    },
+    {
+      "name": "syn",
+      "version": "2.0.117",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/syn-2.0.117/LICENSE-APACHE",
+        "primp-native-notices/syn-2.0.117/LICENSE-MIT"
+      ],
+      "crateSha256": "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+    },
+    {
+      "name": "sync_wrapper",
+      "version": "1.0.2",
+      "declaredLicense": "Apache-2.0",
+      "files": [
+        "primp-native-notices/sync_wrapper-1.0.2/LICENSE"
+      ],
+      "crateSha256": "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
+    },
+    {
+      "name": "synstructure",
+      "version": "0.13.2",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/synstructure-0.13.2/LICENSE"
+      ],
+      "crateSha256": "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
+    },
+    {
+      "name": "tagptr",
+      "version": "0.2.0",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/tagptr-0.2.0/LICENSE-APACHE",
+        "primp-native-notices/tagptr-0.2.0/LICENSE-MIT"
+      ],
+      "crateSha256": "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
+    },
+    {
+      "name": "target-lexicon",
+      "version": "0.13.5",
+      "declaredLicense": "Apache-2.0 WITH LLVM-exception",
+      "files": [
+        "primp-native-notices/target-lexicon-0.13.5/LICENSE"
+      ],
+      "crateSha256": "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+    },
+    {
+      "name": "tendril",
+      "version": "0.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/tendril-0.5.0/LICENSE-APACHE",
+        "primp-native-notices/tendril-0.5.0/LICENSE-MIT"
+      ],
+      "crateSha256": "c4790fc369d5a530f4b544b094e31388b9b3a37c0f4652ade4505945f5660d24"
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.18",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/thiserror-2.0.18/LICENSE-APACHE",
+        "primp-native-notices/thiserror-2.0.18/LICENSE-MIT"
+      ],
+      "crateSha256": "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.18",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/thiserror-impl-2.0.18/LICENSE-APACHE",
+        "primp-native-notices/thiserror-impl-2.0.18/LICENSE-MIT"
+      ],
+      "crateSha256": "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
+    },
+    {
+      "name": "time",
+      "version": "0.3.47",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/time-0.3.47/LICENSE-Apache",
+        "primp-native-notices/time-0.3.47/LICENSE-MIT"
+      ],
+      "crateSha256": "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
+    },
+    {
+      "name": "time-core",
+      "version": "0.1.8",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/time-core-0.1.8/LICENSE-Apache",
+        "primp-native-notices/time-core-0.1.8/LICENSE-MIT"
+      ],
+      "crateSha256": "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
+    },
+    {
+      "name": "time-macros",
+      "version": "0.2.27",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/time-macros-0.2.27/LICENSE-Apache",
+        "primp-native-notices/time-macros-0.2.27/LICENSE-MIT"
+      ],
+      "crateSha256": "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
+    },
+    {
+      "name": "tinystr",
+      "version": "0.8.3",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/tinystr-0.8.3/LICENSE"
+      ],
+      "crateSha256": "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
+    },
+    {
+      "name": "tinyvec",
+      "version": "1.11.0",
+      "declaredLicense": "Zlib OR Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/tinyvec-1.11.0/LICENSE-APACHE.md",
+        "primp-native-notices/tinyvec-1.11.0/LICENSE-MIT.md",
+        "primp-native-notices/tinyvec-1.11.0/LICENSE-ZLIB.md"
+      ],
+      "crateSha256": "3e61e67053d25a4e82c844e8424039d9745781b3fc4f32b8d55ed50f5f667ef3"
+    },
+    {
+      "name": "tinyvec_macros",
+      "version": "0.1.1",
+      "declaredLicense": "MIT OR Apache-2.0 OR Zlib",
+      "files": [
+        "primp-native-notices/tinyvec_macros-0.1.1/LICENSE-APACHE.md",
+        "primp-native-notices/tinyvec_macros-0.1.1/LICENSE-MIT.md",
+        "primp-native-notices/tinyvec_macros-0.1.1/LICENSE-ZLIB.md"
+      ],
+      "crateSha256": "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+    },
+    {
+      "name": "tokio",
+      "version": "1.52.3",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tokio-1.52.3/LICENSE"
+      ],
+      "crateSha256": "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
+    },
+    {
+      "name": "tokio-macros",
+      "version": "2.7.0",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tokio-macros-2.7.0/LICENSE"
+      ],
+      "crateSha256": "385a6cb71ab9ab790c5fe8d67f1645e6c450a7ce006a33de03daa956cf70a496"
+    },
+    {
+      "name": "tokio-rustls",
+      "version": "0.26.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/tokio-rustls-0.26.4/LICENSE-APACHE",
+        "primp-native-notices/tokio-rustls-0.26.4/LICENSE-MIT"
+      ],
+      "crateSha256": "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
+    },
+    {
+      "name": "tokio-util",
+      "version": "0.7.18",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tokio-util-0.7.18/LICENSE"
+      ],
+      "crateSha256": "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
+    },
+    {
+      "name": "tower",
+      "version": "0.5.3",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tower-0.5.3/LICENSE"
+      ],
+      "crateSha256": "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
+    },
+    {
+      "name": "tower-http",
+      "version": "0.6.11",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tower-http-0.6.11/LICENSE"
+      ],
+      "crateSha256": "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
+    },
+    {
+      "name": "tower-layer",
+      "version": "0.3.3",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tower-layer-0.3.3/LICENSE"
+      ],
+      "crateSha256": "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
+    },
+    {
+      "name": "tower-service",
+      "version": "0.3.3",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tower-service-0.3.3/LICENSE"
+      ],
+      "crateSha256": "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tracing-0.1.44/LICENSE"
+      ],
+      "crateSha256": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
+    },
+    {
+      "name": "tracing-attributes",
+      "version": "0.1.31",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tracing-attributes-0.1.31/LICENSE"
+      ],
+      "crateSha256": "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
+    },
+    {
+      "name": "tracing-core",
+      "version": "0.1.36",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/tracing-core-0.1.36/LICENSE",
+        "primp-native-notices/tracing-core-0.1.36/src/spin/LICENSE"
+      ],
+      "crateSha256": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+    },
+    {
+      "name": "try-lock",
+      "version": "0.2.5",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/try-lock-0.2.5/LICENSE"
+      ],
+      "crateSha256": "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+    },
+    {
+      "name": "unicase",
+      "version": "2.9.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/unicase-2.9.0/LICENSE-APACHE",
+        "primp-native-notices/unicase-2.9.0/LICENSE-MIT"
+      ],
+      "crateSha256": "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.24",
+      "declaredLicense": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "files": [
+        "primp-native-notices/unicode-ident-1.0.24/LICENSE-APACHE",
+        "primp-native-notices/unicode-ident-1.0.24/LICENSE-MIT",
+        "primp-native-notices/unicode-ident-1.0.24/LICENSE-UNICODE"
+      ],
+      "crateSha256": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+    },
+    {
+      "name": "unicode-width",
+      "version": "0.2.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/unicode-width-0.2.2/COPYRIGHT",
+        "primp-native-notices/unicode-width-0.2.2/LICENSE-APACHE",
+        "primp-native-notices/unicode-width-0.2.2/LICENSE-MIT"
+      ],
+      "crateSha256": "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+    },
+    {
+      "name": "untrusted",
+      "version": "0.7.1",
+      "declaredLicense": "ISC",
+      "files": [
+        "primp-native-notices/untrusted-0.7.1/LICENSE.txt"
+      ],
+      "crateSha256": "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+    },
+    {
+      "name": "untrusted",
+      "version": "0.9.0",
+      "declaredLicense": "ISC",
+      "files": [
+        "primp-native-notices/untrusted-0.9.0/LICENSE.txt"
+      ],
+      "crateSha256": "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+    },
+    {
+      "name": "url",
+      "version": "2.5.8",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/url-2.5.8/LICENSE-APACHE",
+        "primp-native-notices/url-2.5.8/LICENSE-MIT"
+      ],
+      "crateSha256": "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+    },
+    {
+      "name": "utf-8",
+      "version": "0.7.6",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/utf-8-0.7.6/LICENSE-APACHE",
+        "primp-native-notices/utf-8-0.7.6/LICENSE-MIT"
+      ],
+      "crateSha256": "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+    },
+    {
+      "name": "utf8_iter",
+      "version": "1.0.4",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/utf8_iter-1.0.4/COPYRIGHT",
+        "primp-native-notices/utf8_iter-1.0.4/LICENSE-APACHE",
+        "primp-native-notices/utf8_iter-1.0.4/LICENSE-MIT"
+      ],
+      "crateSha256": "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+    },
+    {
+      "name": "uuid",
+      "version": "1.23.1",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/uuid-1.23.1/LICENSE-APACHE",
+        "primp-native-notices/uuid-1.23.1/LICENSE-MIT"
+      ],
+      "crateSha256": "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
+    },
+    {
+      "name": "want",
+      "version": "0.3.1",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/want-0.3.1/LICENSE"
+      ],
+      "crateSha256": "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e"
+    },
+    {
+      "name": "web_atoms",
+      "version": "0.2.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/web_atoms-0.2.4/LICENSE-APACHE",
+        "primp-native-notices/web_atoms-0.2.4/LICENSE-MIT"
+      ],
+      "crateSha256": "d7cff6eef815df1834fd250e3a2ff436044d82a9f1bc1980ca1dbdf07effc538"
+    },
+    {
+      "name": "webpki-roots",
+      "version": "1.0.7",
+      "declaredLicense": "CDLA-Permissive-2.0",
+      "files": [
+        "primp-native-notices/webpki-roots-1.0.7/LICENSE"
+      ],
+      "crateSha256": "52f5ee44c96cf55f1b349600768e3ece3a8f26010c05265ab73f945bb1a2eb9d"
+    },
+    {
+      "name": "widestring",
+      "version": "1.2.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/widestring-1.2.1/LICENSE-APACHE",
+        "primp-native-notices/widestring-1.2.1/LICENSE-MIT"
+      ],
+      "crateSha256": "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/windows-link-0.2.1/license-apache-2.0",
+        "primp-native-notices/windows-link-0.2.1/license-mit"
+      ],
+      "crateSha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+    },
+    {
+      "name": "windows-registry",
+      "version": "0.6.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/windows-registry-0.6.1/license-apache-2.0",
+        "primp-native-notices/windows-registry-0.6.1/license-mit"
+      ],
+      "crateSha256": "02752bf7fbdcce7f2a27a742f798510f3e5ad88dbe84871e5168e2120c3d5720"
+    },
+    {
+      "name": "windows-result",
+      "version": "0.4.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/windows-result-0.4.1/license-apache-2.0",
+        "primp-native-notices/windows-result-0.4.1/license-mit"
+      ],
+      "crateSha256": "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.5.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/windows-strings-0.5.1/license-apache-2.0",
+        "primp-native-notices/windows-strings-0.5.1/license-mit"
+      ],
+      "crateSha256": "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/windows-sys-0.61.2/license-apache-2.0",
+        "primp-native-notices/windows-sys-0.61.2/license-mit"
+      ],
+      "crateSha256": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
+    },
+    {
+      "name": "writeable",
+      "version": "0.6.3",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/writeable-0.6.3/LICENSE"
+      ],
+      "crateSha256": "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+    },
+    {
+      "name": "yoke",
+      "version": "0.8.2",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/yoke-0.8.2/LICENSE"
+      ],
+      "crateSha256": "abe8c5fda708d9ca3df187cae8bfb9ceda00dd96231bed36e445a1a48e66f9ca"
+    },
+    {
+      "name": "yoke-derive",
+      "version": "0.8.2",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/yoke-derive-0.8.2/LICENSE"
+      ],
+      "crateSha256": "de844c262c8848816172cef550288e7dc6c7b7814b4ee56b3e1553f275f1858e"
+    },
+    {
+      "name": "zerofrom",
+      "version": "0.1.8",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/zerofrom-0.1.8/LICENSE"
+      ],
+      "crateSha256": "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272"
+    },
+    {
+      "name": "zerofrom-derive",
+      "version": "0.1.7",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/zerofrom-derive-0.1.7/LICENSE"
+      ],
+      "crateSha256": "11532158c46691caf0f2593ea8358fed6bbf68a0315e80aae9bd41fbade684a1"
+    },
+    {
+      "name": "zeroize",
+      "version": "1.8.2",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/zeroize-1.8.2/LICENSE-APACHE",
+        "primp-native-notices/zeroize-1.8.2/LICENSE-MIT"
+      ],
+      "crateSha256": "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
+    },
+    {
+      "name": "zeroize_derive",
+      "version": "1.4.3",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "files": [
+        "primp-native-notices/zeroize_derive-1.4.3/LICENSE-APACHE",
+        "primp-native-notices/zeroize_derive-1.4.3/LICENSE-MIT"
+      ],
+      "crateSha256": "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
+    },
+    {
+      "name": "zerotrie",
+      "version": "0.2.4",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/zerotrie-0.2.4/LICENSE"
+      ],
+      "crateSha256": "0f9152d31db0792fa83f70fb2f83148effb5c1f5b8c7686c3459e361d9bc20bf"
+    },
+    {
+      "name": "zerovec",
+      "version": "0.11.6",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/zerovec-0.11.6/LICENSE"
+      ],
+      "crateSha256": "90f911cbc359ab6af17377d242225f4d75119aec87ea711a880987b18cd7b239"
+    },
+    {
+      "name": "zerovec-derive",
+      "version": "0.11.3",
+      "declaredLicense": "Unicode-3.0",
+      "files": [
+        "primp-native-notices/zerovec-derive-0.11.3/LICENSE"
+      ],
+      "crateSha256": "625dc425cab0dca6dc3c3319506e6593dcb08a9f387ea3b284dbd52a92c40555"
+    },
+    {
+      "name": "zlib-rs",
+      "version": "0.6.3",
+      "declaredLicense": "Zlib",
+      "files": [
+        "primp-native-notices/zlib-rs-0.6.3/LICENSE"
+      ],
+      "crateSha256": "3be3d40e40a133f9c916ee3f9f4fa2d9d63435b5fbe1bfc6d9dae0aa0ada1513"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.21",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/zmij-1.0.21/LICENSE-MIT"
+      ],
+      "crateSha256": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+    },
+    {
+      "name": "zstd",
+      "version": "0.13.3",
+      "declaredLicense": "MIT",
+      "files": [
+        "primp-native-notices/zstd-0.13.3/LICENSE"
+      ],
+      "crateSha256": "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+    },
+    {
+      "name": "zstd-safe",
+      "version": "7.2.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "files": [
+        "primp-native-notices/zstd-safe-7.2.4/LICENSE",
+        "primp-native-notices/zstd-safe-7.2.4/LICENSE.Apache-2.0",
+        "primp-native-notices/zstd-safe-7.2.4/LICENSE.Mit"
+      ],
+      "crateSha256": "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+    },
+    {
+      "name": "zstd-sys",
+      "version": "2.0.16+zstd.1.5.7",
+      "declaredLicense": "MIT/Apache-2.0",
+      "files": [
+        "primp-native-notices/zstd-sys-2.0.16+zstd.1.5.7/LICENSE",
+        "primp-native-notices/zstd-sys-2.0.16+zstd.1.5.7/LICENSE.Apache-2.0",
+        "primp-native-notices/zstd-sys-2.0.16+zstd.1.5.7/LICENSE.BSD-3-Clause",
+        "primp-native-notices/zstd-sys-2.0.16+zstd.1.5.7/LICENSE.Mit",
+        "primp-native-notices/zstd-sys-2.0.16+zstd.1.5.7/zstd/COPYING",
+        "primp-native-notices/zstd-sys-2.0.16+zstd.1.5.7/zstd/LICENSE"
+      ],
+      "crateSha256": "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
+    }
+  ],
+  "resolvedSourceNoticeGaps": [
+    {
+      "name": "alloc-stdlib",
+      "version": "0.2.2",
+      "reason": "No standalone license/notice file in this source location; inspect declared license-file and workspace parent"
+    },
+    {
+      "name": "primp-python",
+      "version": "1.3.1",
+      "reason": "No standalone license/notice file in this source location; inspect declared license-file and workspace parent"
+    }
+  ],
+  "missing": []
+}

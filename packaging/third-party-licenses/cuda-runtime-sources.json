@@ -1,0 +1,69 @@
+{
+  "status": "matched",
+  "checks": [
+    {
+      "version": "12.4.5.8",
+      "archiveUrl": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-12.4.5.8-archive.zip",
+      "archiveSha256": "698140f12da055a3709eee2e022fcfe7bc8edf31f30115e3f7a5c877a9491de5",
+      "dlls": [
+        {
+          "name": "cublas64_12.dll",
+          "localSha256": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+          "upstreamSha256": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+          "matches": true
+        },
+        {
+          "name": "cublasLt64_12.dll",
+          "localSha256": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+          "upstreamSha256": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+          "matches": true
+        }
+      ],
+      "licenses": [
+        {
+          "path": "cuda-notices\\libcublas\\LICENSE",
+          "sha256": "e2c71babfd18a8e69542dd7e9ca018f9caa438094001a58e6bc4d8c999bf0d07"
+        }
+      ]
+    },
+    {
+      "version": "12.4.127",
+      "archiveUrl": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.4.127-archive.zip",
+      "archiveSha256": "6a1c32e68ee1a95ca17334691ff9ad1ffe7f352c24a083d55e4c96b8063b2bcb",
+      "dlls": [
+        {
+          "name": "cudart64_12.dll",
+          "localSha256": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+          "upstreamSha256": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+          "matches": true
+        }
+      ],
+      "licenses": [
+        {
+          "path": "cuda-notices\\cuda_cudart\\LICENSE",
+          "sha256": "e2c71babfd18a8e69542dd7e9ca018f9caa438094001a58e6bc4d8c999bf0d07"
+        }
+      ]
+    }
+  ],
+  "legalCompliance": "not_assessed",
+  "priorMismatch": {
+    "version": "12.4.99",
+    "archiveUrl": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.4.99-archive.zip",
+    "archiveSha256": "1034ca43da4afbc79f69269cc60dc081de631e1c0d229d60f045d9516409317a",
+    "dlls": [
+      {
+        "name": "cudart64_12.dll",
+        "localSha256": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+        "upstreamSha256": "f95273031fc5ea44cdb37e0a696a1b15b9d84a4ee977299a6f6e652ef4d790cf",
+        "matches": false
+      }
+    ],
+    "licenses": [
+      {
+        "path": "cuda-notices\\cuda_cudart\\LICENSE",
+        "sha256": "e2c71babfd18a8e69542dd7e9ca018f9caa438094001a58e6bc4d8c999bf0d07"
+      }
+    ]
+  }
+}

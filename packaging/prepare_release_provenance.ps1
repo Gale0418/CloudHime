@@ -67,6 +67,22 @@ try {
     if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
     & $venvPython (Join-Path $repoRoot "packaging\release_provenance.py") stage --report $report --requirements (Join-Path $repoRoot "requirements.txt") --lock (Join-Path $repoRoot "requirements-lock-win-amd64-py310.txt") --sbom $sbom --output $output
     if ($LASTEXITCODE -ne 0) { throw "Release provenance staging failed." }
+    # Keep the original wheel evidence, including unresolved gaps. Exit 1 is
+    # the collector's documented incomplete-license result, not a legal pass.
+    $licenseOutput = $output + "-dependency-licenses"
+    if (Test-Path -LiteralPath $licenseOutput) {
+        if (((Get-Item -LiteralPath $licenseOutput -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "License output must not be a reparse point."
+        }
+        # $output was already checked as a strict child of $buildRoot; adding
+        # this suffix preserves that boundary and its checked parent chain.
+        Remove-Item -LiteralPath $licenseOutput -Recurse -Force
+    }
+    & $venvPython (Join-Path $repoRoot "packaging\collect_dependency_licenses.py") --report $report --output $licenseOutput --supplement-dir (Join-Path $repoRoot "packaging\third-party-licenses")
+    if ($LASTEXITCODE -notin @(0, 1)) { throw "Dependency license evidence collection failed." }
+    if ($LASTEXITCODE -eq 1) {
+        Write-Warning "Wheel license gaps are preserved in dependency-licenses/license-manifest.json. Publication requires separate resolution."
+    }
 } finally {
     if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force }
 }

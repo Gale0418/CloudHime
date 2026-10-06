@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path, PurePath
+from runpy import run_path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 runtime_source_dir = (Path(SPECPATH) / "build" / "runtime").resolve()
+is_unused_qt_binary = run_path(
+    str(Path(SPECPATH) / "packaging" / "qt_bundle_policy.py")
+)["is_unused_qt_binary"]
 
 
 def _is_duplicate_runtime_binary(entry):
@@ -39,7 +43,7 @@ a = Analysis(
     ['CloudHime.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('dictionary.json', '.'), ('LICENSE', '.'), ('NOTICE', '.'), ('AUTHORS.md', '.'), ('BRANDING.md', '.'), ('THIRD_PARTY_NOTICES.md', '.'), ('packaging/third-party-licenses', 'third-party-licenses'), ('build\\runtime', 'runtime'), ('build\\provenance', 'provenance'), ('packaging\\runtime_manifest.py', 'packaging'), *fake_useragent_datas, *certifi_datas],
+    datas=[('assets', 'assets'), ('dictionary.json', '.'), ('LICENSE', '.'), ('NOTICE', '.'), ('AUTHORS.md', '.'), ('BRANDING.md', '.'), ('THIRD_PARTY_NOTICES.md', '.'), ('packaging/third-party-licenses', 'third-party-licenses'), ('build\\runtime', 'runtime'), ('build\\provenance', 'provenance'), ('build\\provenance-dependency-licenses', 'dependency-licenses'), ('packaging\\runtime_manifest.py', 'packaging'), *fake_useragent_datas, *certifi_datas],
     hiddenimports=['winrt.windows.foundation', 'winrt.windows.foundation.collections', 'winrt.windows.media.ocr', 'winrt.windows.globalization', 'winrt.windows.graphics.imaging', 'winrt.windows.storage.streams', 'ddgs', 'ddgs.ddgs', 'lxml.html', 'lxml.etree', *ddgs_engine_hiddenimports],
     hookspath=[],
     hooksconfig={},
@@ -52,6 +56,7 @@ a.binaries = [
     entry for entry in a.binaries
     if not _is_duplicate_runtime_binary(entry)
     and not _is_conflicting_root_icu_binary(entry)
+    and not is_unused_qt_binary(entry)
 ]
 pyz = PYZ(a.pure)
 

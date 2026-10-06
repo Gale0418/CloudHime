@@ -52,6 +52,10 @@ if ($LASTEXITCODE -ne 0) {
     throw "Release dist dependency provenance verification failed."
 }
 Write-Verbose "Dependency provenance verified."
+& $PythonPath (Join-Path $PSScriptRoot "qt_bundle_policy.py") --dist $dist
+if ($LASTEXITCODE -ne 0) {
+    throw "Release dist contains unreviewed or unused Qt add-ons."
+}
 
 $runtimeFiles = @(
     "llama-server.exe",

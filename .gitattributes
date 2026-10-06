@@ -8,3 +8,5 @@
 # Upstream license copies are authenticated as bytes in sources.json.
 /packaging/third-party-licenses/**/*.txt -text
 /packaging/third-party-licenses/**/LICENSE -text
+/packaging/third-party-licenses/qt-source-notices/** -text
+/packaging/third-party-licenses/primp-native-notices/** -text
