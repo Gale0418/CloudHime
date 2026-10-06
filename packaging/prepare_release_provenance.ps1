@@ -69,7 +69,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Release provenance staging failed." }
     # Keep the original wheel evidence, including unresolved gaps. Exit 1 is
     # the collector's documented incomplete-license result, not a legal pass.
-    $licenseOutput = $output + "-dependency-licenses"
+    $licenseOutput = $output.TrimEnd([char[]]@('\', '/')) + "-dependency-licenses"
     if (Test-Path -LiteralPath $licenseOutput) {
         if (((Get-Item -LiteralPath $licenseOutput -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
             throw "License output must not be a reparse point."
