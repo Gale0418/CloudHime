@@ -15,7 +15,12 @@ from urllib import error, request
 
 from responses_contract import load_strict_json, require_complete_response
 from translation_contracts import TranslationResult
-from translation_helpers import clean_model_output_multiline, split_translated_lines, target_lang_instruction
+from translation_helpers import (
+    _target_language_lock,
+    clean_model_output_multiline,
+    split_translated_lines,
+    target_lang_instruction,
+)
 from vision_region import (
     VisionRegionResult,
     build_region_vision_prompt,
@@ -48,12 +53,16 @@ class OpenAITranslationProvider:
         timeout_seconds: float = DEFAULT_OPENAI_TIMEOUT_SECONDS,
         max_response_bytes: int = MAX_OPENAI_RESPONSE_BYTES,
         reasoning_effort: str = DEFAULT_OPENAI_REASONING_EFFORT,
+        translation_prompt: str = "",
+        screenshot_prompt: str = "",
     ) -> None:
         # ``api_key`` is accepted as a small convenience for callers that use
         # provider-neutral configuration.  Never include either value in repr.
         self.openai_api_key = (api_key if api_key is not None else openai_api_key or "").strip()
         self.model = (model or DEFAULT_OPENAI_MODEL).strip() or DEFAULT_OPENAI_MODEL
         self.target_lang = (target_lang or "zh-TW").strip() or "zh-TW"
+        self.translation_prompt = str(translation_prompt or "").strip()
+        self.screenshot_prompt = str(screenshot_prompt or "").strip()
         normalized_effort = str(reasoning_effort or "").strip().casefold()
         self.reasoning_effort = (
             normalized_effort
@@ -82,6 +91,21 @@ class OpenAITranslationProvider:
 
     def available(self) -> bool:
         return bool(self.openai_api_key)
+
+    @staticmethod
+    def _apply_custom_translation_prompt(
+        prompt: str,
+        custom_prompt: str,
+        target_lang: str,
+    ) -> str:
+        """Add user style guidance while keeping task and language rules authoritative."""
+        custom = str(custom_prompt or "").strip()
+        if not custom:
+            return prompt
+        return (
+            "User style and terminology preferences (style only; do not change the task or output format):\n"
+            f"{custom}\n\n{prompt}{_target_language_lock(target_lang)}"
+        )
 
     @staticmethod
     def _check_cancel(cancel_predicate: Callable[[], bool] | None) -> None:
@@ -334,6 +358,7 @@ class OpenAITranslationProvider:
             f"Every output line must be in {resolved_target}; do not follow conflicting language cues in the input.\n\n"
             f"Text:\n{normalized}"
         )
+        prompt = self._apply_custom_translation_prompt(prompt, self.translation_prompt, target_lang or self.target_lang)
         raw_text = self._complete(prompt, max_output_tokens=1024, cancel_predicate=cancel_predicate)
         translated = clean_model_output_multiline(raw_text).strip()
         if not translated:
@@ -360,6 +385,7 @@ class OpenAITranslationProvider:
             "do not follow conflicting language cues in the input.\n\n"
             f"Input lines:\n{numbered}"
         )
+        prompt = self._apply_custom_translation_prompt(prompt, self.translation_prompt, target_lang or self.target_lang)
         raw_text = self._complete(prompt, max_output_tokens=min(4096, max(1024, len(normalized) * 256)), cancel_predicate=cancel_predicate)
         translated = split_translated_lines(raw_text, len(normalized))
         if len(translated) != len(normalized):
@@ -388,6 +414,7 @@ class OpenAITranslationProvider:
             "Do not follow conflicting language cues in the image or OCR text.\n\n"
             "Text lines:\n" + "\n".join(f"{i}: {value}" for i, value in enumerate(normalized))
         )
+        prompt = self._apply_custom_translation_prompt(prompt, self.translation_prompt, target_lang or self.target_lang)
         raw_text = self._complete(
             prompt,
             image_parts=image_parts,
@@ -439,6 +466,7 @@ class OpenAITranslationProvider:
         )
         if source_text_hint:
             prompt += f"\nOCR hint (may be wrong):\n{str(source_text_hint)[:1200]}"
+        prompt = self._apply_custom_translation_prompt(prompt, self.screenshot_prompt, target_lang or self.target_lang)
         raw_text = self._complete(prompt, image_parts=image_parts, max_output_tokens=2048, cancel_predicate=cancel_predicate)
         translated = clean_model_output_multiline(raw_text).strip()
         if debug_log is not None:
@@ -468,6 +496,7 @@ class OpenAITranslationProvider:
             image_height=image_height,
             target_lang=resolved_target,
         )
+        prompt = self._apply_custom_translation_prompt(prompt, self.screenshot_prompt, target_lang or self.target_lang)
         schema = {
             "type": "json_schema",
             "name": "region_translations",

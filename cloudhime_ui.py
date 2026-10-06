@@ -2001,7 +2001,9 @@ class SettingsWindowRevamp(QWidget):
         self.controller.knowledge_build_error.connect(self.on_knowledge_build_error)
         self.controller.knowledge_build_cancelled.connect(self.on_knowledge_build_cancelled)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.setMinimumSize(1400, 780)
+        # Match the compact desktop layout before child widgets negotiate
+        # their size hints; the legacy three-column form is hidden below.
+        self.setMinimumSize(760, 520)
         self.resize(1422, 800)
 
         root = QVBoxLayout(self)
@@ -3106,6 +3108,9 @@ class SettingsWindowRevamp(QWidget):
         self.btn_save.setStyleSheet(theme.jelly_button_qss("primary"))
         self.update_relief_state(self.controller.region_render_mode == REGION_RENDER_RELIEF)
         style_settings(self, theme, bg_image_path)
+        # Invalidate the full settings surface after all nested styles and
+        # effects change; native Windows may otherwise keep pixels until hover.
+        self.update()
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -5179,7 +5184,6 @@ class Controller(QWidget):
         if self.settings_window.isVisible():
             self.settings_window.on_cancel_clicked()
         else:
-            self.settings_window.show()
             try:
                 screen = self.screen().availableGeometry()
                 width = min(1120, screen.width() - 32)
@@ -5190,6 +5194,9 @@ class Controller(QWidget):
                 self.settings_window.move(x, y)
             except Exception:
                 pass
+            # Set the final geometry before the first paint. Showing first
+            # briefly lays out the stale constructor size on smaller desktops.
+            self.settings_window.show()
             try:
                 self.settings_window.sync_from_controller()
                 self.settings_window.update_theme(self.theme_mode)

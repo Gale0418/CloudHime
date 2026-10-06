@@ -14,6 +14,29 @@ def test_registry_keeps_legacy_google_key_and_default_chain():
     assert [provider.name for provider in registry.resolve_chain()] == ["gemma", "google"]
 
 
+def test_registry_wires_shared_prompts_to_all_ai_providers():
+    registry = build_translation_registry(
+        TranslationProviderRegistryConfig(
+            google_api_key="test-google-key",
+            openai_enabled=True,
+            openai_api_key="test-openai-key",
+            local_multimodal_enabled=True,
+            local_multimodal_model="local-test",
+            local_multimodal_base_url="http://127.0.0.1:8080/v1",
+            local_runtime_validated=True,
+            gemma_prompt="Keep character names.",
+            screenshot_gemma_prompt="Use image context.",
+            target_lang="ja",
+        )
+    )
+    assert registry.get("gemma").gemma_prompt == "Keep character names."
+    assert registry.get("gemma").screenshot_gemma_prompt == "Use image context."
+    assert registry.get("local_multimodal").gemma_prompt == "Keep character names."
+    assert registry.get("openai").translation_prompt == "Keep character names."
+    assert registry.get("openai").screenshot_prompt == "Use image context."
+    assert registry.get("openai").model == "gpt-6-luna"
+
+
 def test_registry_migrates_first_google_key_and_builds_two_model_states():
     registry = build_translation_registry(
         TranslationProviderRegistryConfig(

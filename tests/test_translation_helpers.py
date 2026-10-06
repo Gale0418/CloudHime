@@ -161,3 +161,45 @@ def test_japanese_screenshot_translation_accepts_japanese_scripts():
     assert result == "こんにちは、世界。"
     assert is_valid_screenshot_translation(result, target_lang="ja") is True
     assert is_valid_screenshot_translation("Hello world", target_lang="ja") is False
+
+
+def test_google_cooldown_preserves_cache_and_does_not_cache_failures(monkeypatch):
+    from collections import OrderedDict
+
+    import pytest
+    from deep_translator.exceptions import TooManyRequests
+
+    import google_translation_transport as transport
+    from translation_helpers import translate_text_google
+
+    class RateLimitedResponse:
+        status_code = 429
+        headers = {}
+        closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            self.closed = True
+
+    response = RateLimitedResponse()
+    requests_sent = []
+
+    def get(*_args, **_kwargs):
+        requests_sent.append(True)
+        return response
+
+    monkeypatch.setattr(transport.requests, "get", get)
+    monkeypatch.setattr(transport, "_cooldown_until", 0.0)
+    translators = {}
+    cache = OrderedDict([(("en", "zh-TW", "Hello"), "你好")])
+
+    with pytest.raises(TooManyRequests):
+        translate_text_google("Goodbye", translators, cache)
+    assert response.closed
+    assert translate_text_google("Hello", translators, cache) == "你好"
+    with pytest.raises(TooManyRequests):
+        translate_text_google("New sentence", translators, cache)
+    assert requests_sent == [True]
+    assert list(cache.items()) == [(("en", "zh-TW", "Hello"), "你好")]

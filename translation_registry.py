@@ -216,6 +216,8 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
                 target_lang=config.target_lang,
                 reasoning_effort=config.openai_reasoning_effort,
                 timeout_seconds=config.openai_timeout_seconds,
+                translation_prompt=config.gemma_prompt,
+                screenshot_prompt=config.screenshot_gemma_prompt,
             )
         )
     if (
@@ -231,6 +233,7 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
                 target_lang=config.target_lang,
                 enabled=True,
                 timeout_seconds=config.local_multimodal_timeout_seconds,
+                gemma_prompt=config.gemma_prompt,
             )
         )
     return TranslationProviderRegistry(providers, provider_chain=config.provider_chain)

@@ -91,6 +91,21 @@ def translation_fallback_reason(source, translated, target_lang="zh-TW"):
         return "empty"
     if not source_norm or not translated_norm:
         return ""
+    if str(target_lang or "").lower().replace("_", "-").split("-", 1)[0] == "ja":
+        source_flags = _script_flags(source)
+        translated_flags = _script_flags(translated)
+        # Chinese and Japanese share kanji. Only flag a substantial unchanged
+        # passage without kana; short names and ordinary kanji terms may stay.
+        cjk_count = len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]", source_norm))
+        if (
+            source_flags["cjk"]
+            and not source_flags["kana"]
+            and not translated_flags["kana"]
+            and cjk_count >= 12
+            and bool(re.search(r"[這們麼嗎喔]|後就|再顯示", source_norm))
+            and difflib.SequenceMatcher(None, source_norm, translated_norm).ratio() >= 0.92
+        ):
+            return "source_echo"
     if _translation_retains_source_script(translated, target_lang, source):
         return "source_script_retained"
     if _source_is_clearly_not_target(source, target_lang):

@@ -217,9 +217,15 @@ def test_translation_panel_advanced_tuning_hidden(qtbot):
     assert not panel.lbl_translate_summary.isWindow()
 
     qtbot.mouseClick(panel.btn_advanced_tuning, Qt.LeftButton)
-    assert not panel.tuning_frame.isHidden()
+    assert panel.tuning_frame.isHidden()
     assert not panel.lbl_gemma_prompt.isHidden()
     assert not panel.input_gemma_prompt.isHidden()
+
+    panel._set_provider_choice("local_gemma")
+    panel.provider_disclosures["local_gemma"].set_expanded(True)
+    panel.update_key_state(True)
+    qtbot.mouseClick(panel.btn_local_tuning, Qt.LeftButton)
+    assert not panel.tuning_frame.isHidden()
 
     assert panel.lbl_translate_summary.text() != ""
     assert "AI" in panel.lbl_translate_summary.text()

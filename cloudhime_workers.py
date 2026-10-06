@@ -1008,6 +1008,7 @@ class OCRWorker(QObject):
             )
 
             self.local_multimodal_provider.target_lang = config.target_lang
+            self.local_multimodal_provider.gemma_prompt = config.gemma_prompt
             self.local_multimodal_provider.enabled = bool(
                 config.local_multimodal_enabled or local_text_runtime_required
             )
@@ -1054,6 +1055,8 @@ class OCRWorker(QObject):
                     target_lang=config.target_lang,
                     reasoning_effort=config.openai_reasoning_effort,
                     timeout_seconds=config.openai_timeout_seconds,
+                    translation_prompt=config.gemma_prompt,
+                    screenshot_prompt=config.screenshot_gemma_prompt,
                 )
                 providers.append(self.openai_translation_provider)
             self.translation_registry = TranslationProviderRegistry(

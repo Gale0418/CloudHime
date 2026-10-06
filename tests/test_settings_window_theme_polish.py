@@ -1,5 +1,5 @@
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QScrollArea, QStackedWidget, QTabBar
 
 from CloudHime import Controller, OverlayWindow
@@ -48,8 +48,9 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
             assert f"background:{expected_surface};" in backdrop_style
             assert "background-image" not in backdrop_style
         else:
-            assert f"background-color:{expected_surface};" in backdrop_style
-            assert "border-image:url(" in backdrop_style
+            assert f"background:{expected_surface};" in backdrop_style
+            assert "border-image:url(" not in backdrop_style
+            assert not QPixmap(settings._celestial_image_path).isNull()
         assert f"color: {theme.text};" in settings.lbl_page_title.styleSheet()
         subtitle_color = theme.text if mode == "high_contrast" else ("#C5C2D7" if mode == "dark" else "#615B72")
         assert f"color: {subtitle_color};" in settings.lbl_page_subtitle.styleSheet()
@@ -87,6 +88,50 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         assert settings.lbl_relief_summary.styleSheet() == theme.pill_qss("accent")
 
     window.close_app()
+
+
+def test_theme_selection_refreshes_open_settings_without_losing_edits(qtbot, monkeypatch):
+    class PaintObserver(QObject):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.paints = 0
+
+        def eventFilter(self, watched, event):
+            if event.type() == QEvent.Paint:
+                self.paints += 1
+            return False
+
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    settings.settings_tabs.setCurrentIndex(3)
+    settings.input_knowledge_title.setText("Unsaved work title")
+    qtbot.wait(10)
+    observer = PaintObserver(settings)
+    settings.backdrop_panel.installEventFilter(observer)
+
+    for mode in ("dark", "high_contrast", "light"):
+        observer.paints = 0
+        settings.cmb_theme_mode_chip.setCurrentIndex(settings.cmb_theme_mode_chip.findData(mode))
+        qtbot.waitUntil(lambda: settings._celestial_theme.key == mode)
+        # Process queued paint requests without hover, resize, reopening, or
+        # grab(), which would itself force a redraw and conceal stale pixels.
+        qtbot.waitUntil(lambda: observer.paints > 0)
+        assert controller.theme_mode == mode
+        assert settings.cmb_theme_mode_chip.currentData() == mode
+        assert settings.settings_tabs.currentIndex() == 3
+        assert settings.input_knowledge_title.text() == "Unsaved work title"
+        assert settings.btn_save.styleSheet() == resolve_theme(mode).jelly_button_qss("primary")
+        assert settings.princess_portrait.isVisible() is (mode != "high_contrast")
+    controller.close_app()
 
 
 def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch):
@@ -158,6 +203,55 @@ def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch
     controller.close_app()  # repeated shutdown must not touch deleted Qt objects
 
 
+def test_settings_portrait_survives_compact_resize_and_theme_changes(qtbot, monkeypatch, tmp_path):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    settings.resize(780, 600)
+    settings.show()
+    qtbot.wait(20)
+
+    assert settings.width() == 780
+    assert settings.minimumSize().width() == 760
+    assert settings.princess_portrait.isVisible()
+    assert not settings.princess_portrait.grab().toImage().isNull()
+    assert settings.grab().save(str(tmp_path / "settings-compact.png"))
+    assert settings.backdrop_panel.styleSheet().find("background-image") == -1
+    colors = {
+        settings.princess_portrait.grab().toImage().pixelColor(x, y).rgba()
+        for x in range(0, settings.princess_portrait.width(), 12)
+        for y in range(0, settings.princess_portrait.height(), 12)
+    }
+    assert len(colors) > 16
+
+    footer = settings.btn_save.parentWidget()
+    for size, mode in (((1120, 760), "dark"), ((780, 600), "light"), ((1120, 760), "high_contrast")):
+        settings.resize(*size)
+        settings.update_theme(mode)
+        qtbot.wait(10)
+        assert settings.princess_portrait.isVisible() is (mode != "high_contrast")
+        assert footer.isVisible()
+        footer_corner = footer.mapTo(settings, footer.rect().bottomRight() - QPoint(1, 1))
+        assert settings.rect().contains(footer_corner)
+        if mode == "high_contrast":
+            assert "background-image" not in settings.backdrop_panel.styleSheet()
+        else:
+            assert not settings.princess_portrait.grab().toImage().isNull()
+            if size == (1120, 760):
+                assert settings.grab().save(str(tmp_path / "settings-wide.png"))
+
+    controller.close_app()
+
+
 def test_capture_prompt_toggle_sync_save_and_minimum_layout(qtbot, monkeypatch):
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
     monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
@@ -209,6 +303,13 @@ def test_capture_prompt_toggle_sync_save_and_minimum_layout(qtbot, monkeypatch):
     scroll_areas = settings.findChildren(QScrollArea)
     assert scroll_areas
     assert all(scroll.horizontalScrollBar().maximum() == 0 for scroll in scroll_areas)
+    capture_page_scroll = settings.settings_pages.widget(1)
+    capture_page_scroll.ensureWidgetVisible(prompt)
+    capture_page_scroll.verticalScrollBar().setValue(capture_page_scroll.verticalScrollBar().maximum())
+    qtbot.wait(10)
+    mapped_prompt = prompt.rect().center()
+    mapped_prompt = prompt.mapTo(capture_page_scroll.viewport(), mapped_prompt)
+    assert capture_page_scroll.viewport().rect().contains(mapped_prompt)
 
     saved_values = []
     controller.save_settings = lambda: saved_values.append(controller.screenshot_gemma_prompt) or True
@@ -352,6 +453,33 @@ def test_translation_provider_controls_remain_reachable_in_translation_page(qtbo
     center = panel.input_luna_api_key.rect().center()
     mapped = panel.input_luna_api_key.mapTo(scroll.viewport(), center)
     assert scroll.viewport().rect().contains(mapped)
+
+    panel._set_provider_choice("local_gemma")
+    panel.update_key_state(True)
+    panel.provider_disclosures["local_gemma"].set_expanded(True)
+    advanced_button = panel.btn_advanced_tuning
+    scroll.ensureWidgetVisible(advanced_button)
+    qtbot.wait(20)
+    button_center = advanced_button.mapTo(scroll.viewport(), advanced_button.rect().center())
+    assert scroll.viewport().rect().contains(button_center)
+    advanced_button.click()
+    qtbot.wait(10)
+    assert panel.input_gemma_prompt.isVisible()
+    scroll.ensureWidgetVisible(panel.input_gemma_prompt)
+    qtbot.wait(10)
+    prompt_center = panel.input_gemma_prompt.mapTo(scroll.viewport(), panel.input_gemma_prompt.rect().center())
+    assert scroll.viewport().rect().contains(prompt_center)
+    assert panel.tuning_frame.isHidden()
+    for provider_id in ("online_gemma", "luna"):
+        panel._set_provider_choice(provider_id)
+        panel.update_key_state(True)
+        assert advanced_button.isVisible()
+        assert advanced_button.isEnabled()
+        assert panel.input_gemma_prompt.isEnabled()
+        scroll.ensureWidgetVisible(panel.input_gemma_prompt)
+        qtbot.wait(10)
+        prompt_center = panel.input_gemma_prompt.mapTo(scroll.viewport(), panel.input_gemma_prompt.rect().center())
+        assert scroll.viewport().rect().contains(prompt_center)
     controller.close_app()
 
 

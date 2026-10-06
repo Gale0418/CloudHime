@@ -1401,10 +1401,12 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         api_key: str = "",
         temperature: float = 0.2,
         repeat_penalty: float = 1.15,
+        gemma_prompt: str = "",
     ):
         self.base_url = (base_url or "").rstrip("/")
         self.model_name = (model_name or "").strip()
         self.target_lang = target_lang
+        self.gemma_prompt = str(gemma_prompt or "").strip()
         self.enabled = bool(enabled)
         self.timeout_seconds = int(timeout_seconds)
         self.temperature = float(temperature)
@@ -1568,6 +1570,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             self.model_name,
             normalized,
             resolved_target,
+            self.gemma_prompt,
             self.temperature,
             self.repeat_penalty,
             self.knowledge_revision_token,
@@ -1590,7 +1593,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         dictionary_hint = build_dictionary_prompt_hint(normalized, self._dictionary)
         prompt = build_gemma_prompt_with_override(
             normalized,
-            dictionary_hint,
+            "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part),
             resolved_target,
             self.model_name,
         )
@@ -1660,7 +1663,8 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         resolved_target = target_lang or self.target_lang
         dictionary_hint = build_dictionary_prompt_hint(texts, self._dictionary)
         base_prompt = build_gemma_multimodal_prompt(texts, target_lang=resolved_target)
-        prompt = f"{dictionary_hint}\n\n{base_prompt}" if dictionary_hint else base_prompt
+        preferences = "\n\n".join(part for part in (self.gemma_prompt, dictionary_hint) if part)
+        prompt = f"{preferences}\n\n{base_prompt}" if preferences else base_prompt
         evidence = self._knowledge_evidence_for_texts(texts, max_chars=2_400)
         prompt = self._prepend_knowledge_evidence(prompt, evidence)
         payload = self._build_chat_payload(

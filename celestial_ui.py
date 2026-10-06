@@ -266,8 +266,9 @@ def style_settings(window, theme, image_path):
     surface = "#121212" if high else ("#23263D" if dark else "#F8F7FD")
     accent = theme.accent if high else ("#AD9AFF" if dark else "#7052D6")
     secondary_text = theme.text if high else ("#C5C2D7" if dark else "#615B72")
-    # The full landscape already contains the princess; keep her side clear of controls.
-    window.princess_portrait.set_art(None)
+    # Use the landscape's right-hand character crop as a dedicated portrait so
+    # the mascot stays visible at every supported window width.
+    window.princess_portrait.set_art(image_path)
     window._celestial_theme = theme
     window._celestial_image_path = image_path
     window.btn_close.setText("")
@@ -316,13 +317,10 @@ def adapt_settings(window):
     theme = getattr(window, "_celestial_theme", None)
     if theme is None:
         return
-    compact = window.width() < 980
     high = theme.key == "high_contrast"
-    window.princess_portrait.setVisible(not compact and not high)
+    window.princess_portrait.setVisible(not high)
     surface = "#121212" if high else ("#23263D" if theme.key == "dark" else "#F8F7FD")
     backdrop = f"background:{surface};"
-    if not compact and not high:
-        backdrop = f"background-color:{surface}; border-image:url('{window._celestial_image_path}') 0 0 0 0 stretch stretch;"
     window.backdrop_panel.setStyleSheet(
         f"QFrame#settingsBackdropPanel {{{backdrop} border:1px solid {theme.border}; border-radius:18px;}}"
     )

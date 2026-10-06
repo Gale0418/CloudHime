@@ -404,14 +404,14 @@ def test_save_keeps_unconfigured_provider_visible(controller):
     assert settings.settings_tabs.currentIndex() == 0
 
 
-def test_settings_fit_short_desktop_and_hide_portrait(controller, monkeypatch, qtbot):
+def test_settings_fit_short_desktop_and_keep_portrait_visible(controller, monkeypatch, qtbot):
     available = QRect(1000, 0, 800, 600)
     monkeypatch.setattr(controller, "screen", lambda: type("Screen", (), {"availableGeometry": lambda self: available})())
     controller.toggle_settings_window()
     settings = controller.settings_window
     qtbot.wait(10)
     assert available.contains(settings.geometry())
-    assert not settings.princess_portrait.isVisible()
+    assert settings.princess_portrait.isVisible()
     assert settings.btn_save.isVisible()
     settings.resize(1120, 760)
     qtbot.wait(10)

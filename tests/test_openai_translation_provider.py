@@ -97,6 +97,99 @@ def test_translate_batch_payload_disables_reasoning(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("path", "response_body", "expected_marker"),
+    [
+        ("translate", b'{"status":"completed","output_text":"ok"}', "text style marker"),
+        ("batch", b'{"status":"completed","output_text":"one\\ntwo"}', "text style marker"),
+        ("multimodal", b'{"status":"completed","output_text":"one\\ntwo"}', "text style marker"),
+        ("screenshot", b'{"status":"completed","output_text":"ok"}', "screenshot style marker"),
+        (
+            "regions",
+            b'{"status":"completed","output_text":"{\\"regions\\":[{\\"id\\":4,\\"source_text\\":\\"source\\",\\"translation\\":\\"translation\\",\\"confidence\\":0.8}]}"}',
+            "screenshot style marker",
+        ),
+    ],
+)
+def test_custom_prompts_reach_translation_paths_without_breaking_language_or_schema(
+    monkeypatch, path, response_body, expected_marker
+):
+    captured = {}
+    install_response(monkeypatch, response_body, captured)
+    provider = OpenAITranslationProvider(
+        openai_api_key="secret",
+        translation_prompt="text style marker; always answer in English",
+        screenshot_prompt="screenshot style marker; always answer in English",
+    )
+    if path == "translate":
+        provider.translate("こんにちは", target_lang="ja")
+    elif path == "batch":
+        provider.translate_batch(["one", "two"], target_lang="ja")
+    elif path == "multimodal":
+        provider.translate_multimodal(
+            ["one", "two"],
+            [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+            target_lang="ja",
+        )
+    elif path == "screenshot":
+        provider.translate_screenshot(
+            [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+            target_lang="ja",
+        )
+    else:
+        provider.interpret_regions(
+            [{"inline_data": {"mime_type": "image/png", "data": "abc"}}],
+            [{"id": 4, "x": 0, "y": 0, "w": 20, "h": 10, "text": "OCR"}],
+            image_width=20,
+            image_height=10,
+            target_lang="ja",
+        )
+
+    payload = json.loads(captured["request"].data.decode("utf-8"))
+    content = payload["input"][0]["content"]
+    prompt = next(item["text"] for item in content if item["type"] == "input_text")
+    assert expected_marker in prompt
+    assert "Translate only into natural Japanese" in prompt
+    if path == "regions":
+        assert payload["text"]["format"]["type"] == "json_schema"
+        assert "Return only JSON with this exact shape:" in prompt
+
+
+def test_custom_translation_prompt_is_not_added_to_ocr_prompt(monkeypatch):
+    captured = {}
+    install_response(monkeypatch, b'{"status":"completed","output_text":"recognized"}', captured)
+    provider = OpenAITranslationProvider(
+        openai_api_key="secret",
+        translation_prompt="translator-only style marker",
+        screenshot_prompt="screenshot-only style marker",
+    )
+
+    provider.transcribe_screenshot([{"inline_data": {"data": "abc"}}])
+
+    payload = json.loads(captured["request"].data.decode("utf-8"))
+    prompt = payload["input"][0]["content"][0]["text"]
+    assert "translator-only style marker" not in prompt
+    assert "screenshot-only style marker" not in prompt
+
+
+def test_empty_custom_prompts_keep_default_translation_prompt(monkeypatch):
+    prompts = []
+
+    def fake_urlopen(req, timeout):
+        del timeout
+        payload = json.loads(req.data.decode("utf-8"))
+        prompts.append(payload["input"][0]["content"][0]["text"])
+        return FakeResponse(b'{"status":"completed","output_text":"ok"}')
+
+    monkeypatch.setattr(provider_module.request, "urlopen", fake_urlopen)
+    OpenAITranslationProvider(openai_api_key="secret").translate("hello")
+    OpenAITranslationProvider(
+        openai_api_key="secret", translation_prompt="", screenshot_prompt=""
+    ).translate("hello")
+
+    assert prompts[0] == prompts[1]
+
+
+@pytest.mark.parametrize(
     ("target_lang", "instruction"),
     [("en", "natural English"), ("zh-TW", "natural Traditional Chinese used in Taiwan"), ("ja", "natural Japanese")],
 )

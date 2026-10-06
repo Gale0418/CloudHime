@@ -56,11 +56,11 @@ The pinned `ddgs==9.14.4` wheel declares these base runtime dependencies; option
 
 The release build resolves these packages from the pinned DDGS dependency graph and must preserve the corresponding wheel license files in the release audit. CloudHime does not install them after Store installation.
 
-## deep-translator Google HTML adapter
+## deep-translator Google translator adapter
 
 - Project: https://github.com/nidhaloff/deep-translator
 - Version: 1.11.4
-- Adapted component: Google HTML translator parsing and fallback behavior in `google_translation_transport.py`
+- Adapted component: Google translator interface and input validation in `google_translation_transport.py`; CloudHime uses its own bounded JSON transport instead of the upstream HTML parser.
 - Copyright: Copyright (C) 2020 Nidhal Baccouri
 - License: MIT; upstream license: https://github.com/nidhaloff/deep-translator/blob/v1.11.4/LICENSE
 

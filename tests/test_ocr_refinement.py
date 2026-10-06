@@ -97,6 +97,21 @@ class TestOcrRefinement(unittest.TestCase):
         self.assertTrue(is_suspiciously_short_translation(long_source, short_translated))
         self.assertFalse(is_suspiciously_short_translation(long_source, complete_translated))
 
+    def test_japanese_target_rejects_long_chinese_echo(self):
+        source = "選取翻譯引擎後就能開始測試，本地翻譯仍維持先檢查品質再顯示。"
+        self.assertEqual(translation_fallback_reason(source, source, "ja"), "source_echo")
+        self.assertEqual(
+            translation_fallback_reason(source, source.replace("，", "。"), "ja-JP"),
+            "source_echo",
+        )
+        self.assertEqual(
+            translation_fallback_reason(source, "翻訳エンジンを選択してからテストできます。", "ja"), ""
+        )
+
+    def test_japanese_target_preserves_names_and_existing_japanese(self):
+        for text in ("東京大学", "李雷", "CloudHime", "東京都交通局", "東京都新宿区西新宿二丁目", "設定を保存してください。"):
+            self.assertEqual(translation_fallback_reason(text, text, "ja"), "")
+
     def test_score_ocr_candidate_text(self):
         # 4. score_ocr_candidate_text 對正常 CJK 文字分數高於噪聲字串。
         if score_ocr_candidate_text is None:

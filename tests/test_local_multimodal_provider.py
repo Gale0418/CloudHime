@@ -344,6 +344,33 @@ def test_translate_does_not_cache_after_bounded_local_retry_fails():
     assert not provider._translation_cache
 
 
+@pytest.mark.parametrize("retry_succeeds", [True, False])
+def test_japanese_translation_retries_chinese_echo_before_caching(retry_succeeds):
+    provider = make_provider()
+    source = "選取翻譯引擎後就能開始測試，本地翻譯仍維持先檢查品質再顯示。"
+    translated = "翻訳エンジンを選択してからテストできます。"
+    responses = [source, translated if retry_succeeds else source]
+    requests = []
+
+    def fake_request(payload):
+        requests.append(payload)
+        return responses.pop(0)
+
+    provider._request_chat_completion = fake_request
+    if retry_succeeds:
+        result = provider.translate(source, target_lang="ja")
+        cached = provider.translate(source, target_lang="ja")
+        assert result.text == translated
+        assert cached.from_cache
+        assert cached.text == translated
+    else:
+        with pytest.raises(ValueError, match="low_quality_local_multimodal_translation"):
+            provider.translate(source, target_lang="ja")
+        assert not provider._translation_cache
+    assert len(requests) == 2
+    assert "Translate every source line into ja" in requests[1]["messages"][-1]["content"]
+
+
 def test_translate_skips_preexisting_bad_mixed_script_cache_entry():
     provider = make_provider()
     source = "Corrected Bridge Skill Version Sync\n研究 Gemini 橋接方案升級"
@@ -352,6 +379,7 @@ def test_translate_skips_preexisting_bad_mixed_script_cache_entry():
         provider.model_name,
         source,
         "en",
+        provider.gemma_prompt,
         provider.temperature,
         provider.repeat_penalty,
         provider.knowledge_revision_token,
@@ -374,6 +402,29 @@ def test_translate_skips_preexisting_bad_mixed_script_cache_entry():
     assert result.text == "Corrected Bridge Skill Version Sync\nResearch Gemini bridge upgrade"
     assert result.from_cache is False
     assert len(requests) == 1
+
+
+def test_local_custom_prompt_reaches_request_and_separates_cache():
+    provider = make_provider()
+    requests = []
+
+    def fake_request(payload):
+        requests.append(payload)
+        return "こんにちは"
+
+    provider._request_chat_completion = fake_request
+    provider.gemma_prompt = "Use a polite tone. Write in English."
+    provider.translate("Hello", target_lang="ja")
+    assert provider.translate("Hello", target_lang="ja").from_cache
+    provider.gemma_prompt = "Use a casual tone."
+    assert not provider.translate("Hello", target_lang="ja").from_cache
+    assert len(requests) == 2
+    first_prompt = requests[0]["messages"][0]["content"][0]["text"]
+    second_prompt = requests[1]["messages"][0]["content"][0]["text"]
+    assert "Use a polite tone." in first_prompt
+    assert "Use a casual tone." in second_prompt
+    assert first_prompt.rfind("FINAL OUTPUT LANGUAGE REQUIREMENT") > first_prompt.find("Write in English.")
+    assert "natural Japanese" in first_prompt
 
 
 def test_clear_cache_forces_a_new_text_request_without_changing_runtime():

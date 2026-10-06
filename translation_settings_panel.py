@@ -554,7 +554,7 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.setVisible(False)
         advanced_layout.addWidget(self.input_gemma_prompt)
 
-        self.btn_advanced_tuning = QPushButton("⚙ Advanced prompt & tuning")
+        self.btn_advanced_tuning = QPushButton("⚙ Advanced translation prompt")
         self.btn_advanced_tuning.setCheckable(True)
         self.btn_advanced_tuning.setCursor(Qt.PointingHandCursor)
         self.btn_advanced_tuning.clicked.connect(self.on_advanced_tuning_toggled)
@@ -613,6 +613,11 @@ class TranslationSettingsPanel(QWidget):
         self.tuning_frame.setVisible(False)
         advanced_layout.addWidget(self.tuning_frame)
 
+        self.btn_local_tuning = QPushButton("⚙ Local Gemma tuning")
+        self.btn_local_tuning.setCheckable(True)
+        self.btn_local_tuning.setCursor(Qt.PointingHandCursor)
+        self.btn_local_tuning.toggled.connect(self.on_local_tuning_toggled)
+
         self.chk_auto_switch = QCheckBox("")
         self.chk_auto_switch.toggled.connect(self.on_auto_switch_toggled)
         self.lbl_auto_switch = QLabel("")
@@ -646,15 +651,17 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_local_model_terms.setOpenExternalLinks(True)
         local_layout.addWidget(self.lbl_local_model_terms)
 
-        # Local Gemma owns prompt and tuning controls; the existing frame and
-        # widget identities stay unchanged for controller integrations.
+        # The prompt is shared across every AI provider. Only sampler and
+        # endpoint controls belong to Local Gemma's provider disclosure.
         for widget in (
             self.lbl_gemma_prompt,
             self.input_gemma_prompt,
             self.btn_advanced_tuning,
-            self.tuning_frame,
         ):
-            local_layout.addWidget(widget)
+            self._advanced_layout.removeWidget(widget)
+            self.translation_content.layout().addWidget(widget)
+        local_layout.addWidget(self.btn_local_tuning)
+        local_layout.addWidget(self.tuning_frame)
 
         # The legacy model selector can contain local and remote entries. It
         # remains one canonical selector, but lives with Online Gemma's model
@@ -806,7 +813,8 @@ class TranslationSettingsPanel(QWidget):
         set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; it is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，不會寫入設定資料。", "Online Gemma API キー", "Windows DPAPI で保護される秘密情報です。設定データには保存されません。")
         set_a11y(self.btn_api_key_visible, "Show Online Gemma API key", "顯示 Online Gemma API Key", "Toggle secret visibility locally.", "只在本機切換秘密顯示。", "Online Gemma API キーを表示", "この端末上でのみ秘密情報の表示を切り替えます。")
         set_a11y(self.cmb_ai_model, "AI model", "AI 模型", "Choose the model used by the legacy AI path.", "選擇舊版 AI 路徑使用的模型。", "AI モデル", "従来の AI 経路で使うモデルを選択します。")
-        set_a11y(self.btn_advanced_tuning, "Advanced local tuning", "本地進階參數", "Expand optional local model parameters.", "展開可選的本地模型參數。", "ローカルモデルの詳細設定", "ローカルモデルの任意のパラメーターを表示します。")
+        set_a11y(self.btn_advanced_tuning, "Advanced translation prompt", "進階翻譯提示詞", "Edit the shared AI translation prompt for local and cloud providers.", "編輯本機與雲端 AI 共用的翻譯提示詞。", "翻訳用の詳細プロンプト", "ローカルとクラウドで共通の翻訳プロンプトを編集します。")
+        set_a11y(self.btn_local_tuning, "Local Gemma tuning", "本機 Gemma 調參", "Expand parameters used only by the local Gemma provider.", "展開僅供本機 Gemma 使用的參數。", "ローカル Gemma の調整", "ローカル Gemma 専用のパラメーターを表示します。")
         set_a11y(self.chk_online_gemma_enabled, "Enable Online Gemma", "啟用 Online Gemma", "Allow Online Gemma to be selected. Connectivity is checked at request time.", "允許選用 Online Gemma；連線會在要求送出時檢查。", "Online Gemma を有効化", "Online Gemma を選択可能にします。接続はリクエスト送信時に確認します。")
         set_a11y(self.input_api_key, "Online Gemma API key", "Online Gemma API Key", "Secret input protected by Windows DPAPI; the value is never exposed in settings data.", "由 Windows DPAPI 保護的秘密欄位，內容不會寫入設定資料。", "Online Gemma API キー", "Windows DPAPI で保護される秘密情報です。設定データには保存されません。")
         set_a11y(self.chk_auto_switch, "Rotate Gemma models automatically", "自動輪替 Gemma 模型", "Rotate between gemma-4-26b-a4b-it and gemma-4-31b-it when enabled.", "啟用後在 gemma-4-26b-a4b-it 與 gemma-4-31b-it 間自動輪替。", "Gemma モデルを自動切替", "有効にすると gemma-4-26b-a4b-it と gemma-4-31b-it を切り替えます。")
@@ -1591,7 +1599,9 @@ class TranslationSettingsPanel(QWidget):
     def on_advanced_tuning_toggled(self, checked):
         self.lbl_gemma_prompt.setVisible(bool(checked))
         self.input_gemma_prompt.setVisible(bool(checked))
-        self.tuning_frame.setVisible(checked)
+
+    def on_local_tuning_toggled(self, checked):
+        self.tuning_frame.setVisible(bool(checked))
 
     def on_gemma_prompt_changed(self):
         if hasattr(self.controller, "on_gemma_prompt_changed"):
@@ -1785,7 +1795,8 @@ class TranslationSettingsPanel(QWidget):
             translation_tools.ui_text(lang, "translation_local_multimodal_timeout")
         )
         self.spin_local_multimodal_timeout.setSuffix(" sec" if is_en else " 秒")
-        self.btn_advanced_tuning.setText(localized("Advanced prompt & tuning", "進階提示詞與參數", "プロンプトと詳細設定"))
+        self.btn_advanced_tuning.setText(localized("Advanced translation prompt", "進階翻譯提示詞", "翻訳用の詳細プロンプト"))
+        self.btn_local_tuning.setText(localized("Local Gemma tuning", "本機 Gemma 調參", "ローカル Gemma の調整"))
         self._configure_provider_accessibility()
         self.update_ai_model_notes()
 
@@ -1890,6 +1901,7 @@ class TranslationSettingsPanel(QWidget):
         self.input_gemma_prompt.setEnabled(enabled)
         self.chk_auto_switch.setEnabled(enabled)
         self.btn_advanced_tuning.setEnabled(enabled)
+        self.btn_local_tuning.setEnabled(enabled and self._selected_provider_id == "local_gemma")
         self.btn_refresh_model_availability.setEnabled(not self._model_availability_checking)
         self.spin_local_gemma_temp.setEnabled(enabled)
         self.spin_local_gemma_repeat.setEnabled(enabled)
@@ -2183,6 +2195,7 @@ class TranslationSettingsPanel(QWidget):
             f"QPushButton {{ color: {theme.subtext}; text-align: left; background: transparent; border: none; font-size: 12px; font-weight: 700; padding: 4px 0; }}"
             f"QPushButton:hover {{ color: {theme.text}; }}"
         )
+        self.btn_local_tuning.setStyleSheet(self.btn_advanced_tuning.styleSheet())
         self.input_local_multimodal_base_url.setStyleSheet(
             f"background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
             f"border-top-color: {card_highlight}; border-bottom: 2px solid {card_edge}; "
