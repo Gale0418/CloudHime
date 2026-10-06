@@ -12,3 +12,7 @@
 - 高度及色彩最後修正後，設定入口、進度／次數／動畫、三語引擎摘要與 Luna 驗證聚焦回歸：18 passed、94 deselected，`output/compact-controller-20261007-focused.xml`。
 - 使用假金鑰、隔離設定的真實 Controller offscreen render：淺色／深色／高對比三案通過，三張 PNG 已人工檢視；`output/compact-controller-20261007/` 保存圖片與 visual-probe.py。探針首次因匯入路徑錯誤未收集，改為 tests.test_product_experience 後通過。無 live API 或模型請求，測試 fixture 回收自身 Qt worker。
 - 上一版 Luna 摘要同步已由主人這次回報確認；此排版修訂仍待主人實機觀感確認。EXE／MSIX 尚未重建，最終發行閘門不變。
+
+## 人工验收追加
+
+2026-10-07 主人回報「好 完美」，確認此精簡版來源介面無問題，排版人工驗收通過。這取代上段「排版仍待確認」，不推定尚未重建的最終 EXE／MSIX 已通過驗證。Mission Center 剩餘實際任務為 CH-T55 發行 preflight／首次發佈與 CH-T56 雙軌文件收尾；CH-E7 仍進行中，CH-E8 子任務均 Done，僅等待 CH-E7 依賴與 Epic 收尾。
