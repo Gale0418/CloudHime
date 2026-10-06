@@ -620,3 +620,8 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 來源 fe88bab 的相同 0.1.2.0 MSIX 在斷網 Windows Sandbox 完成 0.1.1.0→0.1.2.0 更新，PFN 不變且合成 LocalState 保留；全新安裝／AUMID 20 秒啟動／移除通過。這不是實際使用者設定或翻譯功能驗收。WACK appcert.exe test 以 -532462766（0xE0434352）結束，沒有 wack.xml；錯誤碼只指向未處理 CLR 例外，工具／環境／測試相容性根因未明，不能判定套件認證 PASS 或套件本身失敗。guest 套件／短效憑證清理無錯，精確 PID／路徑／父程序／建立時間核對後已回收本次 Sandbox，殘留為零。最新相同 EXE 使用獨立英文 CPU-only 設定開啟，完整人工操作仍待主人回報；正式 24k 評議尚未啟動。Store 尚未上傳或送認證，CH-T55 保持 Review／Smoke NO／Critic NO。
 
 證據：`output/store-release-20261005-gemini-copy/package-sandbox/output/package-result.json`、`package-sandbox/disposal-receipt.json`、`manual-preview-launch.json`。
+
+
+### 2026-10-07 收尾中的成品完整性查證
+
+引用「人工檢查結束」聊天，主人已驗收來源介面。Qt模組縮減、595份授權原文及來源告知、可信wheel installed payload guard、隔離Python重建與相關修正已推main。CodeRabbit修正版7檔0issues，CI run136／3c0070c Success。本輪新EXE import／WindowsOCR／GUI與可寫副本QtDLL探針通過；full preflight固定模型SHA通過，舊包模型terms只有LF/CRLF差異，保留失敗證據並以固定來源原文修正後重驗。CPU Vision／新MSIX／乾淨安裝更新WACK／正式24k評論／Store認證仍待完成，不宣稱Done。Partner Center仍私人TWD249草稿，公開日待主人回覆；四locale含兩個繁中標籤。詳見reviews/2026-10-07-release-integrity.md。Pulse CLI兩種旗標嘗試皆argument_error，後依既有ledger schema寫入bounded partial_pass pulse，Rust handoff已正確讀回；未切換Python CLI fallback。

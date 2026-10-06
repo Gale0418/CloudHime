@@ -44,4 +44,10 @@ CH-T55 維持 Review；CH-T56 尚未完成。主人已驗收來源版的 Luna、
 - frozen cv2.pyd SHA `90034927004e4a4ebf29360480d609c8a8d2ca07c93f8b89dff86399e8534b2a` 與 hash-lock 安裝檔一致；無 ffmpeg500 額外檔，PIL 未打包。
 - light preflight、frozen import、Windows OCR 2 行、GUI 20 秒均通過；新可寫入 onedir 副本的 altered Qt6Core 載入探針 exit 0，原 DLL 未改動。不作自編 Qt／Store 安裝後替換聲稱。
 - full 模型／CPU Vision、MSIX、安裝／更新／WACK 仍在後續流程，未外推已通過。
-- Partner Center 此次只讀核對：Submission 3、私人群組、TWD249，未排公開日期／銷售定價；四個實際 listing locale 是 zh-tw、ja-jp、en-us、zh-hant-tw，兩個繁中標籤。zh-tw 與 ja-jp 的 additional license terms 空白，日文 keyword 有 AI 說明文字。四語系 terms 草稿在 docs/store-third-party-terms.json，尚未保存至外部服務。
+- Partner Center 此次只讀核對：Submission 3、私人群組、TWD249，未排公開日期／銷售定價；四個實際 listing locale 是 zh-tw、ja-jp、en-us、zh-hant-tw，兩個繁中標籤。zh-tw 與 ja-jp 的 additional license terms 空白，日文關鍵字控制項顯示 AI 建議說明文字，深入 DOM 查證 value 空白、七個建議均未選取，不能說成已儲存關鍵字污染。四語系 terms 草稿在 docs/store-third-party-terms.json，尚未保存至外部服務。
+
+## 後續查證
+
+- CI inventory 補入五個既有測試檔；本地 inventory 與受影響測試 63 passed。GitHub CI run 136（commit `3c0070c`）整體 Success，五組測試與依賴／MSIX契約通過；可選 frozen release jobs 未執行，不算通過。證據：https://github.com/Gale0418/CloudHime/actions/runs/37511529428。
+- 新 full preflight 的固定模型／projector 雜湊通過後，拒絕舊包複製來的 `NOTICE.txt` bytes。保留失敗 log／JSON 及四份舊告知檔，換成固定 source manifest 內的模型原文，重新驗證；詳細差異見 `output/release-20261007-clean/model-terms-correction.json`。這不是更改模型，也未覆蓋舊包。
+- 非系統管理員實際讀取現有 Store 0.1.1.0 的 Qt6Core.dll、複製到可寫入位置並修改成功，原 DLL 雜湊不變。證據 `store-read-copy-proof.json`；不代表整個 Store 程式已複製並以修改後 DLL 執行。
