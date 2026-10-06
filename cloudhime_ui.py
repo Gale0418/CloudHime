@@ -141,6 +141,7 @@ from settings_store import (
 from ocr_backend_panel import OcrBackendSettingsPanel
 from translation_settings_panel import TranslationSettingsPanel
 from remote_model_availability_worker import RemoteModelAvailabilityWorker
+from openai_connection_check import LunaConnectionResult
 from remote_model_discovery import (
     DISCOVERY_STATUS_NO_KEY,
     DISCOVERY_STATUS_UNVERIFIED,
@@ -3165,6 +3166,7 @@ class Controller(QWidget):
     knowledge_build_error = Signal(str, object)
     knowledge_build_cancelled = Signal(str)
     remote_model_availability_request = Signal(str, int)
+    luna_connection_request = Signal(str, int)
 
     def __init__(self, overlay):
         super().__init__()
@@ -3215,6 +3217,10 @@ class Controller(QWidget):
         )
         self._remote_model_availability_generation = 0
         self._remote_model_availability_checking = False
+        self.luna_connection_result = LunaConnectionResult(status="unchecked")
+        self._luna_connection_generation = 0
+        self._luna_connection_active_generation = None
+        self._luna_connection_checking = False
         self.remote_model_availability_thread = None
         self.remote_model_availability_worker = None
         self.knowledge_build_worker = None
@@ -3557,6 +3563,8 @@ class Controller(QWidget):
             self.on_remote_model_availability_finished,
             Qt.QueuedConnection,
         )
+        self.luna_connection_request.connect(worker.check_luna, Qt.QueuedConnection)
+        worker.luna_finished.connect(self.on_luna_connection_finished, Qt.QueuedConnection)
         thread.finished.connect(worker.deleteLater)
         self.remote_model_availability_thread = thread
         self.remote_model_availability_worker = worker
@@ -3629,6 +3637,38 @@ class Controller(QWidget):
                 error_code="invalid_worker_result",
             )
         self._apply_remote_model_availability(result)
+
+    def _update_luna_connection_panel(self):
+        panel = getattr(getattr(self, "settings_window", None), "translation_panel", None)
+        if panel is not None:
+            panel.set_luna_connection_state(self.luna_connection_result.status, self._luna_connection_checking)
+
+    def request_luna_connection_check(self):
+        if self._luna_connection_checking:
+            return False
+        self._luna_connection_generation += 1
+        generation = self._luna_connection_generation
+        key = str(getattr(self, "openai_api_key", "") or "").strip()
+        thread = self.remote_model_availability_thread
+        if not key or not _qt_object_is_valid(thread) or not thread.isRunning():
+            self.luna_connection_result = LunaConnectionResult(status="no_key" if not key else "network_error")
+            self._update_luna_connection_panel()
+            return False
+        self._luna_connection_active_generation = generation
+        self._luna_connection_checking = True
+        self.luna_connection_result = LunaConnectionResult(status="checking")
+        self._update_luna_connection_panel()
+        self.luna_connection_request.emit(key, generation)
+        return True
+
+    def on_luna_connection_finished(self, generation, result):
+        if int(generation) != self._luna_connection_active_generation:
+            return
+        self._luna_connection_active_generation = None
+        self._luna_connection_checking = False
+        if int(generation) == self._luna_connection_generation:
+            self.luna_connection_result = result if isinstance(result, LunaConnectionResult) else LunaConnectionResult(status="invalid_response")
+        self._update_luna_connection_panel()
 
     def _shutdown_remote_model_availability(self):
         self._remote_model_availability_generation += 1
@@ -3785,6 +3825,10 @@ class Controller(QWidget):
     on_gemma_online_enabled_changed = on_online_gemma_enabled_changed
 
     def on_luna_api_key_changed(self, text):
+        if str(text or "").strip() != getattr(self, "openai_api_key", ""):
+            self._luna_connection_generation += 1
+            self.luna_connection_result = LunaConnectionResult(status="unchecked")
+            self._update_luna_connection_panel()
         self.openai_api_key = str(text or "").strip()
         self.luna_api_key = self.openai_api_key
         self.pending_openai_api_key = self.openai_api_key

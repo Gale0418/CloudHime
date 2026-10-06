@@ -225,6 +225,8 @@ class TranslationSettingsPanel(QWidget):
             error_code="no_key",
         )
         self._model_availability_checking = False
+        self._luna_connection_checking = False
+        self._luna_connection_status = "unchecked"
         self._theme_mode = getattr(controller, "theme_mode", "light")
         self.setObjectName("translationSettingsPanel")
         self.setStyleSheet("QWidget { background: transparent; border: none; }")
@@ -742,7 +744,22 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.setEchoMode(QLineEdit.Password)
         self.input_luna_api_key.textChanged.connect(self.on_luna_api_key_changed)
         self.input_luna_api_key.editingFinished.connect(self.on_luna_api_key_editing_finished)
-        luna_layout.addWidget(self.input_luna_api_key)
+        luna_key_row = QHBoxLayout()
+        luna_key_row.addWidget(self.input_luna_api_key)
+        self.btn_luna_api_key_visible = QPushButton()
+        self.btn_luna_api_key_visible.setObjectName("toggleLunaApiKey")
+        self.btn_luna_api_key_visible.setCursor(Qt.PointingHandCursor)
+        self.btn_luna_api_key_visible.clicked.connect(self.toggle_luna_api_key_visible)
+        luna_key_row.addWidget(self.btn_luna_api_key_visible)
+        luna_layout.addLayout(luna_key_row)
+        self.btn_check_luna_connection = QPushButton()
+        self.btn_check_luna_connection.setObjectName("checkLunaConnection")
+        self.btn_check_luna_connection.setCursor(Qt.PointingHandCursor)
+        self.btn_check_luna_connection.clicked.connect(self.on_check_luna_connection)
+        luna_layout.addWidget(self.btn_check_luna_connection)
+        self.lbl_luna_connection = QLabel()
+        self.lbl_luna_connection.setWordWrap(True)
+        luna_layout.addWidget(self.lbl_luna_connection)
         self.lbl_luna_model_label = QLabel("")
         luna_layout.addWidget(self.lbl_luna_model_label)
         self.lbl_luna_model = QLabel(DEFAULT_OPENAI_MODEL)
@@ -1264,6 +1281,10 @@ class TranslationSettingsPanel(QWidget):
         if not self._optional_controller_call("on_luna_enabled_changed", bool(checked)):
             self._optional_controller_call("on_openai_enabled_changed", bool(checked))
         self.input_luna_api_key.setEnabled(bool(checked))
+        self.btn_luna_api_key_visible.setEnabled(bool(checked))
+        if not checked:
+            self.input_luna_api_key.setEchoMode(QLineEdit.Password)
+        self._refresh_luna_connection_text()
         self.spin_luna_timeout.setEnabled(bool(checked))
         self.update_provider_status_rows()
 
@@ -1298,6 +1319,52 @@ class TranslationSettingsPanel(QWidget):
         """Keep secret visibility control explicit and localized."""
         key = "translation_api_key_hide" if self.input_api_key.echoMode() == QLineEdit.Normal else "translation_api_key_show"
         self.btn_api_key_visible.setText(translation_tools.ui_text(self._ui_language(), key))
+
+    def toggle_luna_api_key_visible(self):
+        visible = self.input_luna_api_key.echoMode() != QLineEdit.Normal
+        self.input_luna_api_key.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
+        self._refresh_luna_connection_text()
+
+    def hideEvent(self, event):
+        self.input_luna_api_key.setEchoMode(QLineEdit.Password)
+        self._refresh_luna_connection_text()
+        super().hideEvent(event)
+
+    def on_check_luna_connection(self):
+        self._optional_controller_call("request_luna_connection_check")
+
+    def set_luna_connection_state(self, status, checking=False):
+        self._luna_connection_status = str(status or "unchecked")
+        self._luna_connection_checking = bool(checking)
+        self._refresh_luna_connection_text()
+        self.update_provider_status_rows()
+
+    def _refresh_luna_connection_text(self):
+        lang = self._ui_language()
+        index = 1 if str(lang).startswith("en") else (2 if lang == "ja" else 0)
+        visible = self.input_luna_api_key.echoMode() == QLineEdit.Normal
+        toggle = ("隱藏金鑰", "Hide key", "キーを隠す") if visible else ("顯示金鑰", "Show key", "キーを表示")
+        self.btn_luna_api_key_visible.setText(toggle[index])
+        self.btn_luna_api_key_visible.setAccessibleName("Luna " + toggle[index])
+        checking = self._luna_connection_checking
+        self.btn_check_luna_connection.setText(("檢查中…", "Checking…", "確認中…")[index] if checking else ("檢查連線", "Check connection", "接続を確認")[index])
+        self.btn_check_luna_connection.setAccessibleName("Luna " + self.btn_check_luna_connection.text())
+        self.btn_check_luna_connection.setEnabled(self.chk_luna_enabled.isChecked() and not checking)
+        messages = {
+            "unchecked": ("尚未檢查連線", "Connection not checked", "接続は未確認です"),
+            "checking": ("正在檢查金鑰與模型存取…", "Checking key and model access…", "キーとモデルへのアクセスを確認中…"),
+            "verified": ("金鑰與模型存取正常；文字／圖片翻譯請另測。", "Key and model access verified; test text/image translation separately.", "キーとモデルへのアクセスを確認しました。テキスト・画像翻訳は別途確認してください。"),
+            "no_key": ("請先輸入 Luna API 金鑰", "Enter a Luna API key first", "Luna API キーを入力してください"),
+            "invalid_key": ("金鑰無效，請重新確認", "Invalid API key", "API キーが無効です"),
+            "forbidden": ("沒有模型存取權限", "Model access denied", "モデルへのアクセス権限がありません"),
+            "model_unavailable": ("此金鑰無法存取所選模型", "This key cannot access the selected model", "このキーでは選択したモデルを利用できません"),
+            "rate_limited": ("API 限流，請稍後再試", "API rate limited; try later", "API 制限中です。後でもう一度お試しください"),
+            "timeout": ("連線逾時，請檢查網路", "Connection timed out", "接続がタイムアウトしました"),
+            "network_error": ("連線失敗，請檢查網路", "Connection failed; check your network", "接続できません。ネットワークをご確認ください"),
+            "invalid_response": ("API 回覆格式異常，未確認連線", "Unexpected API reply; connection unverified", "API 応答が不正です。接続は未確認です"),
+            "server_error": ("API 服務暫時異常，請稍後再試", "API service error; try later", "API サービスエラーです。後でもう一度お試しください"),
+        }
+        self.lbl_luna_connection.setText(messages.get(self._luna_connection_status, messages["network_error"])[index])
 
     @staticmethod
     def _coerce_runtime_snapshot(snapshot):
@@ -1796,6 +1863,7 @@ class TranslationSettingsPanel(QWidget):
         )
         self.spin_local_multimodal_timeout.setSuffix(" sec" if is_en else " 秒")
         self.btn_advanced_tuning.setText(localized("Advanced translation prompt", "進階翻譯提示詞", "翻訳用の詳細プロンプト"))
+        self._refresh_luna_connection_text()
         self.btn_local_tuning.setText(localized("Local Gemma tuning", "本機 Gemma 調參", "ローカル Gemma の調整"))
         self._configure_provider_accessibility()
         self.update_ai_model_notes()
@@ -1919,6 +1987,8 @@ class TranslationSettingsPanel(QWidget):
         self.chk_luna_enabled.setEnabled(True)
         luna_enabled = self.chk_luna_enabled.isChecked()
         self.input_luna_api_key.setEnabled(luna_enabled)
+        self.btn_luna_api_key_visible.setEnabled(luna_enabled)
+        self._refresh_luna_connection_text()
         self.cmb_luna_reasoning.setEnabled(False)
         self.spin_luna_timeout.setEnabled(luna_enabled)
 
@@ -1970,6 +2040,8 @@ class TranslationSettingsPanel(QWidget):
         self.input_luna_api_key.blockSignals(True)
         self.input_luna_api_key.setText(luna_secret)
         self.input_luna_api_key.blockSignals(False)
+        result = getattr(self.controller, "luna_connection_result", None)
+        self.set_luna_connection_state(getattr(result, "status", "unchecked"), getattr(self.controller, "_luna_connection_checking", False))
 
         controller_combo = self.controller.cmb_ai_model
         controller_index = controller_combo.currentIndex()
@@ -2175,6 +2247,8 @@ class TranslationSettingsPanel(QWidget):
             f" QLineEdit:disabled {{ background-color: {theme.control_disabled_bg}; color: {theme.control_disabled_fg}; border-color: {theme.control_disabled_bg}; }}"
         )
         self.btn_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
+        self.btn_luna_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
+        self.btn_check_luna_connection.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.btn_refresh_model_availability.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.cmb_ai_model.setStyleSheet(theme.combo_qss(radius=6))
         self.input_gemma_prompt.setStyleSheet(
@@ -2292,6 +2366,8 @@ class TranslationSettingsPanel(QWidget):
         )
         self.btn_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.btn_refresh_model_availability.setStyleSheet(theme.jelly_button_qss(radius=8))
+        self.btn_luna_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
+        self.btn_check_luna_connection.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.input_luna_api_key.setStyleSheet(
             f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 7px; font-size: 13px; }}"
             f" QLineEdit:focus {{ border: 2px solid {theme.accent}; }}"

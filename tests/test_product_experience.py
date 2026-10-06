@@ -14,6 +14,7 @@ from celestial_ui import chrome_icon
 from ocr_backend_catalog import optional_backend_names
 from ocr_backend_panel import OcrBackendSettingsPanel
 from provider_health import local_model_failure_message
+from openai_connection_check import LunaConnectionResult
 
 
 def test_local_only_warmup_keeps_captions_and_does_not_request_scan(controller, monkeypatch, qtbot):
@@ -179,6 +180,38 @@ def controller(qtbot, monkeypatch):
     monkeypatch.setattr(window, "_persist_pending_openai_api_key", lambda: True)
     monkeypatch.setattr(window, "save_settings", lambda: True)
     window.close_app()
+
+
+def test_luna_connection_uses_background_worker_and_invalidates_changed_key(controller, monkeypatch, qtbot):
+    probe_keys = []
+    def probe(key, **kwargs):
+        probe_keys.append(key)
+        return LunaConnectionResult(status="verified")
+    monkeypatch.setattr(controller.remote_model_availability_worker, "_luna_probe", probe)
+    controller.openai_api_key = "FAKE_FIRST_KEY"
+    assert controller.request_luna_connection_check()
+    assert not controller.request_luna_connection_check()
+    # No GUI-loop processing yet: invalidate the queued request before completion.
+    controller.on_luna_api_key_changed("FAKE_SECOND_KEY")
+    controller.openai_api_key_save_timer.stop()
+    qtbot.waitUntil(lambda: not controller._luna_connection_checking, timeout=5000)
+    assert probe_keys == ["FAKE_FIRST_KEY"]
+    assert controller.luna_connection_result.status == "unchecked"
+    assert controller.request_luna_connection_check()
+    qtbot.waitUntil(lambda: not controller._luna_connection_checking, timeout=5000)
+    assert controller.luna_connection_result.status == "verified"
+    assert probe_keys == ["FAKE_FIRST_KEY", "FAKE_SECOND_KEY"]
+    controller.on_luna_connection_finished(-1, LunaConnectionResult(status="invalid_key"))
+    assert controller.luna_connection_result.status == "verified"
+
+
+def test_luna_connection_without_key_never_dispatches(controller):
+    requests = []
+    controller.luna_connection_request.connect(lambda *args: requests.append(args))
+    controller.openai_api_key = ""
+    assert not controller.request_luna_connection_check()
+    assert requests == []
+    assert controller.luna_connection_result.status == "no_key"
 
 
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])

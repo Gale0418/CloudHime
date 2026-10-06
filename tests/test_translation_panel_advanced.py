@@ -4,7 +4,7 @@ import pytest
 
 from PySide6.QtCore import QCoreApplication, QEvent, QSize, Qt
 from PySide6.QtGui import QResizeEvent
-from PySide6.QtWidgets import QApplication, QComboBox, QSizePolicy
+from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QSizePolicy
 
 from translation_settings_panel import TranslationSettingsPanel, _ProviderDisclosure
 from themes import resolve_theme
@@ -73,6 +73,48 @@ class DummyController:
 
     def get_default_gemma_prompt(self):
         return "default prompt"
+
+
+def test_luna_visibility_and_connection_controls_are_reachable(qtbot):
+    controller = DummyController()
+    checks = []
+    controller.request_luna_connection_check = lambda: checks.append(True)
+    panel = TranslationSettingsPanel(controller, [("Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.on_provider_selected("luna")
+    panel.chk_luna_enabled.setChecked(True)
+    panel.input_luna_api_key.setText("FAKE_TEST_KEY")
+    assert panel.btn_luna_api_key_visible.isVisible()
+    assert panel.btn_check_luna_connection.isVisible()
+    assert panel.input_luna_api_key.echoMode() == QLineEdit.Password
+    qtbot.mouseClick(panel.btn_luna_api_key_visible, Qt.LeftButton)
+    assert panel.input_luna_api_key.echoMode() == QLineEdit.Normal
+    qtbot.mouseClick(panel.btn_luna_api_key_visible, Qt.LeftButton)
+    assert panel.input_luna_api_key.echoMode() == QLineEdit.Password
+    assert checks == []
+    qtbot.mouseClick(panel.btn_check_luna_connection, Qt.LeftButton)
+    assert checks == [True]
+    qtbot.mouseClick(panel.btn_luna_api_key_visible, Qt.LeftButton)
+    panel.hide()
+    assert panel.input_luna_api_key.echoMode() == QLineEdit.Password
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_luna_connection_state_is_localized_and_does_not_claim_translation(qtbot, language):
+    controller = DummyController()
+    controller.ui_language = language
+    panel = TranslationSettingsPanel(controller, [("Local", "gemma-3-4b-it-local")])
+    qtbot.addWidget(panel)
+    panel.chk_luna_enabled.setChecked(True)
+    panel.set_luna_connection_state("checking", checking=True)
+    assert not panel.btn_check_luna_connection.isEnabled()
+    panel.set_luna_connection_state("verified")
+    assert panel.btn_check_luna_connection.isEnabled()
+    assert {"zh-TW": "請另測", "en": "separately", "ja": "別途"}[language] in panel.lbl_luna_connection.text()
+    panel.chk_luna_enabled.setChecked(False)
+    assert not panel.btn_luna_api_key_visible.isEnabled()
+    assert not panel.btn_check_luna_connection.isEnabled()
 
 
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
