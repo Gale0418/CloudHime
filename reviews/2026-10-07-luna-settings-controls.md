@@ -17,3 +17,11 @@
 請主人於設定 → 翻譯引擎 → Luna 操作兩個按鈕，並另測文字／圖片翻譯。既有 frozen EXE／MSIX 尚未重建，本次開啟的是來源預覽。CH-T55 保持 Review，授權覆蓋、最終封裝、WACK、Store 認證等發行閘門維持原狀。
 
 官方 API 契約：[Retrieve a model](https://developers.openai.com/api/reference/resources/models/methods/retrieve)。
+
+## 主人人工驗收回報
+
+2026-10-07 主人回報「其他都沒問題」「Gemma 也可以正常運作」，附 `D:/Downloads/2026-10-07 00 32 29.png`。將既有清單的日文輸出、主題即時換色、看板娘、提示詞、擷取／停止記為主人整體操作回報通過；不推定未逐項說明的所有引擎或圖片模式組合都測過。
+
+附圖直接可見日文字幕「明日午前九時、駅の前に待ち合わせます。」、本機 Gemma 狀態與翻譯完成訊息，支持本機 Gemma 日文輸出正常。這是主人提供的實機證據，未獨立綁定截圖中的程序／產物雜湊，亦不評為譯文品質 benchmark。
+
+新 Luna 顯示／隱藏金鑰按鈕、連線檢查及 Luna 文字／圖片 API 實測尚無明確回報，維持待驗；線上 Gemma API 的獨立結果亦未明示。此人工回報不替代最終 MSIX 安裝／更新、WACK、授權覆蓋及 Store 認證，CH-T55 保持 Review。
