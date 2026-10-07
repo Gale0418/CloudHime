@@ -124,3 +124,16 @@ CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。尚缺最�
 文件來源 `36ba4cdd7c6406d0104e21239edc89f815aaba28` 已存 Git、經 CodeRabbit 四檔檢查後 push main；CI142／37600128553 Success。兔子提出一個「CPU OCR」措辭問題，但任務列不存在該字串，且 CPU1/1 與候選 OCR 失敗分開記錄，已保存 rejected-with-counterevidence 收據；未為不存在的問題改程式。現在任務列進一步明寫 CPU Vision1/1。
 
 最終產物仍綁定來源 `6f69577`，正式程式、模型、DLL、MSIX 未因文案與評論重建或修改。隔離人工入口 `output/release-20261007-final/OpenFinalCandidate.cmd` 已準備，PowerShell AST 與 EXE hash 檢查通過、尚未啟動；執行時使用全新空白 APPDATA／LOCALAPPDATA／USERPROFILE 與 system-only PATH，不承接主人設定或金鑰。這個入口不等於人工驗收，也不證明乾淨 Windows OCR。稅務／支付資料由主人親自處理，售價／發行範圍待回覆；新候選仍未上傳，CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。
+
+
+## 最新 checkpoint：候選套件草稿已保存（10:06 UTC）
+
+文件來源 `e1f4d316795a7df982cb31326013ad1e9fad4ef8` 已存 Git，CodeRabbit 五檔複審 0 issues 後 push main；GitHub CI143／37603288446 completed Success，八項必需成功、兩項手動 frozen 工作 skipped。這次 CI 不替代已固定候選的實際驗收。
+
+固定來源 `6f69577` 的 unsigned `CloudHime-0.1.2.0-x64.msix` 已透過 Partner Center 檔案選擇器上傳，後台完成套件解析，保存至產品 `9NH4B9GQ86FL`／Submission 3 `1152921505702037522`。從概觀的「套件已更新」重新開啟，版本 `0.1.2.0`、x64、Windows.Desktop 最低 `10.0.17763.0` 與本機 manifest 一致。套件 SHA-256 延用固定建置／remaining-v4 收據 `2d1294081ea926dc124937bd89487c5a6185d3e7337adb7f556978c5e840da06`，沒有假稱本 UI 步驟重新串流驗 3.9 GB。保存收據 `output/release-20261007-final/store-msix-save-verification.json`，畫面 `store-msix-saved.png`。
+
+Partner Center 在草稿保存時自動以相同支援範圍的高版本套件取代舊 `0.1.1.0` 草稿套件；目前已發布的 Submission 2 與正式 Store `0.1.1.0` 未修改。後台仍顯示 `runFullTrust` restricted-capability approval 警告；概觀明確提示必須更新稅務與支付資訊才能收費，提交認證按鈕 disabled。上傳／解析／保存不表示能力審核、認證或發布已通過，沒有移除 runFullTrust 以規避審核。金融資料由主人親自處理，價格與發行範圍尚待回覆。
+
+OCR 補充對照只變更沙箱 requested vGPU 為 Enable，記憶體仍 4096 MiB、網路與剪貼簿關閉；相同原生探針 MSIX 與 fixture 的 SHA 已核對。真正 AUMID 啟動並確認 package identity，en-US 支援與 BGRA8 bitmap 解碼通過，但辨識仍回 `0x80004005`／零行。辨識後列舉的控制器為 Microsoft Remote Display Adapter；不能將 requested Enable 推論為某個實體 GPU 或驅動已獲驗證，也沒有證據判定產品程式根因。此結果不能當候選 acceptance PASS。Guest packages 0、cleanup errors 空；owned VM 已於 09:59:04 UTC 核對 PID／執行檔／start time 後回收。證據 `ocr-native-aumid-diagnosis/guest-vgpu/output/result.json`、`guest-disposal.json` 與 `ocr-vgpu-comparison.json`。
+
+這次只補文件與外部草稿對帳，正式 EXE／DLL／模型／MSIX 位元組不變，不另做無關重建。三席與獨立仲裁的封存結論仍 blocked，這份補記沒有覆寫報告或假稱新一次正式評論通過。最終 frozen GUI 全旅程、真實設定升級、乾淨 Windows OCR 與 Store 認證／安裝更新仍待完成。CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。

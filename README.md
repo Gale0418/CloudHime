@@ -46,7 +46,7 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 
 2026-10-05 Gemini 已審閱並修訂產品的繁中／英文／日文可見文案，涵蓋主視窗、設定、狀態、OCR 安裝及快速鍵提示；相關回歸 428 passed，CodeRabbit 初審兩項 Minor 已修、複審零 issues。該日候選通過本機 frozen import、Windows OCR 兩行、CPU vision 1/1 與 GUI 20 秒啟動；沙箱更新、全新安裝／啟動／移除也有當日紀錄。當時 WACK 工具曾以未處理的 .NET 例外碼 0xE0434352 結束，未產生認證報告。這些是歷史驗收紀錄，不代表新版本已發行或認證。文案來源、範圍與限制見 [Gemini 文案驗證](reviews/2026-10-05-gemini-ui-copy.md)。
 
-截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。獨立三席與仲裁已完成，未查證出需修補的程式碼缺陷；正式評論仍因驗收缺口而 blocked。四語 Gemini 行銷文案與額外條款已保存至商店草稿。最終 GUI 完整操作、真實設定升級、乾淨 Windows OCR 及 Store 認證仍待完成，候選尚未上傳。完整證據與限制見[本輪驗收紀錄](reviews/2026-10-07-release-integrity.md)。Microsoft Store 現行正式版本仍為 0.1.1.0。
+截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。獨立三席與仲裁已完成，未查證出需修補的程式碼缺陷；正式評論仍因驗收缺口而 blocked。四語 Gemini 行銷文案與額外條款已保存至商店草稿。0.1.2.0 候選已上傳並保存至 Submission 3 草稿，重開核對版本／x64／最低 Windows 版本一致；後台保留 runFullTrust 審核警告，尚未送認證或發布。最終 GUI 完整操作、真實設定升級、乾淨 Windows OCR 及 Store 認證仍待完成。完整證據與限制見[本輪驗收紀錄](reviews/2026-10-07-release-integrity.md)。Microsoft Store 現行正式版本仍為 0.1.1.0。
 
 ---
 
