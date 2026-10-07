@@ -58,3 +58,12 @@ CH-T55 維持 Review；CH-T56 尚未完成。主人已驗收來源版的 Luna、
 CodeRabbit 歷史小檔 fixture 的149份程式／文件（另有 unchanged config）完成審查，8 issues 已查證修補；其中2份小檔是 upstream Qt license Python，未提出問題、未修改原文。151 service-count 失敗預檢也保守計入3次／小時，本小時只留一次修正版複審。新修正涉及高對比文字、建置Python路徑、環境變數、中文OCR路徑、主模型下載及測試隔離／回收；最終EXE／MSIX需在存Git、兔子複審、push main後重建。先前候選full CPU Vision 1/1及MSIX製作完成；新Sandbox update PFN／synthetic LocalState通過，但直接 Process.Start WindowsApps EXE Access denied，import/OCR/WACK未執行，不算PASS。guest package／certificate清理完成、owned VM已關閉，失敗證據保留。Gemini經Antigravity Bridge完成四locale活潑顏文字草稿，互導免費GitHub及商店方便安裝；獨立Unicode／UTF16限额檢查通過，英文短文269單位。未存Partner Center、未上傳新候選、未認證，CH-T55仍Review／SmokeNO／CriticNO。
 
 修補驗證：focused六檔 pytest 119 passed；唯一失敗是test_real_release_dist_preflight_when_available讀到舊root dist並正確拒絕未審Qt模組，不代表本輪隔離成品。新加main資產準備測試後download_task5再驗18 passed。正式OpenCV4.13真實中文路徑解碼／高對比checked色／BAT正式Python解析探針通過；探針發現for/f巢狀CMD引號不穩，改為唯一暫存收據讀取，成功／失敗均回收，2案建置與隔離契約再驗通過。OCR後端單元測試為mock，不宣稱Windows原生OCR。新成品仍須重新執行完整閘門。
+
+
+### 最終 V4 來源與商店文案 checkpoint
+
+15 檔修正版 CodeRabbit 複審 0 issues，來源 `6f695771da890feeee2e606c397683c12d06a75f` 已 push main；CI run 138／37580547583 Success，8 項 required jobs 成功、2 項手動 frozen jobs skipped。此來源的 immutable source manifest SHA `03bca5f2a244c14f0e847627fec7344932528882f856ec659ec4918529e86e63` 重建成功；EXE SHA `b511deb81889f98c61e2c47203488f5be1512489d34d1d280c1932439a6299d8`，light preflight、import、原生 Windows OCR 2 行及 GUI 20 秒通過。新 cv2.pyd 與可信 wheel 雜湊一致，無 ffmpeg500、PIL 或禁用 Qt 模組。full CPU／MSIX／fresh Sandbox／完整 WACK 尚待驗證。
+
+Gemini 透過 Antigravity Bridge 撰寫的四語顏文字文案已保存至 Partner Center Submission 3 草稿；官方 UI 匯出回應比對四 locale 的說明、版本更新、短文及每語7個關鍵字全部一致，其他 metadata／圖片／產品／授權欄位維持原值。原始帶資產網址的後台匯出僅保留於 ignored output，不公開；sanitized snapshot 與查核收據位於 `output/release-20261007-final/`。商店稅務／支付警示及 disabled 認證按鈕已實際觀察，尚未調整金融資料、上傳新 MSIX、認證或發布。額外授權條款仍待正式評論與保存。文案 saved 狀態變更不修改 Gemini 的顧客文字，也不改已固定的 V4 建置來源。
+
+06:50 UTC：V4 full preflight 1,563 files／4,831,122,202 bytes／2 models 通過；強制 CPU 的 frozen technical coverage 1 case／1 image request success，完整收據 status passed，EXE SHA 與 preview 一致。owned MSIX wrapper 首次因誤指向 final/venv 提前失敗，失敗 log／JSON 保留；修正為既有 clean/venv 後 AST 與封裝前檢查通過，正在 MakeAppx 製作候選。這是 output orchestration 修正，不修改正式程式或既有 immutable source。

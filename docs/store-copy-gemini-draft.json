@@ -1,6 +1,6 @@
 {
   "writer": "Gemini via Antigravity Bridge Codex",
-  "status": "draft_not_saved_to_Partner_Center",
+  "status": "saved_to_Partner_Center_submission_3_draft_not_published",
   "releaseStateNotCustomerCopy": "Store private preview 0.1.1.0 installed; 0.1.2.0 testing in progress, unsubmitted and uncertified",
   "languages": {
     "zh-tw": {
@@ -59,5 +59,15 @@
         "CloudHime"
       ]
     }
+  },
+  "savedUtc": "2026-10-07T06:42:07.845852+00:00",
+  "saveVerification": {
+    "submission": "1152921505702037522",
+    "productId": "9NH4B9GQ86FL",
+    "fourLocalesExactMatch": true,
+    "keywordsPerLocale": 7,
+    "otherExportFieldsPreserved": true,
+    "evidence": "output/release-20261007-final/store-copy-save-verification.json",
+    "officialExportAfterSha256": "1376c58f9a7db8c2cd35c1509d3dcb68fa1d284f1606c47a5015369cb1173093"
   }
 }
