@@ -97,6 +97,27 @@ foreach ($store in @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\TrustedPeople')
 Remove-Item -LiteralPath $cer -Force -ErrorAction SilentlyContinue
 ```
 
+## 修改 Qt 的獨立 MSIX 路徑
+
+正式 `build_exe.bat` 的 wheel 完整性檢查使用官方 production hash lock，會拒絕不符合該 lock 的自編 PySide6／Shiboken wheel。這個入口的通過結果只適用於正式基線；在原始碼環境替換 wheel 後，不能宣稱仍通過同一組完整性檢查。
+
+修改版可從已驗證的完整 onedir 基線建立獨立可寫副本，再依 [`QT-LIBRARY-REPLACEMENT.md`](../packaging/third-party-licenses/QT-LIBRARY-REPLACEMENT.md) 替換 Qt／PySide6／Shiboken。使用相同版本、Release MSVC x64 與 CPython 3.10 ABI，保存自編來源、工具鏈、替換檔雜湊及相應授權原文；原基線與已安裝 Store 套件均保留。副本中的原始 dependency provenance 描述的是基線，不能當成修改 DLL 的編譯證明。
+
+Windows OCR 的官方支援範圍要求 [MSIX 套件身分](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr)。因此修改版若需使用這項功能，應將副本重新封裝，使用獨立開發 identity；直接啟動可寫 EXE 的有限結果不能替代套件功能驗收。下例的兩個路徑需改為自己這次建立的專屬目錄，`OutputDir` 必須是尚未使用的新目錄：
+
+```powershell
+pwsh -File packaging/build_msix.ps1 `
+  -DistDir 'build/qt-modified/modified-dist' `
+  -OutputDir 'build/qt-modified/msix-output' `
+  -IdentityName 'CloudHime.QtModified' `
+  -Publisher 'CN=CloudHime Development' `
+  -Version 0.1.2.0
+```
+
+此流程不使用 `-StoreRelease`，不修改已簽署的 MSIX，也不覆蓋正式 Store identity。Builder 仍會驗證 payload、provenance 與 Qt 模組清單；它沒有要求允許模組的 DLL 維持原始內容雜湊。修改版須另外保存完整檔案清單與來源，不能沿用官方基線的完整性聲稱。
+
+依軌道 A 的開發簽章及 thumbprint 清理步驟處理新 MSIX，再使用 `test_msix_install.ps1 -IdentityName CloudHime.QtModified` 驗證 AUMID 啟動。獨立 identity 會有獨立設定目錄；不要為此移除或改動現有 Store 安裝。完整驗收仍須實際操作修改版 GUI 與套件身分下的 OCR／翻譯，記錄版本、產物雜湊、結果及清理。這是由現有封裝器推導的操作路徑，目前尚無自編 Qt 修改版 MSIX 的完整功能驗收，不作法律合規或已通過的聲稱。
+
 ## 軌道 B：Microsoft Store 正式發行
 
 Store 路徑要求 Partner Center 已保留的產品 identity。`-StoreRelease` 必須搭配本機未納入版控的 `packaging/store-identity.local.json`；schema 1 欄位為 `identity_name`、`publisher`、`publisher_display_name` 與 `package_family_name`。檔案不能提交或貼入 issue。Builder 會拒絕 development、CI、test、example、placeholder publisher，以及不符 identity prefix 的 package family name。

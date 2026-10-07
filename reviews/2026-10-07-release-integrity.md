@@ -77,3 +77,17 @@ Gemini 透過 Antigravity Bridge 撰寫的四語顏文字文案已保存至 Part
 - 獨立原生 WinRT 探針有 en-US 且能建立引擎；相同候選 DLL 的 frozen 診斷工具卻取得空語言清單。繼承／隔離環境、清除 DLL 搜尋目錄、預載 Qt／MSVCP、明確 STA／MTA，以及預載系統 OCR DLL，均未恢復辨識。Python 與 PowerShell 實際都載入 System32 的 Windows.Media.Ocr.dll；native ABI 對照亦回報空語言清單，所有 HRESULT 為 S_OK，並非 Python 介面獨有現象。Microsoft 的 namespace 文件明確限定桌面程式須具套件身分；目前用未修改 V4 MSIX 測試套件 debug context，另保留真正 AUMID 啟動驗證，尚未取得通過結果，不能把 debug token 宣稱等同正式 AppId token。
 - 以上診斷皆為 output 內獨立工具，不作候選 release acceptance。證據：`output/release-20261007-final/sandbox-gate/wack/output/result.json`、`ocr-bundle-diagnosis/guest/output/result.json`、`ocr-bundle-diagnosis/variants/guest/output/result.json`、`ocr-bundle-diagnosis/apartment/guest/output/result.json` 與各 guest-disposal.json。
 - CH-T55 保持 Review／Smoke NO／Critic NO；CH-T56 保持 Backlog。Gemini 四語文案与七個關鍵字已實際保存並逐欄確認；本次候選未上傳、未送認證、未發布。Partner Center 稅務與支付警告仍未處理。
+
+## 套件身分與實際原生辨識更正（08:31 UTC）
+
+未修改 V4 候選的 package debug context 已完成測試：wrapper 的 Package Family 為 `WindSheep.CloudHime_2dn16emh70smw`，候選 OCR 仍以 exit2 失敗。這是 debug context，不代表真正 AppId token 的完整驗收；guest package／憑證清理無錯、remaining packages 0，owned VM 已精確關閉。證據：`sandbox-gate/identity-wack/output/result.json`、`identity-ocr-context.json` 與 guest-disposal.json。
+
+原生探針的「能建立英文引擎」不是圖片辨識通過。獨立 CLR-first PowerShell 程序可列出 en-US 並建立引擎；修正根整合者加入的 PowerShell Type 參數語法後，讀取 guest-local 圖片、開檔、BitmapDecoder 與 SoftwareBitmap 均完成，但 `RecognizeAsync` 回傳 `COMException / E_FAIL / 0x80004005`。下一個獨立 CLR 程序取得空語言清單。Native MTA-first 曾有一次引擎可建立，但後續呼叫變空；System32 與 TestOutput CWD 的獨立 C++ 程序皆取得空清單。這些是初始化／環境狀態差異，尚未定位根因，不將其歸咎 Python 或據此改正式程式。
+
+原始 harness 的型別轉換失敗、第二版較粗略錯誤與第三版精確階段／HRESULT 都保留，三個 owned guest 已清理。證據位於 `ocr-clr-native-diagnosis/guest/output/`、`ocr-init-order-diagnosis/guest/output/`、`ocr-clr-recognition-v2/guest/output/` 與 `ocr-clr-recognition-v3/guest/output/`，各目錄的 `guest-disposal.json` 確認本輪 VM 已關閉；complete 僅代表診斷資料收集。
+
+`sandbox-gate/remaining-v4` 已核對同一候選 MSIX／EXE 雜湊並啟動獨立剩餘技術閘門：新包直接安裝、package debug context 內的 native CLR 真實圖片辨識、可寫副本 import／CPU Vision／Qt 載入、真正 AUMID 與完整 WACK。升級已通過的歷史證據保留，不重跑舊包；診斷不會中止其餘技術閘門，`allReleaseGatesPassed=false` 固定保留。08:31 UTC 尚在 copy／verify／sign，後續結果未取得。生成器最初引用舊候選的 prior evidence 路徑已於啟動前校正，最終六份 guest PowerShell 腳本經 Windows PowerShell 5.1 AST 檢查通過。
+
+修改版 Qt 的技術稽核確認：正式 wheel 完整性 guard 會拒絕不符 production lock 的自編 wheel，但既有 MSIX builder 不對允許的 Qt DLL 執行內容 hash 白名單。`docs/release-two-track.md` 補充獨立開發 identity 的修改副本重封路徑與來源／雜湊紀錄要求；相關工具在來源 `6f69577` 與文件 HEAD `284cfd3` 間無差異。尚未實測自編 Qt 修改版 MSIX 完整功能，不宣稱法律合規或修改版已驗收。正式 24k 評論仍未開始。
+
+GitHub CI140／37590083622 已重新確認 overall Success。四語 Gemini 活潑顏文字與關鍵字已保存；本次候選仍未上傳 Store，未認證／發布。Partner Center 稅務／支付問題已詢問主人，尚無回覆。
