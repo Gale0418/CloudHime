@@ -4,6 +4,8 @@ GitHub 免費提供完整原始碼，不提供官方 EXE、runtime 或模型二�
 
 規劃售價為 NT$249，自正式公開可購買日起前 30 天規劃以 NT$199 首發。目前 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)仍是私人預覽，尚未正式公開可購買；因此尚未開始收費，首發 30 天也尚未起算。實際價格與供應狀態以 Store 頁面為準。原始碼可於 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
+Microsoft Store 付費套件不包含第三方雲端服務的 API 費用；使用者須自行提供金鑰並依服務供應者的費率及條款付費。Gemma 模型與其他第三方元件各自適用其授權或使用條款，CloudHime 原始碼的 Apache License 2.0 不會取代或擴張那些條款。
+
 本手冊說明 MSIX 本機開發驗證與 Microsoft Store 發行的界線。開發憑證只供本機 sideload；Store 上傳包使用 Partner Center 指定的 identity，由 Microsoft Store 簽署後發行。兩條流程共用凍結版建置及 payload 驗證，但簽章、信任與發行結果不能互相代替。
 
 本文件與 `NOTICE` 僅提供發行及署名資訊，不修改 `LICENSE` 條款。Apache 2.0 第 4 節說明 NOTICE 僅供告知，且不得被解讀為修改授權；第 6 節不授予商標權。這些聲明不限制 Apache 2.0 所授予的合法免費或付費再散布權利。
@@ -119,6 +121,8 @@ pwsh -File packaging/build_msix.ps1 `
 `build_msix.ps1` 在打包前執行 release dist 驗證；Store identity 或版本 guard、dist preflight、SDK 或打包任一失敗都應視為未完成。它在失敗時會移除此次目標套件／upload 檔與暫存目錄，但不會修復 dist；為避免碰到舊檔，必須為每次執行指定新的專屬 `OutputDir`，不要讓不同建置同時執行。檢查設定、版本與失敗階段後，使用新目錄重跑；不要手動把開發簽章套件改成 Store 輸入。
 
 ## 歷史驗收快照與恢復順序
+
+截至 2026-10-07，0.1.2.0 本機候選已通過隔離環境 frozen import、Windows OCR、CPU vision 與 GUI 檢查；Windows Sandbox 安裝／更新與 WACK 驗收仍在進行，尚未上傳或取得 Store 認證。Microsoft Store 正式現行版本仍為 `0.1.1.0`。
 
 以下內容是截至 2026-10-05 的歷史快照，不代表目前 Store／GitHub 發行狀態。當時主機私人 Store 版仍為 `0.1.1.0`。產品候選固定於來源 `fe88bab940c02c7e271fefeea557bc004cb9d580`，位於 `output/store-release-20261005-gemini-copy/`；10/03 的候選是歷史產物，不用來接續本輪發行。該候選已通過 frozen import、Windows OCR 兩行、CPU Vision 1/1、GUI 啟動存活與 full provenance 驗證；隔離環境的合成 LocalState 更新保留、全新安裝／啟動／移除也已通過。
 

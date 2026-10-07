@@ -42,7 +42,9 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 20:13 實機回報模型準備期間未翻譯，舊候選已退回。修正版 `adf8d39` 增加內附模型驗證進度與取消、等待提示，並修正純本機路由及舊 Google 快取；313 項相關回歸與九檔 CodeRabbit 審查通過。新 EXE 已通過模型完整性、host Windows OCR 兩行、CPU 圖像功能 1/1 與 20 秒啟動驗證；相同來源的實際 Controller 診斷約 17 秒就緒，將「確認連線狀態」翻為英文，等待時 UI event loop 持續運作。來源診斷未涵蓋 frozen EXE 的完整人工操作；暫停／繼續／取消框選、沙箱與 MSIX／WACK 驗收仍待完成。原始全新沙箱有 OCR 語言資源問題，補入診斷用資源的控制實驗不能當成未修改沙箱的通過。Store 現行仍為 0.1.1.0，新版尚未上傳或認證。
 
 
-2026-10-05 Gemini 已審閱並修訂產品的繁中／英文／日文可見文案，涵蓋主視窗、設定、狀態、OCR 安裝及快速鍵提示；相關回歸 428 passed，CodeRabbit 初審兩項 Minor 已修、複審零 issues。含這批文案的新 EXE 已重建並通過本機 frozen import、Windows OCR 兩行、CPU vision 1/1 與 GUI 20 秒啟動；0.1.2.0 MSIX／upload 已建立並核對雜湊。隔離沙箱的 0.1.1.0→0.1.2.0 更新（合成 LocalState 保留）、全新安裝／20 秒啟動／移除已通過；WACK 工具以未處理的 .NET 例外碼 0xE0434352 結束，未產生認證報告，尚不能判定套件合格。最新 EXE 已開啟供人工驗收；完整操作、WACK、正式評議及 Store 認證仍待完成，商店正式版仍為 0.1.1.0。文案來源、範圍與限制見 [Gemini 文案驗證](reviews/2026-10-05-gemini-ui-copy.md)。
+2026-10-05 Gemini 已審閱並修訂產品的繁中／英文／日文可見文案，涵蓋主視窗、設定、狀態、OCR 安裝及快速鍵提示；相關回歸 428 passed，CodeRabbit 初審兩項 Minor 已修、複審零 issues。該日候選通過本機 frozen import、Windows OCR 兩行、CPU vision 1/1 與 GUI 20 秒啟動；沙箱更新、全新安裝／啟動／移除也有當日紀錄。當時 WACK 工具曾以未處理的 .NET 例外碼 0xE0434352 結束，未產生認證報告。這些是歷史驗收紀錄，不代表新版本已發行或認證。文案來源、範圍與限制見 [Gemini 文案驗證](reviews/2026-10-05-gemini-ui-copy.md)。
+
+截至 2026-10-07，0.1.2.0 本機候選已通過隔離環境 frozen import、Windows OCR、CPU vision 與 GUI 檢查；Windows Sandbox 安裝／更新與 WACK 驗收仍在進行，尚未上傳或取得 Store 認證。Microsoft Store 現行正式版本仍為 0.1.1.0。
 
 ---
 
@@ -104,7 +106,7 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 ### 取得 CloudHime
 CloudHime 採雙軌發行：GitHub 免費提供完整原始碼，不提供官方二進位；Microsoft Store 預計以付費 MSIX 提供完整 EXE、runtime 與模型。依 Apache License 2.0，任何人都可在遵守該授權及各第三方元件／模型適用條款的前提下，免費或收費再散布專案原始碼或衍生作品。
 
-目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。規劃售價為 NT$249；自正式公開可購買日起的前 30 天，規劃以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。原始碼與發行資訊見 [GitHub 專案](https://github.com/Gale0418/CloudHime)。
+目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。規劃售價為 NT$249；自正式公開可購買日起的前 30 天，規劃以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。不想自行建置的使用者，可從 [Microsoft Store 官方頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)查看並取得官方套件（目前仍為私人預覽，尚未公開供購買）；免費原始碼可從 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
 官方包採一次性買斷，無應用程式訂閱；第三方雲端 AI 需自行提供 API Key，服務費用不包含在售價中。兩種取得方式共用原始碼與核心功能。維護者為 Gale0418；署名、品牌與第三方告知見 [NOTICE](NOTICE)、[AUTHORS.md](AUTHORS.md)、[BRANDING.md](BRANDING.md) 與 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。

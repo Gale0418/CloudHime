@@ -625,3 +625,7 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 ### 2026-10-07 收尾中的成品完整性查證
 
 引用「人工檢查結束」聊天，主人已驗收來源介面。Qt模組縮減、595份授權原文及來源告知、可信wheel installed payload guard、隔離Python重建與相關修正已推main。CodeRabbit修正版7檔0issues，CI run136／3c0070c Success。本輪新EXE import／WindowsOCR／GUI與可寫副本QtDLL探針通過；full preflight固定模型SHA通過，舊包模型terms只有LF/CRLF差異，保留失敗證據並以固定來源原文修正後重驗。CPU Vision／新MSIX／乾淨安裝更新WACK／正式24k評論／Store認證仍待完成，不宣稱Done。Partner Center仍私人TWD249草稿，公開日待主人回覆；四locale含兩個繁中標籤。詳見reviews/2026-10-07-release-integrity.md。Pulse CLI兩種旗標嘗試皆argument_error，後依既有ledger schema寫入bounded partial_pass pulse，Rust handoff已正確讀回；未切換Python CLI fallback。
+
+### 2026-10-07 主人補充發行流程
+
+主人指定更新README／任務中心後存Git、CodeRabbit查證修正、推main再打包，不留新分支；兔子每小時最多3次、每次最多150檔，排除大檔，將有價值的既有小檔放入獨立審查fixture。README已補商店官方頁與免费原始碼互指，維持私人預覽狀態。商店文案指定由Antigravity Bridge Codex上的Gemini撰寫、活潑顏文字並放GitHub免費原始碼連結；request cloudhime-store-copy-20261007-v1已接受，原請求續等，不開第二個文案寫手。新MSIX b315ea489701a1d7605a681714a3da31b364314b772dde9fe4e898a2c27a8129已建置，正在斷網Sandbox驗證，仍未上傳認證。main bad7cd7 CI run137八required成功、兩manual skipped；GitHub connector回讀可用，不能以combined status空清單當綠燈。
