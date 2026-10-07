@@ -155,3 +155,9 @@ OCR 補充對照只變更沙箱 requested vGPU 為 Enable，記憶體仍 4096 Mi
 Submission 3 的四語八個欄位已實際保存並重新開啟，逐字符合 Gemini V2；版本說明、額外授權條款、產品功能、著作權與開發者欄位均與操作前一致。保存收據 `output/release-20261007-final/store-notebook-copy-save-verification.json`，畫面 `store-notebook-copy-saved.png`。公共 `docs/store-copy-gemini-draft.json` 同步新介紹，舊匯出雜湊僅保留為歷史核對，未拿來證明新文案。README 與 Mission Center 同步特色及限制。
 
 此切片僅更新說明與商店草稿，保留既有版本更新項目，EXE／模型／DLL／MSIX 位元組不變。售價照已定案 NT$249 買斷、公開可購買後前30天 NT$199；未送認證、未發布。CH-T55 仍 Review／Smoke NO／Critic NO，CH-T56 仍 Backlog；最終 GUI／真實設定升級／乾淨 Windows OCR 與 Store 驗收門檻仍須實際證據。
+
+## 小本本文案提交的 CI 紅燈處理
+
+`18b923f` 的四份文件已存 Git、CodeRabbit 審查 0 issues、push main 並核對遠端提交。CI146／`37627935271` 的 UI 分組出現 1 failed／89 passed：日文 `test_cooldown_preserves_progress_and_terminal_status` 預期5秒、當次得到6秒，其餘7項必要檢查成功。這次提交未改冷卻實作。獨立唯讀核對與本機原三語案例3 passed，確認測試硬斷言依賴即時 `monotonic`；日文單次讀值的精確成因仍不明，不把它宣稱為已定位產品回歸。
+
+只修改該測試，替換 UI 模組的 clock 綁定、保留原 `perf_counter`／`strftime`，避免污染共用時鐘與 fixture 關閉期限。固定初始時間驗證5秒，明確推進1.25秒後驗證4秒、25%進度與錯誤訊息保留；真正 QTimer active 與結束後按鈕恢復斷言仍保留。完整受影響檔案90 passed，收據 `output/release-20261007-final/ci-cooldown-before.log`／`ci-cooldown-after.log`。正式程式與已保存 MSIX 不變，不以重跑掩蓋原始紅燈。新提交與 CI 結果另存 closeout 收據，尚未據此變更發行門檻。

@@ -2,6 +2,7 @@
 from unittest.mock import Mock
 
 from types import SimpleNamespace
+import time
 
 import pytest
 import celestial_ui
@@ -272,6 +273,14 @@ def test_luna_verification_refreshes_every_status_and_key_change_resets_it(contr
 
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
 def test_cooldown_preserves_progress_and_terminal_status(controller, monkeypatch, language):
+    # Keep exact countdown assertions independent of runner clock resolution.
+    # Patch only the UI's clock so fixture shutdown deadlines still advance.
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setattr("cloudhime_ui.time", SimpleNamespace(
+        monotonic=lambda: clock.now,
+        perf_counter=time.perf_counter,
+        strftime=time.strftime,
+    ))
     controller.set_ui_language(language, persist=False)
     monkeypatch.setattr(controller, "trigger_scan_sequence", lambda: setattr(controller, "scan_in_progress", True))
     controller.on_immediate_click()
@@ -280,6 +289,11 @@ def test_cooldown_preserves_progress_and_terminal_status(controller, monkeypatch
     controller.update_cooldown_progress()
     assert controller.lbl_status.text() == "Network unavailable — retry"
     assert controller.btn_now.text() == controller._tr("controller.button.wait", seconds=5)
+    clock.now += 1.25
+    controller.update_cooldown_progress()
+    assert controller.btn_now.text() == controller._tr("controller.button.wait", seconds=4)
+    assert controller.btn_now.cooldown_progress == 25
+    assert controller.lbl_status.text() == "Network unavailable — retry"
     controller.scan_in_progress = False
     controller.cooldown_timer.stop()
     controller.reset_immediate_btn()
