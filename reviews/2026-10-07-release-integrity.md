@@ -144,3 +144,14 @@ OCR 補充對照只變更沙箱 requested vGPU 為 Enable，記憶體仍 4096 Mi
 主人指出定價早已決定，回查 `reviews/2026-10-06-release-closeout.md` 與 `output/release-20261006/store-price-decision.json` 確認：NT$249 一次買斷、正式公開可購買後前 30 天 NT$199，NT$249 已保存至 Submission 3。GitHub 免費完整原始碼、Store 付費完整包與原私人預覽受眾保留的政策也已有紀錄。前述「售價／發行範圍待回覆」混淆了已定案政策與尚未設定的首發排程，予以撤回，不再重複要求主人確認定價。
 
 目前只保留實際狀態：首發優惠尚未排程，須按正式公開可購買的起算日落實，私人預覽不啟動 30 天計時；沒有冒稱已保存 NT$199 排程或已正式收費。稅務／支付資料與既有最終驗收、認證／Store 更新閘門仍待完成。這次僅修正文檔與續接 metadata，不修改商店設定、產物或封存評論，也不改寫舊歷史證據。
+
+
+## 小本本特色與 API 內容政策文案補齊（2026-10-07）
+
+依主人補充，Antigravity Bridge 的 Gemini 已完成四個 locale 的介紹與短文，將作品專屬小本本列為主要特色：搜尋公開資料整理角色、專名及背景，候選經確認後保存本機、自選啟用，供支援的 AI 翻譯參考；公開資料研究需要網路。功能核對 `knowledge_research_service.py`、`knowledge_pack_store.py` 與 `knowledge_prompt_context.py`，沒有把小本本描述為模型訓練或宣稱所有流程離線。線上 API 可能依供應商內容政策拒絕部分或敏感內容，使用者可選本機翻譯，輸出仍取決於模型能力。
+
+同一 Gemini actor 修正初稿 JSON 並交付 V2 完成標記；根整合者獨立標準 JSON／UTF-16 驗證通過，不採用 Gemini 未執行的估計計數。繁中兩 locale 的短文／介紹各為 168／1331 UTF-16 單位，英文 266／3715、日文 184／1850，皆在欄位限制內。Gemini 原稿 SHA-256 `88d57db017a7d32892ada5ec36e1168aadf63d4e0f3a6ef7897f047eb16f8a1e`，獨立驗證見 `output/release-20261007-final/store-notebook-copy-validation.json`。
+
+Submission 3 的四語八個欄位已實際保存並重新開啟，逐字符合 Gemini V2；版本說明、額外授權條款、產品功能、著作權與開發者欄位均與操作前一致。保存收據 `output/release-20261007-final/store-notebook-copy-save-verification.json`，畫面 `store-notebook-copy-saved.png`。公共 `docs/store-copy-gemini-draft.json` 同步新介紹，舊匯出雜湊僅保留為歷史核對，未拿來證明新文案。README 與 Mission Center 同步特色及限制。
+
+此切片僅更新說明與商店草稿，保留既有版本更新項目，EXE／模型／DLL／MSIX 位元組不變。售價照已定案 NT$249 買斷、公開可購買後前30天 NT$199；未送認證、未發布。CH-T55 仍 Review／Smoke NO／Critic NO，CH-T56 仍 Backlog；最終 GUI／真實設定升級／乾淨 Windows OCR 與 Store 驗收門檻仍須實際證據。
