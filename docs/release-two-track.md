@@ -2,7 +2,7 @@
 
 GitHub 免費提供完整原始碼，不提供官方 EXE、runtime 或模型二進位；Microsoft Store 規劃提供付費的完整 EXE、runtime 與模型 MSIX。原始碼依 `LICENSE` 的 Apache License 2.0 發行，任何人都可依該授權合法免費或收費再散布原始碼及衍生作品，並須遵守其中條件；第三方元件與模型仍受各自授權或使用條款約束。詳見 [`NOTICE`](../NOTICE)、[`AUTHORS.md`](../AUTHORS.md)、[`BRANDING.md`](../BRANDING.md) 與 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
 
-規劃售價為 NT$249，自正式公開可購買日起前 30 天規劃以 NT$199 首發。目前 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)仍是私人預覽，尚未正式公開可購買；因此尚未開始收費，首發 30 天也尚未起算。實際價格與供應狀態以 Store 頁面為準。原始碼可於 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
+售價已定案為 NT$249 一次買斷；自正式公開可購買日起的前 30 天，以 NT$199 首發。目前 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)仍是私人預覽，尚未正式公開可購買；因此尚未開始收費，首發 30 天也尚未起算。實際價格與供應狀態以 Store 頁面為準。原始碼可於 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
 Microsoft Store 付費套件不包含第三方雲端服務的 API 費用；使用者須自行提供金鑰並依服務供應者的費率及條款付費。Gemma 模型與其他第三方元件各自適用其授權或使用條款，CloudHime 原始碼的 Apache License 2.0 不會取代或擴張那些條款。
 

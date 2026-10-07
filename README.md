@@ -108,7 +108,7 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 ### 取得 CloudHime
 CloudHime 採雙軌發行：GitHub 免費提供完整原始碼，不提供官方二進位；Microsoft Store 預計以付費 MSIX 提供完整 EXE、runtime 與模型。依 Apache License 2.0，任何人都可在遵守該授權及各第三方元件／模型適用條款的前提下，免費或收費再散布專案原始碼或衍生作品。
 
-目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。規劃售價為 NT$249；自正式公開可購買日起的前 30 天，規劃以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。不想自行建置的使用者，可從 [Microsoft Store 官方頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)查看並取得官方套件（目前仍為私人預覽，尚未公開供購買）；免費原始碼可從 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
+目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。售價已定案為 NT$249 一次買斷；自正式公開可購買日起的前 30 天，以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。不想自行建置的使用者，可從 [Microsoft Store 官方頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)查看並取得官方套件（目前仍為私人預覽，尚未公開供購買）；免費原始碼可從 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
 官方包採一次性買斷，無應用程式訂閱；第三方雲端 AI 需自行提供 API Key，服務費用不包含在售價中。兩種取得方式共用原始碼與核心功能。維護者為 Gale0418；署名、品牌與第三方告知見 [NOTICE](NOTICE)、[AUTHORS.md](AUTHORS.md)、[BRANDING.md](BRANDING.md) 與 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。

@@ -137,3 +137,10 @@ Partner Center 在草稿保存時自動以相同支援範圍的高版本套件�
 OCR 補充對照只變更沙箱 requested vGPU 為 Enable，記憶體仍 4096 MiB、網路與剪貼簿關閉；相同原生探針 MSIX 與 fixture 的 SHA 已核對。真正 AUMID 啟動並確認 package identity，en-US 支援與 BGRA8 bitmap 解碼通過，但辨識仍回 `0x80004005`／零行。辨識後列舉的控制器為 Microsoft Remote Display Adapter；不能將 requested Enable 推論為某個實體 GPU 或驅動已獲驗證，也沒有證據判定產品程式根因。此結果不能當候選 acceptance PASS。Guest packages 0、cleanup errors 空；owned VM 已於 09:59:04 UTC 核對 PID／執行檔／start time 後回收。證據 `ocr-native-aumid-diagnosis/guest-vgpu/output/result.json`、`guest-disposal.json` 與 `ocr-vgpu-comparison.json`。
 
 這次只補文件與外部草稿對帳，正式 EXE／DLL／模型／MSIX 位元組不變，不另做無關重建。三席與獨立仲裁的封存結論仍 blocked，這份補記沒有覆寫報告或假稱新一次正式評論通過。最終 frozen GUI 全旅程、真實設定升級、乾淨 Windows OCR 與 Store 認證／安裝更新仍待完成。CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。
+
+
+## 定價待確認誤記更正（2026-10-07）
+
+主人指出定價早已決定，回查 `reviews/2026-10-06-release-closeout.md` 與 `output/release-20261006/store-price-decision.json` 確認：NT$249 一次買斷、正式公開可購買後前 30 天 NT$199，NT$249 已保存至 Submission 3。GitHub 免費完整原始碼、Store 付費完整包與原私人預覽受眾保留的政策也已有紀錄。前述「售價／發行範圍待回覆」混淆了已定案政策與尚未設定的首發排程，予以撤回，不再重複要求主人確認定價。
+
+目前只保留實際狀態：首發優惠尚未排程，須按正式公開可購買的起算日落實，私人預覽不啟動 30 天計時；沒有冒稱已保存 NT$199 排程或已正式收費。稅務／支付資料與既有最終驗收、認證／Store 更新閘門仍待完成。這次僅修正文檔與續接 metadata，不修改商店設定、產物或封存評論，也不改寫舊歷史證據。
