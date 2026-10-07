@@ -91,3 +91,21 @@ Gemini 透過 Antigravity Bridge 撰寫的四語顏文字文案已保存至 Part
 修改版 Qt 的技術稽核確認：正式 wheel 完整性 guard 會拒絕不符 production lock 的自編 wheel，但既有 MSIX builder 不對允許的 Qt DLL 執行內容 hash 白名單。`docs/release-two-track.md` 補充獨立開發 identity 的修改副本重封路徑與來源／雜湊紀錄要求；相關工具在來源 `6f69577` 與文件 HEAD `284cfd3` 間無差異。尚未實測自編 Qt 修改版 MSIX 完整功能，不宣稱法律合規或修改版已驗收。正式 24k 評論仍未開始。
 
 GitHub CI140／37590083622 已重新確認 overall Success。四語 Gemini 活潑顏文字與關鍵字已保存；本次候選仍未上傳 Store，未認證／發布。Partner Center 稅務／支付問題已詢問主人，尚無回覆。
+
+
+## V4 剩餘技術閘門結果與真正 AUMID OCR 對照（09:16 UTC）
+
+來源與正式產物仍固定於 `6f695771da890feeee2e606c397683c12d06a75f`，未因診斷改動產品。上述 08:31 UTC 的進行中紀錄已由以下結果更新；不將歷史候選或其他來源的通過結果混入本次驗收。
+
+- `sandbox-gate/remaining-v4/output/result.json`：同一 V4 MSIX 雜湊已核對；SDK 隔離沙箱中的直接安裝、副本 import、CPU vision 1 case／1 image、append-trailer 修改 Qt6Core 副本載入 20 秒、真正 CloudHime AUMID 啟動均通過。未修改原 installed DLL，這不是自編 Qt 修改版完整功能驗收。
+- 完整 WACK：SDK `10.0.26100.8876`、exit 0、`OVERALL_RESULT=PASS`、`PARTIAL_RUN=FALSE`；13 required PASS、9 optional PASS、2 optional FAIL。XML SHA-256 `70f739a10d46db0752b88ff8d1d8ba9e77d3f6781528dca12111622afe2378ba`，定位 `sandbox-gate/remaining-v4/output/wack.xml`。
+- 選用 SignedFilesTest 回報 PathTooLongException；選用 DetectBlockedExes 有 14 個 native DLL／EXE 的 process-launch API 引用及相同例外。XML 未定位實際過長檔名，不把所有錯誤歸因長路徑，也不把 API 引用當成實際執行封鎖程式。依安裝前綴估算，51 個上游授權補充文件路徑超過 260 字元、最長 301；原生 payload 沒有超長路徑。這只是候選關聯，不能代替 SDK 例外根因或 Windows S 模式驗收；原授權原文與路徑證據保留，未盲目刪除或縮寫授權。
+- `remainingTechnicalGatesPassed=true` 只涵蓋該腳本列明的剩餘技術項目；`allReleaseGatesPassed=false`。先前同 V4 的 0.1.1.0→0.1.2.0 合成 LocalState 更新保留證據延用，未重跑、未稱真實主人設定升級。
+
+獨立標準 C++／WinRT 程式封裝為開發用 `CloudHime.OcrDiagnostic` MSIX，在全新沙箱透過真正 `IApplicationActivationManager`／AUMID 啟動。探針自身核對 Package Family 與 AppUserModelId 的 API result 均為 0，取得 en-US、建立引擎、讀取圖片及轉為 BGRA8 bitmap 均完成，`RecognizeAsync` 仍回傳 `E_FAIL / 0x80004005`、辨識 0 行。相同探針在 host 成功辨識 2 行。這排除「只能由 CloudHime／Python 特有問題解釋」的假設，但不證明 OS 根因、不替代乾淨 Windows 上候選 OCR 的通過結果。
+
+證據：`ocr-native-aumid-diagnosis/build-record.json`、`guest-v2/output/result.json` 與原生結果檔；`actualIdentityVerified=true`、`actualRecognitionSucceeded=false`、`notCandidateAcceptance=true`。開發探針未納入正式產物。所有 owned 沙箱均依 PID、執行檔與 start time 核對後關閉；remaining-v4 disposal 為 08:46:35 UTC，native AUMID 對照 disposal 為 09:13:13 UTC；兩者 guest packages 0、cleanup errors 空。沒有改動主人現行 Store 0.1.1.0、設定或主機憑證。
+
+文件 main `da9c14fc8e41e8796e7e7b040fa4fe89e268d3cf` 的 CI141／37594920193 overall Success：8 required 成功、2 手動 frozen jobs skipped。正式評論尚未開始。四語 Gemini 行銷文案已保存；額外授權條款仍為未保存草稿，同一 Gemini 任務因 runtime `filesystem/foo` permission 等待而停滯，Bridge 回報 `may_handoff_write=false`、視窗可見性未驗證。未建立替代 writer 或虛構 Gemini 完成結果。
+
+CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。尚缺最終 frozen GUI 完整操作、真實設定升級、乾淨 Windows OCR、正式評論、額外條款保存、Partner Center 認證及 Store 安裝／更新。稅務支付警告與價格／公開日待主人處理或決定；本次候選未上傳、未認證、未發布。

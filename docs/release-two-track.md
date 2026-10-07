@@ -143,7 +143,7 @@ pwsh -File packaging/build_msix.ps1 `
 
 ## 歷史驗收快照與恢復順序
 
-截至 2026-10-07，0.1.2.0 本機候選已通過隔離環境 frozen import、Windows OCR、CPU vision 與 GUI 檢查；Windows Sandbox 安裝／更新與 WACK 驗收仍在進行，尚未上傳或取得 Store 認證。Microsoft Store 正式現行版本仍為 `0.1.1.0`。
+截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。最終 GUI 完整操作、真實設定升級、正式評論及 Store 認證仍待完成，候選尚未上傳。完整證據與限制見[本輪驗收紀錄](../reviews/2026-10-07-release-integrity.md)。Microsoft Store 正式現行版本仍為 `0.1.1.0`。
 
 以下內容是截至 2026-10-05 的歷史快照，不代表目前 Store／GitHub 發行狀態。當時主機私人 Store 版仍為 `0.1.1.0`。產品候選固定於來源 `fe88bab940c02c7e271fefeea557bc004cb9d580`，位於 `output/store-release-20261005-gemini-copy/`；10/03 的候選是歷史產物，不用來接續本輪發行。該候選已通過 frozen import、Windows OCR 兩行、CPU Vision 1/1、GUI 啟動存活與 full provenance 驗證；隔離環境的合成 LocalState 更新保留、全新安裝／啟動／移除也已通過。
 
