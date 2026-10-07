@@ -67,3 +67,13 @@ CodeRabbit 歷史小檔 fixture 的149份程式／文件（另有 unchanged conf
 Gemini 透過 Antigravity Bridge 撰寫的四語顏文字文案已保存至 Partner Center Submission 3 草稿；官方 UI 匯出回應比對四 locale 的說明、版本更新、短文及每語7個關鍵字全部一致，其他 metadata／圖片／產品／授權欄位維持原值。原始帶資產網址的後台匯出僅保留於 ignored output，不公開；sanitized snapshot 與查核收據位於 `output/release-20261007-final/`。商店稅務／支付警示及 disabled 認證按鈕已實際觀察，尚未調整金融資料、上傳新 MSIX、認證或發布。額外授權條款仍待正式評論與保存。文案 saved 狀態變更不修改 Gemini 的顧客文字，也不改已固定的 V4 建置來源。
 
 06:50 UTC：V4 full preflight 1,563 files／4,831,122,202 bytes／2 models 通過；強制 CPU 的 frozen technical coverage 1 case／1 image request success，完整收據 status passed，EXE SHA 與 preview 一致。owned MSIX wrapper 首次因誤指向 final/venv 提前失敗，失敗 log／JSON 保留；修正為既有 clean/venv 後 AST 與封裝前檢查通過，正在 MakeAppx 製作候選。這是 output orchestration 修正，不修改正式程式或既有 immutable source。
+
+
+## V4 全新環境 OCR 診斷 checkpoint（2026-10-07）
+
+- 來源仍為已推送 `6f695771da890feeee2e606c397683c12d06a75f`；文件 main `e497c39fdd28b5d5001b5961241c60cf0695b55e` 的 CI139：八項必要工作成功、兩項手動工作略過。未因診斷修改正式程式碼。
+- V4 unsigned MSIX 0.1.2.0 已建立，SHA-256 `2d1294081ea926dc124937bd89487c5a6185d3e7337adb7f556978c5e840da06`；host full CPU／import／OCR／GUI 結果不代表 fresh Sandbox 通過。
+- fresh Sandbox SDK 安裝、guest-only 簽章、0.1.1.0→0.1.2.0 更新與合成 LocalState 保留、完整 installed package 可寫副本、無外部 Python 的副本 import 通過。副本 Windows OCR 以 exit2 失敗；後續副本 CPU／Qt 修改、AUMID、完整 WACK 都未執行。Guest package／憑證清理無錯，VM 也已核對身分後關閉。
+- 獨立原生 WinRT 探針有 en-US 且能建立引擎；相同候選 DLL 的 frozen 診斷工具卻取得空語言清單。繼承／隔離環境、清除 DLL 搜尋目錄、預載 Qt／MSVCP、明確 STA／MTA，以及預載系統 OCR DLL，均未恢復辨識。Python 與 PowerShell 實際都載入 System32 的 Windows.Media.Ocr.dll；native ABI 對照亦回報空語言清單，所有 HRESULT 為 S_OK，並非 Python 介面獨有現象。Microsoft 的 namespace 文件明確限定桌面程式須具套件身分；目前用未修改 V4 MSIX 測試套件 debug context，另保留真正 AUMID 啟動驗證，尚未取得通過結果，不能把 debug token 宣稱等同正式 AppId token。
+- 以上診斷皆為 output 內獨立工具，不作候選 release acceptance。證據：`output/release-20261007-final/sandbox-gate/wack/output/result.json`、`ocr-bundle-diagnosis/guest/output/result.json`、`ocr-bundle-diagnosis/variants/guest/output/result.json`、`ocr-bundle-diagnosis/apartment/guest/output/result.json` 與各 guest-disposal.json。
+- CH-T55 保持 Review／Smoke NO／Critic NO；CH-T56 保持 Backlog。Gemini 四語文案与七個關鍵字已實際保存並逐欄確認；本次候選未上傳、未送認證、未發布。Partner Center 稅務與支付警告仍未處理。

@@ -14,6 +14,8 @@
 
 ---
 
+Windows OCR 的辨識語言取決於 Windows 已安裝的 OCR 語言資源；Microsoft 官方支援的桌面執行方式須具備 MSIX 套件身分。自行從原始碼建置時，請依[雙軌發行手冊](docs/release-two-track.md)建立與安裝 MSIX；單獨複製 EXE 或直接執行 Python 的 OCR 結果，不能視為所有乾淨機都可用的保證。[Microsoft 官方說明](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr?view=winrt-26100)
+
 ## 🖼️ 實際畫面預覽
 
 以下畫面展示 CloudHime 在漫畫、遊戲介面與對話中的使用方式。實際辨識與翻譯會受文字清晰度、版面和所選引擎影響。
