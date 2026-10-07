@@ -109,3 +109,18 @@ GitHub CI140／37590083622 已重新確認 overall Success。四語 Gemini 活�
 文件 main `da9c14fc8e41e8796e7e7b040fa4fe89e268d3cf` 的 CI141／37594920193 overall Success：8 required 成功、2 手動 frozen jobs skipped。正式評論尚未開始。四語 Gemini 行銷文案已保存；額外授權條款仍為未保存草稿，同一 Gemini 任務因 runtime `filesystem/foo` permission 等待而停滯，Bridge 回報 `may_handoff_write=false`、視窗可見性未驗證。未建立替代 writer 或虛構 Gemini 完成結果。
 
 CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。尚缺最終 frozen GUI 完整操作、真實設定升級、乾淨 Windows OCR、正式評論、額外條款保存、Partner Center 認證及 Store 安裝／更新。稅務支付警告與價格／公開日待主人處理或決定；本次候選未上傳、未認證、未發布。
+
+
+## 本輪最新 checkpoint：Gemini 條款保存與正式仲裁（2026-10-07）
+
+同一 Antigravity Bridge request `cloudhime-store-terms-20261007-v1` 已回報 COMPLETED，Gemini 完成四語額外條款；先前 runtime permission 等待已結束，未另建 writer。原始 Gemini 文案 SHA-256 `5145c69aa9b6181d0c0765b1666fe499f4d40ee5553cc4e3e63b0ea56fe0197d`，繁中兩欄各 812、英文 1833、日文 1088 UTF-16 單位；JSON／實際換行／各語低於 30000 單位通過。Partner Center Submission 3 的四個其他授權條款已逐頁保存、重開並與 Gemini 原文全等核對。`docs/store-third-party-terms.json` 僅追加 saved-draft 來源 metadata，未改 Gemini 的顧客文字。先前四語行銷文案與七關鍵字已保存；本次只是草稿保存，沒有新增上傳、認證或發布。收據：`output/release-20261007-final/store-terms-save-verification.json`，完整保存畫面 `store-terms-saved-full.png`。Windows OCR 的 MSIX 身分要求仍依 Microsoft 官方文件；文案沒有保證自編修改版完整實測或整體法律合規。
+
+三席 Luna（流程、視覺／文案、失敗／發行完整性）互相盲評，之後由獨立 arbiter 核對報告與固定快照。初始流程席 11、視覺席 12 工具超出各席 8 的額度，受限仲裁只有 1 工具，未完成全部核對；這段歷史保留，不能算原額度內完成。主人後續明確指示「不用管額度 任務能完成即可」，才恢復同一仲裁並實際核對全部三份報告、來源 render、底層 WACK／OCR 證據；另完成 Gemini terms 的唯讀差異檢查與獨立仲裁。沒有擅自重設 CodeRabbit 的服務限額。
+
+本輪未查證出可定位、應修補的產品程式碼缺陷。正式仲裁結果 blocked：最終 frozen 完整 GUI 操作、真實使用者設定升級、乾淨 Windows OCR acceptance、實際 Store 認證及安裝更新仍缺證據。三主題圖片為 source render，不能替代 final frozen UI；早期沙箱 OCR 的 failed 不代表最新 WACK failed；required PASS 也不能把 optional FAIL、法律適用或 Store 門檻洗成通過。兩項 High 為所需驗收缺口，保留 deferred 只表示未完成，不是主人接受風險或允許發布。
+
+正式機器紀錄：`output/mission-center-critique/CH-T55-20261007-v4.json`，SHA-256 `31a7f4a72c197bce712b48cad88e7dbaa9c77d550b57bf0d3b409f66e66d9db5`；6 份封存報告與 57 個 manifest entries 的 SHA 已由根整合者核對，實際 EXE／MSIX 雜湊延用已固定的 build／remaining-v4 證據，沒有假稱此步重新串流驗大檔。官方 `mission-center.ps1 critic` 回報 valid，但驗證器只確認格式，不能替代實際測試或改變生命週期。
+
+文件來源 `36ba4cdd7c6406d0104e21239edc89f815aaba28` 已存 Git、經 CodeRabbit 四檔檢查後 push main；CI142／37600128553 Success。兔子提出一個「CPU OCR」措辭問題，但任務列不存在該字串，且 CPU1/1 與候選 OCR 失敗分開記錄，已保存 rejected-with-counterevidence 收據；未為不存在的問題改程式。現在任務列進一步明寫 CPU Vision1/1。
+
+最終產物仍綁定來源 `6f69577`，正式程式、模型、DLL、MSIX 未因文案與評論重建或修改。隔離人工入口 `output/release-20261007-final/OpenFinalCandidate.cmd` 已準備，PowerShell AST 與 EXE hash 檢查通過、尚未啟動；執行時使用全新空白 APPDATA／LOCALAPPDATA／USERPROFILE 與 system-only PATH，不承接主人設定或金鑰。這個入口不等於人工驗收，也不證明乾淨 Windows OCR。稅務／支付資料由主人親自處理，售價／發行範圍待回覆；新候選仍未上傳，CH-T55 保持 Review／Smoke NO／Critic NO，CH-T56 保持 Backlog。
