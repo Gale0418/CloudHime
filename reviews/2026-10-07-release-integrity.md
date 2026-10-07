@@ -51,3 +51,10 @@ CH-T55 維持 Review；CH-T56 尚未完成。主人已驗收來源版的 Luna、
 - CI inventory 補入五個既有測試檔；本地 inventory 與受影響測試 63 passed。GitHub CI run 136（commit `3c0070c`）整體 Success，五組測試與依賴／MSIX契約通過；可選 frozen release jobs 未執行，不算通過。證據：https://github.com/Gale0418/CloudHime/actions/runs/37511529428。
 - 新 full preflight 的固定模型／projector 雜湊通過後，拒絕舊包複製來的 `NOTICE.txt` bytes。保留失敗 log／JSON 及四份舊告知檔，換成固定 source manifest 內的模型原文，重新驗證；詳細差異見 `output/release-20261007-clean/model-terms-correction.json`。這不是更改模型，也未覆蓋舊包。
 - 非系統管理員實際讀取現有 Store 0.1.1.0 的 Qt6Core.dll、複製到可寫入位置並修改成功，原 DLL 雜湊不變。證據 `store-read-copy-proof.json`；不代表整個 Store 程式已複製並以修改後 DLL 執行。
+
+
+### 2026-10-07 歷史小檔審查與成品驗證更正
+
+CodeRabbit 歷史小檔 fixture 的149份程式／文件（另有 unchanged config）完成審查，8 issues 已查證修補；其中2份小檔是 upstream Qt license Python，未提出問題、未修改原文。151 service-count 失敗預檢也保守計入3次／小時，本小時只留一次修正版複審。新修正涉及高對比文字、建置Python路徑、環境變數、中文OCR路徑、主模型下載及測試隔離／回收；最終EXE／MSIX需在存Git、兔子複審、push main後重建。先前候選full CPU Vision 1/1及MSIX製作完成；新Sandbox update PFN／synthetic LocalState通過，但直接 Process.Start WindowsApps EXE Access denied，import/OCR/WACK未執行，不算PASS。guest package／certificate清理完成、owned VM已關閉，失敗證據保留。Gemini經Antigravity Bridge完成四locale活潑顏文字草稿，互導免費GitHub及商店方便安裝；獨立Unicode／UTF16限额檢查通過，英文短文269單位。未存Partner Center、未上傳新候選、未認證，CH-T55仍Review／SmokeNO／CriticNO。
+
+修補驗證：focused六檔 pytest 119 passed；唯一失敗是test_real_release_dist_preflight_when_available讀到舊root dist並正確拒絕未審Qt模組，不代表本輪隔離成品。新加main資產準備測試後download_task5再驗18 passed。正式OpenCV4.13真實中文路徑解碼／高對比checked色／BAT正式Python解析探針通過；探針發現for/f巢狀CMD引號不穩，改為唯一暫存收據讀取，成功／失敗均回收，2案建置與隔離契約再驗通過。OCR後端單元測試為mock，不宣稱Windows原生OCR。新成品仍須重新執行完整閘門。

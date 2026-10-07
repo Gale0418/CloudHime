@@ -101,7 +101,7 @@ class ThemeDefinition:
             f"QPushButton {{ background-color: {self.control_bg}; color: {self.control_fg}; "
             f"border-radius: {int(radius)}px; padding: 8px; font-weight: bold; border: none; }}"
             f" QPushButton:hover {{ background-color: {self.control_hover}; }}"
-            f" QPushButton:checked {{ background-color: {self.control_checked}; color: white; }}"
+            f" QPushButton:checked {{ background-color: {self.control_checked}; color: {self.checked_fg}; }}"
             f" QPushButton:disabled {{ background-color: {self.control_disabled_bg}; color: {self.control_disabled_fg}; }}"
         )
 
@@ -433,7 +433,7 @@ THEME_DEFINITIONS: Dict[str, ThemeDefinition] = {
             control_checked="#FFD400",
             control_disabled_fg="#B0B0B0",
             control_disabled_bg="#3A3A3A",
-            checked_fg="#FFFFFF",
+            checked_fg="#121212",
             button_primary_top="#FFFFFF",
             button_primary_edge="#003B46",
             button_secondary_top="#FFFFFF",

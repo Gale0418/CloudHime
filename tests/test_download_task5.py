@@ -38,16 +38,20 @@ def test_pinned_runtime_delegates_verification_without_replacing_existing(monkey
 
 
 @pytest.mark.parametrize("verified", [False, True])
-def test_projector_uses_pinned_manifest_and_enforces_digest(monkeypatch, tmp_path, verified):
-    spec = downloader.GEMMA_ASSET_MANIFEST[1]
+@pytest.mark.parametrize("index,field,ensure", [
+    (0, "model_path", downloader.ensure_model),
+    (1, "projector_path", downloader.ensure_projector),
+])
+def test_model_assets_use_pinned_manifest_and_enforce_digest(monkeypatch, tmp_path, verified, index, field, ensure):
+    spec = downloader.GEMMA_ASSET_MANIFEST[index]
     monkeypatch.setattr(downloader, "verify_managed_asset", lambda *_: verified)
     download, verify = Mock(), Mock()
     monkeypatch.setattr(downloader, "download_managed_asset", download)
     monkeypatch.setattr(downloader, "verify_asset", verify)
-    destination = downloader.ensure_projector(tmp_path)
+    destination = ensure(tmp_path)
     assert "/resolve/main/" not in spec.url
     verify.assert_called_once_with(destination, spec.sha256,
-                                   downloader.ASSET_MINIMUM_BYTES["projector_path"])
+                                   downloader.ASSET_MINIMUM_BYTES[field])
     if verified:
         download.assert_not_called()
     else:
@@ -68,3 +72,19 @@ def test_no_arguments_cannot_download_latest(monkeypatch):
         downloader.main([])
     assert exc.value.code == 2
     fetch.assert_not_called()
+
+
+def test_main_prepares_both_model_assets_before_final_verification(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    calls = []
+    monkeypatch.setattr(downloader, "fetch_runtime", lambda *_args, **_kwargs: calls.append("runtime"))
+    monkeypatch.setattr(downloader, "ensure_model", lambda *_: calls.append("model"))
+    monkeypatch.setattr(downloader, "ensure_projector", lambda *_: calls.append("projector"))
+    assets = SimpleNamespace(server_path=tmp_path / "server", model_path=tmp_path / "model",
+                             projector_path=tmp_path / "projector")
+    monkeypatch.setattr(downloader, "resolve_vision_assets", lambda *_: assets)
+    monkeypatch.setattr(downloader, "verify_asset", lambda path, *_: calls.append(path.name))
+    downloader.main(["--runtime-tag", "b123", "--runtime-asset", "llama.zip",
+                     "--runtime-sha256", "a" * 64, "--source-commit", "b" * 40])
+    assert calls == ["runtime", "model", "projector", "server", "model", "projector"]

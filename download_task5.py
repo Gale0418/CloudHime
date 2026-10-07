@@ -9,7 +9,7 @@ import subprocess
 
 from local_vision_assets import (ASSET_MINIMUM_BYTES, ASSET_SHA256, GEMMA_ASSET_MANIFEST,
                                  resolve_vision_assets, verify_asset)
-from managed_asset_store import download_managed_asset, verify_managed_asset
+from managed_asset_store import AssetSpec, download_managed_asset, verify_managed_asset
 
 
 def pinned_runtime_url(tag: str, asset: str) -> str:
@@ -44,14 +44,21 @@ def fetch_runtime(root: Path, tag: str, asset: str, sha256: str,
     subprocess.run(command, check=True)
 
 
-def ensure_projector(root: Path) -> Path:
-    spec = GEMMA_ASSET_MANIFEST[1]
+def _ensure_model_asset(root: Path, spec: AssetSpec, field: str) -> Path:
     destination = root / "models" / spec.name
     if not verify_managed_asset(destination, spec):
         # Pinned revision, size and SHA-256; promote only after verification.
         download_managed_asset(spec, destination)
-    verify_asset(destination, spec.sha256, ASSET_MINIMUM_BYTES["projector_path"])
+    verify_asset(destination, spec.sha256, ASSET_MINIMUM_BYTES[field])
     return destination
+
+
+def ensure_model(root: Path) -> Path:
+    return _ensure_model_asset(root, GEMMA_ASSET_MANIFEST[0], "model_path")
+
+
+def ensure_projector(root: Path) -> Path:
+    return _ensure_model_asset(root, GEMMA_ASSET_MANIFEST[1], "projector_path")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -67,6 +74,7 @@ def main(argv: list[str] | None = None) -> None:
     root = Path(__file__).resolve().parent
     fetch_runtime(root, args.runtime_tag, args.runtime_asset, args.runtime_sha256,
                   args.source_commit, backend=args.backend, force=args.force)
+    ensure_model(root)
     ensure_projector(root)
     assets = resolve_vision_assets(root)
     for field in ("server_path", "model_path", "projector_path"):

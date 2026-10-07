@@ -12,7 +12,7 @@ Microsoft Store 付費套件不包含第三方雲端服務的 API 費用；使�
 
 ## 開始前：建立凍結版
 
-發行工具鎖定 CPython 3.10、Windows x64。先在 Windows PowerShell 7 建立專用環境，避免既有 OpenCV／OCR 套件覆寫相同 namespace：
+發行工具鎖定 CPython 3.10、Windows x64。先在 PowerShell 7（pwsh）建立專用環境，避免既有 OpenCV／OCR 套件覆寫相同 namespace：
 
 ```powershell
 py -3.10-64 -m venv .venv-release

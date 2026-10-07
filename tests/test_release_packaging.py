@@ -393,8 +393,11 @@ def test_release_build_uses_locked_python_major_minor_for_packaging_steps():
     assert "%PYTHON% -m PyInstaller" in build_script
     assert "%PYTHON% packaging\\runtime_manifest.py" in build_script
     assert "%PYTHON% -c \"import platform, sys" in build_script
+    assert 'print(sys.executable)' in build_script
+    assert build_script.count('-PythonPath "%BUILD_PYTHON_PATH%"') == 2
+    assert 'if not defined BUILD_PYTHON_PATH goto :failure' in build_script
     normalized_script = build_script.replace("\r\n", "\n")
-    assert 'set "BUILD_EXIT_CODE=0"\nset "PYTHON=py -3.10-64"' in normalized_script
+    assert 'set "BUILD_EXIT_CODE=0"\nset "BUILD_PYTHON_PROBE="\nset "PYTHON=py -3.10-64"' in normalized_script
 
 def test_release_build_uses_the_spec_as_packaging_source_of_truth():
     root = Path(__file__).resolve().parents[1]
@@ -518,6 +521,9 @@ def test_clean_machine_uses_unique_user_sandbox_and_owned_descendant_cleanup():
     assert "APPDATA = $appData" in script
     assert "TEMP = $tempRoot" in script
     assert "TMP = $tempRoot" in script
+    for process_environment in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "ProgramData"):
+        assert f'GetEnvironmentVariable("{process_environment}", "Process")' in script
+    assert 'GetEnvironmentVariable("ProgramData", "Machine")' not in script
     assert "Get-CimInstance Win32_Process" in script
     assert "CreateToolhelp32Snapshot" in script
     assert "GetParentMap" in script

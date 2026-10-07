@@ -10,6 +10,7 @@ set "APP_NAME=CloudHime"
 set "DIST_DIR=dist\%APP_NAME%"
 set "RUNTIME_STAGE=build\runtime"
 set "BUILD_EXIT_CODE=0"
+set "BUILD_PYTHON_PROBE="
 set "PYTHON=py -3.10-64"
 rem Optional absolute interpreter path for an isolated hash-locked build venv.
 if defined CLOUDHIME_BUILD_PYTHON if not exist "%CLOUDHIME_BUILD_PYTHON%" goto :failure
@@ -24,6 +25,19 @@ if errorlevel 1 (
   echo Python 3.10 x64 is required for the production release build.
   goto :failure
 )
+set "BUILD_PYTHON_PATH="
+set "BUILD_PYTHON_PROBE=%TEMP%\CloudHime-python-%RANDOM%-%RANDOM%.txt"
+if exist "%BUILD_PYTHON_PROBE%" (
+  set "BUILD_PYTHON_PROBE="
+  goto :failure
+)
+%PYTHON% -c "import sys; print(sys.executable)" > "%BUILD_PYTHON_PROBE%"
+if errorlevel 1 goto :failure
+for /f "usebackq delims=" %%I in ("%BUILD_PYTHON_PROBE%") do set "BUILD_PYTHON_PATH=%%I"
+del /q "%BUILD_PYTHON_PROBE%"
+if exist "%BUILD_PYTHON_PROBE%" goto :failure
+set "BUILD_PYTHON_PROBE="
+if not defined BUILD_PYTHON_PATH goto :failure
 
 if not exist "%BUILD_REQUIREMENTS%" (
   echo Missing %BUILD_REQUIREMENTS%. Install the pinned release build tooling first.
@@ -148,7 +162,7 @@ if errorlevel 1 (
   goto :failure
 )
 set "CLOUDHIME_PACKAGED_IMPORT_SMOKE="
-powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -ModelBundle light
+powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -PythonPath "%BUILD_PYTHON_PATH%" -ModelBundle light
 if errorlevel 1 (
   echo Release preflight failed.
   goto :failure
@@ -157,7 +171,7 @@ if errorlevel 1 (
 if "%CLOUDHIME_RELEASE_FLAVOR%"=="full" (
   %PYTHON% packaging\release_archive.py stage --dist "%DIST_DIR%" --source "%CLOUDHIME_MODEL_SOURCE%"
   if errorlevel 1 goto :failure
-  powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -ModelBundle full
+  powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\verify_release_dist.ps1" -DistDir "%DIST_DIR%" -PythonPath "%BUILD_PYTHON_PATH%" -ModelBundle full
   if errorlevel 1 goto :failure
 )
 goto :cleanup
@@ -167,6 +181,7 @@ set "BUILD_EXIT_CODE=1"
 goto :cleanup
 
 :cleanup
+if defined BUILD_PYTHON_PROBE if exist "%BUILD_PYTHON_PROBE%" del /q "%BUILD_PYTHON_PROBE%"
 if exist "%RUNTIME_STAGE%" rmdir /s /q "%RUNTIME_STAGE%"
 if defined CLOUDHIME_ORIGINAL_PS_MODULE_PATH (
   set "PSModulePath=%CLOUDHIME_ORIGINAL_PS_MODULE_PATH%"

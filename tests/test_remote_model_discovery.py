@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -30,9 +31,21 @@ from remote_model_discovery import (
 
 @pytest.fixture
 def local_temp_dir():
-    directory = Path.cwd() / ".tmp-remote-model-discovery" / uuid.uuid4().hex
+    temp_root = Path.cwd() / ".tmp-remote-model-discovery"
+    directory = temp_root / uuid.uuid4().hex
     directory.mkdir(parents=True, exist_ok=False)
-    return directory
+    try:
+        yield directory
+    finally:
+        resolved_root = temp_root.resolve()
+        resolved_directory = directory.resolve()
+        if (
+            resolved_root.is_absolute()
+            and resolved_directory.parent == resolved_root
+            and resolved_directory.name
+            and resolved_directory != resolved_root
+        ):
+            shutil.rmtree(resolved_directory, ignore_errors=True)
 
 class _Response:
     def __init__(self, payload: dict):

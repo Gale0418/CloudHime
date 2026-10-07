@@ -629,3 +629,8 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 ### 2026-10-07 主人補充發行流程
 
 主人指定更新README／任務中心後存Git、CodeRabbit查證修正、推main再打包，不留新分支；兔子每小時最多3次、每次最多150檔，排除大檔，將有價值的既有小檔放入獨立審查fixture。README已補商店官方頁與免费原始碼互指，維持私人預覽狀態。商店文案指定由Antigravity Bridge Codex上的Gemini撰寫、活潑顏文字並放GitHub免費原始碼連結；request cloudhime-store-copy-20261007-v1已接受，原請求續等，不開第二個文案寫手。新MSIX b315ea489701a1d7605a681714a3da31b364314b772dde9fe4e898a2c27a8129已建置，正在斷網Sandbox驗證，仍未上傳認證。main bad7cd7 CI run137八required成功、兩manual skipped；GitHub connector回讀可用，不能以combined status空清單當綠燈。
+
+
+### 2026-10-07 歷史小檔審查與成品驗證更正
+
+CodeRabbit 歷史小檔 fixture 的149份程式／文件（另有 unchanged config）完成審查，8 issues 已查證修補；其中2份小檔是 upstream Qt license Python，未提出問題、未修改原文。151 service-count 失敗預檢也保守計入3次／小時，本小時只留一次修正版複審。新修正涉及高對比文字、建置Python路徑、環境變數、中文OCR路徑、主模型下載及測試隔離／回收；最終EXE／MSIX需在存Git、兔子複審、push main後重建。先前候選full CPU Vision 1/1及MSIX製作完成；新Sandbox update PFN／synthetic LocalState通過，但直接 Process.Start WindowsApps EXE Access denied，import/OCR/WACK未執行，不算PASS。guest package／certificate清理完成、owned VM已關閉，失敗證據保留。Gemini經Antigravity Bridge完成四locale活潑顏文字草稿，互導免費GitHub及商店方便安裝；獨立Unicode／UTF16限额檢查通過，英文短文269單位。未存Partner Center、未上傳新候選、未認證，CH-T55仍Review／SmokeNO／CriticNO。

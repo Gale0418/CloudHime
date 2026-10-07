@@ -91,9 +91,12 @@ def _write_result(path: str, payload: Mapping[str, Any]) -> None:
 def _run_windows_ocr_smoke(environment: Mapping[str, str]) -> dict[str, Any]:
     """Run native OCR in the frozen app, retaining counts instead of recognized text."""
     import cv2
+    import numpy as np
     from ocr_backends import WindowsOCRBackend
 
-    image = cv2.imread(_env_text(environment, PACKAGED_SMOKE_IMAGE_PATH_ENV))
+    # Python reads Unicode Windows paths reliably; OpenCV decodes the bytes.
+    encoded = Path(_env_text(environment, PACKAGED_SMOKE_IMAGE_PATH_ENV)).read_bytes()
+    image = cv2.imdecode(np.frombuffer(encoded, dtype=np.uint8), cv2.IMREAD_COLOR) if encoded else None
     if image is None:
         raise ValueError("invalid_windows_ocr_smoke_image")
     backend = WindowsOCRBackend()

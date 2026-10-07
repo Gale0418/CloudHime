@@ -182,9 +182,10 @@ $userEnvironment = @{
     TMP = $tempRoot
     LOCALAPPDATA = $localAppData
     APPDATA = $appData
-    USERPROFILE = [Environment]::GetEnvironmentVariable("USERPROFILE", "User")
-    HOMEDRIVE = [Environment]::GetEnvironmentVariable("HOMEDRIVE", "User")
-    HOMEPATH = [Environment]::GetEnvironmentVariable("HOMEPATH", "User")
+    USERPROFILE = [Environment]::GetEnvironmentVariable("USERPROFILE", "Process")
+    HOMEDRIVE = [Environment]::GetEnvironmentVariable("HOMEDRIVE", "Process")
+    HOMEPATH = [Environment]::GetEnvironmentVariable("HOMEPATH", "Process")
+    ProgramData = [Environment]::GetEnvironmentVariable("ProgramData", "Process")
 }
 
 $startInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -199,7 +200,6 @@ $processEnvironment["WINDIR"] = $systemRoot
 $processEnvironment["PATH"] = "$systemRoot\System32;$systemRoot"
 $processEnvironment["ComSpec"] = Join-Path $systemRoot "System32\cmd.exe"
 $processEnvironment["PATHEXT"] = ".COM;.EXE;.BAT;.CMD"
-$processEnvironment["ProgramData"] = [Environment]::GetEnvironmentVariable("ProgramData", "Machine")
 foreach ($name in $userEnvironment.Keys) {
     $value = [string]$userEnvironment[$name]
     if (-not [string]::IsNullOrWhiteSpace($value)) {

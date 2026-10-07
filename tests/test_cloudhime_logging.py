@@ -1,5 +1,6 @@
 import importlib
 import logging
+import logging.handlers
 import os
 import sys
 from unittest.mock import mock_open, patch
@@ -31,7 +32,8 @@ def reset_logging_module_state():
 
 
 @pytest.fixture(autouse=True)
-def clean_logging_module_state():
+def clean_logging_module_state(monkeypatch, tmp_path):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
     reset_logging_module_state()
     yield
     reset_logging_module_state()
@@ -45,7 +47,7 @@ def test_import_succeeds_when_file_handler_is_unavailable(monkeypatch):
     def raising_file_handler(*args, **kwargs):
         raise PermissionError("log path is not writable")
 
-    monkeypatch.setattr(logging, "FileHandler", raising_file_handler)
+    monkeypatch.setattr(logging.handlers, "RotatingFileHandler", raising_file_handler)
 
     module = import_cloudhime_logging()
 
@@ -54,8 +56,7 @@ def test_import_succeeds_when_file_handler_is_unavailable(monkeypatch):
 
 
 def test_log_ai_debug_uses_existing_logger_without_direct_file_write(monkeypatch, tmp_path):
-    monkeypatch.setenv("APPDATA", str(tmp_path))
-    monkeypatch.setattr(logging, "FileHandler", DummyFileHandler)
+    monkeypatch.setattr(logging.handlers, "RotatingFileHandler", DummyFileHandler)
     module = import_cloudhime_logging()
 
     with patch("builtins.open", new_callable=mock_open) as mock_file, patch.object(
@@ -68,7 +69,7 @@ def test_log_ai_debug_uses_existing_logger_without_direct_file_write(monkeypatch
     mock_debug.assert_called_once_with(f"[AI-DEBUG] {test_msg}")
 
 def test_log_translation_debug_delegates_to_ai_debug(monkeypatch):
-    monkeypatch.setattr(logging, "FileHandler", DummyFileHandler)
+    monkeypatch.setattr(logging.handlers, "RotatingFileHandler", DummyFileHandler)
     module = import_cloudhime_logging()
 
     with patch.object(module, "log_ai_debug") as mock_log_ai_debug:

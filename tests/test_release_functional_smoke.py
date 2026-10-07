@@ -178,14 +178,19 @@ def test_packaged_windows_ocr_smoke_preserves_counts_without_text(tmp_path, monk
             return True
 
         def recognize(self, image):
+            assert image.shape == (16, 16, 3)
             return SimpleNamespace(error="", lines=[SimpleNamespace(text="PRIVATE OCR TEXT")])
 
-    monkeypatch.setattr(cv2, "imread", lambda path: object())
+    image_path = tmp_path / "測試畫面.png"
+    ok, encoded = cv2.imencode(".png", np.zeros((16, 16, 3), dtype=np.uint8))
+    assert ok
+    image_path.write_bytes(encoded.tobytes())
+    monkeypatch.setattr(cv2, "imread", lambda *_: pytest.fail("Unicode paths must use byte decoding"))
     monkeypatch.setattr(ocr_backends, "WindowsOCRBackend", Backend)
     result_path = tmp_path / "ocr.json"
     environment = {
         packaged.PACKAGED_WINDOWS_OCR_SMOKE_ENV: "1",
-        packaged.PACKAGED_SMOKE_IMAGE_PATH_ENV: "fixture.png",
+        packaged.PACKAGED_SMOKE_IMAGE_PATH_ENV: str(image_path),
         packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
     }
     assert packaged.run_packaged_functional_smoke(environ=environment) == 0
@@ -193,6 +198,24 @@ def test_packaged_windows_ocr_smoke_preserves_counts_without_text(tmp_path, monk
     assert result["status"] == "passed"
     assert result["line_count"] == 1
     assert "PRIVATE OCR TEXT" not in result_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("content", [b"", b"not an image"])
+def test_packaged_windows_ocr_rejects_invalid_image_before_backend(tmp_path, monkeypatch, content):
+    import ocr_backends
+    import packaged_functional_smoke as packaged
+
+    image_path = tmp_path / "無效畫面.png"
+    image_path.write_bytes(content)
+    monkeypatch.setattr(ocr_backends, "WindowsOCRBackend", lambda: pytest.fail("Invalid image reached OCR"))
+    result_path = tmp_path / "failed.json"
+    environment = {
+        packaged.PACKAGED_WINDOWS_OCR_SMOKE_ENV: "1",
+        packaged.PACKAGED_SMOKE_IMAGE_PATH_ENV: str(image_path),
+        packaged.PACKAGED_SMOKE_RESULT_PATH_ENV: str(result_path),
+    }
+    assert packaged.run_packaged_functional_smoke(environ=environment) == 2
+    assert json.loads(result_path.read_text(encoding="utf-8"))["status"] == "failed"
 
 
 def test_packaged_knowledge_smoke_writes_only_redacted_counts(tmp_path, monkeypatch):
