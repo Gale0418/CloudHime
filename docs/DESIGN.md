@@ -123,9 +123,9 @@ components:
 
 使用者核准的「天宮書房」概念取代下方記錄的舊版三欄設定頁。小主介面只承擔狀態、全螢幕／區域、立即翻譯、自動掃描、停止與設定入口；「立即翻譯」是最醒目的主要動作。設定窗以四個原生分頁分工：翻譯引擎、擷取與顯示、作品研究、外觀。既有控制器、訊號、Save／Cancel 行為與高對比模式不能因重排而消失。
 
-設定窗左側是可捲動的工作區，右側是獨立的偵探公主插畫；內容不疊在人物上。白晝使用珍珠白與紫色主操作，星夜使用深藍紫與相同的角色構圖，右側插畫取自 `assets/bg_light.png`／`assets/bg_dark.png`；高對比模式不顯示插畫，操作層維持不透明。狀態、API Key 提示與焦點必須在兩種主題下都清楚可讀。翻譯引擎為單選路由，不能只切換外觀而不切換實際 Provider。
+設定窗左側是可捲動的工作區，右側是獨立的偵探公主插畫；內容不疊在人物上。白晝使用珍珠白與紫色主操作，星夜使用深藍紫與相同的角色構圖，右側插畫取自 `app/assets/bg_light.png`／`app/assets/bg_dark.png`；高對比模式不顯示插畫，操作層維持不透明。狀態、API Key 提示與焦點必須在兩種主題下都清楚可讀。翻譯引擎為單選路由，不能只切換外觀而不切換實際 Provider。
 
-主要實作為 `celestial_ui.py`、`cloudhime_ui.py`、`translation_settings_panel.py` 與 `themes.py`。下方的三欄、全幅背景與藍色 accent 規則保留作為舊版歷史紀錄，若與本節衝突，以本節及現行產品行為為準；不應用舊版「禁止插畫側欄」規則否定已核准的新設計。
+主要實作為 `app/celestial_ui.py`、`app/cloudhime_ui.py`、`app/translation_settings_panel.py` 與 `app/themes.py`。下方的三欄、全幅背景與藍色 accent 規則保留作為舊版歷史紀錄，若與本節衝突，以本節及現行產品行為為準；不應用舊版「禁止插畫側欄」規則否定已核准的新設計。
 
 2026-10-02 體驗修整延續天宮書房：主窗使用一致的紫色選取與主要動作、平面控制、可見鍵盤焦點及不依賴符號字型的視窗圖示，加入全螢幕／區域的操作提示。狀態文字承載真實進度與錯誤，冷卻秒數只出現在按鈕；停止立即解除冷卻，忙碌時不排入重複掃描。設定窗最小尺寸為 760×520，寬度小於 980 時收起插畫並使用純色背景；開啟時依主窗所在螢幕的可用範圍置中。底部「關閉」與標題說明反映一般選項即時儲存、作品名稱另行儲存的既有行為。退出尚未完成的金鑰設定會清除待設定選擇並保留原路線。
 
@@ -150,7 +150,7 @@ CloudHime 的 shipping UI 是 Windows 原生設定窗與全幅角色夢境的並
 - Translation card 內部垂直 scroll；Online Gemma 單 key 雙模型並與 Luna 同處 Translation
 - 形狀柔和、邊界細緻、狀態文字清楚；不以裝飾取代操作資訊
 
-Shipping artifacts 是 `cloudhime_ui.py`、`translation_settings_panel.py` 與 `themes.py`。最新 provider polish evidence 是 `.impeccable/review/provider-polish-collapsed-light.png`、`.impeccable/review/provider-polish-collapsed-dark.png`、`.impeccable/review/provider-polish-online-expanded-light.png`、`.impeccable/review/provider-polish-online-expanded-dark.png`、`.impeccable/review/provider-polish-luna-expanded-dark.png`；視覺參照為 `MissionCenter/settings-fresh-light-real.png` 與 `MissionCenter/settings-fresh-dark-real.png`。
+Shipping artifacts 是 `app/cloudhime_ui.py`、`app/translation_settings_panel.py` 與 `app/themes.py`。最新 provider polish evidence 是 `.impeccable/review/provider-polish-collapsed-light.png`、`.impeccable/review/provider-polish-collapsed-dark.png`、`.impeccable/review/provider-polish-online-expanded-light.png`、`.impeccable/review/provider-polish-online-expanded-dark.png`、`.impeccable/review/provider-polish-luna-expanded-dark.png`；視覺參照為 [`settings-fresh-light-real.png`](../MissionCenter/settings-fresh-light-real.png) 與 [`settings-fresh-dark-real.png`](../MissionCenter/settings-fresh-dark-real.png)。
 
 ## Colors
 
@@ -262,7 +262,7 @@ Local Gemma、Online Gemma 與 Luna 是互不排斥的三個 provider disclosure
 
 Online Gemma 的兩個 model row 共用單一 API key；UI 不保存或顯示明文 secret，狀態只表達 ready、rate、cooldown、error 與 capability。Gemma REST／SSE 的 multimodal payload 先放 inline image parts，再放文字 instruction；這是目前 provider contract 的穩定順序。只有 404／429／503 且尚未輸出內容時允許輪替，timeout／URLError 與已輸出後失敗維持 single-attempt。Luna 使用 `reasoning_effort=none`，Gemma 使用 `thinkingLevel=minimal`。
 
-本輪驗證：targeted provider／UI／controller slice `169 passed`，完整 `tests/` inventory `1455 passed, 6 skipped`；live evidence、視覺限制與未跑的 Store／WACK／clean-machine gate 見 `output/mission-center-evidence/ch-t112-regression-visual-20260909.md`。這些數字是可重跑的本機證據，不代表外部服務 quota 或商店認證。
+本輪驗證：targeted provider／UI／controller slice `169 passed`，完整 `app/tests/` inventory `1455 passed, 6 skipped`；live evidence、視覺限制與未跑的 Store／WACK／clean-machine gate 見 `app/output/mission-center-evidence/ch-t112-regression-visual-20260909.md`。這些數字是可重跑的本機證據，不代表外部服務 quota 或商店認證。
 
 ### Header Band
 Header 是固定在背景前方、跨越整個 settings surface 寬度的霧面半透明 band。Light 使用 `settings_top_bg=rgba(242, 242, 247, 224)`，Dark 使用 `settings_top_bg=rgba(28, 28, 30, 224)`；背景只應隱約透出，品牌、主題／語言控制、工作控制與 Close 仍須保持清楚。
@@ -275,7 +275,7 @@ Footer 固定在 Settings body 底部並跨越整個 surface 寬度，放 Reset 
 ### Do:
 - **Do** 以 Git 舊版三欄結構呈現 Translation／OCR／Rendering+Relief，維持近等寬、每欄至少 300px 與 14px grid gap。
 - **Do** 讓透明 body host 左對齊，cluster 維持 928–1040px 寬，並在右側保留至少約 280px 角色 safe area（1422px capture 約 419px）。
-- **Do** 保留全幅 `assets/bg_light.png`／`assets/bg_dark.png` 偵探公主背景，讓中央低細節區只作 light／dark ambient backdrop。
+- **Do** 保留全幅 `app/assets/bg_light.png`／`app/assets/bg_dark.png` 偵探公主背景，讓中央低細節區只作 light／dark ambient backdrop。
 - **Do** 讓 header 使用現行霧面半透明 `settings_top_bg`（Light／Dark alpha 224），footer 保持固定且在前景；High Contrast 維持不透明。
 - **Do** 讓 Translation card 只在自身內容過長時垂直 scroll，容納 Online Gemma 單 key 雙模型與 Luna。
 - **Do** 將 Local Gemma、Online Gemma、Luna 視為可獨立展開的 disclosure；摘要只放 provider name、status 與可換行 capability，設定留在 body。
@@ -298,7 +298,7 @@ Footer 固定在 Settings body 底部並跨越整個 surface 寬度，放 Reset 
 
 ## 2026-10-23 介面精簡增量
 
-主窗以引擎、擷取範圍、單一翻譯主動作排列；引擎資料說明以鍵盤可操作箭頭展開，狀態僅在工作或回饋時顯示。進度文字與細線分離。四個設定分頁與角色插畫維持，刪除重複標題及常駐教學，必要資訊改為提示；作品儲存動作只在研究分頁出現。詳見 reviews/2026-10-23-ui-distill.md。
+主窗以引擎、擷取範圍、單一翻譯主動作排列；引擎資料說明以鍵盤可操作箭頭展開，狀態僅在工作或回饋時顯示。進度文字與細線分離。四個設定分頁與角色插畫維持，刪除重複標題及常駐教學，必要資訊改為提示；作品儲存動作只在研究分頁出現。詳見[2026-10-23 介面精簡紀錄](reviews/2026-10-23-ui-distill.md)。
 
 
 ## 2026-10-23 首次操作增量

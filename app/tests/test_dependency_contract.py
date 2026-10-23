@@ -8,6 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = ROOT.parent
 _SPEC = importlib.util.spec_from_file_location(
     "cloudhime_dependency_contract",
     ROOT / "packaging" / "dependency_contract.py",
@@ -242,7 +243,7 @@ def test_hash_lock_rejects_wrong_or_missing_artifact(tmp_path: Path):
         contract.validate_lock(report, contract.read_lock(lock_path))
 
 def test_matrix_install_fails_fast_after_hash_lock_failure():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     start = workflow.index("  build-and-test:")
     end = workflow.index("  dependency-contract:", start)
     matrix_job = workflow[start:end]
@@ -252,7 +253,7 @@ def test_matrix_install_fails_fast_after_hash_lock_failure():
     assert "if ($LASTEXITCODE -ne 0)" in following
 
 def test_ci_fails_fast_after_dependency_install_commands():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     start = workflow.index("  dependency-contract:")
     end = workflow.index("  msix-contract:", start)
     contract_job = workflow[start:end]
@@ -268,7 +269,7 @@ def test_ci_fails_fast_after_dependency_install_commands():
         assert "if ($LASTEXITCODE -ne 0)" in following
 
 def test_ci_report_is_emitted_by_the_install_under_test():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     start = workflow.index("  dependency-contract:")
     end = workflow.index("  msix-contract:", start)
     contract_job = workflow[start:end]
@@ -301,7 +302,7 @@ def test_production_and_ci_locks_keep_distinct_graphs():
 
 
 def test_ci_produces_separate_production_dependency_contract():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     start = workflow.index("  dependency-contract:")
     end = workflow.index("  msix-contract:", start)
     contract_job = workflow[start:end]
@@ -320,7 +321,7 @@ def test_ci_produces_separate_production_dependency_contract():
     assert "if ($LASTEXITCODE -ne 0)" in contract_job[install_start:install_end]
 
 def test_production_dependency_commands_fail_fast():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     start = workflow.index("  dependency-contract:")
     end = workflow.index("  msix-contract:", start)
     contract_job = workflow[start:end]
@@ -336,7 +337,7 @@ def test_production_dependency_commands_fail_fast():
         assert len(following_lines) > 1
         assert "if ($LASTEXITCODE -ne 0)" in following_lines[1]
 def test_ci_declares_dependency_contract_gate():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "dependency-contract:" in workflow
     assert "-m pip check" in workflow

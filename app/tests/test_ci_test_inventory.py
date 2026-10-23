@@ -12,6 +12,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = ROOT.parent
 INVENTORY_PATH = ROOT / "ci" / "test_groups.json"
 
 
@@ -57,14 +58,14 @@ def test_ci_inventory_points_only_to_existing_test_files():
     assert all(path.startswith("tests/test_") and path.endswith(".py") for path in assigned)
 
 def test_ci_matrix_runner_splits_paths_on_whitespace():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "-split '\\s+'" in workflow
     assert "-split '\\\\s+'" not in workflow
 
 
 def test_ci_uses_explicit_requirements_without_in_process_llama():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     ci_requirements = (ROOT / "requirements-ci.txt").read_text(encoding="utf-8")
 
     assert "pip install --require-hashes -r requirements-ci-lock-win-amd64-py310.txt" in workflow
@@ -72,7 +73,7 @@ def test_ci_uses_explicit_requirements_without_in_process_llama():
     assert "llama-cpp-python" not in ci_requirements
 
 def test_gitignore_covers_cross_tool_probe_roots():
-    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    ignore = (REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
     required_patterns = (
         "/.codex-*/",
         "/.h3_*/",
@@ -107,7 +108,7 @@ def test_ci_inventory_includes_release_provenance_contract():
     assert "tests/test_release_provenance.py" in assigned
 
 def test_missioncenter_decisions_reject_c0_control_characters():
-    decisions = ROOT / "MissionCenter" / "decisions.md"
+    decisions = REPOSITORY_ROOT / "MissionCenter" / "decisions.md"
     content = decisions.read_text(encoding="utf-8")
     unexpected = [
         character
@@ -119,7 +120,7 @@ def test_missioncenter_decisions_reject_c0_control_characters():
 
 def test_windows_pytest_runner_uses_private_writable_basetemp():
     runner = ROOT / "ci" / "run_pytest.ps1"
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert runner.is_file()
     runner_content = runner.read_text(encoding="utf-8")
@@ -133,6 +134,21 @@ def test_windows_pytest_runner_uses_private_writable_basetemp():
     assert "ci\\run_pytest.ps1" in workflow
     assert "-TestFiles $testFiles" in workflow
     assert "-IsolateUi" in workflow
+
+
+def test_ci_and_ignored_outputs_follow_the_app_layout():
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "defaults:\n  run:\n    working-directory: app" in workflow
+    assert (REPOSITORY_ROOT / "app").is_dir()
+    assert (REPOSITORY_ROOT / "docs").is_dir()
+
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "app/.pytest_cache/"],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        timeout=10,
+    )
+    assert ignored.returncode == 0, "pytest cache under app must stay ignored"
 
 def test_windows_pytest_runner_preserves_space_in_runner_temp(tmp_path):
     if os.name != "nt":

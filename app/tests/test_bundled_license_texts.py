@@ -31,6 +31,6 @@ def test_upstream_license_copies_match_recorded_bytes_and_digests():
 
 def test_license_resources_are_bundled_without_newline_conversion():
     assert "('packaging/third-party-licenses', 'third-party-licenses')" in (ROOT / 'CloudHime.spec').read_text(encoding='utf-8')
-    attributes = (ROOT / '.gitattributes').read_text(encoding='utf-8')
-    assert '/packaging/third-party-licenses/**/*.txt -text' in attributes
-    assert '/packaging/third-party-licenses/**/LICENSE* -text' in attributes
+    attributes = (ROOT.parent / '.gitattributes').read_text(encoding='utf-8')
+    assert '/app/packaging/third-party-licenses/**/*.txt -text' in attributes
+    assert '/app/packaging/third-party-licenses/**/LICENSE* -text' in attributes

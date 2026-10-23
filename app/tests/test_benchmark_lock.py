@@ -52,7 +52,7 @@ def test_benchmark_lock_matches_git_index_bytes():
     lock = load_lock(LOCK_PATH)
     for entry in lock["datasets"] + lock["artifacts"]:
         result = subprocess.run(
-            ["git", "show", f":{entry['path']}"], cwd=PROJECT_ROOT,
+            ["git", "show", f":./{entry['path']}"], cwd=PROJECT_ROOT,
             capture_output=True, check=True,
         )
         assert hashlib.sha256(result.stdout).hexdigest() == entry["sha256"], entry["path"]

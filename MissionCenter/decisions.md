@@ -1224,3 +1224,12 @@
 ## 2026-10-23｜CH-T55 候選連續閱讀節奏
 
 使用者要求保留前兩輪優點，減少重複操作與等待。本輪縮小為自動掃描開始／繼續的首張立即處理；完成後才倒數，忙碌接續既有工作、冷卻按剩餘時間等待、取消重選恢復原節奏。Gemini Flash 提供三語提示，Luna 唯讀複核未確認 P0–P3 缺陷。驗證與候選封裝詳見 reviews/2026-10-23-play-flow.md、output/play-flow-20261023/。CH-T55 維持 Review；不更動 Store 草稿或沿用舊正式評論護照。
+
+
+## 2026-10-23：工作目錄與 Git 整理決策
+
+- 主人授權整理與移除確定不再使用的內容，根目錄目標不超過十項。採 app/ 收納產品與本機產物、docs/ 收納文件與紀錄，MissionCenter/ 和 GitHub 設定維持 repo root；最終含隱藏項共 10 項。Windows ACL 拒絕存取的根 .pytest_cache 暫留，不變更權限。
+- 整理前完整 Git bundle 與原 .git ZIP 備份通過 verify／CRC／bare restore；遠端僅約 28 MiB，採保留 reflog 的 gc --no-prune，不重寫提交、不移除既有分支或外部 worktree。
+- 刪除已被取代的舊安裝包、解包／預覽／中間產物；保留正式基準與候選、模型、使用者資料、唯一證據。9/24 舊 dist 被現行 Qt policy 檢查拒絕，已以通過完整性與啟動檢查的最新預覽替換。兩次磁碟可用空間差合計約 28.27 GiB。
+- Gemini Flash 的歸檔／供應鏈／操作研究與兩位 Luna 的 Git／搬移審查已整合；CodeRabbit 11 檔審查 1 項 Minor（授權連結），與 Luna 意見一致並修正。完整對照、保留原則及還原方式見 ../docs/workspace-organization.md。
+- 這輪不改產品邏輯，不把工作目錄整理視為 Store 驗收完成；CH-T55／CH-T56 生命週期不變。

@@ -9,11 +9,12 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = ROOT.parent
 
 
 def workflow():
     # BaseLoader preserves the YAML 1.2 Actions key `on` (rather than bool True).
-    return yaml.load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    return yaml.load((REPOSITORY_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_dependency_contract_uses_the_populated_venv_for_all_reports():
@@ -62,8 +63,8 @@ def test_git_checkout_preserves_locked_bytes_with_autocrlf_enabled(tmp_path, nam
         pytest.skip("Git executable is required to verify checkout attributes")
     subprocess.run([git, "init", "-q", str(tmp_path)], check=True, timeout=10)
     subprocess.run([git, "-C", str(tmp_path), "config", "core.autocrlf", "true"], check=True, timeout=10)
-    shutil.copy2(ROOT / ".gitattributes", tmp_path / ".gitattributes")
-    target = tmp_path / name
+    shutil.copy2(REPOSITORY_ROOT / ".gitattributes", tmp_path / ".gitattributes")
+    target = tmp_path / "app" / name
     target.parent.mkdir(parents=True, exist_ok=True)
     original = b"first\nsecond\n"
     target.write_bytes(original)

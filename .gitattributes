@@ -1,12 +1,12 @@
 # Benchmark locks authenticate exact Git blob bytes, not platform newline forms.
 # Do not normalize these files on add/checkout or silently regenerate their hashes.
-/benchmarks/*.json -text
-/vision_scheduling_benchmark.py -text
-/translation_e2e_benchmark.py -text
+/app/benchmarks/*.json -text
+/app/vision_scheduling_benchmark.py -text
+/app/translation_e2e_benchmark.py -text
 # Preserve exact bytes of this sealed, SHA-256-addressed review evidence.
-/output/mission-center-critique/CH-T35-* -text
+/app/output/mission-center-critique/CH-T35-* -text
 # Upstream license copies are authenticated as bytes in sources.json.
-/packaging/third-party-licenses/**/*.txt -text -whitespace
-/packaging/third-party-licenses/**/LICENSE* -text -whitespace
-/packaging/third-party-licenses/qt-source-notices/** -text -whitespace
-/packaging/third-party-licenses/primp-native-notices/** -text -whitespace
+/app/packaging/third-party-licenses/**/*.txt -text -whitespace
+/app/packaging/third-party-licenses/**/LICENSE* -text -whitespace
+/app/packaging/third-party-licenses/qt-source-notices/** -text -whitespace
+/app/packaging/third-party-licenses/primp-native-notices/** -text -whitespace

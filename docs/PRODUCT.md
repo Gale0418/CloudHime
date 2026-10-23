@@ -45,9 +45,9 @@ CloudHime 的核心不是獨立翻譯頁面，而是把 Windows 螢幕擷取、�
 ## Evidence on Hand
 
 - `README.md` 記錄產品定位、核心流程、實際畫面與開發入口。
-- `cloudhime_ui.py`、`translation_settings_panel.py`、`themes.py` 與 `localization.py` 是現行互動與視覺證據。
-- `MissionCenter/settings-fresh-light-real.png` 與 `MissionCenter/settings-fresh-dark-real.png` 是既有設定頁實機截圖。
-- `benchmarks/` 與相關 evaluator 提供既有 OCR、翻譯、Vision 與速度驗證契約；任何新 Provider 品質結論仍需獨立實測，不得由 UI 或模型規格推定。
+- `app/cloudhime_ui.py`、`app/translation_settings_panel.py`、`app/themes.py` 與 `app/localization.py` 是現行互動與視覺證據。
+- [`settings-fresh-light-real.png`](../MissionCenter/settings-fresh-light-real.png) 與 [`settings-fresh-dark-real.png`](../MissionCenter/settings-fresh-dark-real.png) 是既有設定頁實機截圖。
+- `app/benchmarks/` 與相關 evaluator 提供既有 OCR、翻譯、Vision 與速度驗證契約；任何新 Provider 品質結論仍需獨立實測，不得由 UI 或模型規格推定。
 
 ## Product Principles
 

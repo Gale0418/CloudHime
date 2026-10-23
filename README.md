@@ -3,6 +3,18 @@
 
 在 Windows 上讀日文漫畫、玩日文遊戲或操作外語介面，想看懂畫面文字又不想離開原內容時，可以用 CloudHime 擷取螢幕、辨識並翻譯文字，再以透明泡泡查看結果。第一次使用，按「框選翻譯」圈住一小段清楚文字，放開滑鼠後便會開始翻譯，字幕直接顯示在原畫面；也能選全螢幕，再按標示目標語言的翻譯按鈕。Google 翻譯免 API Key；本機與線上 AI 引擎則有各自的準備與金鑰需求。
 
+## 目錄與啟動
+
+| 位置 | 用途 |
+| --- | --- |
+| `app/` | 程式、測試、封裝、資源及本機產物；雙擊 `app/run.bat` 啟動來源版 |
+| `docs/` | 設計、隱私、說明、審查與歷史紀錄 |
+| `MissionCenter/` | 任務與驗收狀態 |
+
+開發、測試與建置指令請先 `cd app`；例如 `python CloudHime.py`、`python -m pytest tests/test_product_experience.py`。授權與發行必要聲明保留在 [app/LICENSE](app/LICENSE)、`app/NOTICE` 等封裝輸入位置。
+
+[整理與還原指南](docs/workspace-organization.md) 記錄搬移對照、保留原則與驗證。舊紀錄中的 `output/`、`build/`、`tests/`、程式檔名等路徑是當時位置，現位於 `app/` 下；`reviews/`、`records/` 改在 `docs/` 下。Git 歷史提交編號保留。
+
 ---
 
 ### ✨ 核心特色
@@ -36,17 +48,17 @@ Windows OCR 的辨識語言取決於 Windows 已安裝的 OCR 語言資源；Mic
 
 ## 適合的情境與使用限制
 
-**2026-10-23 連續閱讀節奏**：自動掃描開始／繼續時先處理目前畫面，完成後再倒數下一次；忙碌時沿用當次翻譯，冷卻期間遵守剩餘等待，取消重選只恢復原節奏。保留前兩輪介面與框選即翻譯。[互動與驗證紀錄](reviews/2026-10-23-play-flow.md)。
+**2026-10-23 連續閱讀節奏**：自動掃描開始／繼續時先處理目前畫面，完成後再倒數下一次；忙碌時沿用當次翻譯，冷卻期間遵守剩餘等待，取消重選只恢復原節奏。保留前兩輪介面與框選即翻譯。[互動與驗證紀錄](docs/reviews/2026-10-23-play-flow.md)。
 
-**2026-10-23 首次操作改善**：框選翻譯現在選完就翻，少一次確認點擊；主按鈕直接標示翻譯目標語言，缺少金鑰時則引導設定。保留簡潔介面、原字幕取消恢復與所有既有引擎。[實作與測試紀錄](reviews/2026-10-23-first-value.md)。
+**2026-10-23 首次操作改善**：框選翻譯現在選完就翻，少一次確認點擊；主按鈕直接標示翻譯目標語言，缺少金鑰時則引導設定。保留簡潔介面、原字幕取消恢復與所有既有引擎。[實作與測試紀錄](docs/reviews/2026-10-23-first-value.md)。
 
-**2026-10-23 介面精簡**：主窗只保留一個翻譯主按鈕，快捷鍵放在提示；引擎資料說明可展開，閒置時收起重複說明。設定頁保留四分頁，一般選項自動儲存，「儲存作品設定」只在作品研究分頁顯示。新隔離 EXE 的啟動與 OCR 已實測；詳見[介面精簡紀錄](reviews/2026-10-23-ui-distill.md)。
+**2026-10-23 介面精簡**：主窗只保留一個翻譯主按鈕，快捷鍵放在提示；引擎資料說明可展開，閒置時收起重複說明。設定頁保留四分頁，一般選項自動儲存，「儲存作品設定」只在作品研究分頁顯示。新隔離 EXE 的啟動與 OCR 已實測；詳見[介面精簡紀錄](docs/reviews/2026-10-23-ui-distill.md)。
 
-**2026-10-23 全面檢查**：補上 Google 長文分段與整次請求上限、取消框選恢復字幕／掃描狀態、截圖模式暫停保留原始文字位置，以及封裝失敗後的暫存清理；跑馬燈字寬改為快取。新增三語／三模式 Qt 自主操作回歸。相鄰氣泡／浮雕字幕會局部避讓；新隔離 EXE 的 import、OCR、CPU Vision 與啟動檢查通過，三席評論與獨立裁決收斂完成。未更新商店套件；詳見[完整檢查紀錄](reviews/2026-10-23-full-audit.md)。
+**2026-10-23 全面檢查**：補上 Google 長文分段與整次請求上限、取消框選恢復字幕／掃描狀態、截圖模式暫停保留原始文字位置，以及封裝失敗後的暫存清理；跑馬燈字寬改為快取。新增三語／三模式 Qt 自主操作回歸。相鄰氣泡／浮雕字幕會局部避讓；新隔離 EXE 的 import、OCR、CPU Vision 與啟動檢查通過，三席評論與獨立裁決收斂完成。未更新商店套件；詳見[完整檢查紀錄](docs/reviews/2026-10-23-full-audit.md)。
 
-**2026-10-23 來源修正**：Online Gemma 重新檢查模型成功後，主視窗會同步顯示已驗證；換金鑰會撤銷舊結果。氣泡、浮雕、截圖三種顯示模式共用文字大小與 X／Y 位移，調整後立即更新字幕，透明度仍調整選區框。詳見[修正與驗證紀錄](reviews/2026-10-23-provider-render-controls.md)。當時的既有 EXE／MSIX 尚未包含修正；同日本輪新隔離 EXE 已包含，MSIX／Store 草稿維持原版。
+**2026-10-23 來源修正**：Online Gemma 重新檢查模型成功後，主視窗會同步顯示已驗證；換金鑰會撤銷舊結果。氣泡、浮雕、截圖三種顯示模式共用文字大小與 X／Y 位移，調整後立即更新字幕，透明度仍調整選區框。詳見[修正與驗證紀錄](docs/reviews/2026-10-23-provider-render-controls.md)。當時的既有 EXE／MSIX 尚未包含修正；同日本輪新隔離 EXE 已包含，MSIX／Store 草稿維持原版。
 
-**上架進度（2026-10-20）**：0.1.2.0 套件已由 Partner Center 驗證並保存在 Submission 3 草稿，尚未送出認證或發布。來源 CI147 已通過八項必要檢查；稅務表單的台灣個人稅號格式問題已補件給 Microsoft 支援，等待回覆。最終套件完整操作、真實設定升級、乾淨 Windows OCR 與 Store 安裝／更新仍待驗收；詳見[最新收尾紀錄](reviews/2026-10-20-store-closeout.md)。
+**上架進度（2026-10-20）**：0.1.2.0 套件已由 Partner Center 驗證並保存在 Submission 3 草稿，尚未送出認證或發布。來源 CI147 已通過八項必要檢查；稅務表單的台灣個人稅號格式問題已補件給 Microsoft 支援，等待回覆。最終套件完整操作、真實設定升級、乾淨 Windows OCR 與 Store 安裝／更新仍待驗收；詳見[最新收尾紀錄](docs/reviews/2026-10-20-store-closeout.md)。
 
 CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的遊戲、漫畫閱讀器或應用程式裡時。它是閱讀輔助工具，不能取代專業翻譯或保證每段文字都能正確辨識、翻譯。
 
@@ -54,14 +66,14 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 
 > 以下 2026-10-04／10-05 的驗收與版本描述是當日歷史紀錄，不代表目前 Store 或 GitHub 的發行狀態。
 
-2026-10-04 已修正設定頁延遲回呼與快捷鍵物件生命週期；另一路 QThread 原生崩潰的最初失效物件仍未確認，詳見 [Qt 原生診斷紀錄](reviews/2026-10-04-qt-native-diagnosis.md)。主視窗長提示已支援溢出才滾動的單行跑馬燈，保留完整提示與無障礙文字。
+2026-10-04 已修正設定頁延遲回呼與快捷鍵物件生命週期；另一路 QThread 原生崩潰的最初失效物件仍未確認，詳見 [Qt 原生診斷紀錄](docs/reviews/2026-10-04-qt-native-diagnosis.md)。主視窗長提示已支援溢出才滾動的單行跑馬燈，保留完整提示與無障礙文字。
 
 20:13 實機回報模型準備期間未翻譯，舊候選已退回。修正版 `adf8d39` 增加內附模型驗證進度與取消、等待提示，並修正純本機路由及舊 Google 快取；313 項相關回歸與九檔 CodeRabbit 審查通過。新 EXE 已通過模型完整性、host Windows OCR 兩行、CPU 圖像功能 1/1 與 20 秒啟動驗證；相同來源的實際 Controller 診斷約 17 秒就緒，將「確認連線狀態」翻為英文，等待時 UI event loop 持續運作。來源診斷未涵蓋 frozen EXE 的完整人工操作；暫停／繼續／取消框選、沙箱與 MSIX／WACK 驗收仍待完成。原始全新沙箱有 OCR 語言資源問題，補入診斷用資源的控制實驗不能當成未修改沙箱的通過。Store 現行仍為 0.1.1.0，新版尚未上傳或認證。
 
 
-2026-10-05 Gemini 已審閱並修訂產品的繁中／英文／日文可見文案，涵蓋主視窗、設定、狀態、OCR 安裝及快速鍵提示；相關回歸 428 passed，CodeRabbit 初審兩項 Minor 已修、複審零 issues。該日候選通過本機 frozen import、Windows OCR 兩行、CPU vision 1/1 與 GUI 20 秒啟動；沙箱更新、全新安裝／啟動／移除也有當日紀錄。當時 WACK 工具曾以未處理的 .NET 例外碼 0xE0434352 結束，未產生認證報告。這些是歷史驗收紀錄，不代表新版本已發行或認證。文案來源、範圍與限制見 [Gemini 文案驗證](reviews/2026-10-05-gemini-ui-copy.md)。
+2026-10-05 Gemini 已審閱並修訂產品的繁中／英文／日文可見文案，涵蓋主視窗、設定、狀態、OCR 安裝及快速鍵提示；相關回歸 428 passed，CodeRabbit 初審兩項 Minor 已修、複審零 issues。該日候選通過本機 frozen import、Windows OCR 兩行、CPU vision 1/1 與 GUI 20 秒啟動；沙箱更新、全新安裝／啟動／移除也有當日紀錄。當時 WACK 工具曾以未處理的 .NET 例外碼 0xE0434352 結束，未產生認證報告。這些是歷史驗收紀錄，不代表新版本已發行或認證。文案來源、範圍與限制見 [Gemini 文案驗證](docs/reviews/2026-10-05-gemini-ui-copy.md)。
 
-截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。獨立三席與仲裁已完成，未查證出需修補的程式碼缺陷；正式評論仍因驗收缺口而 blocked。四語 Gemini 行銷文案與額外條款已保存至商店草稿。0.1.2.0 候選已上傳並保存至 Submission 3 草稿，重開核對版本／x64／最低 Windows 版本一致；後台保留 runFullTrust 審核警告，尚未送認證或發布。最終 GUI 完整操作、真實設定升級、乾淨 Windows OCR 及 Store 認證仍待完成。完整證據與限制見[本輪驗收紀錄](reviews/2026-10-07-release-integrity.md)。Microsoft Store 現行正式版本仍為 0.1.1.0。
+截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。獨立三席與仲裁已完成，未查證出需修補的程式碼缺陷；正式評論仍因驗收缺口而 blocked。四語 Gemini 行銷文案與額外條款已保存至商店草稿。0.1.2.0 候選已上傳並保存至 Submission 3 草稿，重開核對版本／x64／最低 Windows 版本一致；後台保留 runFullTrust 審核警告，尚未送認證或發布。最終 GUI 完整操作、真實設定升級、乾淨 Windows OCR 及 Store 認證仍待完成。完整證據與限制見[本輪驗收紀錄](docs/reviews/2026-10-07-release-integrity.md)。Microsoft Store 現行正式版本仍為 0.1.1.0。
 
 ---
 
@@ -83,7 +95,7 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 | 線上 Gemma | Google API Key | 依功能送出辨識文字或畫面影像至 Google。共用一把金鑰，可在兩個 Gemma 模型間選擇。 |
 | Luna | OpenAI API Key | 支援文字與圖片輸入，請求會送往 OpenAI 服務。 |
 
-本機 OCR 與本機模型可在裝置上處理內容；即使選了本機模型，啟用雲端 OCR 或設定其他電腦上的模型端點，仍會送出相應內容。線上翻譯或圖片理解會將相應文字、影像及提示送往所選服務。CloudHime 無法決定第三方服務如何保存或使用請求資料。API 金鑰以 Windows DPAPI 使用者範圍保護後存於本機。詳情請閱讀[隱私權政策](PRIVACY.md)。
+本機 OCR 與本機模型可在裝置上處理內容；即使選了本機模型，啟用雲端 OCR 或設定其他電腦上的模型端點，仍會送出相應內容。線上翻譯或圖片理解會將相應文字、影像及提示送往所選服務。CloudHime 無法決定第三方服務如何保存或使用請求資料。API 金鑰以 Windows DPAPI 使用者範圍保護後存於本機。詳情請閱讀[隱私權政策](docs/PRIVACY.md)。
 
 ---
 
@@ -114,18 +126,18 @@ CloudHime 適合快速理解畫面文字，尤其是你想繼續留在原本的�
 結束程式時若一般設定無法儲存，可選擇返回重試，或放棄未儲存變更後結束；金鑰儲存失敗時會保留視窗，讓你先處理問題。
 
 > **版本證據（日期採 Asia/Taipei；歷史紀錄，非即時發行狀態）：**
-> - **原始碼：** 2026-10-04 三輪累積記錄共 245 個不同案例通過；其中最新連續閱讀輪有 158 個案例經分檔與差異驗證通過。混跑 Qt 測試曾發生 native crash，根因未定。本輪來源差異尚未打包。詳見[產品體驗驗收紀錄](reviews/2026-10-04-sale-readiness.md)。
-> - **EXE：** 2026-10-03 記錄的 Python 3.10 本機 EXE 曾通過 frozen OCR、import 與其他列明檢查；這是該次產物的證據，不表示本輪來源已打包。詳見[雲朵版驗收紀錄](reviews/2026-10-03-ocr-cloud-release.md)。
+> - **原始碼：** 2026-10-04 三輪累積記錄共 245 個不同案例通過；其中最新連續閱讀輪有 158 個案例經分檔與差異驗證通過。混跑 Qt 測試曾發生 native crash，根因未定。本輪來源差異尚未打包。詳見[產品體驗驗收紀錄](docs/reviews/2026-10-04-sale-readiness.md)。
+> - **EXE：** 2026-10-03 記錄的 Python 3.10 本機 EXE 曾通過 frozen OCR、import 與其他列明檢查；這是該次產物的證據，不表示本輪來源已打包。詳見[雲朵版驗收紀錄](docs/reviews/2026-10-03-ocr-cloud-release.md)。
 > - **Microsoft Store：** 2026-10-03 記錄中的 Store MSIX 是本機候選，尚無 Partner Center 上傳、認證或發行完成證據。各發行流程與限制見[雙軌發行手冊](docs/release-two-track.md)及上述驗收紀錄。
 
-2026-10-04 的 CodeRabbit 補審涵蓋本次變更與較早的小檔案，共 148 檔；六項建議已逐項查證與修復，處置及複審結果見[產品體驗驗收紀錄](reviews/2026-10-04-sale-readiness.md)。2026-10-02 的歷史範圍另見[原始碼審查紀錄](reviews/2026-10-02-coderabbit-main-sync.md)。
+2026-10-04 的 CodeRabbit 補審涵蓋本次變更與較早的小檔案，共 148 檔；六項建議已逐項查證與修復，處置及複審結果見[產品體驗驗收紀錄](docs/reviews/2026-10-04-sale-readiness.md)。2026-10-02 的歷史範圍另見[原始碼審查紀錄](docs/reviews/2026-10-02-coderabbit-main-sync.md)。
 
 ### 取得 CloudHime
 CloudHime 採雙軌發行：GitHub 免費提供完整原始碼，不提供官方二進位；Microsoft Store 預計以付費 MSIX 提供完整 EXE、runtime 與模型。依 Apache License 2.0，任何人都可在遵守該授權及各第三方元件／模型適用條款的前提下，免費或收費再散布專案原始碼或衍生作品。
 
 目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。售價已定案為 NT$249 一次買斷；自正式公開可購買日起的前 30 天，以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。不想自行建置的使用者，可從 [Microsoft Store 官方頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)查看並取得官方套件（目前仍為私人預覽，尚未公開供購買）；免費原始碼可從 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
-官方包採一次性買斷，無應用程式訂閱；第三方雲端 AI 需自行提供 API Key，服務費用不包含在售價中。兩種取得方式共用原始碼與核心功能。維護者為 Gale0418；署名、品牌與第三方告知見 [NOTICE](NOTICE)、[AUTHORS.md](AUTHORS.md)、[BRANDING.md](BRANDING.md) 與 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+官方包採一次性買斷，無應用程式訂閱；第三方雲端 AI 需自行提供 API Key，服務費用不包含在售價中。兩種取得方式共用原始碼與核心功能。維護者為 Gale0418；署名、品牌與第三方告知見 [NOTICE](app/NOTICE)、[AUTHORS.md](app/AUTHORS.md)、[BRANDING.md](app/BRANDING.md) 與 [THIRD_PARTY_NOTICES.md](app/THIRD_PARTY_NOTICES.md)。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
 MSIX 的本機開發自簽與 Microsoft Store 正式發行是兩條不同流程；請依[雙軌發行手冊](docs/release-two-track.md)操作。歷史驗收紀錄中的預覽包或未簽名的 Store 上傳輸入，都不代表已完成 Store 發行。

@@ -653,3 +653,12 @@
 - QT_QPA_PLATFORM=offscreen；pytest product_experience、cloudhime_ui_smoke、shutdown_lifecycle、ui_copy 四檔 218 passed，新增慢 worker 測試 1 passed；合計 219 個不同案例通過。證據 output/play-flow-20261023/final.xml、slow-worker.xml。
 - 真實 Qt 點擊／鍵盤與 QThread 受控等待驗證開始立即單次派送、完成後倒數、忙碌沿用、冷卻等待、快速暫停／繼續、設定可操作及晚到結果丟棄。背景結果為受控資料，不等同 live 模型品質或實際遊戲負載。
 - 新 EXE import、Windows OCR 1 圖／2 行、20 秒啟動存活、兩個內附模型完整性 preflight 通過。CodeRabbit 四檔完成、0 issues。完整紀錄 reviews/2026-10-23-play-flow.md；不變更任務生命週期或 Store gate。
+
+
+## 2026-10-23｜工作目錄搬移與產物清理
+
+- app/ci/test_groups.json 五組完整回歸初次 1,989 passed、1 failed、6 skipped；唯一失敗為舊 9/24 dist 的 Qt 附加元件。換入已驗證最新預覽後，該測試及 benchmark／授權／stabilization 相關複測 27 passed；合計 1,990 個不同案例有 passing evidence，6 skipped 保留原因，沒有放寬測試。
+- root 130→10；946 個純搬移檔案的 Git blob 與原 HEAD 完全相同（補文件前對照），封存 benchmark 與授權位元組不變。CI 工作目錄與 repo-level 測試路徑已調整。
+- 最新 EXE SHA-256 7f2ca69385959364ca3f45c476756e5305263313498437fcb15974c2660ed310；移動前後一致。full preflight（兩模型）、import、真實 Windows OCR 1 圖／2 行及 20 秒啟動通過，測試自建程序已回收。現行本機入口 app/dist/CloudHime/CloudHime.exe；未重新編譯、未發布 Store。
+- 證據 app/output/organization-20261023/：tests/summary.json、tests/relocation-final.xml、preview-verification.json、preview-promotion.json、backup-verification.json、mapping-verification.json、coderabbit.ndjson、validation-summary.json。初次失敗 log 保留。
+- GitHub CI 結果以本次 main 提交的 Actions 為準；此紀錄不改既有 Store gate。

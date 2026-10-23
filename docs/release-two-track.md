@@ -1,6 +1,6 @@
 # CloudHime 雙軌發行手冊
 
-GitHub 免費提供完整原始碼，不提供官方 EXE、runtime 或模型二進位；Microsoft Store 規劃提供付費的完整 EXE、runtime 與模型 MSIX。原始碼依 `LICENSE` 的 Apache License 2.0 發行，任何人都可依該授權合法免費或收費再散布原始碼及衍生作品，並須遵守其中條件；第三方元件與模型仍受各自授權或使用條款約束。詳見 [`NOTICE`](../NOTICE)、[`AUTHORS.md`](../AUTHORS.md)、[`BRANDING.md`](../BRANDING.md) 與 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
+GitHub 免費提供完整原始碼，不提供官方 EXE、runtime 或模型二進位；Microsoft Store 規劃提供付費的完整 EXE、runtime 與模型 MSIX。原始碼依 [`LICENSE`](../app/LICENSE) 的 Apache License 2.0 發行，任何人都可依該授權合法免費或收費再散布原始碼及衍生作品，並須遵守其中條件；第三方元件與模型仍受各自授權或使用條款約束。詳見 [`NOTICE`](../app/NOTICE)、[`AUTHORS.md`](../app/AUTHORS.md)、[`BRANDING.md`](../app/BRANDING.md) 與 [`THIRD_PARTY_NOTICES.md`](../app/THIRD_PARTY_NOTICES.md)。
 
 售價已定案為 NT$249 一次買斷；自正式公開可購買日起的前 30 天，以 NT$199 首發。目前 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)仍是私人預覽，尚未正式公開可購買；因此尚未開始收費，首發 30 天也尚未起算。實際價格與供應狀態以 Store 頁面為準。原始碼可於 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
@@ -8,7 +8,15 @@ Microsoft Store 付費套件不包含第三方雲端服務的 API 費用；使�
 
 本手冊說明 MSIX 本機開發驗證與 Microsoft Store 發行的界線。開發憑證只供本機 sideload；Store 上傳包使用 Partner Center 指定的 identity，由 Microsoft Store 簽署後發行。兩條流程共用凍結版建置及 payload 驗證，但簽章、信任與發行結果不能互相代替。
 
-本文件與 `NOTICE` 僅提供發行及署名資訊，不修改 `LICENSE` 條款。Apache 2.0 第 4 節說明 NOTICE 僅供告知，且不得被解讀為修改授權；第 6 節不授予商標權。這些聲明不限制 Apache 2.0 所授予的合法免費或付費再散布權利。
+本文件與 `app/NOTICE` 僅提供發行及署名資訊，不修改 `app/LICENSE` 條款。Apache 2.0 第 4 節說明 NOTICE 僅供告知，且不得被解讀為修改授權；第 6 節不授予商標權。這些聲明不限制 Apache 2.0 所授予的合法免費或付費再散布權利。
+
+以下命令請在同一個 PowerShell 工作階段中，從 repository root 先進入 `app/`，再依序執行本手冊後續步驟：
+
+```powershell
+Set-Location app
+```
+
+後續命令中的相對路徑都以 `app/` 為基準；需要從 app 定位 repository root 的設定或工作流程時，使用 `../` 開頭的路徑。
 
 ## 開始前：建立凍結版
 
@@ -75,7 +83,7 @@ $signtool = 'C:\Program Files (x86)\Windows Kits\10\bin\<SDK版本>\x64\signtool
 if ($LASTEXITCODE -ne 0) { throw 'MSIX signing failed.' }
 ```
 
-`<SDK版本>` 是佔位文字，執行前須換成已安裝 SDK 的目錄名稱。LocalMachine TrustedPeople 的匯入與清理需要已授權的系統管理員工作階段；不要改動 Root 存放區或重用此憑證作 Store 發行。CI workflow `.github/workflows/ci.yml` 示範了 ephemeral 憑證、套件簽署及依 thumbprint 清理的模式。
+`<SDK版本>` 是佔位文字，執行前須換成已安裝 SDK 的目錄名稱。LocalMachine TrustedPeople 的匯入與清理需要已授權的系統管理員工作階段；不要改動 Root 存放區或重用此憑證作 Store 發行。CI workflow [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml) 示範了 ephemeral 憑證、套件簽署及依 thumbprint 清理的模式。
 
 安裝／啟動 smoke 使用既有腳本：
 
@@ -101,7 +109,7 @@ Remove-Item -LiteralPath $cer -Force -ErrorAction SilentlyContinue
 
 正式 `build_exe.bat` 的 wheel 完整性檢查使用官方 production hash lock，會拒絕不符合該 lock 的自編 PySide6／Shiboken wheel。這個入口的通過結果只適用於正式基線；在原始碼環境替換 wheel 後，不能宣稱仍通過同一組完整性檢查。
 
-修改版可從已驗證的完整 onedir 基線建立獨立可寫副本，再依 [`QT-LIBRARY-REPLACEMENT.md`](../packaging/third-party-licenses/QT-LIBRARY-REPLACEMENT.md) 替換 Qt／PySide6／Shiboken。使用相同版本、Release MSVC x64 與 CPython 3.10 ABI，保存自編來源、工具鏈、替換檔雜湊及相應授權原文；原基線與已安裝 Store 套件均保留。副本中的原始 dependency provenance 描述的是基線，不能當成修改 DLL 的編譯證明。
+修改版可從已驗證的完整 onedir 基線建立獨立可寫副本，再依 [`QT-LIBRARY-REPLACEMENT.md`](../app/packaging/third-party-licenses/QT-LIBRARY-REPLACEMENT.md) 替換 Qt／PySide6／Shiboken。使用相同版本、Release MSVC x64 與 CPython 3.10 ABI，保存自編來源、工具鏈、替換檔雜湊及相應授權原文；原基線與已安裝 Store 套件均保留。副本中的原始 dependency provenance 描述的是基線，不能當成修改 DLL 的編譯證明。
 
 Windows OCR 的官方支援範圍要求 [MSIX 套件身分](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr)。因此修改版若需使用這項功能，應將副本重新封裝，使用獨立開發 identity；直接啟動可寫 EXE 的有限結果不能替代套件功能驗收。下例的兩個路徑需改為自己這次建立的專屬目錄，`OutputDir` 必須是尚未使用的新目錄：
 
@@ -143,13 +151,13 @@ pwsh -File packaging/build_msix.ps1 `
 
 ## 歷史驗收快照與恢復順序
 
-2026-10-20 最新對帳：固定 0.1.2.0 候選仍在 Submission 3 草稿，提交認證按鈕停用。來源 CI147 八項必要成功、兩項手動 frozen skipped；稅務個人識別碼格式問題已向 Microsoft 補件。完成狀態、未完成驗收及本輪外部頁面限制見[最新收尾紀錄](../reviews/2026-10-20-store-closeout.md)。歷史候選證據與下列實際操作門檻繼續保留。
+2026-10-20 最新對帳：固定 0.1.2.0 候選仍在 Submission 3 草稿，提交認證按鈕停用。來源 CI147 八項必要成功、兩項手動 frozen skipped；稅務個人識別碼格式問題已向 Microsoft 補件。完成狀態、未完成驗收及本輪外部頁面限制見[最新收尾紀錄](reviews/2026-10-20-store-closeout.md)。歷史候選證據與下列實際操作門檻繼續保留。
 
-截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。獨立三席與仲裁已完成，未查證出需修補的程式碼缺陷；正式評論仍因驗收缺口而 blocked。四語 Gemini 行銷文案與額外條款已保存至商店草稿。0.1.2.0 候選已上傳並保存至 Submission 3 草稿，重開核對版本／x64／最低 Windows 版本一致；後台保留 runFullTrust 審核警告，尚未送認證或發布。最終 GUI 完整操作、真實設定升級、乾淨 Windows OCR 及 Store 認證仍待完成。完整證據與限制見[本輪驗收紀錄](../reviews/2026-10-07-release-integrity.md)。Microsoft Store 正式現行版本仍為 `0.1.1.0`。
+截至 2026-10-07，0.1.2.0 候選的 host frozen import／OCR／CPU vision／GUI 檢查通過；全新 Windows Sandbox 的安裝、合成設定更新保留、副本 import／CPU vision、Qt 載入與 AUMID 啟動亦通過。完整 WACK 總判定 PASS：13 個必要測項全部通過，9 個選用測項通過、2 個選用測項失敗；不代表全部測項或 Windows S 模式相容。沙箱 Windows OCR 尚未通過，獨立原生 MSIX／真正 AUMID 對照亦在辨識階段回傳 E_FAIL，根因未定。獨立三席與仲裁已完成，未查證出需修補的程式碼缺陷；正式評論仍因驗收缺口而 blocked。四語 Gemini 行銷文案與額外條款已保存至商店草稿。0.1.2.0 候選已上傳並保存至 Submission 3 草稿，重開核對版本／x64／最低 Windows 版本一致；後台保留 runFullTrust 審核警告，尚未送認證或發布。最終 GUI 完整操作、真實設定升級、乾淨 Windows OCR 及 Store 認證仍待完成。完整證據與限制見[本輪驗收紀錄](reviews/2026-10-07-release-integrity.md)。Microsoft Store 正式現行版本仍為 `0.1.1.0`。
 
 以下內容是截至 2026-10-05 的歷史快照，不代表目前 Store／GitHub 發行狀態。當時主機私人 Store 版仍為 `0.1.1.0`。產品候選固定於來源 `fe88bab940c02c7e271fefeea557bc004cb9d580`，位於 `output/store-release-20261005-gemini-copy/`；10/03 的候選是歷史產物，不用來接續本輪發行。該候選已通過 frozen import、Windows OCR 兩行、CPU Vision 1/1、GUI 啟動存活與 full provenance 驗證；隔離環境的合成 LocalState 更新保留、全新安裝／啟動／移除也已通過。
 
-正式 SDK 隔離環境的完整 WACK 已取得 exit 0、`OVERALL_RESULT=PASS`、`PARTIAL_RUN=FALSE`；13 個 required 測項全 PASS。另有 10 個 optional PASS、1 個 optional FAIL：blocked executable 掃描器回報 `OverflowException`，未定位觸發檔案。這不是全部測項通過或 Windows S 模式相容的證據；[Microsoft 的 Desktop Bridge 規則](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-desktop-bridge-app-tests)以 required 測項決定總判定。完整報告、來源／產物雜湊及限制見 [10/05 驗收紀錄](../reviews/2026-10-05-wack-critique.md)。
+正式 SDK 隔離環境的完整 WACK 已取得 exit 0、`OVERALL_RESULT=PASS`、`PARTIAL_RUN=FALSE`；13 個 required 測項全 PASS。另有 10 個 optional PASS、1 個 optional FAIL：blocked executable 掃描器回報 `OverflowException`，未定位觸發檔案。這不是全部測項通過或 Windows S 模式相容的證據；[Microsoft 的 Desktop Bridge 規則](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/windows-desktop-bridge-app-tests)以 required 測項決定總判定。完整報告、來源／產物雜湊及限制見 [10/05 驗收紀錄](reviews/2026-10-05-wack-critique.md)。
 
 四席正式評論保留 `limited`：完整 GUI 操作、真實使用設定升級、Partner Center 認證與實際 Store 更新尚未驗收。Submission 3 已保存免費私人預覽草稿；本輪 `0.1.2.0` 尚未上傳，草稿與本機 WACK 不能替代認證結果。
 

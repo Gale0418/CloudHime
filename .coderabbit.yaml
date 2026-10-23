@@ -1,9 +1,9 @@
 reviews:
   path_filters:
-    - "!example/**"
-    - "!models/**"
-    - "!runtime/**"
-    - "!build/**"
-    - "!dist/**"
-    - "!output/**"
-    - "!packaging/model-licenses/*.html"
+    - "!app/example/**"
+    - "!app/models/**"
+    - "!app/runtime/**"
+    - "!app/build/**"
+    - "!app/dist/**"
+    - "!app/output/**"
+    - "!app/packaging/model-licenses/*.html"

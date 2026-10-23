@@ -50,7 +50,7 @@ def test_msix_builder_prefers_x64_makeappx_for_large_payloads():
 
 def test_ci_msix_contract_runs_environment_isolated_launch_smoke():
     root = Path(__file__).resolve().parents[1]
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "packaging/test_clean_machine.ps1" in ci
     assert "Environment-isolated release executable smoke" in ci
@@ -63,7 +63,7 @@ def test_ci_msix_contract_runs_environment_isolated_launch_smoke():
 
 def test_ci_exposes_an_opt_in_real_frozen_release_smoke_gate():
     root = Path(__file__).resolve().parents[1]
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "workflow_dispatch:" in ci
     assert "run_real_release:" in ci
@@ -83,7 +83,7 @@ def test_ci_exposes_an_opt_in_real_frozen_release_smoke_gate():
     assert "packaging/release_functional_smoke.py" not in ci
 def test_ci_exposes_opt_in_reproducible_real_release_build_gate():
     root = Path(__file__).resolve().parents[1]
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "run_real_release_build:" in ci
     assert "real-release-build:" in ci
@@ -108,7 +108,7 @@ def test_ci_exposes_opt_in_reproducible_real_release_build_gate():
 
 def test_ci_msix_signing_prefers_x64_signtool():
     root = Path(__file__).resolve().parents[1]
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "x64[\\\\/]signtool" in ci
 
@@ -142,7 +142,7 @@ def test_msix_builder_requires_windows_sdk_and_expands_manifest():
     for logo_size in ("44", "50", "150"):
         assert (root / "assets" / f"cloudhime_logo_{logo_size}.png").is_file()
 
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "AppxManifest.xml" in ci
     assert "runFullTrust" in ci
     assert "Import-Certificate -FilePath $cerPath -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople" in ci
@@ -273,13 +273,13 @@ def test_msix_activation_helper_uses_aumid_and_returns_the_activated_process():
 
 def test_ci_workflow_parses_as_yaml():
     root = Path(__file__).resolve().parents[1]
-    workflow = yaml.safe_load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    workflow = yaml.safe_load((root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
 
     assert workflow["jobs"]["msix-contract"]
 
 def test_ci_msix_fixture_uses_an_environment_probe_with_liveness_margin():
     root = Path(__file__).resolve().parents[1]
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     fixture = ci[ci.index("      - name: Prepare MSIX contract fixture"):ci.index("      - name: Build MSIX package")]
     install = ci[ci.index("      - name: Install and uninstall MSIX package"):]
 
@@ -316,7 +316,7 @@ def test_ci_msix_fixture_uses_an_environment_probe_with_liveness_margin():
 
 def test_ci_uses_separate_msix_activation_probe(tmp_path):
     root = Path(__file__).resolve().parents[1]
-    ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     build = ci[ci.index("      - name: Build MSIX package"):]
     assert 'ci/msix_activation_probe.cs' in build
     assert build.index('/out:$packageExe $activationProbe') < build.index('-File $builder')
@@ -854,7 +854,7 @@ def test_release_dist_preflight_rejects_incomplete_third_party_notices():
 def test_release_preflight_requires_self_contained_dependency_provenance_and_ci_unpacks_it():
     root = Path(__file__).resolve().parents[1]
     verifier = (root / "packaging" / "verify_release_dist.ps1").read_text(encoding="utf-8")
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = (root.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "release_provenance.py" in verifier
     assert "_internal\\provenance" in verifier
@@ -1117,7 +1117,7 @@ def test_wack_readme_sets_optional_deprecated_partner_center_boundary():
 def test_store_identity_config_is_local_only_and_documented():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "packaging" / "README.md").read_text(encoding="utf-8")
-    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+    gitignore = (root.parent / ".gitignore").read_text(encoding="utf-8")
 
     assert "packaging/store-identity.local.json" in gitignore
     assert "-StoreIdentityConfigPath" in readme
