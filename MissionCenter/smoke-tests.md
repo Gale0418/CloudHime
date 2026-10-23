@@ -670,4 +670,4 @@
 - QT_QPA_PLATFORM=offscreen；product_experience 127、shutdown_lifecycle 8、render_text_controls 29，合計 164 passed／0 failed／0 skipped；各檔獨立程序執行。
 - 最新 EXE SHA-256 `7f2ca69385959364ca3f45c476756e5305263313498437fcb15974c2660ed310` 不變。runtime／Qt／兩模型 full preflight、import、Windows OCR 1 圖／2 行、20 秒啟動、本機 CPU Vision 1 圖／1 案例均 passed；自建程序已回收。
 - 證據：`app/output/storage-trim-20261023/` 內 cleanup-result.json、capacity-after.json、retained-after.json、source-tests.json、preview-verification.json、cpu-vision.json、validation-summary.json。冷讀取較慢，仍等完整檢查結束才判定通過。
-- 舊 offline-20260921-r8 兩層空目錄的固定路徑非遞迴刪除被自動核准檢查拒絕（blocked by policy），暫留。未重建 EXE、未改產品程式碼；不變更任務狀態或 Store 閘門，本機隔離驗證不等同乾淨 Windows 認證。
+- 舊 offline-20260921-r8 兩層空目錄的固定路徑非遞迴刪除被執行前工具政策拒絕（blocked by policy），暫留。原始紀錄未提供具體規則；當時 approval_policy=never、sandbox_policy=danger-full-access，不直接歸因於一般 Auto-review。未重建 EXE、未改產品程式碼；不變更任務狀態或 Store 閘門，本機隔離驗證不等同乾淨 Windows 認證。

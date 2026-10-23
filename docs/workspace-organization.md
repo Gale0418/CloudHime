@@ -106,6 +106,6 @@ Gemini Flash 提供資料歸檔／供應鏈／簡潔操作的研究意見；兩�
 
 1,628 個保留檔案的檔案身分／大小／修改時間、小檔 SHA-256，以及兩份 MSIX 的成員清單／manifest／blockmap，前後比對全部一致。大型 MSIX 冷讀取約 3 MiB/s，本輪未重算全包 SHA-256；原歷史雜湊僅作參考，不宣稱重新驗證完整 MSIX payload。
 
-兩層 `app/dist/offline-20260921-r8/msix/` 與上層舊資料夾已無檔案，但自動核准檢查以 `blocked by policy` 拒絕非遞迴刪除，故暫留空目錄。
+兩層 `app/dist/offline-20260921-r8/msix/` 與上層舊資料夾已無檔案，但指令執行前的工具政策檢查以 `blocked by policy` 拒絕非遞迴刪除，故暫留空目錄。21:24／21:27（台灣時間）的原始拒絕紀錄未提供具體規則或理由；當時 turn_context 為 approval_policy=never、sandbox_policy=danger-full-access，因此不能直接歸因於一般 Auto-review。沒有 Windows 刪除錯誤可供判定 ACL 或檔案鎖定問題。
 
 清理後驗證：來源操作回歸 164 passed（首次操作 127、關閉生命週期 8、字幕控制 29）；最新 EXE 的 runtime／Qt／兩模型完整性檢查、封裝 import、Windows OCR 1 圖／2 行、20 秒啟動及本機 CPU Vision 1 圖／1 案例全部通過。測試自建程序已回收。完整證據在 `app/output/storage-trim-20261023/` 的 `source-tests.json`、`preview-verification.json` 與 `cpu-vision.json`。本機磁碟冷讀取使完整性檢查耗時偏長；此結果是本機隔離功能驗證，不等同乾淨 Windows 或 Store 認證。

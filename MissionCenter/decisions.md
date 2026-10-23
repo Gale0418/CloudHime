@@ -1241,5 +1241,5 @@
 - 保留 app/dist/CloudHime 最新預覽、release-20261007-final/msix 的 0.1.2.0 Store 候選、app/dist 的 0.1.1.0 回退 MSIX、模型/runtime、clean venv與wheels、測試環境、源碼快照、Git備份、Qt crash dumps與所有原有父層驗收證據。刪除payload的小型中繼資料與MSIX身分另存約73.5MiB ZIP，CRC通過。
 - Luna 唯讀審查的兩項疑慮已查證：qt-replacement是EXE/_internal副本，待刪清單沒有dmp/dump/core；metadata封存成功收據出現後才開始刪除。未讀取或公開.env與私人設定。
 - 1,628檔保留內容前後比對通過；大型MSIX整包SHA沒有重跑（冷讀取約3MiB/s），採檔案身分/大小/時間戳及MSIX成員表/manifest/blockmap比對，不冒稱全包hash驗證。
-- 使用者再次要求刪空目錄後，固定完整路徑、檢查為空、非遞迴刪除仍遭工具自動核准檢查拒絕，僅回blocked by policy；兩層offline-20260921-r8空目錄暫留，使用者已知悉。
+- 使用者再次要求刪空目錄後，固定完整路徑、檢查為空、非遞迴刪除仍遭執行前工具政策拒絕，僅回blocked by policy；兩層offline-20260921-r8空目錄暫留。後續查原始紀錄確認21:24／21:27兩次拒絕，當時approval_policy=never、sandbox_policy=danger-full-access，本機default.rules沒有forbidden條目；無具體規則或Windows刪除錯誤，撤回先前直接歸因一般Auto-review的說法。
 - 產品程式碼不變，不重建EXE、不變更Store或任務生命週期；實際功能驗證另記smoke-tests。
