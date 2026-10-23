@@ -100,9 +100,12 @@ def test_controller_main_controls_match_available_actions(qtbot, monkeypatch):
     assert window.btn_30.isChecked()
     assert window.btn_30.text().startswith("● ")
     assert window.current_auto_interval == 30_000
-    assert window.auto_timer.isActive()
+    assert window.scan_in_progress
+    assert not window.auto_timer.isActive()
     window.cmb_scan_interval.setCurrentIndex(window.cmb_scan_interval.findData(60))
     assert window.current_auto_interval == 60_000
+    assert not window.auto_timer.isActive()
+    window.on_scan_complete([])
     assert window.auto_timer.isActive()
     window.btn_30.click()
     assert not window.btn_30.isChecked()

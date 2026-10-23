@@ -63,7 +63,8 @@ def test_select_translate_delivers_result_without_second_click(controller, qtbot
 
 def test_cancel_select_translate_preserves_reading_without_submission(controller, qtbot, monkeypatch):
     emit = Mock()
-    monkeypatch.setattr(controller, "_emit_scan_signal", emit)
+    controller.request_scan.disconnect()
+    controller.request_scan.connect(emit)
     controller.on_scan_complete([("Existing translation", 50, 150, 200, 30)])
     controller.start_auto_scan(base_interval=5000)
     controller.pause_auto_scan()
@@ -605,8 +606,8 @@ def test_auto_scan_can_pause_to_read_and_resume_without_erasing_captions(control
     controller.btn_30.setFocus()
     qtbot.keyClick(controller.btn_30, Qt.Key_Space)
     assert controller.current_auto_interval == 5000
-    assert controller.auto_timer.isActive()
-    assert not controller.scan_in_progress
+    assert not controller.auto_timer.isActive()
+    assert controller.scan_in_progress
     assert controller.overlay.bubbles[0] is bubble
 
 
@@ -665,6 +666,9 @@ def test_resume_honors_interval_changed_while_paused(controller, qtbot):
     qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
     assert controller.current_auto_interval == 15000
     assert controller.random_scan_center_seconds == 15
+    assert controller.scan_in_progress
+    assert not controller.auto_timer.isActive()
+    controller.on_scan_complete([])
     assert controller.auto_timer.isActive()
 
 
@@ -1084,6 +1088,9 @@ def test_auto_scan_feedback_follows_timer_and_preserves_worker_status(controller
     monkeypatch.setattr(controller, "get_random_scan_delay_ms", lambda: 2400)
     monkeypatch.setattr(controller, "_emit_scan_signal", lambda *args: None)
     controller.start_auto_scan()
+    assert controller.scan_in_progress
+    assert not controller.auto_timer.isActive()
+    controller.on_scan_complete([])
     assert controller.auto_timer.isActive()
     assert controller.countdown_seconds == 3
     assert controller._tr("controller.button.auto_wait", seconds=3) in controller.btn_30.text()
@@ -1101,3 +1108,138 @@ def test_auto_scan_feedback_follows_timer_and_preserves_worker_status(controller
     controller.stop_scan()
     assert not controller.auto_timer.isActive()
     assert controller._tr("controller.button.auto_scan") in controller.btn_30.text()
+
+
+@pytest.mark.parametrize("language,theme", [("zh-TW", "light"), ("en", "dark"), ("ja", "high_contrast")])
+def test_auto_start_and_resume_submit_once_before_interval(controller, qtbot, monkeypatch, language, theme):
+    requests = []
+    controller.request_scan.disconnect()
+    controller.request_scan.connect(lambda: requests.append(controller.scan_generation))
+    controller.set_ui_language(language, persist=False)
+    controller.set_theme_mode(theme)
+    monkeypatch.setattr(controller, "get_random_scan_delay_ms", lambda: 10000)
+    caption = [("A quiet moment to read", 100, 100, 200, 40)]
+    controller.on_scan_complete(caption)
+    bubble = controller.overlay.bubbles[0]
+
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    assert controller.scan_in_progress
+    assert not controller.auto_timer.isActive()
+    qtbot.waitUntil(lambda: len(requests) == 1, timeout=1500)
+    assert controller.overlay.bubbles[0] is bubble
+    controller.start_auto_scan()  # Repeated command joins the existing work.
+    qtbot.wait(80)
+    assert len(requests) == 1
+    assert not controller.auto_timer.isActive()
+    controller.on_scan_complete(caption)
+    assert 9000 <= controller.auto_timer.remainingTime() <= 10000
+
+    controller.btn_30.setFocus()
+    qtbot.keyClick(controller.btn_30, Qt.Key_Space)
+    assert not controller.auto_timer.isActive()
+    assert controller.overlay.snapshot_results() == caption
+    render_dir = os.environ.get("CLOUDHIME_PLAY_FLOW_RENDER_DIR")
+    if render_dir:
+        out = Path(render_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        assert controller.grab().save(str(out / f"paused-{language}.png"))
+    qtbot.keyClick(controller.btn_30, Qt.Key_Space)
+    assert controller.scan_in_progress
+    assert not controller.auto_timer.isActive()
+    qtbot.waitUntil(lambda: len(requests) == 2, timeout=1500)
+    assert requests[1] > requests[0]
+    controller.on_scan_complete_for_generation(requests[0], [("Stale", 0, 0, 100, 30)])
+    assert controller.scan_in_progress
+    assert controller.overlay.snapshot_results() == caption
+    if render_dir:
+        assert controller.grab().save(str(out / f"resuming-{language}.png"))
+    controller.stop_scan()
+    assert not controller.auto_timer.isActive()
+    assert not controller.scan_in_progress
+
+
+def test_auto_start_during_manual_cooldown_uses_remaining_wait(controller, qtbot):
+    requests = []
+    controller.request_scan.disconnect()
+    controller.request_scan.connect(lambda: requests.append(True))
+    controller.cooldown_timer.start(300)
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    assert not controller.scan_in_progress
+    assert 0 < controller.auto_timer.remainingTime() <= 300
+    assert requests == []
+    qtbot.waitUntil(lambda: len(requests) == 1, timeout=1500)
+    assert controller.scan_in_progress
+    assert not controller.auto_timer.isActive()
+    controller.stop_scan()
+
+
+def test_auto_can_join_manual_scan_without_adding_a_request(controller, qtbot):
+    requests = []
+    controller.request_scan.disconnect()
+    controller.request_scan.connect(lambda: requests.append(True))
+    qtbot.mouseClick(controller.btn_now, Qt.LeftButton)
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    qtbot.waitUntil(lambda: len(requests) == 1, timeout=1500)
+    qtbot.wait(80)
+    assert len(requests) == 1
+    assert not controller.auto_timer.isActive()
+    controller.on_scan_complete([])
+    assert controller.auto_timer.isActive()
+
+
+def test_quick_pause_resume_cancels_old_delayed_dispatch(controller, qtbot):
+    requests = []
+    controller.request_scan.disconnect()
+    controller.request_scan.connect(lambda: requests.append(controller.scan_generation))
+    for _ in range(3):
+        qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+        qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    qtbot.wait(100)
+    assert requests == [controller.scan_generation]
+    controller.stop_scan()
+    controller._shutdown_pending = True
+    controller.start_auto_scan()
+    assert controller.current_auto_interval == 0
+    assert not controller.scan_in_progress
+
+
+def test_resume_during_slow_worker_keeps_ui_responsive_and_discards_old_result(controller, qtbot, monkeypatch):
+    from threading import Event
+
+    entered, release = Event(), Event()
+    generations = []
+
+    def scan(worker):
+        generations.append(worker._active_scan_request.generation)
+        if len(generations) == 1:
+            entered.set()
+            release.wait(3)
+            worker._emit_scan_finished([("Old result", 100, 100, 200, 40)])
+        else:
+            worker._emit_scan_finished([("Current result", 100, 100, 200, 40)])
+
+    monkeypatch.setattr("cloudhime_workers.OCRWorker._run_scan_once", scan)
+    caption = [("Keep reading", 100, 100, 200, 40)]
+    controller.on_scan_complete(caption)
+    try:
+        qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+        qtbot.waitUntil(entered.is_set, timeout=1500)
+        qtbot.mouseClick(controller.btn_theme, Qt.LeftButton)
+        assert controller.settings_window.isVisible()
+        controller.settings_window.close()
+        qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+        qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+        qtbot.wait(80)
+        assert len(generations) == 1  # Existing worker remains serial.
+        assert controller.overlay.snapshot_results() == caption
+        assert controller.scan_in_progress
+        release.set()
+        qtbot.waitUntil(lambda: controller.last_scan_results[0][0] == "Current result", timeout=2000)
+        assert len(generations) == 2
+        assert generations[0] < generations[1]
+        assert controller.auto_timer.isActive()
+        qtbot.mouseClick(controller.btn_stop, Qt.LeftButton)
+        assert not controller.overlay.bubbles
+    finally:
+        release.set()

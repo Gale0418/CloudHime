@@ -5387,7 +5387,7 @@ class Controller(QWidget):
                 self._paused_auto_interval = paused_interval
                 self.refresh_overlay_from_last_results()
                 if auto_interval > 0:
-                    self.start_auto_scan(base_interval=auto_interval)
+                    self.start_auto_scan(base_interval=auto_interval, scan_immediately=False)
                 else:
                     self._refresh_auto_scan_button()
             self._refresh_scan_hint()
@@ -5573,7 +5573,9 @@ class Controller(QWidget):
         self._refresh_auto_scan_button()
         self._set_status_text("controller.status.auto_paused")
 
-    def start_auto_scan(self, checked=False, base_interval=None):
+    def start_auto_scan(self, checked=False, base_interval=None, *, scan_immediately=True):
+        if getattr(self, "_shutdown_pending", False):
+            return
         if self._open_required_provider_setup():
             if hasattr(self, "btn_30"):
                 self.btn_30.setChecked(False)
@@ -5598,12 +5600,25 @@ class Controller(QWidget):
             fallback="{prefix} auto-scanning",
             prefix=self.get_random_scan_button_text(),
         )
-        self.schedule_next_scan()
+        if self.scan_in_progress:
+            # Join the current scan; its completion starts the next interval.
+            self.auto_timer.stop()
+            self.display_timer.stop()
+        elif not scan_immediately:
+            # Cancelling a selection restores the cadence, not a new request.
+            self.schedule_next_scan()
+        elif self.cooldown_timer.isActive():
+            self.schedule_next_scan(delay_ms=max(1, self.cooldown_timer.remainingTime()))
+        else:
+            self.trigger_scan_sequence()
 
-    def schedule_next_scan(self):
-        if self.current_auto_interval == 0:
+    def schedule_next_scan(self, *, delay_ms=None):
+        if (getattr(self, "_shutdown_pending", False)
+                or self.current_auto_interval == 0 or self.scan_in_progress):
             return
-        if self.current_auto_interval == 5000:
+        if delay_ms is not None:
+            delay = max(1, int(delay_ms))
+        elif self.current_auto_interval == 5000:
             delay = 5000
         else:
             delay = self.get_random_scan_delay_ms()
@@ -5766,6 +5781,7 @@ class Controller(QWidget):
                 self.schedule_next_scan()
             return
         self.scan_in_progress = True
+        self.auto_timer.stop()
         self.display_timer.stop()
         self._refresh_auto_scan_button()
         if not self.cooldown_timer.isActive():

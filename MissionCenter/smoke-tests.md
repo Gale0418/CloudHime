@@ -646,3 +646,10 @@
 - QT_QPA_PLATFORM=offscreen；pytest product_experience、cloudhime_ui_smoke、settings_window_theme_polish、shutdown_lifecycle、ui_copy 五檔，232 passed；最後受影響 product 全檔再驗 120 passed。證據 output/first-value-20261023/final.xml、product-final.xml。
 - Qt 真實點擊／拖曳驗證框選後一次提交、三語目標、取消恢復原字幕／暫停狀態、停止撤銷與缺 key 導流。背景結果是受控資料，不等同 live 模型品質。
 - 新 frozen EXE import、Windows OCR 1 圖／2 行、20 秒啟動與兩個內附模型 preflight 通過。CodeRabbit 完成、0 issues。完整紀錄 reviews/2026-10-23-first-value.md；本次不變更任務生命週期或 Store gate。
+
+
+## 2026-10-23｜CH-T55 候選連續閱讀節奏
+
+- QT_QPA_PLATFORM=offscreen；pytest product_experience、cloudhime_ui_smoke、shutdown_lifecycle、ui_copy 四檔 218 passed，新增慢 worker 測試 1 passed；合計 219 個不同案例通過。證據 output/play-flow-20261023/final.xml、slow-worker.xml。
+- 真實 Qt 點擊／鍵盤與 QThread 受控等待驗證開始立即單次派送、完成後倒數、忙碌沿用、冷卻等待、快速暫停／繼續、設定可操作及晚到結果丟棄。背景結果為受控資料，不等同 live 模型品質或實際遊戲負載。
+- 新 EXE import、Windows OCR 1 圖／2 行、20 秒啟動存活、兩個內附模型完整性 preflight 通過。CodeRabbit 四檔完成、0 issues。完整紀錄 reviews/2026-10-23-play-flow.md；不變更任務生命週期或 Store gate。
