@@ -279,6 +279,9 @@ def localize_settings(window, language):
     window.lbl_ui_language.setText(language_label)
     window.lbl_theme_mode.setFixedWidth(80)
     window.lbl_ui_language.setFixedWidth(80)
+    language_hint = window.controller._tr("controller.language.tooltip")
+    window.cmb_ui_language_chip.setToolTip(language_hint)
+    window.cmb_ui_language_chip.setAccessibleDescription(language_hint)
     window.settings_tabs.setTabToolTip(0,
         window.translation_panel.lbl_translate_hint.text()
     )

@@ -17,7 +17,7 @@ def test_controller_scan_and_hotkey_labels_follow_ui_language_before_hotkey_setu
     controller.random_scan_center_seconds = 30
 
     assert Controller.get_random_scan_button_text(controller) == "ランダム 30s~"
-    assert Controller.get_hotkey_button_text(controller).startswith("今すぐ翻訳")
+    assert Controller.get_hotkey_button_text(controller) == "日本語に翻訳"
 
 
 def test_luna_route_requires_enabled_config_and_enables_it_on_selection():

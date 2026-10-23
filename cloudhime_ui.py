@@ -3856,6 +3856,8 @@ class Controller(QWidget):
             pass
 
     def get_hotkey_button_text(self):
+        if self._required_provider_setup():
+            return self._tr("controller.button.setup")
         return self._tr("controller.button.now", fallback="Translate Now")
 
     def refresh_hotkey_button_text(self):
@@ -4124,7 +4126,8 @@ class Controller(QWidget):
         if hasattr(self, "btn_mode_full"):
             self.btn_mode_full.setText(self._tr("controller.button.fullscreen", fallback="全螢幕翻譯"))
         if hasattr(self, "btn_mode_region"):
-            self.btn_mode_region.setText(self._tr("controller.button.region", fallback="區域翻譯"))
+            # Qt treats a single ampersand as a mnemonic, not visible copy.
+            self.btn_mode_region.setText(self._tr("controller.button.region", fallback="區域翻譯").replace("&", "&&"))
         if hasattr(self, "btn_stop"):
             self.btn_stop.setText(self._tr("controller.button.stop", fallback="停止"))
         if hasattr(self, "btn_theme"):
@@ -4217,6 +4220,8 @@ class Controller(QWidget):
         self.btn_engine_details.setAccessibleName(details)
         self.btn_engine_details.setToolTip(details)
         self.btn_engine_details.setAccessibleDescription(self.lbl_engine_data.text())
+        if self.btn_now.isEnabled() and not self.scan_in_progress:
+            self.refresh_hotkey_button_text()
 
     def show_translation_engine_settings(self):
         if self._open_required_provider_setup():
@@ -5337,9 +5342,13 @@ class Controller(QWidget):
         self.schedule_save_settings()
 
     def activate_region_translation(self):
-        self.begin_region_selection()
+        if getattr(self, "_shutdown_pending", False) or self._open_required_provider_setup():
+            self.btn_mode_full.setChecked(self.scan_mode == SCAN_MODE_FULLSCREEN)
+            self.btn_mode_region.setChecked(self.scan_mode == SCAN_MODE_REGION)
+            return
+        self.begin_region_selection(translate_on_accept=True)
 
-    def begin_region_selection(self):
+    def begin_region_selection(self, *, translate_on_accept=False):
         visible_results = self.overlay.snapshot_results()
         results = self.last_scan_results
         if visible_results != Controller._overlay_display_results(self, results):
@@ -5349,12 +5358,20 @@ class Controller(QWidget):
             getattr(self, "_paused_auto_interval", 0),
         )
         self.stop_scan()
+        # Only an explicitly named translation action may submit a selection.
+        # Merely editing/selecting a region keeps the existing non-submit path.
+        self._translate_selection_on_accept = bool(translate_on_accept)
         self.hide()
         self.overlay.hide()
         self.region_frame.hide()
         self.selection_overlay.begin_selection()
 
     def on_region_selected(self, rect):
+        translate_on_accept = getattr(self, "_translate_selection_on_accept", False)
+        self._translate_selection_on_accept = False
+        if getattr(self, "_shutdown_pending", False):
+            self._selection_restore_state = None
+            return
         restore_state = getattr(self, "_selection_restore_state", None)
         self._selection_restore_state = None
         self.show()
@@ -5390,6 +5407,8 @@ class Controller(QWidget):
         )
         self.refresh_overlay_from_last_results()
         self.schedule_save_settings()
+        if translate_on_accept:
+            self.on_immediate_click()
 
     def on_region_frame_changed(self, rect):
         if not rect:
@@ -5484,6 +5503,8 @@ class Controller(QWidget):
         QTimer.singleShot(0, self.on_immediate_click)
 
     def on_immediate_click(self):
+        if getattr(self, "_shutdown_pending", False):
+            return
         if self._open_required_provider_setup():
             return
         if self.scan_in_progress:
@@ -5493,7 +5514,7 @@ class Controller(QWidget):
             return
         if self.scan_mode == SCAN_MODE_REGION and not self.selected_region:
             self._set_status_text("controller.status.need_region", fallback="Please set a scan region first")
-            self.begin_region_selection()
+            self.begin_region_selection(translate_on_accept=True)
             return
         self.display_timer.stop()
         self._set_status_text("controller.status.immediate_scanning", fallback="Scanning now...")
@@ -5708,6 +5729,7 @@ class Controller(QWidget):
         return self.scan_generation
 
     def stop_scan(self):
+        self._translate_selection_on_accept = False
         self._advance_scan_generation(cancel_active=True)
         self.current_auto_interval = 0
         self._paused_auto_interval = 0

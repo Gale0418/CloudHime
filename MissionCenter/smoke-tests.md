@@ -639,3 +639,10 @@
 - 結果：最終整合 250 passed／1 過期提示斷言，更新斷言後設定全檔 20 passed；合併為 251 不同案例全有 passing evidence。實際 XML 在 output/ui-distill-20261023/final.xml、settings-final.xml。
 - EXE：新的隔離建置 import、真實 Windows OCR 1 圖／2 行、20 秒啟動均 passed；內附模型 full preflight 見 full-preflight.json。CPU Vision 不重跑，本輪不引用前一 EXE 當本次通過。
 - 原生桌面操作工具不可用；三語／三主題 Qt render 是自主版面證據，不等同遊戲／多 DPI／Store 驗收。此紀錄不觸發任務狀態遷移。
+
+
+## 2026-10-23｜CH-T55 候選首次翻譯流程
+
+- QT_QPA_PLATFORM=offscreen；pytest product_experience、cloudhime_ui_smoke、settings_window_theme_polish、shutdown_lifecycle、ui_copy 五檔，232 passed；最後受影響 product 全檔再驗 120 passed。證據 output/first-value-20261023/final.xml、product-final.xml。
+- Qt 真實點擊／拖曳驗證框選後一次提交、三語目標、取消恢復原字幕／暫停狀態、停止撤銷與缺 key 導流。背景結果是受控資料，不等同 live 模型品質。
+- 新 frozen EXE import、Windows OCR 1 圖／2 行、20 秒啟動與兩個內附模型 preflight 通過。CodeRabbit 完成、0 issues。完整紀錄 reviews/2026-10-23-first-value.md；本次不變更任務生命週期或 Store gate。

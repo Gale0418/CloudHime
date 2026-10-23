@@ -21,6 +21,96 @@ from openai_connection_check import LunaConnectionResult
 from remote_model_discovery import ModelDiscoveryResult
 
 
+@pytest.mark.parametrize("language,expected", [
+    ("zh-TW", "翻成繁體中文"), ("en", "Translate to English"), ("ja", "日本語に翻訳"),
+])
+def test_select_translate_delivers_result_without_second_click(controller, qtbot, monkeypatch, language, expected):
+    calls = []
+    translated = {"zh-TW": "門已打開。", "en": "The gate is open.", "ja": "門が開いています。"}[language]
+    def scan(worker):
+        calls.append((worker.scan_region, worker.translation_target_lang))
+        worker._emit_scan_status(worker._scan_status_text("worker.status.translation_done"))
+        worker._emit_scan_finished([(translated, 60, 150, 200, 35)])
+
+    monkeypatch.setattr("cloudhime_workers.OCRWorker._run_scan_once", scan)
+    controller.set_ui_language(language, persist=False)
+    assert controller.btn_now.text() == expected
+    assert controller.btn_mode_region.text().replace("&&", "&") == controller._tr("controller.button.region")
+    qtbot.mouseClick(controller.btn_mode_region, Qt.LeftButton)
+    selector = controller.selection_overlay
+    assert selector.isVisible()
+    assert calls == []
+    qtbot.mousePress(selector, Qt.LeftButton, pos=QPoint(50, 140))
+    qtbot.mouseMove(selector, QPoint(300, 220))
+    qtbot.mouseRelease(selector, Qt.LeftButton, pos=QPoint(300, 220))
+    qtbot.waitUntil(lambda: bool(controller.last_scan_results), timeout=2000)
+    assert calls == [(controller.selected_region, language)]
+    assert controller.overlay.snapshot_results()[0][0] == translated
+    assert controller.lbl_status.text() == controller._tr("worker.status.translation_done")
+    assert not controller._translate_selection_on_accept
+    assert controller.current_auto_interval == 0
+    controller.reset_immediate_btn()
+    assert controller.btn_now.text() == expected
+    out_dir = os.environ.get("CLOUDHIME_FIRST_VALUE_RENDER_DIR")
+    if out_dir:
+        controller.set_theme_mode({"zh-TW":"light", "en":"dark", "ja":"high_contrast"}[language])
+        controller.btn_now.setFocus()
+        qtbot.wait(30)
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        assert controller.grab().save(str(out / f"first-result-{language}.png"))
+
+
+def test_cancel_select_translate_preserves_reading_without_submission(controller, qtbot, monkeypatch):
+    emit = Mock()
+    monkeypatch.setattr(controller, "_emit_scan_signal", emit)
+    controller.on_scan_complete([("Existing translation", 50, 150, 200, 30)])
+    controller.start_auto_scan(base_interval=5000)
+    controller.pause_auto_scan()
+    qtbot.mouseClick(controller.btn_mode_region, Qt.LeftButton)
+    qtbot.keyClick(controller.selection_overlay, Qt.Key_Escape)
+    qtbot.wait(80)
+    emit.assert_not_called()
+    assert controller.overlay.snapshot_results()[0][0] == "Existing translation"
+    assert controller._paused_auto_interval == 5000
+    assert not controller._translate_selection_on_accept
+
+
+def test_primary_missing_region_continues_once_and_stop_revokes_intent(controller, qtbot, monkeypatch):
+    controller.scan_mode = "region"
+    controller.selected_region = None
+    scan = Mock()
+    monkeypatch.setattr(controller, "trigger_scan_sequence", scan)
+    qtbot.mouseClick(controller.btn_now, Qt.LeftButton)
+    assert controller._translate_selection_on_accept
+    controller.selection_overlay.hide()
+    controller.on_region_selected((20, 100, 220, 80))
+    scan.assert_called_once()
+    controller.begin_region_selection(translate_on_accept=True)
+    controller.stop_scan()
+    controller.selection_overlay.hide()
+    controller.on_region_selected((30, 100, 220, 80))
+    scan.assert_called_once()
+
+
+def test_pending_setup_action_does_not_start_selection_or_change_mode(controller, qtbot, monkeypatch):
+    controller.pending_translation_provider_id = "luna"
+    controller._refresh_main_engine_summary()
+    assert controller.btn_now.text() == controller._tr("controller.button.setup")
+    setup = Mock(return_value=True)
+    monkeypatch.setattr(controller, "_open_required_provider_setup", setup)
+    qtbot.mouseClick(controller.btn_mode_region, Qt.LeftButton)
+    assert not controller.selection_overlay.isVisible()
+    assert controller.btn_mode_full.isChecked()
+    assert not controller.btn_mode_region.isChecked()
+    assert not controller.scan_in_progress
+    qtbot.mouseClick(controller.btn_now, Qt.LeftButton)
+    assert setup.call_count == 2
+    controller.pending_translation_provider_id = None
+    controller._refresh_main_engine_summary()
+    assert controller.btn_now.text() == controller._tr("controller.button.now")
+
+
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
 def test_compact_main_keeps_details_errors_and_shortcuts_accessible(controller, qtbot, language):
     controller.set_ui_language(language, persist=False)
