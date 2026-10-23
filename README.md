@@ -13,6 +13,8 @@
 
 開發、測試與建置指令請先 `cd app`；例如 `python CloudHime.py`、`python -m pytest tests/test_product_experience.py`。授權與發行必要聲明保留在 [app/LICENSE](app/LICENSE)、`app/NOTICE` 等封裝輸入位置。
 
+本機工作目錄於 2026-10-23 清理舊封裝與重複測試產物後，扣除硬連結重複並計入 NTFS 壓縮的儲存量約 **27.90 GiB**；保留最新預覽、商店候選、必要回退、模型與診斷證據。這是開發工作目錄容量，不是安裝包大小。
+
 [整理與還原指南](docs/workspace-organization.md) 記錄搬移對照、保留原則與驗證。舊紀錄中的 `output/`、`build/`、`tests/`、程式檔名等路徑是當時位置，現位於 `app/` 下；`reviews/`、`records/` 改在 `docs/` 下。Git 歷史提交編號保留。
 
 ---

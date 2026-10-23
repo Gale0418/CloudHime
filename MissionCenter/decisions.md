@@ -1233,3 +1233,13 @@
 - 刪除已被取代的舊安裝包、解包／預覽／中間產物；保留正式基準與候選、模型、使用者資料、唯一證據。9/24 舊 dist 被現行 Qt policy 檢查拒絕，已以通過完整性與啟動檢查的最新預覽替換。兩次磁碟可用空間差合計約 28.27 GiB。
 - Gemini Flash 的歸檔／供應鏈／操作研究與兩位 Luna 的 Git／搬移審查已整合；CodeRabbit 11 檔審查 1 項 Minor（授權連結），與 Luna 意見一致並修正。完整對照、保留原則及還原方式見 ../docs/workspace-organization.md。
 - 這輪不改產品邏輯，不把工作目錄整理視為 Store 驗收完成；CH-T55／CH-T56 生命週期不變。
+
+
+## 2026-10-23：第二輪容量清理保留政策
+
+- 使用者明確授權清理舊封裝與重複測試副本，目標 25～40 GiB；保留最新預覽、必要回退、模型與重要證據。依保留清單完成 57 項、16,745 檔清理，去重／壓縮後儲存量 99.04→27.90 GiB，達標後停止擴大刪除。檔案大小總和仍為 54.15 GiB（硬連結會重複計算）。
+- 保留 app/dist/CloudHime 最新預覽、release-20261007-final/msix 的 0.1.2.0 Store 候選、app/dist 的 0.1.1.0 回退 MSIX、模型/runtime、clean venv與wheels、測試環境、源碼快照、Git備份、Qt crash dumps與所有原有父層驗收證據。刪除payload的小型中繼資料與MSIX身分另存約73.5MiB ZIP，CRC通過。
+- Luna 唯讀審查的兩項疑慮已查證：qt-replacement是EXE/_internal副本，待刪清單沒有dmp/dump/core；metadata封存成功收據出現後才開始刪除。未讀取或公開.env與私人設定。
+- 1,628檔保留內容前後比對通過；大型MSIX整包SHA沒有重跑（冷讀取約3MiB/s），採檔案身分/大小/時間戳及MSIX成員表/manifest/blockmap比對，不冒稱全包hash驗證。
+- 使用者再次要求刪空目錄後，固定完整路徑、檢查為空、非遞迴刪除仍遭工具自動核准檢查拒絕，僅回blocked by policy；兩層offline-20260921-r8空目錄暫留，使用者已知悉。
+- 產品程式碼不變，不重建EXE、不變更Store或任務生命週期；實際功能驗證另記smoke-tests。

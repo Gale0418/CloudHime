@@ -81,3 +81,31 @@ bundle 保存已提交歷史，不含未追蹤檔案、模型或已刪除的編�
 完整五組測試的原始結果、受影響複測、EXE import／Windows OCR／20 秒啟動、兩個內附模型及 Qt 封裝檢查，保存於 `app/output/organization-20261023/`。最終統計見 [Mission Center 冒煙紀錄](../MissionCenter/smoke-tests.md)。初次全套唯一失敗來自舊 `dist/CloudHime`，原失敗紀錄也保留，沒有放寬封裝規則。
 
 Gemini Flash 提供資料歸檔／供應鏈／簡潔操作的研究意見；兩位 Luna 分別檢查 Git 保留及路徑遷移，另以 CodeRabbit 審查實際修改的 11 個檔案。意見由主代理查證整合，這輪是目錄整理驗收，不取代 Store 的完整操作、乾淨 Windows 或認證閘門。
+
+
+## 2026-10-23 第二輪容量收斂
+
+依使用者授權，移除舊封裝與重複測試 payload，保留最新預覽、必要回退、模型及重要證據。57 個指定項目（16,745 個檔案）已清理；刪除前後均未修改產品來源。
+
+| 指標 | 清理前 | 清理後 |
+| --- | ---: | ---: |
+| 檔案大小總和（重複計硬連結） | 234.41 GiB | 54.15 GiB |
+| 排除硬連結重複的檔案大小 | 108.75 GiB | 32.33 GiB |
+| 排除重複並計入 NTFS 壓縮的儲存量 | 99.04 GiB | **27.90 GiB** |
+
+後者達成 25～40 GiB 目標；磁碟可用空間差約 71.23 GiB。量測不含根 `.pytest_cache` 的拒絕存取內容與檔案系統中繼資料。根目錄仍維持 10 項。
+
+明確保留：
+
+- 最新技術預覽：`app/dist/CloudHime/`。
+- 現行商店候選：`app/output/release-20261007-final/msix/CloudHime-0.1.2.0-x64.msix`；保留原位，尚未認證或發布。
+- 必要回退安裝包：`app/dist/CloudHime-0.1.1.0-x64.msix`。已移除舊提交用 `.msixupload` 包裝，回退安裝本體保留。
+- `app/models/`、`app/runtime/`、clean build venv 與 production wheels、測試環境、原始碼快照、Git 備份、Qt crash dumps、WACK／Sandbox／Store 收據、截圖與診斷腳本。
+
+沒有整包移除歷史證據資料夾；只刪指定生成 payload。移除內容的封裝身分與小型中繼資料另存 `app/output/storage-trim-20261023/removed-payload-metadata.zip`（約 73.5 MiB，ZIP CRC 檢查通過），75 份 payload 收據及逐檔刪除清單也在同一目錄。
+
+1,628 個保留檔案的檔案身分／大小／修改時間、小檔 SHA-256，以及兩份 MSIX 的成員清單／manifest／blockmap，前後比對全部一致。大型 MSIX 冷讀取約 3 MiB/s，本輪未重算全包 SHA-256；原歷史雜湊僅作參考，不宣稱重新驗證完整 MSIX payload。
+
+兩層 `app/dist/offline-20260921-r8/msix/` 與上層舊資料夾已無檔案，但自動核准檢查以 `blocked by policy` 拒絕非遞迴刪除，故暫留空目錄。
+
+清理後驗證：來源操作回歸 164 passed（首次操作 127、關閉生命週期 8、字幕控制 29）；最新 EXE 的 runtime／Qt／兩模型完整性檢查、封裝 import、Windows OCR 1 圖／2 行、20 秒啟動及本機 CPU Vision 1 圖／1 案例全部通過。測試自建程序已回收。完整證據在 `app/output/storage-trim-20261023/` 的 `source-tests.json`、`preview-verification.json` 與 `cpu-vision.json`。本機磁碟冷讀取使完整性檢查耗時偏長；此結果是本機隔離功能驗證，不等同乾淨 Windows 或 Store 認證。
