@@ -16,6 +16,7 @@ from ocr_backend_catalog import optional_backend_names
 from ocr_backend_panel import OcrBackendSettingsPanel
 from provider_health import local_model_failure_message
 from openai_connection_check import LunaConnectionResult
+from remote_model_discovery import ModelDiscoveryResult
 
 
 def test_local_only_warmup_keeps_captions_and_does_not_request_scan(controller, monkeypatch, qtbot):
@@ -201,6 +202,91 @@ def controller(qtbot, monkeypatch):
     monkeypatch.setattr(window, "_persist_pending_openai_api_key", lambda: True)
     monkeypatch.setattr(window, "save_settings", lambda: True)
     window.close_app()
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_online_gemma_verified_discovery_refreshes_main_summary(controller, language):
+    controller.set_ui_language(language, persist=False)
+    controller.worker.use_gemma_translation = True
+    controller.provider_chain = ("gemma",)
+    controller.worker.gemma_model = "gemma-4-26b-a4b-it"
+    controller.worker.google_api_key = "PRIVATE_TEST_KEY"
+    controller._remote_model_availability_generation = 5
+    controller._remote_model_availability_checking = True
+    controller.on_remote_model_availability_finished(5, ModelDiscoveryResult(
+        status="verified", verified=True,
+        available_model_ids=("gemma-4-26b-a4b-it",),
+    ))
+    assert controller._tr("controller.engine.state.connection_verified") in controller.lbl_engine_summary.text()
+    assert "PRIVATE_" not in controller.lbl_engine_summary.text()
+    controller.worker.gemma_model = "gemma-4-31b-it"
+    controller._refresh_main_engine_summary()
+    assert controller._tr("controller.engine.state.connection_verified") not in controller.lbl_engine_summary.text()
+
+
+@pytest.mark.parametrize("status,verified", [("offline_snapshot", False), ("unverified", False)])
+def test_online_gemma_offline_or_unknown_discovery_is_not_live_verified(controller, status, verified):
+    controller.worker.use_gemma_translation = True
+    controller.provider_chain = ("gemma",)
+    controller.worker.gemma_model = "gemma-4-26b-a4b-it"
+    controller.worker.google_api_key = "PRIVATE_TEST_KEY"
+    controller._apply_remote_model_availability(ModelDiscoveryResult(
+        status=status, verified=verified, available_model_ids=(controller.worker.gemma_model,),
+    ))
+    assert controller._tr("controller.engine.state.configured") in controller.lbl_engine_summary.text()
+
+
+def test_online_gemma_key_change_revokes_discovery_and_rejects_stale_result(controller):
+    controller.worker.use_gemma_translation = True
+    controller.provider_chain = ("gemma",)
+    controller.worker.gemma_model = "gemma-4-26b-a4b-it"
+    controller.on_api_key_changed("PRIVATE_OLD_KEY")
+    generation = controller._remote_model_availability_generation
+    result = ModelDiscoveryResult(status="verified", verified=True,
+                                  available_model_ids=(controller.worker.gemma_model,))
+    controller.on_remote_model_availability_finished(generation, result)
+    assert controller._tr("controller.engine.state.connection_verified") in controller.lbl_engine_summary.text()
+    controller.on_api_key_changed("PRIVATE_NEW_KEY")
+    controller.on_remote_model_availability_finished(generation, result)
+    assert not controller.remote_model_availability.verified
+    assert controller._tr("controller.engine.state.configured") in controller.lbl_engine_summary.text()
+
+
+@pytest.mark.parametrize("worker_change", [False, True])
+def test_model_change_rechecks_summary_against_verified_model_list(controller, worker_change):
+    old_model, new_model = "gemma-4-26b-a4b-it", "gemma-4-31b-it"
+    controller.worker.use_gemma_translation = True
+    controller.provider_chain = ("gemma",)
+    controller.worker.google_api_key = "PRIVATE_TEST_KEY"
+    controller.worker.gemma_model = old_model
+    controller._apply_remote_model_availability(ModelDiscoveryResult(
+        status="verified", verified=True, available_model_ids=(old_model,),
+    ))
+    assert controller._tr("controller.engine.state.connection_verified") in controller.lbl_engine_summary.text()
+    controller.cmb_ai_model.addItem("Other model", new_model)
+    if worker_change:
+        controller.worker.gemma_model = new_model
+        controller.on_worker_gemma_model_changed(old_model, new_model)
+    else:
+        controller.on_ai_model_changed(controller.cmb_ai_model.findData(new_model))
+    assert controller._tr("controller.engine.state.connection_verified") not in controller.lbl_engine_summary.text()
+
+
+def test_screenshot_setting_change_keeps_combined_caption_and_raw_results(controller):
+    controller.scan_mode = "region"
+    controller.region_render_mode = "screenshot"
+    controller.selected_region = (400, 260, 200, 120)
+    results = [("First line", 420, 280, 90, 30), ("Second line", 420, 320, 90, 30)]
+    controller.on_scan_complete(results)
+    assert len(controller.overlay.bubbles) == 1
+    text = controller.overlay.bubbles[0].text()
+    controller.on_region_relief_settings_changed(18, -12, 32, 40)
+    assert len(controller.overlay.bubbles) == 1
+    assert controller.overlay.bubbles[0].text() == text == "First line\nSecond line"
+    assert controller.last_scan_results == results
+    controller.region_render_mode = "bubble"
+    controller.refresh_overlay_from_last_results()
+    assert len(controller.overlay.bubbles) == 2
 
 
 def test_luna_connection_uses_background_worker_and_invalidates_changed_key(controller, monkeypatch, qtbot):

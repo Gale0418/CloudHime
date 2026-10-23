@@ -625,3 +625,5 @@
 | 2026-10-07 | CH-T55 | Luna 連線與截圖翻譯人工驗收／摘要同步 | 主人00:48截圖與回報，定向Qt回歸 | 檢查成功與實際截圖翻譯成功，所有摘要同步 | 主人確認截圖翻譯正常；舊摘要錯誤已修，聚焦17passed、色彩文案4passed；未外推獨立文字模式、MSIX或發行認證 | Pass（上述範圍；CH-T55仍Review） | luna, manual, status, regression |
 
 | 2026-10-20 | CH-T55 | CI與草稿／客服補件對帳 | GitHub API及connector jobs；Chrome概觀／提交選項／安全上傳完成狀態 | 分開來源、候選、稅務與Store認證狀態，不外傳個資 | CI147八必要success／兩手動frozen skipped；0.1.2.0 Validated草稿／認證disabled；去敏感附件上傳成功；未重跑產品、未送稅表或認證 | Pass（對帳範圍；整體Smoke仍NO） | release, reconciliation, privacy |
+
+| 2026-10-23 | CH-T55 | Online Gemma摘要與三模式文字控制 | pytest產品體驗、字幕控制及相關UI／設定／worker／inventory；各記錄JUnit | 即時模型驗證同步摘要，金鑰異動撤銷；三模式字級位移與串流一致 | 297個不同案例通過；6項舊實作重現及1項最小Controller未建選單的失敗均保留。未呼叫live API、未重建或驗收Store套件；T55 Smoke仍NO | Pass | ui, rendering, provider, regression |

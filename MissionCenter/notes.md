@@ -634,3 +634,7 @@ Store 仍為 0.1.1.0；0.1.2.0 套件封裝 進行中，尚未上傳或認證。
 ### 2026-10-07 歷史小檔審查與成品驗證更正
 
 CodeRabbit 歷史小檔 fixture 的149份程式／文件（另有 unchanged config）完成審查，8 issues 已查證修補；其中2份小檔是 upstream Qt license Python，未提出問題、未修改原文。151 service-count 失敗預檢也保守計入3次／小時，本小時只留一次修正版複審。新修正涉及高對比文字、建置Python路徑、環境變數、中文OCR路徑、主模型下載及測試隔離／回收；最終EXE／MSIX需在存Git、兔子複審、push main後重建。先前候選full CPU Vision 1/1及MSIX製作完成；新Sandbox update PFN／synthetic LocalState通過，但直接 Process.Start WindowsApps EXE Access denied，import/OCR/WACK未執行，不算PASS。guest package／certificate清理完成、owned VM已關閉，失敗證據保留。Gemini經Antigravity Bridge完成四locale活潑顏文字草稿，互導免費GitHub及商店方便安裝；獨立Unicode／UTF16限额檢查通過，英文短文269單位。未存Partner Center、未上傳新候選、未認證，CH-T55仍Review／SmokeNO／CriticNO。
+
+### 2026-10-23 Online Gemma 摘要與三模式文字控制
+
+主人人工圖重現連線未驗證與氣泡／截圖字級位移停用。修正主摘要讀取背景模型清單驗證、換金鑰撤銷與舊generation隔離；三模式共用字級／X／Y，串流與最終排版一致，保留原設定鍵及截圖自動選側。相關測試去重297項通過，首次6項重現與後續1項最小Controller缺選單失敗已保留並修復。Gemini高階模型429後依主人指示改Flash成功，最終三語提示已套用。既有EXE／MSIX及Validated草稿未變，T55 Review／Smoke NO／Critic NO；詳見reviews/2026-10-23-provider-render-controls.md，本機證據output/ui-fixes-20261023/。

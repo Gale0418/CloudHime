@@ -362,12 +362,7 @@ class TransBubble(QLabel):
         self.setWordWrap(self.render_mode != REGION_RENDER_RELIEF)
         self.setMargin(self.text_padding)
         self.setMouseTracking(True)
-        if self.render_mode == REGION_RENDER_RELIEF:
-            bubble_rect, best_size = self.compute_relief_layout(text, x, y, w, h)
-        elif self.render_mode == REGION_RENDER_SCREENSHOT:
-            bubble_rect, best_size = self.compute_screenshot_layout(text, x, y, w, h)
-        else:
-            bubble_rect, best_size = self.compute_bubble_layout(text, x, y, w, h, tight=True)
+        bubble_rect, best_size = self.compute_text_layout(text, x, y, w, h)
         self.setFont(self._get_bubble_font(best_size))
         self.setGeometry(bubble_rect)
         self.show()
@@ -487,6 +482,19 @@ class TransBubble(QLabel):
                 best_size = font_size
                 best_score = score
 
+        if fixed_font_size is not None and best_score[0] == 0:
+            # Prefer the requested size, expanding before reducing an oversized caption.
+            expanded_w = max(1, parent_rect.width())
+            expanded_h = max(1, parent_rect.height())
+            for size in range(int(fixed_font_size), MIN_BUBBLE_FONT_PT - 1, -1):
+                required_h = self.measure_text_height(text, expanded_w, size) + self.text_padding * 2
+                if required_h <= expanded_h or size == MIN_BUBBLE_FONT_PT:
+                    best_size = float(size)
+                    height = min(expanded_h, max(MIN_BUBBLE_HEIGHT, required_h))
+                    top = max(0, min(int(round(source_center_y - height / 2)), expanded_h - height))
+                    best_rect = QRect(0, top, expanded_w, height)
+                    break
+
         return best_rect, best_size
 
     def compute_relief_layout(self, text, x, y, w, h):
@@ -517,10 +525,31 @@ class TransBubble(QLabel):
         )
         return cand, font_size
 
+    def _offset_text_rect(self, rect):
+        parent_rect = self.parent().rect()
+        return QRect(
+            max(0, min(rect.x() + self.relief_offset_x, parent_rect.width() - rect.width())),
+            max(0, min(rect.y() + self.relief_offset_y, parent_rect.height() - rect.height())),
+            rect.width(), rect.height(),
+        )
+
+    def compute_text_layout(self, text, x, y, w, h):
+        """Use the saved text controls for both streaming and completed captions."""
+        if self.render_mode == REGION_RENDER_RELIEF:
+            return self.compute_relief_layout(text, x, y, w, h)
+        if self.render_mode == REGION_RENDER_SCREENSHOT:
+            return self.compute_screenshot_layout(text, x, y, w, h)
+        rect, size = self.compute_bubble_layout(
+            text, x, y, w, h, fixed_font_size=self.relief_font_pt, tight=True,
+        )
+        return self._offset_text_rect(rect), size
+
     def compute_screenshot_layout(self, text, x, y, w, h):
         parent_rect = self.parent().rect()
         anchor = self.region_rect if self.region_rect is not None else QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
-        base_rect, base_size = self.compute_bubble_layout(text, x, y, w, h)
+        base_rect, base_size = self.compute_bubble_layout(
+            text, x, y, w, h, fixed_font_size=self.relief_font_pt,
+        )
         base_rect = QRect(base_rect)
         gap = max(14, min(RELIEF_MAX_OFFSET_PX, max(14, int(min(anchor.width(), anchor.height()) * 0.1))))
 
@@ -551,7 +580,7 @@ class TransBubble(QLabel):
                 best_score = score
                 best_rect = cand
 
-        return best_rect, base_size
+        return self._offset_text_rect(best_rect), base_size
 
     def _rect_overlap_area(self, first, second):
         ix1 = max(first.left(), second.left())
@@ -700,18 +729,7 @@ class OverlayWindow(QWidget):
         bubble.setText(str(partial_text))
         bubble.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
         
-        if mode == REGION_RENDER_RELIEF: # RELIEF
-            if hasattr(bubble, 'compute_relief_layout'):
-                bubble_rect, best_size = bubble.compute_relief_layout(partial_text, x, y, w, h)
-            else:
-                bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
-        elif mode == REGION_RENDER_SCREENSHOT: # SCREENSHOT
-            if hasattr(bubble, 'compute_screenshot_layout'):
-                bubble_rect, best_size = bubble.compute_screenshot_layout(partial_text, x, y, w, h)
-            else:
-                bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
-        else:
-            bubble_rect, best_size = bubble.compute_bubble_layout(partial_text, x, y, w, h, tight=True)
+        bubble_rect, best_size = bubble.compute_text_layout(partial_text, x, y, w, h)
             
         font = bubble.font()
         font.setPointSizeF(best_size)
@@ -2937,16 +2955,13 @@ class SettingsWindowRevamp(QWidget):
         self.translation_panel.update_key_state(enabled)
 
     def update_relief_state(self, enabled):
-        self.card_relief.setEnabled(enabled)
-        self.slider_relief_offset_x.setEnabled(enabled)
-        self.spin_relief_font.setEnabled(enabled)
-        self.slider_relief_offset_y.setEnabled(enabled)
-        self.slider_relief_opacity.setEnabled(enabled)
-        effect = None
-        if not enabled:
-            effect = QGraphicsOpacityEffect(self.card_relief)
-            effect.setOpacity(0.45)
-        self.card_relief.setGraphicsEffect(effect)
+        # The stored relief_* keys are shared text controls; retain old profiles.
+        self.card_relief.setEnabled(True)
+        self.slider_relief_offset_x.setEnabled(True)
+        self.spin_relief_font.setEnabled(True)
+        self.slider_relief_offset_y.setEnabled(True)
+        self.slider_relief_opacity.setEnabled(True)
+        self.card_relief.setGraphicsEffect(None)
 
     def sync_from_controller(self):
         theme_mode = getattr(self.controller, "theme_mode", "dark" if self.controller.is_dark_mode else "light")
@@ -3605,7 +3620,7 @@ class Controller(QWidget):
             result,
             current_model=current_model,
         )
-        self._set_model_combo_choices(self.cmb_ai_model, choices, current_model)
+        self._set_model_combo_choices(getattr(self, "cmb_ai_model", None), choices, current_model)
         settings_window = getattr(self, "settings_window", None)
         panel = getattr(settings_window, "translation_panel", None)
         if panel is not None:
@@ -3613,6 +3628,7 @@ class Controller(QWidget):
         updater = getattr(settings_window, "update_translate_summary", None)
         if callable(updater):
             updater()
+        self._refresh_main_engine_summary()
 
     def refresh_remote_model_availability(self):
         self._remote_model_availability_generation += 1
@@ -3635,6 +3651,7 @@ class Controller(QWidget):
             )
             return False
         self._remote_model_availability_checking = True
+        self._refresh_main_engine_summary()
         settings_window = getattr(self, "settings_window", None)
         panel = getattr(settings_window, "translation_panel", None)
         if panel is not None:
@@ -4059,6 +4076,15 @@ class Controller(QWidget):
                 elif status == "verified":
                     state = "connection_verified"
                 elif status not in {"unchecked", "checking"}:
+                    state = "connection_failed"
+            elif provider == "online_gemma" and key.strip():
+                result = getattr(self, "remote_model_availability", None)
+                if getattr(self, "_remote_model_availability_checking", False):
+                    state = "connection_checking"
+                elif getattr(result, "verified", False):
+                    state = ("connection_verified" if self.worker.gemma_model in result.available_model_ids
+                             else "connection_failed")
+                elif getattr(result, "status", "") in {"invalid_key", "rate_limited"}:
                     state = "connection_failed"
         pending = getattr(self, "pending_translation_provider_id", None)
         state_text = self._tr(f"controller.engine.state.{state}")
@@ -4897,13 +4923,21 @@ class Controller(QWidget):
                 self._set_status_message(f"AI model switched automatically: {old_label} → {new_label}")
             else:
                 self._set_status_message(f"AI模型自動切換：{old_label} -> {new_label}")
+        self._refresh_main_engine_summary()
         self.schedule_save_settings()
 
     def on_api_key_changed(self, text):
         value = str(text or "").strip()
+        changed = value != getattr(self, "google_api_key", "")
         self.google_api_key = value
         self.pending_api_key = value
         self._apply_google_credentials_to_worker()
+        if changed:
+            self._remote_model_availability_generation = getattr(self, "_remote_model_availability_generation", 0) + 1
+            self._remote_model_availability_checking = False
+            self._apply_remote_model_availability(ModelDiscoveryResult(
+                status=DISCOVERY_STATUS_UNVERIFIED if value else DISCOVERY_STATUS_NO_KEY,
+            ))
         if hasattr(self, "api_key_save_timer"):
             self.api_key_save_timer.start(500)
 
@@ -4943,6 +4977,7 @@ class Controller(QWidget):
                 self.settings_window.cmb_ai_model.blockSignals(False)
         if self.settings_window is not None:
             self.settings_window.update_translate_summary()
+        self._refresh_main_engine_summary()
         self.schedule_save_settings()
 
     def on_gemma_prompt_changed(self, text):
@@ -5224,6 +5259,16 @@ class Controller(QWidget):
         self.refresh_overlay_from_last_results()
         self.schedule_save_settings()
 
+    def _overlay_display_results(self, results):
+        display_results = list(results) if results else []
+        if self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT and display_results:
+            combined_text = "\n".join(str(text).strip() for text, *_ in display_results if str(text).strip())
+            if combined_text:
+                first = display_results[0]
+                anchor = self.selected_region or (first[1], first[2], first[3], first[4])
+                return [(combined_text, int(anchor[0]), int(anchor[1]), max(1, int(anchor[2])), max(1, int(anchor[3])))]
+        return display_results
+
     def refresh_overlay_from_last_results(self):
         if not self.last_scan_results:
             return
@@ -5236,7 +5281,7 @@ class Controller(QWidget):
             self.region_frame_opacity,
             self.selected_region,
         )
-        self.overlay.update_bubbles(self.last_scan_results)
+        self.overlay.update_bubbles(Controller._overlay_display_results(self, self.last_scan_results))
         self.overlay.raise_()
 
     def toggle_settings_window(self):
@@ -5492,17 +5537,7 @@ class Controller(QWidget):
             self.region_frame_opacity,
             self.selected_region,
         )
-        display_results = list(results) if results else []
-        if self.scan_mode == SCAN_MODE_REGION and self.region_render_mode == REGION_RENDER_SCREENSHOT and display_results:
-            combined_text = "\n".join(str(text).strip() for text, *_ in display_results if str(text).strip())
-            if combined_text:
-                if self.selected_region:
-                    anchor = self.selected_region
-                else:
-                    first = display_results[0]
-                    anchor = (int(first[1]), int(first[2]), max(1, int(first[3])), max(1, int(first[4])))
-                display_results = [(combined_text, int(anchor[0]), int(anchor[1]), max(1, int(anchor[2])), max(1, int(anchor[3])))]
-        self.overlay.update_bubbles(display_results)
+        self.overlay.update_bubbles(Controller._overlay_display_results(self, results))
         self.overlay.raise_()
         if self.current_auto_interval > 0:
             self.schedule_next_scan()

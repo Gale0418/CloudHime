@@ -226,12 +226,12 @@ UI_TEXTS = {
         "en": "Optional prompt for screenshot mode. Leave blank to use the default prompt. (・ω・)",
     },
     "settings_relief_title": {
-        "zh-TW": "浮雕細節",
-        "en": "Relief details",
+        "zh-TW": "文字大小與位置",
+        "en": "Text Size & Position",
     },
     "settings_relief_hint": {
-        "zh-TW": "只在浮雕模式才啟用，X 與 Y 為 0 會對齊原位喔～ (・ω・)ノ",
-        "en": "Only available in Relief mode; X and Y offsets of 0 keep text aligned with the source. (・ω・)ノ",
+        "zh-TW": "三種顯示模式共用字級與位移～設 0 恢復自動位置，透明度只調選區框唷！( •̀ ω •́ )✧",
+        "en": "Shared across all 3 display modes! Setting offset to 0 restores auto position, and opacity only adjusts the selection frame ( •̀ ω •́ )✧",
     },
     "settings_relief_offset_x": {
         "zh-TW": "X 軸位移",
@@ -492,8 +492,8 @@ JA_UI_TEXTS = {
     "settings_render_relief": "浮き彫り",
     "settings_render_screenshot": "スクリーンショット",
     "settings_screenshot_prompt_placeholder": "スクリーンショットモード用の任意のプロンプト。空欄の場合は既定のプロンプトを使用します。 (・ω・)",
-    "settings_relief_title": "浮き彫りの詳細",
-    "settings_relief_hint": "浮き彫りモードでのみ使用します。X と Y を 0 にすると元の位置に揃います。 (・ω・)ノ",
+    "settings_relief_title": "文字サイズと位置",
+    "settings_relief_hint": "3つの表示モード共通です！オフセット0で自動位置に戻り、不透明度は選択枠のみ調整されます ( •̀ ω •́ )✧",
     "settings_relief_offset_x": "X 軸のオフセット",
     "settings_relief_font": "文字サイズ",
     "settings_relief_offset_y": "Y 軸のオフセット",

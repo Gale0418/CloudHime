@@ -98,6 +98,7 @@
         "tests/test_cloudhime_ui_smoke.py",
         "tests/test_product_experience.py",
         "tests/test_reading_overlay.py",
+        "tests/test_render_text_controls.py",
         "tests/test_shutdown_lifecycle.py",
         "tests/test_relief_settings.py",
         "tests/test_settings_window_theme_polish.py",
