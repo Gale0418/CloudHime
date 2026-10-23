@@ -83,6 +83,90 @@ def test_stage_then_verify_is_self_contained_and_target_bound(tmp_path: Path):
     assert not any(str(tmp_path) in json.dumps(entry) for entry in manifest["files"])
 
 
+def test_stage_copy_failure_leaves_no_partial_output_and_can_retry(tmp_path: Path, monkeypatch):
+    report, requirements, lock, sbom = _write_source_evidence(tmp_path)
+    output = tmp_path / "provenance"
+    original_copyfile = provenance.shutil.copyfile
+    calls = 0
+
+    def fail_second_copy(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected copy failure")
+        return original_copyfile(source, destination)
+
+    monkeypatch.setattr(provenance.shutil, "copyfile", fail_second_copy)
+    with pytest.raises(OSError, match="injected copy failure"):
+        provenance.stage(report, requirements, lock, sbom, output)
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".provenance.staging-*"))
+
+    monkeypatch.setattr(provenance.shutil, "copyfile", original_copyfile)
+    manifest = provenance.stage(report, requirements, lock, sbom, output)
+    assert provenance.verify(output) == manifest
+
+
+def test_stage_verify_failure_does_not_publish_output(tmp_path: Path, monkeypatch):
+    report, requirements, lock, sbom = _write_source_evidence(tmp_path)
+    output = tmp_path / "provenance"
+
+    def reject_staged_directory(_root):
+        raise provenance.ProvenanceError("injected staged verification failure")
+
+    monkeypatch.setattr(provenance, "verify", reject_staged_directory)
+    with pytest.raises(provenance.ProvenanceError, match="injected staged verification failure"):
+        provenance.stage(report, requirements, lock, sbom, output)
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".provenance.staging-*"))
+
+
+def test_stage_failure_preserves_existing_destination_data(tmp_path: Path, monkeypatch):
+    report, requirements, lock, sbom = _write_source_evidence(tmp_path)
+    output = tmp_path / "provenance"
+    output.mkdir()
+    marker = output / "keep.txt"
+    marker.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(provenance.ProvenanceError, match="existing provenance destination"):
+        provenance.stage(report, requirements, lock, sbom, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve"
+
+
+def test_stage_refuses_existing_empty_destination_without_removing_it(tmp_path: Path):
+    report, requirements, lock, sbom = _write_source_evidence(tmp_path)
+    output = tmp_path / "provenance"
+    output.mkdir()
+
+    with pytest.raises(provenance.ProvenanceError, match="existing empty"):
+        provenance.stage(report, requirements, lock, sbom, output)
+
+    assert output.is_dir()
+    assert list(output.iterdir()) == []
+
+
+def test_stage_destination_race_preserves_concurrent_data(tmp_path: Path, monkeypatch):
+    report, requirements, lock, sbom = _write_source_evidence(tmp_path)
+    output = tmp_path / "provenance"
+    original_rename = provenance.os.rename
+
+    def create_destination_before_publish(source, destination):
+        output.mkdir()
+        marker = output / "concurrent.txt"
+        marker.write_text("keep", encoding="utf-8")
+        return original_rename(source, destination)
+
+    monkeypatch.setattr(provenance.os, "rename", create_destination_before_publish)
+    with pytest.raises(provenance.ProvenanceError, match="appeared during staging"):
+        provenance.stage(report, requirements, lock, sbom, output)
+
+    assert (output / "concurrent.txt").read_text(encoding="utf-8") == "keep"
+    assert not list(tmp_path.glob(".provenance.staging-*"))
+
+
 def test_stage_and_verify_accept_lock_graph_when_all_lock_entries_are_requested(tmp_path: Path):
     report, requirements, lock, sbom = _write_source_evidence(tmp_path, include_transitive=True)
     output = tmp_path / "provenance"

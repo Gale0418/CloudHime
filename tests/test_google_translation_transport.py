@@ -259,6 +259,26 @@ def test_empty_input_short_circuits_http(monkeypatch):
     assert translator.translate("  ") == ""
 
 
+def test_input_limit_is_explicit_and_does_not_dispatch_http(monkeypatch):
+    calls = []
+
+    def get(*_a, **_kw):
+        calls.append(True)
+        return FakeResponse(chunks=[json_response("translated")])
+
+    monkeypatch.setattr(
+        transport.requests,
+        "get",
+        get,
+    )
+    translator = transport.GoogleTranslator(source="en", target="zh-TW")
+
+    assert translator.translate("x" * 4999) == "translated"
+    with pytest.raises(transport.GoogleTranslationInputLimitError):
+        translator.translate("x" * 5000)
+    assert calls == [True]
+
+
 def test_multipart_translation_preserves_newlines(monkeypatch):
     response = FakeResponse(chunks=[json_response("第一段\n", " 第二段")])
     monkeypatch.setattr(transport.requests, "get", lambda *_a, **_kw: response)

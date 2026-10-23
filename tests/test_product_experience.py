@@ -1,6 +1,8 @@
 """User-facing recovery and lifecycle contracts; no live services or secrets."""
 from unittest.mock import Mock
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 import time
 
@@ -287,6 +289,20 @@ def test_screenshot_setting_change_keeps_combined_caption_and_raw_results(contro
     controller.region_render_mode = "bubble"
     controller.refresh_overlay_from_last_results()
     assert len(controller.overlay.bubbles) == 2
+
+
+def test_pause_completed_screenshot_preserves_individual_capture_positions(controller):
+    controller.scan_mode = "region"
+    controller.region_render_mode = "screenshot"
+    controller.selected_region = (400, 260, 200, 120)
+    results = [("First line", 420, 280, 90, 30), ("Second line", 420, 320, 90, 30)]
+    controller.on_scan_complete(results)
+    controller.start_auto_scan(base_interval=5000)
+    controller.pause_auto_scan()
+    assert controller.last_scan_results == results
+    controller.region_render_mode = "bubble"
+    controller.refresh_overlay_from_last_results()
+    assert controller.overlay.snapshot_results() == results
 
 
 def test_luna_connection_uses_background_worker_and_invalidates_changed_key(controller, monkeypatch, qtbot):
@@ -755,6 +771,125 @@ def test_first_selection_cancel_stays_in_fullscreen(controller, qtbot):
     assert controller.selected_region is None
     assert controller.scan_mode == "fullscreen"
     assert controller.btn_mode_full.isChecked()
+
+
+@pytest.mark.parametrize("auto_state", ["running", "paused", "idle"])
+def test_cancelled_reselection_restores_reading_and_scan_state(controller, qtbot, auto_state):
+    controller.on_region_selected((40, 120, 220, 100))
+    controller.region_render_mode = "screenshot"
+    results = [("First", 50, 130, 100, 20), ("Second", 50, 160, 100, 20)]
+    controller.on_scan_complete(results)
+    if auto_state != "idle":
+        controller.start_auto_scan(base_interval=5000)
+        if auto_state == "paused":
+            controller.pause_auto_scan()
+    old_generation = controller.scan_generation
+    controller.begin_region_selection()
+    assert not controller.overlay.isVisible()
+    qtbot.keyClick(controller.selection_overlay, Qt.Key_Escape)
+    assert controller.overlay.isVisible()
+    assert controller.last_scan_results == results
+    assert controller.scan_generation == old_generation + 1
+    assert controller.current_auto_interval == (5000 if auto_state == "running" else 0)
+    assert controller._paused_auto_interval == (5000 if auto_state == "paused" else 0)
+    assert controller.auto_timer.isActive() == (auto_state == "running")
+    controller.region_render_mode = "bubble"
+    controller.refresh_overlay_from_last_results()
+    assert controller.overlay.snapshot_results() == results
+
+
+@pytest.mark.parametrize(
+    ("language", "theme", "render_mode", "expected_bubbles"),
+    [
+        ("zh-TW", "dark", "bubble", 2),
+        ("en", "light", "screenshot", 1),
+        ("ja", "dark", "relief", 2),
+    ],
+)
+def test_localized_render_modes_keep_captions_through_auto_scan_and_cancelled_selection(
+    controller, qtbot, language, theme, render_mode, expected_bubbles,
+):
+    controller.on_region_selected((40, 120, 420, 180))
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+
+    language_index = settings.cmb_ui_language_chip.findData(language)
+    assert language_index >= 0
+    settings.cmb_ui_language_chip.setCurrentIndex(language_index)
+    theme_index = settings.cmb_theme_mode_chip.findData(theme)
+    assert theme_index >= 0
+    settings.cmb_theme_mode_chip.setCurrentIndex(theme_index)
+    render_button = {
+        "bubble": settings.btn_render_bubble,
+        "screenshot": settings.btn_render_screenshot,
+        "relief": settings.btn_render_relief,
+    }[render_mode]
+    render_button.click()
+    settings.slider_relief_offset_x.setValue(18)
+    settings.slider_relief_offset_y.setValue(-12)
+    settings.spin_relief_font.setValue(32)
+
+    assert controller.ui_language == language
+    assert controller.theme_mode == theme
+    assert controller.region_render_mode == render_mode
+    assert controller.region_relief_offset_x == 18
+    assert controller.region_relief_offset_y == -12
+    assert controller.region_relief_font_pt == 32
+    assert controller.overlay.relief_offset_x == 18
+    assert controller.overlay.relief_offset_y == -12
+    assert controller.overlay.relief_font_pt == 32
+
+    results = [
+        ("第一行 / First line / 一行目", 60, 140, 180, 32),
+        ("第二行 / Second line / 二行目", 60, 180, 190, 32),
+    ]
+    controller.on_scan_complete(results)
+    assert len(controller.overlay.bubbles) == expected_bubbles
+    assert controller.last_scan_results == results
+    original_texts = [bubble.text() for bubble in controller.overlay.bubbles]
+
+    settings.hide()
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    assert controller.current_auto_interval > 0
+    qtbot.mouseClick(controller.btn_30, Qt.LeftButton)
+    assert controller.current_auto_interval == 0
+    assert controller._paused_auto_interval > 0
+    assert [bubble.text() for bubble in controller.overlay.bubbles] == original_texts
+
+    controller.btn_30.setFocus()
+    qtbot.keyClick(controller.btn_30, Qt.Key_Space)
+    assert controller.current_auto_interval > 0
+    controller.begin_region_selection()
+    qtbot.keyClick(controller.selection_overlay, Qt.Key_Escape)
+
+    assert controller.overlay.isVisible()
+    assert controller.last_scan_results == results
+    assert [bubble.text() for bubble in controller.overlay.bubbles] == original_texts
+    assert controller.region_render_mode == render_mode
+    assert controller.theme_mode == theme
+    assert controller.ui_language == language
+    assert controller.overlay.relief_offset_x == 18
+    assert controller.overlay.relief_offset_y == -12
+    assert controller.overlay.relief_font_pt == 32
+    assert controller.current_auto_interval > 0
+
+    render_dir = os.environ.get("CLOUDHIME_TEST_RENDER_DIR")
+    if render_dir:
+        output_dir = Path(render_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stem = f"reading-{language}-{theme}-{render_mode}"
+        assert controller.grab().save(str(output_dir / f"{stem}-controller.png"))
+        assert controller.overlay.grab().save(str(output_dir / f"{stem}-captions.png"))
+
+
+def test_accepting_new_region_discards_old_caption_restore_state(controller):
+    controller.on_region_selected((40, 120, 220, 100))
+    controller.on_scan_complete([("Old region", 50, 130, 100, 20)])
+    controller.begin_region_selection()
+    controller.on_region_selected((400, 200, 100, 100))
+    assert not controller.last_scan_results
+    assert not controller.overlay.bubbles
+    assert controller._selection_restore_state is None
 
 
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])

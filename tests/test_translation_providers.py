@@ -2,6 +2,7 @@ import json
 from urllib import error
 
 import pytest
+from deep_translator.exceptions import TooManyRequests
 
 from dev_local_gemma_provider import LocalGemmaProvider
 
@@ -54,6 +55,157 @@ def test_google_provider_applies_dictionary_before_batch_translation():
     assert "雙點博物館" in translator.calls[0]
     assert "TWO POINT MUSEUM" not in translator.calls[0]
     assert [result.text for result in results] == ["雙點博物館", "葡萄酒俱樂部"]
+
+
+def test_google_provider_chunks_long_single_text_without_dropping_characters():
+    provider = GoogleTranslationProvider()
+    translator = FakeTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+    source = ("Sentence with words. " * 300)[:6200]
+
+    result = provider.translate(source, source_lang="en")
+
+    assert all(0 < len(chunk) <= 4999 for chunk in translator.calls)
+    assert result.text == source
+
+
+def test_google_provider_packs_batch_by_dictionary_expanded_length_and_caches_hits():
+    provider = GoogleTranslationProvider()
+    provider._dictionary = {"term": "T" * 3000}
+    translator = FakeTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+    source = ["term1", "term2", "term3"]
+
+    first = provider.translate_batch(source, source_lang="en")
+    call_count = len(translator.calls)
+    second = provider.translate_batch(source, source_lang="en")
+
+    assert len(translator.calls) == 3
+    assert all(len(call) <= 4999 for call in translator.calls)
+    assert [result.text for result in first] == ["T" * 3000 + str(i) for i in range(1, 4)]
+    assert [result.text for result in second] == [result.text for result in first]
+    assert all(result.from_cache for result in second)
+    assert len(translator.calls) == call_count
+
+
+def test_google_provider_rejects_extreme_input_before_translation():
+    provider = GoogleTranslationProvider()
+    translator = FakeTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+
+    with pytest.raises(ValueError, match="google_input_too_large"):
+        provider.translate("x" * 100001, source_lang="en")
+    assert translator.calls == []
+
+    with pytest.raises(ValueError, match="google_input_too_large"):
+        provider.translate_batch(["x" * 50001, "y" * 50000], source_lang="en")
+    assert translator.calls == []
+
+
+def test_google_provider_preflights_long_single_request_budget():
+    provider = GoogleTranslationProvider()
+    translator = FakeTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+    source = ("a" * 2598 + ". ") * 38 + "a" * 1200
+
+    with pytest.raises(ValueError, match="google_request_limit_exceeded"):
+        provider.translate(source, source_lang="en")
+    assert translator.calls == []
+
+
+def test_google_provider_does_not_cache_batch_after_later_chunk_failure():
+    provider = GoogleTranslationProvider()
+    provider._dictionary = {"term": "T" * 3000}
+
+    class FailsOnSecondCall(FakeTranslator):
+        def translate(self, text):
+            self.calls.append(text)
+            if len(self.calls) == 2:
+                raise RuntimeError("temporary failure")
+            return text
+
+    translator = FailsOnSecondCall()
+    provider._get_translator = lambda source_lang, target_lang: translator
+
+    with pytest.raises(RuntimeError, match="temporary failure"):
+        provider.translate_batch(["term1", "term2"], source_lang="en")
+    assert len(translator.calls) == 2
+    assert provider._translation_cache == {}
+
+
+def test_google_provider_cancellation_stops_before_second_long_text_chunk():
+    cancelled = {"value": False}
+
+    class CancelsAfterFirstCall(FakeTranslator):
+        def translate(self, text):
+            self.calls.append(text)
+            cancelled["value"] = True
+            return text
+
+    provider = GoogleTranslationProvider(cancelled=lambda: cancelled["value"])
+    translator = CancelsAfterFirstCall()
+    provider._get_translator = lambda source_lang, target_lang: translator
+
+    from translation_orchestrator import TranslationCancelled
+
+    with pytest.raises(TranslationCancelled, match="translation_cancelled"):
+        provider.translate("word " * 3000, source_lang="en")
+    assert len(translator.calls) == 1
+    assert provider._translation_cache == {}
+
+
+def test_google_provider_ignores_early_punctuation_when_splitting():
+    provider = GoogleTranslationProvider()
+    translator = FakeTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+
+    provider.translate(".x" + "a" * 6000, source_lang="en")
+
+    assert len(translator.calls[0]) == 4999
+
+
+def test_google_provider_propagates_rate_limit_from_batch_transport():
+    class RateLimitedTranslator(FakeTranslator):
+        def translate(self, text):
+            self.calls.append(text)
+            raise TooManyRequests()
+
+    provider = GoogleTranslationProvider()
+    translator = RateLimitedTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+
+    with pytest.raises(TooManyRequests):
+        provider.translate_batch(["hello", "world"], source_lang="en")
+    assert len(translator.calls) == 1
+    assert provider._translation_cache == {}
+
+
+def test_google_provider_preflights_request_budget_and_exempts_cache_hits(monkeypatch):
+    monkeypatch.setattr(
+        "translation_providers.detect_source_language",
+        lambda text: "ja" if text.startswith("ja:") else "en",
+    )
+    texts = [f"{'ja' if index % 2 == 0 else 'en'}:{index}" for index in range(33)]
+
+    provider = GoogleTranslationProvider()
+    translator = FakeTranslator()
+    provider._get_translator = lambda source_lang, target_lang: translator
+    provider._remember(
+        ("google-batch", "ja", (texts[0],), "zh-TW"),
+        ["cached"],
+    )
+    results = provider.translate_batch(texts)
+    assert len(results) == len(texts)
+    assert results[0].from_cache is True
+    assert all(not result.from_cache for result in results[1:])
+    assert len(translator.calls) == 32
+
+    limited_provider = GoogleTranslationProvider()
+    limited_translator = FakeTranslator()
+    limited_provider._get_translator = lambda source_lang, target_lang: limited_translator
+    with pytest.raises(ValueError, match="google_request_limit_exceeded"):
+        limited_provider.translate_batch(texts)
+    assert limited_translator.calls == []
 
 
 def test_gemma_provider_prompt_includes_dictionary_hint():

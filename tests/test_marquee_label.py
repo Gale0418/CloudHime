@@ -87,3 +87,18 @@ def test_font_change_recalculates_overflow_without_resize(qtbot):
     label.setFont(large_font)
     assert label.fontMetrics().horizontalAdvance(label.text()) > label.contentsRect().width()
     qtbot.waitUntil(label._timer.isActive)
+
+
+def test_replacing_overflow_text_with_short_text_stops_animation(qtbot):
+    label = MarqueeLabel("A long sentence that overflows the available label width")
+    qtbot.addWidget(label)
+    label.resize(100, 28)
+    label.show()
+    qtbot.waitUntil(label._timer.isActive)
+    label._advance()
+    assert label._offset > 0
+    label.setText("OK")
+    assert not label._timer.isActive()
+    assert label._offset == 0
+    assert label._text_width() == label.fontMetrics().horizontalAdvance("OK")
+    assert label.accessibleName() == "OK"

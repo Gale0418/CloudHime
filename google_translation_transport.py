@@ -18,6 +18,7 @@ from deep_translator.validate import is_empty, is_input_valid, request_failed
 REQUEST_TIMEOUT = (5, 20)
 TRANSLATE_API_URL = "https://translate.googleapis.com/translate_a/single"
 MAX_RESPONSE_BYTES = 1024 * 1024
+GOOGLE_MAX_INPUT_CHARS = 4999
 # Preserve the earlier constant for callers that inspect this transport.
 MAX_HTML_BYTES = MAX_RESPONSE_BYTES
 MAX_ELAPSED_SECONDS = 30.0
@@ -67,6 +68,10 @@ class GoogleTranslationResponseLimitError(RequestError):
     """Raised when Google returns a response beyond the configured budget."""
 
 
+class GoogleTranslationInputLimitError(RequestError):
+    """Raised when a single Google request exceeds its character budget."""
+
+
 class GoogleTranslator(_DeepTranslatorGoogleTranslator):
     """Google JSON translator with scoped time, size, and cleanup bounds."""
 
@@ -82,6 +87,8 @@ class GoogleTranslator(_DeepTranslatorGoogleTranslator):
         self._base_url = TRANSLATE_API_URL
 
     def translate(self, text: str, **kwargs) -> str:
+        if isinstance(text, str) and len(text) > GOOGLE_MAX_INPUT_CHARS:
+            raise GoogleTranslationInputLimitError("Google Translate input exceeded 4999 characters")
         if is_input_valid(text, max_chars=5000):
             text = text.strip()
             if self._same_source_target() or is_empty(text):

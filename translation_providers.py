@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 from urllib import error, request
 
-from google_translation_transport import GoogleTranslator
+from google_translation_transport import GOOGLE_MAX_INPUT_CHARS, GoogleTranslator
+from translation_orchestrator import TranslationCancelled
 
 from model_catalog import get_model_spec, REGISTRY_DEFAULT_MODEL, REMOTE_TRANSLATION_MODEL_IDS
 from provider_runtime import CredentialUnavailable, RuntimeCredentialPool
@@ -64,6 +65,8 @@ GEMMA_THINKING_LEVEL_MODELS = frozenset({
     "gemma-4-31b-it",
 })
 TRANSLATION_CACHE_LIMIT = 512
+MAX_GOOGLE_TRANSLATION_INPUT_CHARS = 100_000
+MAX_GOOGLE_REQUESTS_PER_OPERATION = 32
 LOCAL_MULTIMODAL_BATCH_SIZE = 4
 LOCAL_MULTIMODAL_OCR_TEMPERATURE = 0.1
 LOCAL_MULTIMODAL_OCR_REPEAT_PENALTY = 1.15
@@ -163,11 +166,146 @@ class TranslationProviderConfig:
     target_lang: str = "zh-TW"
 
 
+class GoogleTranslationResultError(ValueError):
+    """Raised when a successful transport response has no usable translation."""
+
+
+def _raise_if_google_cancelled(cancelled: Callable[[], bool] | None) -> None:
+    if cancelled is not None and cancelled():
+        raise TranslationCancelled()
+
+
+def _split_google_translation_text(text: str) -> list[tuple[str, str]]:
+    """Split text into bounded pieces and preserved inter-piece separators."""
+    pieces: list[tuple[str, str]] = []
+    remaining = text
+    while len(remaining) > GOOGLE_MAX_INPUT_CHARS:
+        window = remaining[:GOOGLE_MAX_INPUT_CHARS]
+        minimum_semantic_cut = GOOGLE_MAX_INPUT_CHARS // 2
+        punctuation_ends = [
+            match.end()
+            for match in re.finditer(r"[.!?。！？…]+", window)
+            if match.end() >= minimum_semantic_cut
+        ]
+        cut = punctuation_ends[-1] if punctuation_ends else 0
+        if not cut:
+            whitespace = [
+                match.start()
+                for match in re.finditer(r"\s", window)
+                if match.start() >= minimum_semantic_cut
+            ]
+            cut = whitespace[-1] if whitespace else 0
+        if not cut:
+            cut = GOOGLE_MAX_INPUT_CHARS
+
+        piece = remaining[:cut]
+        rest = remaining[cut:]
+        separator_match = re.match(r"\s+", rest)
+        separator = separator_match.group(0) if separator_match else ""
+        if separator:
+            rest = rest[len(separator):]
+        pieces.append((piece, separator))
+        remaining = rest
+    if remaining:
+        pieces.append((remaining, ""))
+    return pieces
+
+
+def _translate_google_bounded(
+    translator: GoogleTranslator,
+    text: str,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+) -> str:
+    """Translate one prepared text with bounded requests and preserved separators."""
+    if len(text) > MAX_GOOGLE_TRANSLATION_INPUT_CHARS:
+        raise ValueError("google_input_too_large")
+    request_count = (
+        len(_split_google_translation_text(text))
+        if len(text) > GOOGLE_MAX_INPUT_CHARS
+        else 1
+    )
+    if request_count > MAX_GOOGLE_REQUESTS_PER_OPERATION:
+        raise ValueError("google_request_limit_exceeded")
+    if len(text) <= GOOGLE_MAX_INPUT_CHARS:
+        _raise_if_google_cancelled(cancelled)
+        translated = translator.translate(text)
+        _raise_if_google_cancelled(cancelled)
+        if not isinstance(translated, str) or not translated.strip():
+            raise GoogleTranslationResultError("empty_google_translation")
+        return translated.strip()
+
+    translated_pieces: list[str] = []
+    separators: list[str] = []
+    for piece, separator in _split_google_translation_text(text):
+        if not piece.strip():
+            continue
+        _raise_if_google_cancelled(cancelled)
+        translated = translator.translate(piece.strip())
+        _raise_if_google_cancelled(cancelled)
+        if not isinstance(translated, str) or not translated.strip():
+            raise GoogleTranslationResultError("empty_google_translation")
+        translated_pieces.append(translated.strip())
+        separators.append(separator)
+    if not translated_pieces:
+        raise GoogleTranslationResultError("empty_google_translation")
+    return "".join(
+        piece + (separators[index] if index < len(separators) else "")
+        for index, piece in enumerate(translated_pieces)
+    ).strip()
+
+
+def _iter_google_batch_groups(texts: Sequence[str], prepared: Sequence[str], source_lang: str):
+    index = 0
+    while index < len(texts):
+        resolved_source = source_lang if source_lang != "auto" else detect_source_language(texts[index])
+        group_start = index
+        index += 1
+        while index < len(texts):
+            current_source = source_lang if source_lang != "auto" else detect_source_language(texts[index])
+            if current_source != resolved_source:
+                break
+            index += 1
+
+        group_prepared = prepared[group_start:index]
+        offset = 0
+        while offset < len(group_prepared):
+            sub_start = group_start + offset
+            if len(group_prepared[offset]) > GOOGLE_MAX_INPUT_CHARS:
+                sub_end = offset + 1
+            else:
+                sub_end = offset + 1
+                combined_length = len(group_prepared[offset])
+                while sub_end < len(group_prepared):
+                    next_length = len(group_prepared[sub_end])
+                    if next_length > GOOGLE_MAX_INPUT_CHARS:
+                        break
+                    candidate_length = combined_length + 1 + next_length
+                    if candidate_length > GOOGLE_MAX_INPUT_CHARS:
+                        break
+                    combined_length = candidate_length
+                    sub_end += 1
+
+            yield (
+                sub_start,
+                resolved_source,
+                list(texts[sub_start:group_start + sub_end]),
+                list(group_prepared[offset:sub_end]),
+            )
+            offset = sub_end
+
+
 class GoogleTranslationProvider:
     name = "google"
 
-    def __init__(self, *, target_lang: str = "zh-TW"):
+    def __init__(
+        self,
+        *,
+        target_lang: str = "zh-TW",
+        cancelled: Callable[[], bool] | None = None,
+    ):
         self.target_lang = target_lang
+        self._cancelled = cancelled
         self._translators: dict[tuple[str, str], GoogleTranslator] = {}
         self._translation_cache: OrderedDict[Any, Any] = OrderedDict()
         self._dictionary = load_translation_dictionary()
@@ -219,12 +357,11 @@ class GoogleTranslationProvider:
             return TranslationResult(text=str(cached), provider=self.name, from_cache=True)
         translator = self._get_translator(source_lang, resolved_target)
         source_for_translation = apply_dictionary_pre_translation(normalized, self._dictionary)
-        translated_raw = translator.translate(source_for_translation)
-        if not isinstance(translated_raw, str):
-            raise ValueError("empty_google_translation")
-        translated = translated_raw.strip()
-        if not translated:
-            raise ValueError("empty_google_translation")
+        translated = _translate_google_bounded(
+            translator,
+            source_for_translation,
+            cancelled=self._cancelled,
+        )
         self._remember(cache_key, translated)
         return TranslationResult(text=translated, provider=self.name)
 
@@ -240,43 +377,103 @@ class GoogleTranslationProvider:
             return []
         resolved_target = target_lang or self.target_lang
 
-        translated = [None] * len(normalized_texts)
-        index = 0
-        while index < len(normalized_texts):
-            batch_source_lang = source_lang if source_lang != "auto" else detect_source_language(normalized_texts[index])
-            group_start = index
-            group_texts = [normalized_texts[index]]
-            index += 1
-            while index < len(normalized_texts):
-                current_source_lang = source_lang if source_lang != "auto" else detect_source_language(normalized_texts[index])
-                if current_source_lang != batch_source_lang:
-                    break
-                group_texts.append(normalized_texts[index])
-                index += 1
+        prepared_texts = [
+            apply_dictionary_pre_translation(item, self._dictionary)
+            for item in normalized_texts
+        ]
+        total_input_chars = sum(len(item) for item in prepared_texts) + max(
+            0, len(prepared_texts) - 1
+        )
+        if total_input_chars > MAX_GOOGLE_TRANSLATION_INPUT_CHARS:
+            raise ValueError("google_input_too_large")
 
-            cache_key = ("google-batch", batch_source_lang, tuple(group_texts), resolved_target)
+        request_count = 0
+        for _start, batch_source_lang, group_texts, prepared_group_texts in _iter_google_batch_groups(
+            normalized_texts,
+            prepared_texts,
+            source_lang,
+        ):
+            cache_key = (
+                "google-batch",
+                batch_source_lang,
+                tuple(group_texts),
+                resolved_target,
+            )
+            if self._get_cached(cache_key) is not None:
+                continue
+            if len(prepared_group_texts) == 1 and len(prepared_group_texts[0]) > GOOGLE_MAX_INPUT_CHARS:
+                request_count += len(_split_google_translation_text(prepared_group_texts[0]))
+            else:
+                request_count += 1
+            if request_count > MAX_GOOGLE_REQUESTS_PER_OPERATION:
+                raise ValueError("google_request_limit_exceeded")
+
+        translated: list[TranslationResult | None] = [None] * len(normalized_texts)
+        pending_cache: list[tuple[Any, Any]] = []
+        for sub_start, batch_source_lang, group_texts, prepared_group_texts in _iter_google_batch_groups(
+            normalized_texts,
+            prepared_texts,
+            source_lang,
+        ):
+            cache_key = (
+                "google-batch",
+                batch_source_lang,
+                tuple(group_texts),
+                resolved_target,
+            )
             batch_result = self._get_cached(cache_key)
+            from_cache = batch_result is not None
             if batch_result is None:
                 translator = self._get_translator(batch_source_lang, resolved_target)
-                prepared_group_texts = [
-                    apply_dictionary_pre_translation(item, self._dictionary)
-                    for item in group_texts
-                ]
-                combined_source = "\n".join(prepared_group_texts)
-                combined_translated_raw = translator.translate(combined_source)
-                if not isinstance(combined_translated_raw, str):
-                    return []
-                combined_translated = combined_translated_raw.strip()
-                if not combined_translated:
-                    return []
-                batch_result = split_translated_lines(combined_translated, len(group_texts))
-                if len(batch_result) != len(group_texts):
-                    return []
-                self._remember(cache_key, batch_result)
-            for offset, line in enumerate(batch_result):
-                translated[group_start + offset] = TranslationResult(text=line, provider=self.name)
-                self._remember((batch_source_lang, group_texts[offset], resolved_target), line)
+                if len(prepared_group_texts) == 1 and len(prepared_group_texts[0]) > GOOGLE_MAX_INPUT_CHARS:
+                    try:
+                        batch_result = [
+                            _translate_google_bounded(
+                                translator,
+                                prepared_group_texts[0],
+                                cancelled=self._cancelled,
+                            )
+                        ]
+                    except GoogleTranslationResultError:
+                        return []
+                else:
+                    _raise_if_google_cancelled(self._cancelled)
+                    combined_translated_raw = translator.translate(
+                        "\n".join(prepared_group_texts)
+                    )
+                    _raise_if_google_cancelled(self._cancelled)
+                    if not isinstance(combined_translated_raw, str):
+                        return []
+                    combined_translated = combined_translated_raw.strip()
+                    if not combined_translated:
+                        return []
+                    batch_result = split_translated_lines(
+                        combined_translated,
+                        len(group_texts),
+                    )
+                    if len(batch_result) != len(group_texts):
+                        return []
+                pending_cache.append((cache_key, batch_result))
+                for item, line in zip(group_texts, batch_result):
+                    pending_cache.append(
+                        ((batch_source_lang, item, resolved_target), line)
+                    )
 
+            if not isinstance(batch_result, (list, tuple)) or len(batch_result) != len(group_texts):
+                return []
+            for item_offset, line in enumerate(batch_result):
+                if not isinstance(line, str) or not line.strip():
+                    return []
+                translated[sub_start + item_offset] = TranslationResult(
+                    text=line,
+                    provider=self.name,
+                    from_cache=from_cache,
+                )
+
+        if any(item is None for item in translated):
+            return []
+        for cache_key, cache_value in pending_cache:
+            self._remember(cache_key, cache_value)
         return [item for item in translated if item is not None]
 
 

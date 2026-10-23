@@ -698,9 +698,100 @@ class OverlayWindow(QWidget):
             )
         if any(b.render_mode == REGION_RENDER_SCREENSHOT for b in self.bubbles):
             self.arrange_bubbles()
+        else:
+            self._reflow_bubble_mode_bubbles()
         self._bubble_render_key = render_key
         self.setVisible(True)
         self.raise_()
+
+    def _reflow_bubble_mode_bubbles(self):
+        """Rebuild caption geometry from capture boxes, then avoid local overlaps."""
+        adjustable_modes = (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF)
+        if not self.bubbles or any(b.render_mode not in adjustable_modes for b in self.bubbles):
+            return
+
+        bounds = self.rect()
+        if bounds.width() <= 0 or bounds.height() <= 0:
+            return
+
+        gap = 6
+        max_nearby_conflicts = 12
+        placed = []
+        ordered = sorted(
+            self.bubbles,
+            key=lambda bubble: (bubble.source_rect.top(), bubble.source_rect.left()),
+        )
+        for bubble in ordered:
+            source = QRect(bubble.source_rect)
+            desired, font_size = bubble.compute_text_layout(
+                bubble.text(), source.x(), source.y(), source.width(), source.height(),
+            )
+            bubble.setFont(bubble._get_bubble_font(font_size))
+            desired = QRect(desired)
+
+            nearby_conflicts = []
+            for index, occupied in enumerate(placed):
+                if not desired.intersects(occupied.adjusted(-gap, -gap, gap, gap)):
+                    continue
+                distance = (
+                    abs(occupied.center().x() - desired.center().x())
+                    + abs(occupied.center().y() - desired.center().y())
+                )
+                item = (distance, occupied.top(), occupied.left(), index, occupied)
+                insert_at = next(
+                    (
+                        position
+                        for position, current in enumerate(nearby_conflicts)
+                        if item[:4] < current[:4]
+                    ),
+                    len(nearby_conflicts),
+                )
+                if insert_at < max_nearby_conflicts:
+                    nearby_conflicts.insert(insert_at, item)
+                    del nearby_conflicts[max_nearby_conflicts:]
+                elif len(nearby_conflicts) < max_nearby_conflicts:
+                    nearby_conflicts.append(item)
+            if not nearby_conflicts:
+                bubble.setGeometry(desired)
+                placed.append(desired)
+                continue
+
+            # Only captions touching this desired box contribute candidates.
+            # Cap that neighborhood and use a fixed set of edge placements so a
+            # dense OCR frame cannot trigger an unbounded combinatorial search.
+            candidates = {(desired.x(), desired.y())}
+            for *_key, occupied in nearby_conflicts:
+                left = occupied.left() - gap - desired.width()
+                right = occupied.right() + gap + 1
+                top = occupied.top() - gap - desired.height()
+                bottom = occupied.bottom() + gap + 1
+                candidates.update({
+                    (desired.x(), top), (desired.x(), bottom),
+                    (left, desired.y()), (right, desired.y()),
+                    (left, top), (right, top), (left, bottom), (right, bottom),
+                })
+
+            best_rect = QRect(desired)
+            best_score = None
+            for x, y in candidates:
+                candidate = QRect(x, y, desired.width(), desired.height())
+                if not bounds.contains(candidate):
+                    continue
+                overlap = sum(
+                    self._rect_overlap_area(
+                        candidate,
+                        previous.adjusted(-gap, -gap, gap, gap),
+                    )
+                    for previous in placed
+                )
+                distance = abs(x - desired.x()) + abs(y - desired.y())
+                score = (overlap, distance, y, x)
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_rect = candidate
+
+            bubble.setGeometry(best_rect)
+            placed.append(best_rect)
 
     def snapshot_results(self):
         """Return only text already displayed, in its original capture coordinates."""
@@ -735,6 +826,7 @@ class OverlayWindow(QWidget):
         font.setPointSizeF(best_size)
         bubble.setFont(font)
         bubble.setGeometry(bubble_rect)
+        self._reflow_bubble_mode_bubbles()
         bubble.repaint()
 
     def update_bubble_text_only(self, results):
@@ -746,12 +838,15 @@ class OverlayWindow(QWidget):
             if i < len(self.bubbles):
                 bubble = self.bubbles[i]
                 bubble.setText(str(t))
+                if bubble.render_mode in (REGION_RENDER_BUBBLE, REGION_RENDER_RELIEF):
+                    bubble.source_rect = QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
                 bubble.repaint()
             else:
                 # 氣泡數量不足時，補建新氣泡
                 mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else REGION_RENDER_BUBBLE
                 region_rect = self.scan_region if (mode in (REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) and self.scan_mode == SCAN_MODE_REGION and self.scan_region) else None
                 self.bubbles.append(TransBubble(self, t, x, y, w, h, self.theme_mode, mode, self.relief_offset_x, self.relief_offset_y, self.relief_font_pt, self.relief_opacity, region_rect))
+        self._reflow_bubble_mode_bubbles()
 
     def _rect_overlap_area(self, first, second):
         ix1 = max(first.left(), second.left())
@@ -5212,6 +5307,14 @@ class Controller(QWidget):
         self.begin_region_selection()
 
     def begin_region_selection(self):
+        visible_results = self.overlay.snapshot_results()
+        results = self.last_scan_results
+        if visible_results != Controller._overlay_display_results(self, results):
+            results = visible_results
+        self._selection_restore_state = (
+            list(results), self.current_auto_interval,
+            getattr(self, "_paused_auto_interval", 0),
+        )
         self.stop_scan()
         self.hide()
         self.overlay.hide()
@@ -5219,6 +5322,8 @@ class Controller(QWidget):
         self.selection_overlay.begin_selection()
 
     def on_region_selected(self, rect):
+        restore_state = getattr(self, "_selection_restore_state", None)
+        self._selection_restore_state = None
         self.show()
         self.raise_()
         self.activateWindow()
@@ -5227,6 +5332,14 @@ class Controller(QWidget):
             self.btn_mode_region.setChecked(self.scan_mode == SCAN_MODE_REGION)
             if self.scan_mode == SCAN_MODE_REGION and self.selected_region:
                 self.region_frame.show_region(self.selected_region)
+            if restore_state is not None:
+                self.last_scan_results, auto_interval, paused_interval = restore_state
+                self._paused_auto_interval = paused_interval
+                self.refresh_overlay_from_last_results()
+                if auto_interval > 0:
+                    self.start_auto_scan(base_interval=auto_interval)
+                else:
+                    self._refresh_auto_scan_button()
             self._refresh_scan_hint()
             self._set_status_text("controller.status.selection_cancelled")
             return
@@ -5396,7 +5509,11 @@ class Controller(QWidget):
         self.current_auto_interval = 0
         self.auto_timer.stop()
         self.display_timer.stop()
-        self.last_scan_results = self.overlay.snapshot_results()
+        visible_results = self.overlay.snapshot_results()
+        # Completed screenshot captions combine several capture boxes for
+        # display. Preserve those boxes unless a visible stream has changed.
+        if visible_results != Controller._overlay_display_results(self, self.last_scan_results):
+            self.last_scan_results = visible_results
         self._advance_scan_generation(cancel_active=True)
         self.btn_30.setChecked(False)
         self._refresh_auto_scan_button()

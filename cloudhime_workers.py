@@ -330,7 +330,7 @@ class OCRWorker(QObject):
         self._pending_gemma_prompt = ""
         self._last_local_vision_request_metrics = {}
         self.translation_target_lang = localization.get_translation_target_lang(localization.DEFAULT_UI_LANGUAGE)
-        self.google_translation_provider = GoogleTranslationProvider(target_lang=self.translation_target_lang)
+        self.google_translation_provider = GoogleTranslationProvider(target_lang=self.translation_target_lang, cancelled=self._translation_route_cancelled)
         self.gemma_translation_provider = GemmaTranslationProvider(
             google_api_key="",
             gemma_model=DEFAULT_GEMMA_MODEL,

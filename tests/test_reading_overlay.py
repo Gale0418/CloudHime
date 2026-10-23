@@ -85,3 +85,49 @@ def test_display_style_changes_refresh_identical_caption(overlay, change):
         overlay.setFont(font)
     overlay.update_bubbles(result)
     assert overlay.bubbles[0] is not first
+
+
+@pytest.mark.parametrize("mode", ["bubble", "relief"])
+def test_adjacent_long_captions_avoid_overlap_and_keep_capture_geometry(overlay, mode):
+    overlay.setGeometry(0, 0, 3000, 800)
+    overlay.set_render_context(
+        "region", mode, relief_offset_x=18, relief_offset_y=-12,
+        relief_font_pt=32, scan_region=(400, 260, 200, 120),
+    )
+    results = [
+        ("第一行 / First line / 一行目", 60, 140, 180, 32),
+        ("第二行 / Second line / 二行目", 60, 180, 190, 32),
+    ]
+
+    overlay.update_bubbles(results)
+    first, second = overlay.bubbles
+    assert not first.geometry().intersects(second.geometry())
+    assert overlay.snapshot_results() == results
+    assert [bubble.font().pointSizeF() for bubble in overlay.bubbles] == [32, 32]
+    assert [bubble.source_rect.getRect() for bubble in overlay.bubbles] == [
+        row[1:] for row in results
+    ]
+
+    stable_widgets = tuple(overlay.bubbles)
+    stable_geometry = tuple(bubble.geometry() for bubble in overlay.bubbles)
+    overlay.update_bubbles([list(row) for row in results])
+    assert tuple(overlay.bubbles) == stable_widgets
+    assert tuple(bubble.geometry() for bubble in overlay.bubbles) == stable_geometry
+
+    streamed_results = [
+        ("Updated first caption with a longer translation", *results[0][1:]),
+        ("Updated second caption with a longer translation", *results[1][1:]),
+    ]
+    overlay.update_translation_stream(0, streamed_results[0][0], "test", *results[0][1:])
+    assert not overlay.bubbles[0].geometry().intersects(overlay.bubbles[1].geometry())
+    stream_geometry = tuple(bubble.geometry() for bubble in overlay.bubbles)
+    for _ in range(3):
+        overlay.update_translation_stream(0, streamed_results[0][0], "test", *results[0][1:])
+    assert tuple(bubble.geometry() for bubble in overlay.bubbles) == stream_geometry
+
+    overlay.update_bubble_text_only(streamed_results)
+    assert not overlay.bubbles[0].geometry().intersects(overlay.bubbles[1].geometry())
+    text_only_geometry = tuple(bubble.geometry() for bubble in overlay.bubbles)
+    overlay.update_bubbles(streamed_results)
+    assert tuple(bubble.geometry() for bubble in overlay.bubbles) == text_only_geometry
+    assert overlay.snapshot_results() == streamed_results

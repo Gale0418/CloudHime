@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import tempfile
 from urllib.parse import urlsplit
 
 
@@ -163,22 +164,42 @@ def stage(report: Path, requirements: Path, lock: Path, sbom: Path, output: Path
     if output.is_symlink():
         raise ProvenanceError("provenance directory must not be a symlink")
     _validate_contract(report, requirements, lock, sbom)
-    if output.exists() and any(output.iterdir()):
-        raise ProvenanceError(f"refusing to overwrite non-empty provenance directory: {output}")
-    output.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if os.path.lexists(output):
+        if output.is_dir() and not output.is_symlink() and not any(output.iterdir()):
+            raise ProvenanceError(f"refusing to replace existing empty provenance directory: {output}")
+        raise ProvenanceError(f"refusing to overwrite existing provenance destination: {output}")
+
+    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=output.parent))
     sources = {"report": report, "requirements": requirements, "lock": lock, "sbom": sbom}
-    for destination, source_name in _PAYLOAD_SOURCES.items():
-        shutil.copyfile(sources[source_name], output / destination)
-    entries = [
-        {"path": path, "size": (output / path).stat().st_size, "sha256": _hash_file(output / path)}
-        for path in sorted(_PAYLOAD_SOURCES)
-    ]
-    manifest = {"schema_version": SCHEMA_VERSION, "target": TARGET, "files": entries}
-    (output / "release-provenance.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    verify(output)
-    return manifest
+    try:
+        for destination, source_name in _PAYLOAD_SOURCES.items():
+            shutil.copyfile(sources[source_name], staging / destination)
+        entries = [
+            {"path": path, "size": (staging / path).stat().st_size, "sha256": _hash_file(staging / path)}
+            for path in sorted(_PAYLOAD_SOURCES)
+        ]
+        manifest = {"schema_version": SCHEMA_VERSION, "target": TARGET, "files": entries}
+        (staging / "release-provenance.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        verify(staging)
+
+        # Recheck after potentially lengthy copying. os.rename is an atomic,
+        # no-replace publish on Windows, so a concurrently-created destination
+        # is left intact and this private staging directory is cleaned below.
+        if output.is_symlink():
+            raise ProvenanceError("provenance directory must not be a symlink")
+        if os.path.lexists(output):
+            raise ProvenanceError(f"provenance destination appeared during staging: {output}")
+        try:
+            os.rename(staging, output)
+        except FileExistsError as exc:
+            raise ProvenanceError(f"provenance destination appeared during staging: {output}") from exc
+        return manifest
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
 
 
 def verify(root: Path) -> dict:

@@ -638,3 +638,7 @@ CodeRabbit 歷史小檔 fixture 的149份程式／文件（另有 unchanged conf
 ### 2026-10-23 Online Gemma 摘要與三模式文字控制
 
 主人人工圖重現連線未驗證與氣泡／截圖字級位移停用。修正主摘要讀取背景模型清單驗證、換金鑰撤銷與舊generation隔離；三模式共用字級／X／Y，串流與最終排版一致，保留原設定鍵及截圖自動選側。相關測試去重297項通過，首次6項重現與後續1項最小Controller缺選單失敗已保留並修復。Gemini高階模型429後依主人指示改Flash成功，最終三語提示已套用。既有EXE／MSIX及Validated草稿未變，T55 Review／Smoke NO／Critic NO；詳見reviews/2026-10-23-provider-render-controls.md，本機證據output/ui-fixes-20261023/。
+
+## 2026-10-23T11:23:10.118142+00:00：全面抓蟲來源／host 技術驗收
+
+三席與獨立裁決針對同一最終快照收斂通過；7項修復、5項具體反證，詳細資料見 reviews/2026-10-23-full-audit.md。1972案台帳保留舊dist失敗與6skip；新完整EXE preflight／OCR／CPU Vision／啟動通過。CH-E12與T118～T120已由官方transition完成收尾；CH-T55獨立發行缺口不變，沒有新MSIX或Store上架。

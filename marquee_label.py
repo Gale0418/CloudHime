@@ -17,6 +17,7 @@ class MarqueeLabel(QLabel):
         self._hovered = False
         self._gap = 36
         self._pixels_per_tick = 1.0
+        self._cached_text_width = None
         self._timer = QTimer(self)
         self._timer.setInterval(30)
         self._timer.timeout.connect(self._advance)
@@ -24,6 +25,8 @@ class MarqueeLabel(QLabel):
 
     def setText(self, text):
         previous_text = super().text()
+        if text != previous_text:
+            self._cached_text_width = None
         super().setText(text)
         full_text = super().text()
         if full_text != previous_text:
@@ -45,13 +48,16 @@ class MarqueeLabel(QLabel):
         self._refresh_marquee(reset=True)
 
     def changeEvent(self, event):
-        super().changeEvent(event)
-        timer = getattr(self, "_timer", None)
-        if timer is not None and event.type() in {
+        metrics_changed = event.type() in {
             QEvent.Type.FontChange,
             QEvent.Type.StyleChange,
             QEvent.Type.ApplicationFontChange,
-        }:
+        }
+        if metrics_changed:
+            self._cached_text_width = None
+        super().changeEvent(event)
+        timer = getattr(self, "_timer", None)
+        if timer is not None and metrics_changed:
             self._refresh_marquee()
 
     def showEvent(self, event):
@@ -74,7 +80,9 @@ class MarqueeLabel(QLabel):
         super().leaveEvent(event)
 
     def _text_width(self):
-        return self.fontMetrics().horizontalAdvance(super().text())
+        if getattr(self, "_cached_text_width", None) is None:
+            self._cached_text_width = self.fontMetrics().horizontalAdvance(super().text())
+        return self._cached_text_width
 
     def _refresh_marquee(self, reset=False):
         if reset:
