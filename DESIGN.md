@@ -294,3 +294,8 @@ Footer 固定在 Settings body 底部並跨越整個 surface 寬度，放 Reset 
 - **Don't** 把 provider body 設定塞進摘要、accessible name／description、截圖或 metadata，也不要因 status refresh 自行展開 disclosure。
 - **Don't** 用 gradient、glow、heavy shadow 或 nested double-frame 製造 provider surface 的層次。
 - **Don't** 用 emoji glyph、bitmap 字或 icon font 取代文字與現有 code-native marks。
+
+
+## 2026-10-23 介面精簡增量
+
+主窗以引擎、擷取範圍、單一翻譯主動作排列；引擎資料說明以鍵盤可操作箭頭展開，狀態僅在工作或回饋時顯示。進度文字與細線分離。四個設定分頁與角色插畫維持，刪除重複標題及常駐教學，必要資訊改為提示；作品儲存動作只在研究分頁出現。詳見 reviews/2026-10-23-ui-distill.md。

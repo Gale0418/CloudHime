@@ -21,6 +21,79 @@ from openai_connection_check import LunaConnectionResult
 from remote_model_discovery import ModelDiscoveryResult
 
 
+@pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
+def test_compact_main_keeps_details_errors_and_shortcuts_accessible(controller, qtbot, language):
+    controller.set_ui_language(language, persist=False)
+    assert controller.btn_hotkey.isHidden()
+    assert controller.btn_now.toolTip() == controller.btn_hotkey.toolTip()
+    assert controller.lbl_engine_data.isHidden()
+    assert controller.btn_engine_details.accessibleName() == controller._tr("controller.engine.details")
+    controller.btn_engine_details.setFocus()
+    qtbot.keyClick(controller.btn_engine_details, Qt.Key_Space)
+    assert controller.lbl_engine_data.isVisible()
+    assert controller.lbl_engine_data.text() == controller._tr("controller.engine.data.google")
+    assert controller.btn_engine_details.accessibleDescription() == controller.lbl_engine_data.text()
+    qtbot.keyClick(controller.btn_engine_details, Qt.Key_Space)
+    assert controller.lbl_engine_data.isHidden()
+    controller._set_status_text("controller.status.ready")
+    assert controller.lbl_status.isHidden()
+    controller.update_status("Provider unavailable — retry")
+    assert controller.lbl_status.isVisible()
+    assert "unavailable" in controller.lbl_status.text()
+    controller._set_status_text("worker.status.translation_rate_limited")
+    assert controller.lbl_status.isVisible()
+
+
+def test_compact_scan_hint_only_guides_unselected_region(controller):
+    from cloudhime_ui import SCAN_MODE_FULLSCREEN, SCAN_MODE_REGION
+
+    controller.scan_mode = SCAN_MODE_FULLSCREEN
+    controller._refresh_scan_hint()
+    assert controller.lbl_scan_hint.isHidden()
+    assert controller.btn_mode_full.toolTip()
+    controller.scan_mode = SCAN_MODE_REGION
+    controller.selected_region = None
+    controller._refresh_scan_hint()
+    assert controller.lbl_scan_hint.isVisible()
+    controller.selected_region = (10, 20, 300, 200)
+    controller._refresh_scan_hint()
+    assert controller.lbl_scan_hint.isHidden()
+    assert controller.btn_now.accessibleDescription()
+
+
+@pytest.mark.parametrize("language,theme", [("zh-TW", "light"), ("en", "dark"), ("ja", "high_contrast")])
+def test_distilled_controls_fit_and_render(controller, qtbot, language, theme):
+    import ui_fonts
+
+    controller.set_ui_language(language, persist=False)
+    ui_fonts.apply_ui_font(language)
+    controller.theme_mode = theme
+    controller.update_frame_style()
+    controller._set_status_text("controller.status.ready")
+    controller.resize(440, 280)
+    qtbot.wait(30)
+    assert controller.btn_now.width() > 300
+    assert controller.btn_engine_details.isVisible()
+    for button in (controller.btn_now, controller.btn_stop, controller.btn_mode_region, controller.btn_theme):
+        assert controller.rect().contains(button.mapTo(controller, button.rect().bottomRight()))
+    render_dir = os.environ.get("CLOUDHIME_DISTILL_RENDER_DIR")
+    if render_dir:
+        out = Path(render_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        assert controller.grab().save(str(out / f"main-{language}-{theme}-ready.png"))
+        controller._set_status_text("worker.status.translation_rate_limited")
+        controller.btn_engine_details.setChecked(True)
+        qtbot.wait(30)
+        assert controller.grab().save(str(out / f"main-{language}-{theme}-details-error.png"))
+        controller.toggle_settings_window()
+        settings = controller.settings_window
+        settings.resize(760, 520)
+        for tab in range(4):
+            settings.settings_tabs.setCurrentIndex(tab)
+            qtbot.wait(30)
+            assert settings.grab().save(str(out / f"settings-{language}-{theme}-{tab}.png"))
+
+
 def test_local_only_warmup_keeps_captions_and_does_not_request_scan(controller, monkeypatch, qtbot):
     controller.worker.use_gemma_translation = True
     controller.worker.gemma_model = "gemma-3-4b-it-local"
@@ -111,6 +184,7 @@ def test_localized_status_keeps_accessible_hints_current(controller):
 @pytest.mark.parametrize("language", ["zh-TW", "en", "ja"])
 @pytest.mark.parametrize("provider", ["google", "local_gemma", "online_gemma", "luna"])
 def test_main_window_explains_current_engine_and_data_destination(controller, language, provider):
+    controller.btn_engine_details.setChecked(True)
     controller.set_ui_language(language, persist=False)
     controller.worker.use_gemma_translation = provider != "google"
     controller.worker.gemma_model = "gemma-3-4b-it-local" if provider == "local_gemma" else "gemma-3-27b-it"
@@ -122,6 +196,8 @@ def test_main_window_explains_current_engine_and_data_destination(controller, la
     controller.update_status("Translation error — retry")
     assert controller._tr(f"controller.engine.{provider}") in controller.lbl_engine_summary.text()
     assert controller.lbl_engine_data.text() == controller._tr(f"controller.engine.data.{provider}")
+    assert controller.lbl_engine_data.isVisible()
+    assert controller.btn_engine_details.accessibleDescription() == controller.lbl_engine_data.text()
     if provider in {"online_gemma", "luna"}:
         assert controller._tr("controller.engine.state.configured") in controller.lbl_engine_summary.text()
     assert "PRIVATE_" not in controller.lbl_engine_summary.text() + controller.lbl_engine_data.text()
@@ -617,6 +693,8 @@ def test_settings_fit_short_desktop_and_keep_portrait_visible(controller, monkey
     qtbot.wait(10)
     assert available.contains(settings.geometry())
     assert settings.princess_portrait.isVisible()
+    assert settings.btn_save.isHidden()
+    settings.settings_tabs.setCurrentIndex(2)
     assert settings.btn_save.isVisible()
     settings.resize(1120, 760)
     qtbot.wait(10)

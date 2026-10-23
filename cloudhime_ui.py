@@ -39,7 +39,7 @@ except ImportError:
 
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect, QApplication, QWidget, QLabel, QVBoxLayout, QMessageBox, QFileDialog,
-                               QPushButton, QFrame, QHBoxLayout, QButtonGroup,
+                               QPushButton, QToolButton, QFrame, QHBoxLayout, QButtonGroup,
                                QSlider, QLineEdit, QCheckBox, QComboBox, QPlainTextEdit,
                                QSpinBox, QSizePolicy, QSplitter, QScrollArea,
                                QGraphicsOpacityEffect, QGridLayout)
@@ -1307,7 +1307,7 @@ class StatusChargeBar(QWidget):
         self.summary_label = MarqueeLabel(parent=self)
         self.summary_label.setAlignment(Qt.AlignCenter)
         summary_layout = QHBoxLayout(self)
-        summary_layout.setContentsMargins(8, 0, 8, 0)
+        summary_layout.setContentsMargins(8, 0, 8, 4)
         summary_layout.addWidget(self.summary_label)
         self.base_bg = QColor("#E8F8FB")
         self.border_color = QColor("#7FC8E8")
@@ -1317,7 +1317,7 @@ class StatusChargeBar(QWidget):
         self.indeterminate_offset = 0
         self._animation_timer = QTimer(self)
         self._animation_timer.timeout.connect(self._update_animation)
-        self.setFixedHeight(18)
+        self.setFixedHeight(28)
         self._refresh_text()
 
     def set_engine_summary(self, text):
@@ -1398,17 +1398,17 @@ class StatusChargeBar(QWidget):
             import math
             pos = (math.sin(self.indeterminate_offset / 100.0 * math.pi * 2) + 1) / 2.0
             x = rect.left() + int((rect.width() - bar_width) * pos)
-            fill_rect = QRect(x, rect.top(), bar_width, rect.height())
+            fill_rect = QRect(x, rect.bottom() - 3, bar_width, 4)
             
             painter.setPen(Qt.NoPen)
             painter.setBrush(self.fill_color)
-            painter.drawRoundedRect(fill_rect, 8, 8)
+            painter.drawRoundedRect(fill_rect, 2, 2)
         else:
-            fill_rect = QRect(rect.left(), rect.top(), int(rect.width() * self.progress / 100), rect.height())
+            fill_rect = QRect(rect.left(), rect.bottom() - 3, int(rect.width() * self.progress / 100), 4)
             if fill_rect.width() > 0:
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(self.fill_color)
-                painter.drawRoundedRect(fill_rect, 8, 8)
+                painter.drawRoundedRect(fill_rect, 2, 2)
 
         painter.end()
 
@@ -2690,7 +2690,6 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_ui_language.setText("🌐")
         self.lbl_ui_language.setToolTip(translation_tools.ui_text(lang, "settings_ui_language"))
         self.lbl_knowledge_work.setText("📖")
-        localize_settings(self, lang)
         self.lbl_knowledge_work.setToolTip(translation_tools.ui_text(lang, "settings_knowledge_placeholder"))
         self.input_knowledge_title.setPlaceholderText(
             translation_tools.ui_text(lang, "settings_knowledge_placeholder")
@@ -2739,6 +2738,7 @@ class SettingsWindowRevamp(QWidget):
         self.update_auto_threshold_refresh_summary()
         self.update_region_render_summary()
         self.update_relief_summary()
+        localize_settings(self, lang)
 
     def on_theme_mode_changed(self, index):
         combo = self.sender()
@@ -3421,7 +3421,7 @@ class Controller(QWidget):
         
         self.setWindowTitle("雲朵翻譯姬")
         self.setMinimumWidth(440)
-        self.resize(440, 320)
+        self.resize(440, 280)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
@@ -3507,9 +3507,11 @@ class Controller(QWidget):
         title_bar.addWidget(self.btn_close)
         inner_layout.addLayout(title_bar)
 
-        self.lbl_engine_data = MarqueeLabel()
+        self.lbl_engine_data = QLabel()
         self.lbl_engine_data.setTextFormat(Qt.PlainText)
+        self.lbl_engine_data.setWordWrap(True)
         self.lbl_engine_data.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.lbl_engine_data.hide()
 
         status_row = QHBoxLayout()
         self.lbl_status = MarqueeLabel("歡迎回來，雲朵已就緒 (*´▽`*)")
@@ -3519,6 +3521,7 @@ class Controller(QWidget):
         self.lbl_status.setAccessibleDescription("顯示目前擷取、翻譯與錯誤狀態")
         self.lbl_status.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.lbl_status.setMinimumHeight(30)
+        self.lbl_status.hide()
         self.charge_bar = StatusChargeBar()
         self.lbl_engine_summary = self.charge_bar.summary_label
         self.charge_bar.setObjectName("translationQuotaCharge")
@@ -3535,7 +3538,17 @@ class Controller(QWidget):
         status_row.addWidget(self.lbl_status)
         title_bar.insertWidget(title_bar.count() - 2, self.btn_theme)
         inner_layout.addLayout(status_row)
-        inner_layout.addWidget(self.charge_bar)
+        engine_row = QHBoxLayout()
+        engine_row.setSpacing(4)
+        engine_row.addWidget(self.charge_bar, 1)
+        self.btn_engine_details = QToolButton()
+        self.btn_engine_details.setCheckable(True)
+        self.btn_engine_details.setArrowType(Qt.RightArrow)
+        self.btn_engine_details.setFixedSize(28, 28)
+        self.btn_engine_details.setCursor(Qt.PointingHandCursor)
+        self.btn_engine_details.toggled.connect(self._toggle_engine_details)
+        engine_row.addWidget(self.btn_engine_details)
+        inner_layout.addLayout(engine_row)
         inner_layout.addWidget(self.lbl_engine_data)
 
         ai_key_row = QHBoxLayout()
@@ -3587,13 +3600,15 @@ class Controller(QWidget):
         self.btn_now = CooldownButton("立即翻譯 (~)")
         self.btn_now.setCursor(Qt.PointingHandCursor)
         self.btn_now.clicked.connect(self.on_immediate_click)
-        self.btn_hotkey = QPushButton("~")
+        self.btn_hotkey = QPushButton("~", self)
         self.btn_hotkey.setFixedSize(36, 44)
         self.btn_hotkey.setCursor(Qt.PointingHandCursor)
         self.btn_hotkey.clicked.connect(self.on_immediate_click)
         self.btn_hotkey.setAccessibleName("翻譯快捷鍵")
         translate_row.addWidget(self.btn_now, 1)
-        translate_row.addWidget(self.btn_hotkey)
+        # Keep the legacy control as an internal compatibility handle. The
+        # primary action and registered global shortcut share one visible entry.
+        self.btn_hotkey.hide()
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
@@ -3852,6 +3867,7 @@ class Controller(QWidget):
             self.btn_hotkey.setToolTip(
                 self._tr("controller.tooltip.hotkey", fallback="Shortcut: {shortcut}", shortcut=label)
             )
+            self.btn_now.setToolTip(self.btn_hotkey.toolTip())
 
     def schedule_save_settings(self):
         if hasattr(self, "save_timer"):
@@ -4037,14 +4053,24 @@ class Controller(QWidget):
             text = self._tr(key, fallback=fallback, **params)
             self._set_status_message(text)
             self._localized_status = (key, fallback, params, text)
+            if key == "controller.status.ready" or key in {
+                "controller.mode.fullscreen", "controller.mode.bubble",
+                "controller.mode.relief", "controller.mode.screenshot",
+            }:
+                self.lbl_status.hide()
 
     def _set_status_message(self, text):
         self._localized_status = None
         self.lbl_status.setText(text)
+        self.lbl_status.setVisible(bool(text))
         for name in ("setToolTip", "setStatusTip"):
             setter = getattr(self.lbl_status, name, None)
             if callable(setter):
                 setter(text)
+
+    def _toggle_engine_details(self, expanded):
+        self.lbl_engine_data.setVisible(expanded)
+        self.btn_engine_details.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
 
     def _refresh_translation_provider_health(self):
         self._refresh_main_engine_summary()
@@ -4187,6 +4213,10 @@ class Controller(QWidget):
             state_text = self._tr("controller.engine.pending", name=self._tr(f"controller.engine.{pending}"))
         self.charge_bar.set_engine_summary(self._tr("controller.engine.summary", name=name, state=state_text))
         self.lbl_engine_data.setText(self._tr(f"controller.engine.data.{provider}"))
+        details = self._tr("controller.engine.details")
+        self.btn_engine_details.setAccessibleName(details)
+        self.btn_engine_details.setToolTip(details)
+        self.btn_engine_details.setAccessibleDescription(self.lbl_engine_data.text())
 
     def show_translation_engine_settings(self):
         if self._open_required_provider_setup():
@@ -4915,7 +4945,10 @@ class Controller(QWidget):
         key = "controller.hint.fullscreen"
         if self.scan_mode == SCAN_MODE_REGION:
             key = "controller.hint.region" if self.selected_region else "controller.hint.region_empty"
-        label.setText(self._tr(key))
+        label.setText(self._tr("controller.hint.select_area"))
+        label.setVisible(self.scan_mode == SCAN_MODE_REGION and not self.selected_region)
+        self.btn_now.setAccessibleDescription(self._tr(key))
+        self.btn_mode_full.setToolTip(self._tr("controller.hint.fullscreen"))
         self.btn_mode_region.setToolTip(self._tr("controller.tooltip.region"))
 
     def on_region_relief_settings_changed(self, offset_x, offset_y, font_pt, opacity):
@@ -5915,6 +5948,11 @@ class Controller(QWidget):
         self.lbl_scan_hint.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
         self.lbl_engine_summary.setStyleSheet(f"color:{self.charge_bar.text_color.name()}; font-size:12px; font-weight:600; background:transparent; border:none;")
         self.lbl_engine_data.setStyleSheet(f"color:{hint_color}; font-size:12px; background:transparent; border:none;")
+        self.btn_engine_details.setStyleSheet(
+            f"QToolButton {{color:{theme.text}; background:transparent; border:1px solid transparent; border-radius:6px;}}"
+            f"QToolButton:hover, QToolButton:checked {{background:{theme.accent_soft};}}"
+            f"QToolButton:focus {{border:2px solid {theme.focus};}}"
+        )
         if self.settings_window is not None:
             self.settings_window.update_theme(theme.key)
             self.settings_window.sync_from_controller()

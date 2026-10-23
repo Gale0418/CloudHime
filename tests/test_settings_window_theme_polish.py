@@ -54,6 +54,8 @@ def test_settings_window_theme_polish(qtbot, monkeypatch):
         assert f"color: {theme.text};" in settings.lbl_page_title.styleSheet()
         subtitle_color = theme.text if mode == "high_contrast" else ("#C5C2D7" if mode == "dark" else "#615B72")
         assert f"color: {subtitle_color};" in settings.lbl_page_subtitle.styleSheet()
+        assert settings.lbl_page_subtitle.isHidden()
+        assert "automatically" in settings.btn_cancel.toolTip().lower() or "自動" in settings.btn_cancel.toolTip()
         export_style = settings.btn_export_history.styleSheet()
         assert export_style == theme.jelly_button_qss()
         assert "QPushButton:focus" in export_style
@@ -168,10 +170,22 @@ def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch
     research_page = settings.settings_pages.widget(2)
     appearance_page = settings.settings_pages.widget(3)
     assert translation_page.isAncestorOf(settings.translation_panel)
+    assert settings.translation_panel.lbl_translate_hint.isHidden()
+    assert settings.settings_tabs.tabToolTip(0) == settings.translation_panel.lbl_translate_hint.text()
+    assert not settings.translation_panel.lbl_data_use.isHidden()
     for control in (settings.card_ocr, settings.card_region_render, settings.card_relief):
         assert capture_page.isAncestorOf(control)
+    for hint in (settings.lbl_ocr_hint, settings.lbl_auto_scan_hint, settings.lbl_relief_hint, settings.lbl_relief_summary):
+        assert hint.isHidden()
+    for control in (settings.spin_random_scan_center, settings.slider_random_scan_jitter,
+                    settings.slider_relief_offset_x, settings.slider_relief_offset_y,
+                    settings.spin_relief_font, settings.slider_relief_opacity):
+        assert control.toolTip()
     for control in (settings.research_heading, settings.cmb_knowledge_model, settings.input_knowledge_sources):
         assert research_page.isAncestorOf(control)
+    assert settings.research_heading.isHidden()
+    assert settings.research_hint.isHidden()
+    assert settings.settings_tabs.tabToolTip(2)
     assert settings.research_title_label.buddy() is settings.input_knowledge_title
     assert settings.research_model_label.buddy() is settings.cmb_knowledge_model
     assert settings.research_source_label.buddy() is settings.input_knowledge_sources
@@ -179,6 +193,9 @@ def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch
     assert settings.research_source_label.text() == "Public source URLs (optional)"
     for control in (settings.appearance_heading, settings.cmb_theme_mode_chip, settings.cmb_ui_language_chip):
         assert appearance_page.isAncestorOf(control)
+    assert settings.appearance_heading.isHidden()
+    assert settings.appearance_hint.isHidden()
+    assert settings.cmb_theme_mode_chip.toolTip()
 
     footer = settings.btn_save.parentWidget()
     assert footer.objectName() == "settingsFooter"
@@ -187,7 +204,7 @@ def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch
     assert settings.btn_save.parentWidget() is footer
     assert settings.btn_reset_defaults.text() == "Reset to Defaults"
     assert settings.btn_cancel.text()
-    assert settings.btn_save.text() == "Save"
+    assert settings.btn_save.text() == "Save work settings"
     assert settings.frame.layout().indexOf(footer) >= 0
     for index in range(settings.settings_tabs.count()):
         settings.settings_tabs.setCurrentIndex(index)
@@ -195,6 +212,7 @@ def test_settings_window_uses_celestial_tabs_and_fixed_footer(qtbot, monkeypatch
         assert settings.settings_pages.currentIndex() == index
         assert settings.settings_pages.currentWidget().isVisible()
         assert footer.isVisible()
+        assert settings.btn_save.isVisible() is (index == 2)
         for page_index in range(settings.settings_pages.count()):
             if page_index != index:
                 assert not settings.settings_pages.widget(page_index).isVisible()
@@ -361,6 +379,53 @@ def test_settings_language_tabs_and_high_contrast_disable_portrait(qtbot, monkey
     assert high_contrast.settings_card_bg == "#202020"
     assert high_contrast.settings_fallback_bg == "#121212"
     assert settings.settings_tabs.isEnabled()
+    controller.close_app()
+
+
+@pytest.mark.parametrize(
+    ("language", "save_label", "auto_save_phrase"),
+    [
+        ("zh-TW", "儲存作品設定", "自動儲存"),
+        ("en", "Save work settings", "automatically"),
+        ("ja", "作品設定を保存", "自動保存"),
+    ],
+)
+def test_save_action_is_research_only_and_localized(
+    qtbot, monkeypatch, language, save_label, auto_save_phrase
+):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    settings.show()
+    controller.set_ui_language(language, persist=False, refresh=True)
+
+    assert settings.settings_tabs.count() == 4
+    assert settings.btn_save.text() == save_label
+    assert auto_save_phrase in settings.btn_cancel.toolTip()
+    assert settings.lbl_page_subtitle.isHidden()
+
+    committed_titles = []
+    saved = []
+    controller.commit_active_work_title = lambda title: committed_titles.append(title)
+    controller.save_settings = lambda: saved.append(True) or True
+    settings.input_knowledge_title.setText("Unsaved title")
+    settings.settings_tabs.setCurrentIndex(0)
+    assert not settings.btn_save.isVisible()
+    assert settings.input_knowledge_title.text() == "Unsaved title"
+    settings.settings_tabs.setCurrentIndex(2)
+    assert settings.btn_save.isVisible()
+    settings.btn_save.click()
+    assert committed_titles == ["Unsaved title"]
+    assert saved == [True]
     controller.close_app()
 
 

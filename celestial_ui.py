@@ -127,6 +127,7 @@ def compose_settings(window, top, theme_chip, language_chip, knowledge_chip,
     window.setMinimumSize(760, 520)
     window.resize(1120, 760)
     window.lbl_page_subtitle.setWordWrap(True)
+    window.lbl_page_subtitle.hide()
     window.lbl_brand_icon.hide()
     footer_layout.insertWidget(0, window.btn_export_history)
     window.btn_reset_defaults.setMinimumWidth(0)
@@ -159,10 +160,14 @@ def compose_settings(window, top, theme_chip, language_chip, knowledge_chip,
     window.lbl_knowledge_status.setWordWrap(True)
     window.research_hint = QLabel()
     window.research_hint.setWordWrap(True)
+    window.research_hint.hide()
     window.research_heading = QLabel()
+    window.research_heading.hide()
     window.appearance_heading = QLabel()
+    window.appearance_heading.hide()
     window.appearance_hint = QLabel()
     window.appearance_hint.setWordWrap(True)
+    window.appearance_hint.hide()
     window.screenshot_prompt_toggle = QToolButton()
     window.screenshot_prompt_toggle.setCheckable(True)
     window.screenshot_prompt_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -190,6 +195,17 @@ def compose_settings(window, top, theme_chip, language_chip, knowledge_chip,
     window.settings_pages.addWidget(_page(window.research_heading, window.research_hint, knowledge_chip, research_options))
     window.settings_pages.addWidget(_page(window.appearance_heading, theme_chip, language_chip, window.appearance_hint))
     window.settings_tabs.currentChanged.connect(window.settings_pages.setCurrentIndex)
+    window.settings_tabs.currentChanged.connect(
+        lambda index: window.btn_save.setVisible(index == 2)
+    )
+    window.btn_save.setVisible(window.settings_tabs.currentIndex() == 2)
+    window.lbl_ocr_hint.hide()
+    window.lbl_auto_scan_hint.hide()
+    window.lbl_relief_hint.hide()
+    window.lbl_relief_summary.hide()
+    window.translation_panel.lbl_translate_hint.hide()
+    window.translation_panel.lbl_translate.hide()
+    window.ocr_backend_panel.lbl_title.hide()
     # An empty legacy row has no useful minimum height.
     for index in range(top.count() - 1, -1, -1):
         item = top.itemAt(index)
@@ -216,6 +232,7 @@ def localize_settings(window, language):
         return
     if language == "ja":
         save_hint = "設定は自動保存されます。作品名は「保存」で有効になりますよ (◍•ᴗ•◍)"
+        save_label = "作品設定を保存"
         labels = ("翻訳", "キャプチャと表示", "作品リサーチ", "外観")
         work_title, research_model = "作品名", "調査モデル"
         sources = "公開ソース URL（任意）"
@@ -225,6 +242,7 @@ def localize_settings(window, language):
         theme_label, language_label = "テーマ", "表示言語"
     elif language == "en":
         save_hint = "Options save automatically. Click Save to apply the work title. (◍•ᴗ•◍)"
+        save_label = "Save work settings"
         labels = ("Translation", "Capture & display", "Work research", "Appearance")
         work_title, research_model = "Work title", "Research model"
         sources = "Public source URLs (optional)"
@@ -234,6 +252,7 @@ def localize_settings(window, language):
         theme_label, language_label = "Theme", "Language"
     else:
         save_hint = "選項即時套用並自動儲存；作品名稱點擊「儲存」後生效喔～ (◍•ᴗ•◍)"
+        save_label = "儲存作品設定"
         labels = ("翻譯引擎", "擷取與顯示", "作品研究", "外觀")
         work_title, research_model = "作品名稱", "研究模型"
         sources = "公開來源網址（選填）"
@@ -244,18 +263,32 @@ def localize_settings(window, language):
     for index, text in enumerate(labels):
         window.settings_tabs.setTabText(index, text)
     window.lbl_page_subtitle.setText(save_hint)
+    window.btn_cancel.setToolTip(save_hint)
+    window.btn_save.setText(save_label)
     window.research_heading.setText(labels[2])
     window.research_title_label.setText(work_title)
     window.research_model_label.setText(research_model)
     window.research_source_label.setText(sources)
     window.screenshot_prompt_toggle.setText(screenshot_prompt)
     window.research_hint.setText(research_hint)
+    window.settings_tabs.setTabToolTip(2, research_hint)
     window.appearance_heading.setText(labels[3])
     window.appearance_hint.setText(appearance_hint)
+    window.cmb_theme_mode_chip.setToolTip(appearance_hint)
     window.lbl_theme_mode.setText(theme_label)
     window.lbl_ui_language.setText(language_label)
     window.lbl_theme_mode.setFixedWidth(80)
     window.lbl_ui_language.setFixedWidth(80)
+    window.settings_tabs.setTabToolTip(0,
+        window.translation_panel.lbl_translate_hint.text()
+    )
+    window.spin_random_scan_center.setToolTip(window.lbl_ocr_hint.text())
+    window.slider_random_scan_jitter.setToolTip(window.lbl_auto_scan_hint.text())
+    relief_hint = window.lbl_relief_hint.text()
+    window.slider_relief_offset_x.setToolTip(relief_hint)
+    window.slider_relief_offset_y.setToolTip(relief_hint)
+    window.spin_relief_font.setToolTip(relief_hint)
+    window.slider_relief_opacity.setToolTip(relief_hint)
 
 
 def style_settings(window, theme, image_path):

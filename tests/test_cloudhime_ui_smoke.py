@@ -88,7 +88,8 @@ def test_controller_main_controls_match_available_actions(qtbot, monkeypatch):
 
     assert not window.btn_close.icon().isNull()
     assert window.btn_hotkey.text() == "~"
-    assert window.btn_hotkey.isVisible()
+    assert window.btn_hotkey.isHidden()
+    assert window.btn_now.toolTip() == window.btn_hotkey.toolTip()
 
     interval_index = window.cmb_scan_interval.findData(30)
     window.cmb_scan_interval.setCurrentIndex(interval_index)
@@ -273,7 +274,7 @@ def test_controller_select_translation_provider_commits_expected_route():
         controller.toggle_ai_translation = Controller.toggle_ai_translation.__get__(
             controller, Controller
         )
-        controller.lbl_status = SimpleNamespace(setText=lambda text: calls.append(("status", text)))
+        controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda text: calls.append(("status", text)))
         controller.btn_ai_mode = SimpleNamespace(
             isChecked=lambda: False,
             blockSignals=lambda _blocked: None,
@@ -449,7 +450,7 @@ def test_local_vision_status_survives_local_indicator_tick_when_multimodal_is_co
     controller.ui_language = "en"
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
-    controller.lbl_status = SimpleNamespace(setText=lambda _text: None)
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda _text: None)
     controller._refresh_translation_provider_health = lambda: None
     controller.worker = SimpleNamespace(
         use_gemma_translation=True,
@@ -496,7 +497,7 @@ def test_local_vision_stopped_status_survives_local_indicator_tick(qtbot, notify
     controller.ui_language = "en"
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
-    controller.lbl_status = SimpleNamespace(setText=lambda _text: None)
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda _text: None)
     controller._refresh_translation_provider_health = lambda: None
     controller.worker = SimpleNamespace(
         use_gemma_translation=True,
@@ -523,7 +524,7 @@ def test_local_text_gemma_indicator_preserves_loading_marquee(qtbot):
     controller.ui_language = "en"
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
-    controller.lbl_status = SimpleNamespace(setText=lambda _text: None)
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda _text: None)
     controller._refresh_translation_provider_health = lambda: None
     controller.worker = SimpleNamespace(
         use_gemma_translation=True,
@@ -546,7 +547,7 @@ def test_local_text_gemma_indicator_preserves_ready_progress(qtbot):
     controller.ui_language = "en"
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
-    controller.lbl_status = SimpleNamespace(setText=lambda _text: None)
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda _text: None)
     controller._refresh_translation_provider_health = lambda: None
     controller.worker = SimpleNamespace(
         use_gemma_translation=True,
@@ -584,7 +585,7 @@ def test_controller_local_model_loading_uses_indeterminate_charge_bar(qtbot):
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
     messages = []
-    controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda text: messages.append(text))
     health_refreshes = []
     controller._refresh_translation_provider_health = lambda: health_refreshes.append(True)
 
@@ -604,7 +605,7 @@ def test_controller_local_vision_states_update_ui(qtbot):
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
     messages = []
-    controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda text: messages.append(text))
     health_refreshes = []
     controller._refresh_translation_provider_health = lambda: health_refreshes.append(True)
 
@@ -652,7 +653,7 @@ def test_missing_vision_runtime_does_not_ask_for_model_files(qtbot, language, la
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
     messages = []
-    controller.lbl_status = SimpleNamespace(setText=messages.append)
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=messages.append)
     controller._refresh_translation_provider_health = lambda: None
     Controller.on_local_vision_status(controller, "missing", "PRIVATE_PATH/runtime/llama-server.exe")
     assert controller.charge_bar.label == label
@@ -672,7 +673,7 @@ def test_controller_local_vision_download_status_is_localized(qtbot):
         controller.charge_bar = StatusChargeBar()
         qtbot.addWidget(controller.charge_bar)
         messages = []
-        controller.lbl_status = SimpleNamespace(setText=lambda text: messages.append(text))
+        controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=lambda text: messages.append(text))
 
         Controller.on_local_vision_status(controller, "progress", "40|downloading")
 
@@ -1173,7 +1174,7 @@ def test_english_ui_localizes_exact_frame_cache_status(qtbot, source_language):
     controller.charge_bar = StatusChargeBar()
     qtbot.addWidget(controller.charge_bar)
     messages = []
-    controller.lbl_status = SimpleNamespace(setText=messages.append)
+    controller.lbl_status = SimpleNamespace(setVisible=lambda visible: None, hide=lambda: None, setText=messages.append)
     controller._refresh_translation_provider_health = lambda: None
     controller.worker = SimpleNamespace(
         use_gemma_translation=True,

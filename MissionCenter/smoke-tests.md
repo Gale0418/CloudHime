@@ -631,3 +631,11 @@
 | 2026-10-20 | CH-T55 | CI與草稿／客服補件對帳 | GitHub API及connector jobs；Chrome概觀／提交選項／安全上傳完成狀態 | 分開來源、候選、稅務與Store認證狀態，不外傳個資 | CI147八必要success／兩手動frozen skipped；0.1.2.0 Validated草稿／認證disabled；去敏感附件上傳成功；未重跑產品、未送稅表或認證 | Pass（對帳範圍；整體Smoke仍NO） | release, reconciliation, privacy |
 
 | 2026-10-23 | CH-T55 | Online Gemma摘要與三模式文字控制 | pytest產品體驗、字幕控制及相關UI／設定／worker／inventory；各記錄JUnit | 即時模型驗證同步摘要，金鑰異動撤銷；三模式字級位移與串流一致 | 297個不同案例通過；6項舊實作重現及1項最小Controller未建選單的失敗均保留。未呼叫live API、未重建或驗收Store套件；T55 Smoke仍NO | Pass | ui, rendering, provider, regression |
+
+
+## 2026-10-23｜CH-T55 候選 UI 精簡回歸
+
+- 範圍：product_experience、settings_window_theme_polish、cloudhime_ui_smoke、render_text_controls、shutdown_lifecycle、marquee_label 六檔，QT_QPA_PLATFORM=offscreen；pytest -q -p no:cacheprovider。
+- 結果：最終整合 250 passed／1 過期提示斷言，更新斷言後設定全檔 20 passed；合併為 251 不同案例全有 passing evidence。實際 XML 在 output/ui-distill-20261023/final.xml、settings-final.xml。
+- EXE：新的隔離建置 import、真實 Windows OCR 1 圖／2 行、20 秒啟動均 passed；內附模型 full preflight 見 full-preflight.json。CPU Vision 不重跑，本輪不引用前一 EXE 當本次通過。
+- 原生桌面操作工具不可用；三語／三主題 Qt render 是自主版面證據，不等同遊戲／多 DPI／Store 驗收。此紀錄不觸發任務狀態遷移。
