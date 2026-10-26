@@ -692,3 +692,5 @@
 - 10/27跨日補驗：根搬移審查於UTC15:41在前額度視窗外執行，20邏輯路徑／CLI19檔，1 Major要求驗證ci.corpus_paths封裝。新EXE實際11個PYZ模組與來源一致、封裝policy ready；不需要hiddenimport或搬模組。前三次UTC12:23／12:26／12:46，任一滾動小時皆未超三次。
 - 最終路徑回歸109pass／1symlink權限skip；根launcher／封裝41pass／1真實模型opt-in skip。與歷史XML以最新case去重1007pass／0fail／4skip（三項symlink權限、一項opt-in），final-test-summary.json保留實際清單。
 - 最終預覽0ce088c0…68b7b8已原位替換app/dist/CloudHime；import／OCR1圖2行／20秒啟動通過，替換後import與20秒啟動再通過，所屬PID已回收。verify_release_dist.ps1實際ready，1563files／4831974416bytes／2模型固定hash通過；不是CPU Vision／線上API／clean Windows／Store認證。證據app/output/git-layout-20261026/，前84d4版已保留rollback。
+
+- 10/27 main對帳：來源提交e979da9c371d60adeac70d13b8721690bb571bc6已push origin/main；CI40355230310整體success，test-inventory／msix-contract／dependency-contract與core／runtime／benchmarks／ocr／ui五組全部success（八必要工作）。兩個手動frozen工作skipped，不算實跑。URL：https://github.com/Gale0418/CloudHime/actions/runs/40355230310。提交無example／模型／私密設定／生成封裝；原位EXE與來源Git分別保存。

@@ -1255,4 +1255,4 @@
 - 使用者再次明確授權存 Git／CodeRabbit／推 main，本輪將先前未提交的兩張背景與備用 Logo 保存；背景與已驗證 EXE 的位元組相同，備用 Logo 只留設計來源、不啟用。模型、封裝與私人圖片不送審、不提交。
 - 第一份150檔投影被CodeRabbit計151而拒絕；遵其 --dir app 建議後實際149檔完成，5 Major／9 Minor。13項查證修正，Gemma載入參數缺驗證是誤報（先normalize）；25檔修補複核再提1項測試HTTP body讀取，已修並再驗。跨過原額度視窗再做根搬移審查，20邏輯路徑／19檔，1 Major要求驗證ci.corpus_paths收錄；實際PYZ與封裝政策通過，無漏包，未另外改模組架構。全程未超過滾動小時三次；沒有冒稱複核零issues。
 - 依後續指示將實體example與run.bat搬回根；私人example113檔114185076 bytes完整保留，根／舊app路徑都明確忽略，索引必須為零檔。根啟動器維持來源版路徑、優先app/.venv，CI cwd仍app，封存benchmark JSON/hash不改。
-- 已查證缺陷的修補與本機驗證不代表Store認證／最終MSIX完成。CH-T55保持Review；細節見docs/reviews/2026-10-26-git-closeout.md與smoke-tests。Git推送／CI對帳後再補回執。
+- 已查證缺陷的修補與本機驗證不代表Store認證／最終MSIX完成。CH-T55保持Review；細節見docs/reviews/2026-10-26-git-closeout.md與smoke-tests。來源提交e979da9已推main，CI40355230310八必要成功／兩手動frozen跳過；docs-only回執後續提交，不混稱為另一輪程式CI。

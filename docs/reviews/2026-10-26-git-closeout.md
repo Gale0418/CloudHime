@@ -46,4 +46,4 @@
 
 ## 收尾狀態
 
-README／Mission Center 已更新本機結果，main 推送與本次 CI 結果待補。MSIX／Store 草稿及 CH-T55 Review 不變；不以來源同步當成商店發行完成。下一次保留固定 manifest 位元組並使用共用路徑解析，不再讓整理目錄與測試圖片位置互相綁住。
+來源修補與根入口已提交並推送 main：[e979da9](https://github.com/Gale0418/CloudHime/commit/e979da9c371d60adeac70d13b8721690bb571bc6)；[本次 CI](https://github.com/Gale0418/CloudHime/actions/runs/40355230310) 八個必要工作全部成功，兩個僅手動執行的 frozen 工作依條件跳過。README／Mission Center 已同步本機與 CI 結果，私人 example 在提交中為零檔。MSIX／Store 草稿及 CH-T55 Review 不變；不以來源同步當成商店發行完成。下一次保留固定 manifest 位元組並使用共用路徑解析，不再讓整理目錄與測試圖片位置互相綁住。
