@@ -292,7 +292,7 @@ def test_spec_filters_unrelated_root_icu_binaries_from_frozen_bundle():
 def test_source_bootstrap_does_not_require_external_model_service():
     root = Path(__file__).resolve().parents[1]
     install_script = (root / "install.ps1").read_text(encoding="utf-8")
-    run_script = (root / "run.bat").read_text(encoding="utf-8")
+    run_script = (root.parent / "run.bat").read_text(encoding="utf-8")
 
     assert "Miniconda" not in install_script
     assert "Ollama" in install_script

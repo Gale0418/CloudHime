@@ -3,8 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
+from ci.corpus_paths import resolve_corpus_path
+import temporal_holdout_benchmark as temporal
 from temporal_holdout_benchmark import (
     SEQUENCE_TRANSFORMS,
     load_manifest,
@@ -15,6 +19,22 @@ from temporal_holdout_benchmark import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_temporal_source_resolves_repository_example_from_app_root(monkeypatch, tmp_path):
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    image_path = tmp_path / "example" / "sample.png"
+    image_path.parent.mkdir()
+    assert cv2.imwrite(str(image_path), np.zeros((12, 20, 3), dtype=np.uint8))
+    monkeypatch.setattr(temporal, "PROJECT_ROOT", app_root)
+
+    image = temporal._load_source({
+        "category": "owner_confirmed_example",
+        "source": "example/sample.png",
+    })
+
+    assert image.shape == (12, 20, 3)
 
 
 def test_manifest_contains_only_source_identity_category_and_transforms():
@@ -33,7 +53,9 @@ def test_manifest_contains_only_source_identity_category_and_transforms():
 
 
 def test_unicode_safe_loader_reads_owner_confirmed_path():
-    image = read_image_unicode_safe(ROOT / "example" / "\u8ee2\u751f\u91cd\u9a0e\u58eb" / "001.jpg")
+    image = read_image_unicode_safe(
+        resolve_corpus_path(ROOT, "example/\u8ee2\u751f\u91cd\u9a0e\u58eb/001.jpg")
+    )
 
     assert image.ndim == 3
     assert image.shape[2] == 3

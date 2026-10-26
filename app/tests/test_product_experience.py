@@ -806,18 +806,26 @@ def test_native_close_stops_threads_and_overlay(controller, qtbot):
     assert not controller.overlay.isVisible()
 
 
-def test_native_close_is_rejected_when_secret_save_fails(controller, monkeypatch, qtbot):
-    original_status = controller.lbl_status.text()
-    monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: False)
+@pytest.mark.parametrize(
+    "failed_saver", ["_persist_pending_api_key", "_persist_pending_openai_api_key"]
+)
+def test_native_close_asks_before_exiting_when_secret_save_fails(
+    controller, monkeypatch, qtbot, failed_saver
+):
+    monkeypatch.setattr(controller, failed_saver, lambda: False)
+    prompt = Mock(return_value=QMessageBox.No)
+    monkeypatch.setattr(QMessageBox, "question", prompt)
     controller.close()
+    prompt.assert_called_once()
     assert controller.isVisible()
     assert not controller._close_app_started
     assert controller.ocr_thread.isRunning()
-    assert controller.lbl_status.text() == original_status
     assert controller.btn_now.isEnabled()
     assert controller.btn_hotkey.isEnabled()
     assert controller.btn_30.isEnabled()
-    monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: True)
+    assert not getattr(controller, "_close_app_finished", False)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Yes)
+    monkeypatch.setattr(controller, failed_saver, lambda: True)
     controller.close_app()
     # Async shutdown follows the rejected-close assertions so qtbot can drain
     # all owned Qt objects before its widget teardown.
@@ -897,17 +905,45 @@ def test_native_close_can_discard_settings_after_save_failure(controller, monkey
     assert not controller.ocr_thread.isRunning()
 
 
-def test_discard_choice_never_bypasses_secret_save_failure(controller, monkeypatch, qtbot):
-    monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: False)
+@pytest.mark.parametrize(
+    "failed_saver", ["_persist_pending_api_key", "_persist_pending_openai_api_key"]
+)
+def test_secret_save_failure_can_be_confirmed_before_exit(
+    controller, monkeypatch, qtbot, failed_saver
+):
+    monkeypatch.setattr(controller, failed_saver, lambda: False)
     prompt = Mock(return_value=QMessageBox.Yes)
     monkeypatch.setattr(QMessageBox, "question", prompt)
     controller.close()
-    prompt.assert_not_called()
-    assert controller.isVisible()
-    assert controller.ocr_thread.isRunning()
-    monkeypatch.setattr(controller, "_persist_pending_api_key", lambda: True)
-    controller.close_app()
+    prompt.assert_called_once()
     qtbot.waitUntil(lambda: getattr(controller, "_close_app_finished", False))
+    assert not controller.isVisible()
+    assert not controller.ocr_thread.isRunning()
+
+
+@pytest.mark.parametrize(
+    ("raw_temperature", "raw_repeat", "expected_temperature", "expected_repeat"),
+    [
+        ("oops", None, 0.2, 1.15),
+        (float("nan"), float("inf"), 0.2, 1.15),
+        (-1, 0.5, 0.0, 1.0),
+        (2, 3, 1.0, 2.0),
+    ],
+)
+def test_load_settings_sanitizes_local_gemma_values_for_controller_and_worker(
+    controller, monkeypatch, raw_temperature, raw_repeat, expected_temperature, expected_repeat
+):
+    raw = {
+        "local_gemma_temperature": raw_temperature,
+        "local_gemma_repeat_penalty": raw_repeat,
+    }
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: (raw, None))
+    controller.load_settings()
+
+    assert controller.local_gemma_temperature == expected_temperature
+    assert controller.local_gemma_repeat_penalty == expected_repeat
+    assert controller.worker.local_gemma_temperature == expected_temperature
+    assert controller.worker.local_gemma_repeat_penalty == expected_repeat
 
 
 @pytest.mark.parametrize("mode", ["region", "fullscreen"])

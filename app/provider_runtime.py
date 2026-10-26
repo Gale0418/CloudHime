@@ -337,6 +337,9 @@ class RuntimeCredentialPool:
                 raise CredentialUnavailable("no matching runtime credential")
             while True:
                 self._check_cancel(cancel_event)
+                matches = self._matching(provider, model, project_id, key_id)
+                if not matches:
+                    raise CredentialUnavailable("no matching runtime credential")
                 now = self._clock()
                 self._prune_scopes(now)
                 candidate = self._select(matches, now)
@@ -378,6 +381,9 @@ class RuntimeCredentialPool:
                 raise CredentialUnavailable("no matching runtime credential")
             while True:
                 self._check_cancel(cancel_event)
+                matches = self._matching(provider, model, project_id, key_id)
+                if not matches:
+                    raise CredentialUnavailable("no matching runtime credential")
                 now = self._clock()
                 self._prune_scopes(now)
                 if self._select(matches, now) is not None:

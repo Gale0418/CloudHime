@@ -1,20 +1,24 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "APP_DIR=%~dp0app"
+cd /d "%APP_DIR%"
+if errorlevel 1 exit /b 1
 
-set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
+set "PYTHON_EXE=%APP_DIR%\.venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" (
     where python >nul 2>&1
     if errorlevel 1 (
-        echo [ERROR] Python not found. Run install.ps1 first.
+        echo [ERROR] Python not found. Run app\install.ps1 first.
         pause
         exit /b 1
     )
     set "PYTHON_EXE=python"
 )
 
-echo Starting CloudHime with %PYTHON_EXE%...
-"%PYTHON_EXE%" "%~dp0CloudHime.py"
+echo Starting CloudHime...
+"%PYTHON_EXE%" "%APP_DIR%\CloudHime.py"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (

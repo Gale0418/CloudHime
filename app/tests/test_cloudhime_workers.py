@@ -1,5 +1,6 @@
 import threading
 import json
+from io import BytesIO
 from collections import OrderedDict
 from concurrent.futures import Future
 from types import SimpleNamespace
@@ -566,6 +567,55 @@ def test_local_gemma_model_id_selects_local_runtime():
     worker.active_gemma_model = worker.gemma_model
 
     assert OCRWorker._is_local_model_active(worker) is True
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "rate_allowed"),
+    [
+        ("local_multimodal", "gemma-3-27b-it", True),
+        ("google", "gemma-3-27b-it", True),
+        ("gemma", "gemma-3-4b-it-local", True),
+        ("gemma", "not-a-remote-gemma-model", True),
+        ("gemma", "gemma-3-27b-it", False),
+    ],
+)
+def test_threshold_judge_only_calls_rate_limited_remote_gemma(
+    monkeypatch, provider, model, rate_allowed
+):
+    worker = OCRWorker.__new__(OCRWorker)
+    worker.google_api_key = "test-key"
+    worker.gemma_model = model
+    worker.get_current_ai_provider = lambda: provider
+    worker._has_google_api_credentials = lambda: True
+    worker.summarize_threshold_candidate = lambda items: "recognized text"
+    worker.get_cached_translation = lambda _key: None
+    worker.build_threshold_judge_prompt = lambda _items: "judge"
+    worker.can_call_gemma = lambda _model: rate_allowed
+    worker.extract_gemma_text = lambda _payload: '{"best_threshold":110}'
+    worker.remember_translation = lambda *_args: None
+    calls = []
+    worker.record_gemma_call = lambda model_name: calls.append(("record", model_name))
+    monkeypatch.setattr(
+        workers_module.request,
+        "urlopen",
+        lambda *_args, **_kwargs: calls.append(("request", model))
+        or BytesIO(b"{}"),
+    )
+
+    result = OCRWorker.choose_threshold_with_llm(
+        worker,
+        [
+            {"threshold": 100, "score": 1, "items": ["a"]},
+            {"threshold": 110, "score": 2, "items": ["b"]},
+        ],
+    )
+
+    if provider == "gemma" and model == "gemma-3-27b-it" and rate_allowed:
+        assert result == 110
+        assert calls == [("record", model), ("request", model)]
+    else:
+        assert result is None
+        assert calls == []
 
 
 def test_translate_text_preferred_uses_local_ai_without_google_api_key():

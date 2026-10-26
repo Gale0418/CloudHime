@@ -99,7 +99,7 @@ def test_completed_and_legacy_compact_success_remain_supported(provider_module, 
 ])
 def test_http_response_requires_explicit_completed_status(provider_module, monkeypatch, payload, accepted):
     provider = provider_module.OpenAITranslationProvider(api_key="test")
-    monkeypatch.setattr(provider_module.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+    monkeypatch.setattr(provider_module, "_open_responses_request", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
     if accepted:
         assert provider._complete("prompt") == "finished"
     else:
@@ -116,7 +116,7 @@ def test_cancellation_during_decode_wins_over_incomplete_status(provider_module,
         cancelled = True
         return {"output_text": "partial"}
 
-    monkeypatch.setattr(provider_module.request, "urlopen", lambda *a, **k: io.BytesIO(b"{}"))
+    monkeypatch.setattr(provider_module, "_open_responses_request", lambda *a, **k: io.BytesIO(b"{}"))
     monkeypatch.setattr(provider_module, "load_strict_json", decode)
     with pytest.raises(provider_module.OpenAIRequestCancelled):
         provider._complete("prompt", cancel_predicate=lambda: cancelled)
@@ -188,7 +188,7 @@ def test_http_error_stream_is_closed_and_message_not_exposed(provider_module, mo
     error = provider_module.error.HTTPError("https://example.invalid", 401, "private", {}, stream)
     def request(*a, **k):
         raise error
-    monkeypatch.setattr(provider_module.request, "urlopen", request)
+    monkeypatch.setattr(provider_module, "_open_responses_request", request)
     with pytest.raises(ValueError, match="^openai_http_401$"):
         provider._request({})
     assert stream.closed

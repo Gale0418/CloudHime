@@ -51,6 +51,25 @@ def test_anchor_matching_normalizes_unicode_and_whitespace(tmp_path):
     assert record["anchor_recall"] == 1.0
 
 
+def test_resolve_image_uses_repository_example_for_app_manifest(monkeypatch, tmp_path):
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    image_path = tmp_path / "example" / "cover.jpg"
+    image_path.parent.mkdir()
+    image_path.write_bytes(b"fixture")
+    monkeypatch.setattr(evaluator, "PROJECT_ROOT", app_root)
+    manifest_path = app_root / "benchmarks" / "suite.json"
+
+    assert evaluator._resolve_image(manifest_path, "example/cover.jpg") == image_path.resolve()
+
+
+def test_resolve_image_keeps_absolute_path_contract(tmp_path):
+    image_path = tmp_path / "absolute-cover.jpg"
+    image_path.write_bytes(b"fixture")
+
+    assert evaluator._resolve_image(tmp_path / "suite.json", str(image_path)) == image_path.resolve()
+
+
 def test_load_suite_rejects_duplicate_normalized_anchors(tmp_path):
     (tmp_path / "a.png").write_bytes(b"a")
     manifest = tmp_path / "manifest.json"

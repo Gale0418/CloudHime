@@ -44,14 +44,23 @@ function Invoke-PytestFiles {
     try {
         $pytestArgs = @("-m", "pytest", "-q", "--basetemp", $baseTemp) + $Files
         if ($IsolateUi) {
-            $isolatedPytestArgs = @("-m", "pytest", "-q", "--basetemp", ('"{0}"' -f $baseTemp)) + $Files
+            $isolatedPytestArgs = @("-m", "pytest", "-q", "--basetemp", ('"{0}"' -f $baseTemp)) + @($Files | ForEach-Object { '"{0}"' -f $_ })
             $process = Start-Process -FilePath "python" -ArgumentList $isolatedPytestArgs -PassThru -NoNewWindow
-            $completed = $process.WaitForExit($TimeoutSeconds * 1000)
-            if (-not $completed) {
-                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-                throw "UI test file timed out after $TimeoutSeconds seconds: $($Files -join ', ')"
+            try {
+                # Open and retain the handle before a short-lived child exits.
+                $null = $process.Handle
+                $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+                if (-not $completed) {
+                    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                    $process.WaitForExit(5000) | Out-Null
+                    throw "UI test file timed out after $TimeoutSeconds seconds: $($Files -join ', ')"
+                }
+                $pytestExitCode = $process.ExitCode
+                if ($null -eq $pytestExitCode) { throw "Isolated pytest process did not report an exit code." }
+                return [int]$pytestExitCode
+            } finally {
+                $process.Dispose()
             }
-            return $process.ExitCode
         }
 
         & python @pytestArgs 2>&1 | Out-Host

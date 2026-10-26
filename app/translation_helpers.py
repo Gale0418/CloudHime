@@ -71,9 +71,9 @@ def _target_language_lock(target_lang: Any) -> str:
 def target_lang_system_prompt(target_lang: Any) -> str:
     target = target_lang_instruction(target_lang)
     return (
-        "You are a game and manga translation assistant."
-        f"Translate the input into {target}."
-        "Preserve the original line breaks and sentence order."
+        "You are a game and manga translation assistant. "
+        f"Translate the input into {target}. "
+        "Preserve the original line breaks and sentence order. "
         "Do not add explanations, notes, bullets, romanization, or the original text."
     )
 
@@ -1193,10 +1193,19 @@ def normalize_saved_translation_prompt(value: Any, *, screenshot: bool = False) 
         }
     else:
         traditional_chinese_default = target_lang_system_prompt("zh-TW")
+        # Keep the exact older bytes recognizable after adding sentence spaces.
+        legacy_traditional_chinese_default = (
+            "You are a game and manga translation assistant."
+            "Translate the input into natural Traditional Chinese used in Taiwan."
+            "Preserve the original line breaks and sentence order."
+            "Do not add explanations, notes, bullets, romanization, or the original text."
+        )
         legacy_defaults = {
             DEFAULT_SYSTEM_PROMPT,
             traditional_chinese_default,
             traditional_chinese_default + _target_language_lock("zh-TW"),
+            legacy_traditional_chinese_default,
+            legacy_traditional_chinese_default + _target_language_lock("zh-TW"),
         }
     return "" if prompt in legacy_defaults else prompt
 

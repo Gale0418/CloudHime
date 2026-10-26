@@ -218,6 +218,62 @@ def test_run_smoke_marks_path_only_cases_as_coverage_not_accuracy(monkeypatch, t
     assert result["results"][0]["match_score"] is None
 
 
+@pytest.mark.parametrize("explicit_image_root", [False, True])
+def test_run_smoke_default_image_root_resolves_repository_example(
+    monkeypatch, tmp_path, explicit_image_root
+):
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    selected_image_root = tmp_path / "selected-root"
+    image_base = selected_image_root if explicit_image_root else tmp_path
+    image_path = image_base / "example" / "sample.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"fixture")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"cases": [{"sample_source": "example/sample.png", "category": "coverage_only"}]}),
+        encoding="utf-8",
+    )
+    captured = []
+
+    class FakeVisionRuntime:
+        def __init__(self, *args, **kwargs):
+            self.state = SimpleNamespace(name="ready", detail="", mode="cpu", base_url="http://vision")
+
+        def start(self):
+            return self.state
+
+        def stop(self):
+            pass
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            pass
+
+        def transcribe_screenshot(self, parts, **kwargs):
+            return SimpleNamespace(text="recognized")
+
+    monkeypatch.setattr(benchmark, "PROJECT_ROOT", app_root)
+    monkeypatch.setattr(benchmark, "LocalVisionRuntime", FakeVisionRuntime)
+    monkeypatch.setattr(benchmark, "LocalMultimodalProvider", FakeProvider)
+    monkeypatch.setattr(benchmark, "build_windows_ocr_hint", lambda *_args: "")
+    monkeypatch.setattr(
+        benchmark,
+        "image_parts",
+        lambda path, **_kwargs: captured.append(Path(path).resolve()) or [],
+    )
+
+    result = benchmark.run_smoke(
+        manifest_path,
+        max_cases=1,
+        assets=SimpleNamespace(),
+        image_root=selected_image_root if explicit_image_root else None,
+    )
+
+    assert captured == [image_path.resolve()]
+    assert result["successful_images"] == 1
+
+
 def test_run_smoke_passes_runtime_api_key_to_provider(monkeypatch, tmp_path) -> None:
     image_path = tmp_path / "sample.png"
     assert cv2.imwrite(str(image_path), np.zeros((95, 617, 3), dtype=np.uint8))

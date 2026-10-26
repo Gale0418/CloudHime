@@ -1326,7 +1326,9 @@ class TranslationSettingsPanel(QWidget):
         self._refresh_luna_connection_text()
 
     def hideEvent(self, event):
+        self.input_api_key.setEchoMode(QLineEdit.Password)
         self.input_luna_api_key.setEchoMode(QLineEdit.Password)
+        self._set_visibility_button_text()
         self._refresh_luna_connection_text()
         super().hideEvent(event)
 
@@ -2367,10 +2369,6 @@ class TranslationSettingsPanel(QWidget):
         self.lbl_luna_timeout.setStyleSheet(field_label_style)
         self.chk_online_gemma_enabled.setStyleSheet(f"QCheckBox {{ color: {theme.subtext}; background: transparent; border: none; font-size: 12px; font-weight: 700; }}")
         self.chk_luna_enabled.setStyleSheet(f"QCheckBox {{ color: {theme.subtext}; background: transparent; border: none; font-size: 12px; font-weight: 700; }}")
-        self.input_api_key.setStyleSheet(
-            f"QLineEdit {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; border-radius: 6px; padding: 7px; font-size: 13px; }}"
-            f" QLineEdit:focus {{ border: 2px solid {theme.accent}; }}"
-        )
         self.btn_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.btn_refresh_model_availability.setStyleSheet(theme.jelly_button_qss(radius=8))
         self.btn_luna_api_key_visible.setStyleSheet(theme.jelly_button_qss(radius=8))

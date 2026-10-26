@@ -1,6 +1,6 @@
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import QScrollArea, QStackedWidget, QTabBar
+from PySide6.QtWidgets import QLineEdit, QScrollArea, QStackedWidget, QTabBar
 
 from CloudHime import Controller, OverlayWindow
 import pytest
@@ -469,6 +469,38 @@ def test_settings_translation_entry_uses_one_gemma_key_and_fixed_luna_thinking(q
     reasoning_label = panel.lbl_luna_reasoning.text().lower()
     assert "fixed off" in reasoning_label or "固定關閉" in panel.lbl_luna_reasoning.text()
     assert provider_config["luna"]["reasoning_effort"] == "none"
+    controller.close_app()
+
+
+def test_translation_secret_fields_rehide_and_google_theme_states_survive(qtbot, monkeypatch):
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.register_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.GlobalHotKeyFilter.unregister_hotkey", lambda self, hwnd: None, raising=False)
+    monkeypatch.setattr("cloudhime_ui.load_settings_data", lambda paths: ({}, None), raising=False)
+    monkeypatch.setattr(Controller, "save_settings", lambda self: True, raising=False)
+    monkeypatch.setattr("PySide6.QtWidgets.QApplication.quit", lambda *args, **kwargs: None, raising=False)
+
+    overlay = OverlayWindow()
+    qtbot.addWidget(overlay)
+    controller = Controller(overlay)
+    qtbot.addWidget(controller)
+    controller.toggle_settings_window()
+    settings = controller.settings_window
+    panel = settings.translation_panel
+    secret = "test-only-google-key"
+    panel.input_api_key.setText(secret)
+    panel.toggle_api_key_visible()
+    assert panel.input_api_key.echoMode() == QLineEdit.Normal
+    panel.hide()
+    assert panel.input_api_key.echoMode() == QLineEdit.Password
+    assert panel.btn_api_key_visible.text().lower().startswith("show")
+    panel.show()
+
+    for mode in ("dark", "light", "high_contrast"):
+        panel.update_theme(mode)
+        style = panel.input_api_key.styleSheet()
+        assert "QLineEdit:hover" in style
+        assert "QLineEdit:focus" in style
+        assert "QLineEdit:disabled" in style
     controller.close_app()
 
 

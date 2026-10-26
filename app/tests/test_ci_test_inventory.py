@@ -182,3 +182,73 @@ def test_windows_pytest_runner_preserves_space_in_runner_temp(tmp_path):
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_windows_isolated_runner_quotes_test_paths_and_preserves_exit_code(tmp_path, fails):
+    if os.name != "nt":
+        pytest.skip("Windows runner contract")
+    pwsh = shutil.which("pwsh") or shutil.which("powershell")
+    if not pwsh:
+        pytest.skip("PowerShell is required")
+    import sys
+    test_file = tmp_path / "probe with spaces.py"
+    test_file.write_text(f"def test_probe():\n    assert {not fails!r}\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
+    completed = subprocess.run(
+        [pwsh, "-NoLogo", "-NoProfile", "-File", str(ROOT / "ci/run_pytest.ps1"),
+         "-TestFiles", str(test_file), "-IsolateUi"],
+        cwd=tmp_path, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=40,
+    )
+    assert completed.returncode == (1 if fails else 0), completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize("use_venv", [False, True])
+def test_root_launcher_finds_app_from_another_working_directory(tmp_path, use_venv):
+    if os.name != "nt":
+        pytest.skip("Windows launcher")
+    import sys
+    repo = tmp_path / "launcher with spaces"
+    app = repo / "app"
+    app.mkdir(parents=True)
+    launcher = repo / "run.bat"
+    launcher.write_bytes((REPOSITORY_ROOT / "run.bat").read_bytes())
+    receipt = tmp_path / "launch.json"
+    (app / "CloudHime.py").write_text(
+        "import json,os,sys\nfrom pathlib import Path\n"
+        "Path(os.environ['CLOUDHIME_LAUNCH_PROBE']).write_text(json.dumps({'cwd':os.getcwd(),'executable':sys.executable}),encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    base_python = Path(sys._base_executable)
+    if use_venv:
+        scripts = app / ".venv/Scripts"
+        scripts.mkdir(parents=True)
+        shutil.copy2(base_python, scripts / "python.exe")
+    env = os.environ.copy()
+    env["CLOUDHIME_LAUNCH_PROBE"] = str(receipt)
+    env["PYTHONHOME"] = sys.base_prefix
+    env.pop("PYTHONPATH", None)
+    env["PATH"] = str(base_python.parent) + os.pathsep + str(Path(env["SYSTEMROOT"]) / "System32")
+    completed = subprocess.run(
+        [str(Path(env["SYSTEMROOT"]) / "System32/cmd.exe"), "/d", "/c", str(launcher)],
+        cwd=tmp_path, env=env, input="\n", capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=20,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    data = json.loads(receipt.read_text(encoding="utf-8"))
+    assert Path(data["cwd"]) == app
+    assert (".venv" in Path(data["executable"]).parts) is use_venv
+
+
+def test_root_example_stays_untracked_and_ignored():
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "--", "example", "app/example"], cwd=REPOSITORY_ROOT, text=True,
+    )
+    assert tracked == ""
+    for path in ("example/private-probe.png", "app/example/private-probe.png"):
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-q", path], cwd=REPOSITORY_ROOT, timeout=10,
+        )
+        assert result.returncode == 0

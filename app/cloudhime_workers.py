@@ -4839,7 +4839,13 @@ class OCRWorker(QObject):
         )
 
     def choose_threshold_with_llm(self, candidates):
-        if not self._has_google_api_credentials():
+        if (
+            not self._has_google_api_credentials()
+            or self.get_current_ai_provider() != "gemma"
+        ):
+            return None
+        model_name = str(getattr(self, "gemma_model", "") or "").strip()
+        if model_name not in SUPPORTED_REMOTE_MODEL_NAMES:
             return None
         shortlist = []
         for candidate in candidates:
@@ -4856,7 +4862,7 @@ class OCRWorker(QObject):
 
         cache_key = (
             "threshold-judge",
-            self.gemma_model,
+            model_name,
             tuple((item["threshold"], item["score"], item["preview"]) for item in shortlist),
         )
         cached = self.get_cached_translation(cache_key)
@@ -4879,7 +4885,7 @@ class OCRWorker(QObject):
             }
         }
         req = request.Request(
-            GOOGLE_API_ENDPOINT.format(model=self.gemma_model),
+            GOOGLE_API_ENDPOINT.format(model=model_name),
             data=json.dumps(req_body).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
@@ -4887,6 +4893,9 @@ class OCRWorker(QObject):
             },
             method="POST",
         )
+        if not self.can_call_gemma(model_name):
+            return None
+        self.record_gemma_call(model_name)
         with request.urlopen(req, timeout=12) as response:
             payload = json.loads(response.read().decode("utf-8"))
 

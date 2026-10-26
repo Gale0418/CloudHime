@@ -1,6 +1,8 @@
 import io
 import json
 import socket
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from urllib import error
 
@@ -39,7 +41,7 @@ def install_response(monkeypatch, body, captured=None):
             captured["timeout"] = timeout
         return FakeResponse(body)
 
-    monkeypatch.setattr(provider_module.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(provider_module, "_open_responses_request", fake_urlopen)
 
 
 def test_provider_defaults_are_redacted_and_available():
@@ -180,7 +182,7 @@ def test_empty_custom_prompts_keep_default_translation_prompt(monkeypatch):
         prompts.append(payload["input"][0]["content"][0]["text"])
         return FakeResponse(b'{"status":"completed","output_text":"ok"}')
 
-    monkeypatch.setattr(provider_module.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(provider_module, "_open_responses_request", fake_urlopen)
     OpenAITranslationProvider(openai_api_key="secret").translate("hello")
     OpenAITranslationProvider(
         openai_api_key="secret", translation_prompt="", screenshot_prompt=""
@@ -316,7 +318,7 @@ def test_network_failures_are_bounded_and_not_retried(monkeypatch, exc, token):
         calls.append(True)
         raise exc
 
-    monkeypatch.setattr(provider_module.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(provider_module, "_open_responses_request", fake_urlopen)
     provider = OpenAITranslationProvider(openai_api_key="secret")
 
     with pytest.raises(ValueError, match=token) as raised:
@@ -333,7 +335,7 @@ def test_response_body_limit_and_cancellation_are_fail_closed(monkeypatch):
 
     provider = OpenAITranslationProvider(openai_api_key="secret")
     calls = []
-    monkeypatch.setattr(provider_module.request, "urlopen", lambda *_args, **_kwargs: calls.append(True))
+    monkeypatch.setattr(provider_module, "_open_responses_request", lambda *_args, **_kwargs: calls.append(True))
     with pytest.raises(OpenAIRequestCancelled):
         provider.translate("hello", cancel_predicate=lambda: True)
     assert calls == []
@@ -344,9 +346,63 @@ def test_response_body_limit_and_cancellation_are_fail_closed(monkeypatch):
         cancelled["value"] = True
         return FakeResponse(b'{"status":"completed","output_text":"result"}')
 
-    monkeypatch.setattr(provider_module.request, "urlopen", response_then_cancel)
+    monkeypatch.setattr(provider_module, "_open_responses_request", response_then_cancel)
     with pytest.raises(OpenAIRequestCancelled):
         provider.translate("hello", cancel_predicate=lambda: cancelled["value"])
+
+
+def test_responses_request_does_not_follow_redirects_with_authorization(monkeypatch):
+    target_requests = []
+
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{target.server_port}/target")
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    class TargetHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            target_requests.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+
+        def do_GET(self):
+            target_requests.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
+    redirect = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    threads = [
+        threading.Thread(target=server.serve_forever, daemon=True)
+        for server in (target, redirect)
+    ]
+    for thread in threads:
+        thread.start()
+    monkeypatch.setattr(
+        provider_module, "OPENAI_RESPONSES_ENDPOINT",
+        f"http://127.0.0.1:{redirect.server_port}/responses",
+    )
+    try:
+        provider = OpenAITranslationProvider(openai_api_key="sensitive-test-token")
+        with pytest.raises(ValueError, match="openai_http_error"):
+            provider.translate("hello")
+    finally:
+        for server in (redirect, target):
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join(1)
+
+    assert target_requests == []
 
 
 class FakeWorkerProvider:

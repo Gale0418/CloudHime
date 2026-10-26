@@ -24,6 +24,9 @@ skills/
 MissionCenter/
 docs/
 example/
+# Keep the root-level private corpus out of all source uploads.
+/example/
+/app/example/
 benchmark_manifest.example.json
 
 # Environment Variables

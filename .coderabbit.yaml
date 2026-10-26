@@ -1,5 +1,6 @@
 reviews:
   path_filters:
+    - "!example/**"
     - "!app/example/**"
     - "!app/models/**"
     - "!app/runtime/**"

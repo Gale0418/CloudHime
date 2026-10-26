@@ -12,11 +12,12 @@ import subprocess
 import sys
 import unicodedata
 from collections import defaultdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 import cv2
 
+from ci.corpus_paths import resolve_corpus_path
 import fullscreen_manga_benchmark as fullscreen_benchmark
 
 
@@ -56,6 +57,14 @@ def _resolve_image(manifest_path: Path, image: str) -> Path:
     candidate = Path(image)
     if candidate.is_absolute():
         return candidate.resolve()
+
+    normalized = image.replace("\\", "/")
+    parts = PurePosixPath(normalized).parts
+    if parts and parts[0] == "example" and ".." not in parts:
+        mapped = resolve_corpus_path(PROJECT_ROOT, image)
+        if mapped.exists():
+            return mapped
+
     for root in (PROJECT_ROOT, manifest_path.parent):
         resolved = (root / candidate).resolve()
         if resolved.exists():

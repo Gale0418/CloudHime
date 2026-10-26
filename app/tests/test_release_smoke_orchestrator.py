@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+import os
+import shutil
+import json
+import sys
 
 import pytest
 
@@ -82,3 +86,45 @@ def test_release_orchestrator_runs_functional_smoke_inside_packaged_exe():
     assert "CLOUDHIME_PACKAGED_SMOKE_RESULT_PATH" in script
     assert "packaged functional smoke result" in script
     assert '$PythonPath @smokeArgs "--json"' not in script
+
+
+@pytest.mark.parametrize("budget", [180, 285])
+def test_outer_functional_deadline_covers_startup_and_request(tmp_path, budget):
+    if os.name != "nt":
+        pytest.skip("Windows release wrapper")
+    pwsh = shutil.which("pwsh")
+    if not pwsh:
+        pytest.skip("PowerShell 7 is required")
+    packaging = tmp_path / "packaging"
+    packaging.mkdir()
+    script = packaging / "test_release_smoke.ps1"
+    script.write_bytes((ROOT / "packaging/test_release_smoke.ps1").read_bytes())
+    (packaging / "verify_release_dist.ps1").write_text("exit 0\n", encoding="utf-8")
+    (tmp_path / "release_functional_smoke.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    (packaging / "test_clean_machine.ps1").write_text('''param($ExecutablePath,$LaunchWaitSeconds,[switch]$FunctionalSmoke,$FunctionalTimeoutSeconds,$AdditionalEnvironmentVariables)
+if($FunctionalSmoke){
+    @{outer=$FunctionalTimeoutSeconds;startup=[int]$AdditionalEnvironmentVariables.CLOUDHIME_PACKAGED_SMOKE_STARTUP_TIMEOUT_SECONDS;request=[int]$AdditionalEnvironmentVariables.CLOUDHIME_PACKAGED_SMOKE_TIMEOUT_SECONDS} | ConvertTo-Json | Set-Content -LiteralPath $env:CLOUDHIME_BUDGET_TEST_RECEIPT -Encoding UTF8
+    @{schema_version=1;status='passed';evaluation_mode='technical_coverage';image_count=1;successful_images=1;request_success_images=1} | ConvertTo-Json | Set-Content -LiteralPath $AdditionalEnvironmentVariables.CLOUDHIME_PACKAGED_SMOKE_RESULT_PATH -Encoding UTF8
+}
+exit 0
+''', encoding="utf-8")
+    dist = tmp_path / "dist"
+    runtime = dist / "runtime"
+    runtime.mkdir(parents=True)
+    for path in (dist / "CloudHime.exe", runtime / "llama-server.exe", runtime / "runtime-manifest.json",
+                 tmp_path / "model.gguf", tmp_path / "projector.gguf", tmp_path / "image.png"):
+        path.write_bytes(b"fixture")
+    receipt = tmp_path / "budget.json"
+    env = os.environ.copy()
+    env["CLOUDHIME_BUDGET_TEST_RECEIPT"] = str(receipt)
+    result = subprocess.run(
+        [pwsh, "-NoLogo", "-NoProfile", "-File", str(script), "-DistDir", str(dist),
+         "-ModelPath", str(tmp_path / "model.gguf"), "-ProjectorPath", str(tmp_path / "projector.gguf"),
+         "-ImagePath", str(tmp_path / "image.png"), "-PythonPath", sys.executable,
+         "-TimeoutSeconds", str(budget)],
+        cwd=tmp_path, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = json.loads(receipt.read_text(encoding="utf-8-sig"))
+    assert data["outer"] >= data["startup"] + data["request"] + 30
+    assert data["outer"] <= 600

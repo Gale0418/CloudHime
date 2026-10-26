@@ -8,7 +8,9 @@ Real quality runs must use pytest --require-external-corpora.
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
+
+from ci.corpus_paths import resolve_corpus_path
 
 # Test identities, not globs: adding or renaming a test requires review.
 REQUIREMENTS = {
@@ -27,16 +29,7 @@ MAX_MANIFEST_BYTES = 1024 * 1024
 
 
 def _inside(root: Path, name: str) -> Path:
-    if not isinstance(name, str) or not name or len(name) > 1024:
-        raise ValueError("Corpus path must be bounded, nonempty text")
-    normalized = name.replace("\\", "/")
-    relative = PurePosixPath(normalized)
-    if relative.is_absolute() or ".." in relative.parts or ":" in normalized:
-        raise ValueError("Corpus path must stay inside the source checkout")
-    target = root.joinpath(*relative.parts).resolve()
-    if not target.is_relative_to(root):
-        raise ValueError("Corpus symlink escapes the source checkout")
-    return target
+    return resolve_corpus_path(root, name)
 
 
 def missing_files_for_test(root: Path, node_id: str) -> tuple[str, ...]:

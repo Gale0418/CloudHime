@@ -680,3 +680,15 @@
 - CodeRabbit 七檔 completed／0 issues；首次未指定基準分支的前置失敗保留，補 main 後才成功。Luna 唯讀幾何與最後差異檢查未確認剩餘可重現缺陷。
 - 新 EXE 已更新到 app/dist/CloudHime/CloudHime.exe，SHA-256 `050e3b8c02165f0daf9ee5b3575207fe74820f0690b4a96c1b5c98299f604f60`；舊預覽移至同證據目錄 rollback-preview-20261023。runtime／Qt／provenance preflight、import、真實 Windows OCR 1圖／2行、20秒啟動 passed，固定入口再驗 import／20秒啟動 passed，程序已回收。最終六個 PYZ 模組與來源編譯一致；最後 EXE 更新保留 1,556 個已收集依賴的身分／大小／時間。模型沿用10/23已完整雜湊的同一硬連結檔案並核對身分；本輪不重算模型雜湊、不重跑CPU Vision。
 - 來源6e3d9f3的CI run 40285089274八項必要success、兩項手動frozen skipped。證據 `app/output/render-controls-20261026/`：regression.xml／log、affected-final.xml／log、visual-check.json、visual-confirmation.log、六張設定 PNG、screenshot-zero-offset.png、coderabbit-retry.ndjson／exit.json、embedded-code.json、preview-verification.json、promotion.json、promoted-*.log；完整說明 `docs/reviews/2026-10-26-screenshot-position.md`。Store／任務狀態不遷移。
+
+## 2026-10-26｜CH-T55 歷史審查修補與 main 保存
+
+- CodeRabbit 149檔歷史全檔閱讀，14 issues（5 Major／9 Minor）；13項修正、1項load_settings驗證誤報。25檔差異複核1項Minor測試伺服器改善已修。另一次150→151檔限制的前置拒絕保留。前三次CLI嘗試，不宣稱零issues或全庫無缺陷。
+- 20檔整合初次817pass／1舊UI替身失敗／2權限skip；補明確拒絕退出的測試依賴及Responses測試transport注入點、HTTP handler讀body後，三檔162pass。XML以最新相同case去重為869pass／0fail／2skip。skip因Windows建立symlink權限不足，未放寬條件。
+- 根run.bat／example搬移：113檔／114185076 bytes前後一致，Git仍零追蹤。根launcher從非repo cwd、含空格路徑、venv／PATH兩條路線實際cmd測試；launcher與封裝來源契約41pass。manifest／lock未為搬移重寫，本機corpus路徑回歸另補。
+- 新技術預覽84d42e99…25b91f，九個PYZ模組與來源編譯一致；1562個依賴為已驗證預覽相同hardlink且身分／大小／時間一致。本輪import、Windows OCR1圖2行、20秒啟動pass；依賴／模型不重算整包hash，未重跑CPU Vision／線上API／乾淨Windows／Store認證。
+- 證據：app/output/git-review-20261026/ 的review-scope.json、coderabbit-scoped.ndjson、coderabbit-fixes.ndjson、test-summary.json、followup-final.xml、root-launcher.xml、asset-validation.json、example-move.json、build-result.json、embedded-code.json、preview-verification.json。main推送與CI對帳待補；不變更任務生命週期。
+
+- 10/27跨日補驗：根搬移審查於UTC15:41在前額度視窗外執行，20邏輯路徑／CLI19檔，1 Major要求驗證ci.corpus_paths封裝。新EXE實際11個PYZ模組與來源一致、封裝policy ready；不需要hiddenimport或搬模組。前三次UTC12:23／12:26／12:46，任一滾動小時皆未超三次。
+- 最終路徑回歸109pass／1symlink權限skip；根launcher／封裝41pass／1真實模型opt-in skip。與歷史XML以最新case去重1007pass／0fail／4skip（三項symlink權限、一項opt-in），final-test-summary.json保留實際清單。
+- 最終預覽0ce088c0…68b7b8已原位替換app/dist/CloudHime；import／OCR1圖2行／20秒啟動通過，替換後import與20秒啟動再通過，所屬PID已回收。verify_release_dist.ps1實際ready，1563files／4831974416bytes／2模型固定hash通過；不是CPU Vision／線上API／clean Windows／Store認證。證據app/output/git-layout-20261026/，前84d4版已保留rollback。

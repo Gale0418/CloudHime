@@ -344,7 +344,7 @@ class GoogleTranslationProvider:
         text: str,
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> TranslationResult:
         normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
@@ -370,7 +370,7 @@ class GoogleTranslationProvider:
         texts: Sequence[str],
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> list[TranslationResult]:
         normalized_texts = [clean_model_output(text).strip() if text else "" for text in texts]
         if not normalized_texts or any(not text for text in normalized_texts):
@@ -1154,7 +1154,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         text: str,
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> TranslationResult:
         normalized = clean_model_output_multiline(text).strip() if text else ""
         if not normalized:
@@ -1195,7 +1195,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         texts: Sequence[str],
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> list[TranslationResult]:
         normalized_texts = [clean_model_output(text).strip() if text else "" for text in texts]
         if not normalized_texts or any(not text for text in normalized_texts):
@@ -1212,7 +1212,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         texts: Sequence[str],
         image_parts: Sequence[dict[str, Any]],
         *,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> list[TranslationResult]:
         if not texts:
             return []
@@ -1268,7 +1268,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         *,
         image_width: int,
         image_height: int,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> list[VisionRegionResult]:
         if not image_parts:
             raise ValueError("missing_image_context")
@@ -1323,7 +1323,7 @@ class GemmaTranslationProvider(KnowledgePromptContext):
         self,
         image_parts: Sequence[dict[str, Any]],
         *,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         source_text_hint: str | None = None,
         debug_log: Callable[[str], None] | None = None,
     ) -> TranslationResult:
@@ -1754,7 +1754,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         text: str,
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> TranslationResult:
         if not self.available():
             raise ValueError("local_multimodal_unavailable")
@@ -1841,7 +1841,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         if len(self._translation_cache) > TRANSLATION_CACHE_LIMIT:
             self._translation_cache.popitem(last=False)
         return result
-    def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW") -> list[TranslationResult]:
+    def translate_multimodal(self, texts: Sequence[str], image_parts: Sequence[dict[str, Any]], *, target_lang: str | None = None) -> list[TranslationResult]:
         if not self.available():
             raise ValueError("local_multimodal_unavailable")
         if not image_parts:
@@ -1900,7 +1900,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
         *,
         image_width: int,
         image_height: int,
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
         cancel_predicate=None,
     ) -> list[VisionRegionResult]:
         if not self.available():
@@ -2033,7 +2033,7 @@ class LocalMultimodalProvider(KnowledgePromptContext):
             raw_text = self._request_chat_completion(retry_payload)
         return TranslationResult(text=self._parse_transcription_response(raw_text), provider=self.name, model=self.model_name, raw_text=raw_text)
 
-    def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str = "zh-TW", source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
+    def translate_screenshot(self, image_parts: Sequence[dict[str, Any]], *, target_lang: str | None = None, source_text_hint: str | None = None, debug_log=None) -> TranslationResult:
         if not self.available():
             raise ValueError("local_multimodal_unavailable")
         if not image_parts:

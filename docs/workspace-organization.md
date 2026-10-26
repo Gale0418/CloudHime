@@ -6,21 +6,22 @@
 
 | 位置 | 用途 |
 | --- | --- |
-| `app/run.bat` | 啟動來源版；需先安裝開發相依套件 |
-| `app/dist/CloudHime/CloudHime.exe` | 本機最新技術預覽，含 2026-10-23 連續閱讀流程；不是已發布的 Store 套件 |
+| `run.bat` | 根目錄啟動來源版，自動定位 `app/`；需先安裝開發相依套件 |
+| `example/` | 根目錄的私人範例，Git 忽略，不上傳 |
+| `app/dist/CloudHime/CloudHime.exe` | 本機最新技術預覽，含 2026-10-26 截圖位置、歷史修補與範例搬移相容；不是已發布的 Store 套件 |
 | `app/` | 程式、測試、資源、模型、原生元件與封裝工具 |
 | `app/output/` | 測試與審查證據、診斷、隔離環境與 Git 還原備份 |
 | `app/build/`、`app/dist/` | 編譯中間檔與可執行／安裝產物 |
 | `docs/` | 說明、設計、隱私、審查、紀錄與專案技能 |
 | `MissionCenter/` | 任務、決策與驗收紀錄 |
 
-從儲存庫根目錄執行一次 `cd app`，再使用原有的 `python CloudHime.py`、`python -m pytest ...`、`build_exe.bat` 或 `packaging/` 指令。`run.bat`、`install.ps1` 與建置入口會依自身位置定位，GitHub Actions 的工作目錄也已設為 `app`。
+從儲存庫根目錄可直接雙擊 `run.bat`；開發指令仍先 `cd app`，再使用 `python CloudHime.py`、`python -m pytest ...`、`build_exe.bat` 或 `packaging/` 指令。`install.ps1` 與建置入口仍在 `app/`，GitHub Actions 的工作目錄也保持 `app`。2026-10-26 依使用者要求將實體 `example/` 與啟動器移回根目錄，兩處舊／新 example 路徑都明確忽略，不保留重複圖片副本。
 
 根目錄由 130 項減為 10 項（包含隱藏項目）：`.git`、`.github`、`.pytest_cache`、`app`、`docs`、`MissionCenter`、`.coderabbit.yaml`、`.gitattributes`、`.gitignore`、`README.md`。`.pytest_cache` 目前被 Windows ACL 拒絕存取，未更改權限；它仍被 Git 忽略。一般產品輸出應寫入 `app/output`，不要再散落根目錄。
 
 ## 搬移對照與相容性
 
-- 原根目錄的產品模組、`assets`、`models`、`runtime`、`native`、`packaging`、`tests`、`ci`、`benchmarks`、`example` 及本機產物全部保留內部結構，移到 `app/`。
+- 10/23 當時將原根目錄的產品模組、`assets`、`models`、`runtime`、`native`、`packaging`、`tests`、`ci`、`benchmarks`、`example` 及本機產物保留內部結構，移到 `app/`；10/26 再將私人 `example/` 與 `run.bat` 移回根目錄。
 - 原 `DESIGN.md`、`PRODUCT.md`、`PRIVACY.md`、`reviews/`、`records/`、`skills/` 移到 `docs/`；原 `docs/` 與 `MissionCenter/` 留在原位。
 - `LICENSE`、`NOTICE`、`AUTHORS.md`、`BRANDING.md`、`THIRD_PARTY_NOTICES.md` 留在產品根目錄 `app/`，維持封裝與授權檢查的輸入關係。
 - 舊報告的 `output/...`、`tests/...` 等是當時位置，現在加上 `app/`；舊 `reviews/...` 與 `records/...` 加上 `docs/`。歷史報告沒有全面改寫，保留當時的事實與提交編號。

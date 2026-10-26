@@ -6174,8 +6174,16 @@ class Controller(QWidget):
         google_saved = self._persist_pending_api_key()
         luna_saved = self._persist_pending_openai_api_key()
         if not (google_saved and luna_saved):
-            self._close_app_started = False
-            return
+            choice = QMessageBox.question(
+                self,
+                self._tr("settings_save_failed"),
+                self._tr("settings_save_failed_exit_prompt"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if choice != QMessageBox.Yes:
+                self._close_app_started = False
+                return
         if not self.save_settings():
             self._set_status_text("settings_save_failed", fallback="Settings could not be saved")
             choice = QMessageBox.question(

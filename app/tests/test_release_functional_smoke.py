@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
 import pytest
 
 import release_functional_smoke as smoke
+import vision_smoke_benchmark as benchmark
 
 
 def _write_runtime(root: Path, *, version: str = "b314", server_size: int = 100_000) -> Path:
@@ -115,6 +117,55 @@ def test_release_smoke_passes_explicit_assets_and_image_to_benchmark(monkeypatch
     assert manifest["cases"][0]["sample_source"] == str(image)
     assert captured["manifest_path"].parent.parent != smoke.PROJECT_ROOT
     assert not captured["manifest_path"].parent.exists()
+
+
+def test_release_smoke_runs_with_absolute_sample_source(monkeypatch, tmp_path: Path) -> None:
+    image = tmp_path / "sample.png"
+    image.write_bytes(b"controlled fixture")
+    captured_paths = []
+
+    class FakeVisionRuntime:
+        def __init__(self, *args, **kwargs):
+            self.state = SimpleNamespace(name="ready", detail="", mode="cpu", base_url="http://vision")
+
+        def start(self):
+            return self.state
+
+        def stop(self):
+            pass
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            pass
+
+        def transcribe_screenshot(self, parts, **kwargs):
+            return SimpleNamespace(text="recognized")
+
+    monkeypatch.setattr(
+        smoke,
+        "validate_release_inputs",
+        lambda *_args: SimpleNamespace(server_path=tmp_path / "server", model_path=tmp_path / "model", projector_path=tmp_path / "projector"),
+    )
+    monkeypatch.setattr(smoke, "run_smoke", benchmark.run_smoke)
+    monkeypatch.setattr(benchmark, "LocalVisionRuntime", FakeVisionRuntime)
+    monkeypatch.setattr(benchmark, "LocalMultimodalProvider", FakeProvider)
+    monkeypatch.setattr(benchmark, "build_windows_ocr_hint", lambda *_args: "")
+    monkeypatch.setattr(
+        benchmark,
+        "image_parts",
+        lambda path, **_kwargs: captured_paths.append(Path(path).resolve()) or [],
+    )
+
+    result = smoke.run_release_smoke(
+        tmp_path / "runtime",
+        tmp_path / "model.gguf",
+        tmp_path / "projector.gguf",
+        image,
+    )
+
+    assert captured_paths == [image.resolve()]
+    assert result["successful_images"] == 1
+    assert result["manifest"] == "generated_ephemeral"
 
 
 def test_functional_complete_rejects_missing_image_results() -> None:

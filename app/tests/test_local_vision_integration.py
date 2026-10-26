@@ -6,6 +6,7 @@ from pathlib import Path
 from local_vision_assets import resolve_preferred_vision_assets
 from local_vision_runtime import LocalVisionRuntime
 from translation_providers import LocalMultimodalProvider
+from ci.corpus_paths import resolve_corpus_path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VISION_MODEL_NAME = "gemma-3-4b-it"
@@ -34,9 +35,9 @@ def test_local_vision_integration():
             enabled=True,
             timeout_seconds=60,
         )
-        image_path = PROJECT_ROOT / "example" / "2026-07-10 00 37 20.png"
+        image_path = resolve_corpus_path(PROJECT_ROOT, "example/2026-07-10 00 37 20.png")
         if not image_path.exists():
-            example_dir = PROJECT_ROOT / "example"
+            example_dir = resolve_corpus_path(PROJECT_ROOT, "example")
             png_files = list(example_dir.glob("*.png"))
             assert png_files, "No PNG files found in example directory"
             image_path = png_files[0]

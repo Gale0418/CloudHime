@@ -256,9 +256,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.startup_timeout < 1:
         raise ValueError("startup-timeout must be at least 1")
+    if args.geometry_hints and args.scan_mode != "fullscreen":
+        parser.error("--geometry-hints requires --scan-mode fullscreen")
+    if args.vision_strategy != "crop":
+        if args.scan_mode != "fullscreen":
+            parser.error("non-crop --vision-strategy requires --scan-mode fullscreen")
+        if not args.geometry_hints:
+            parser.error(f"--vision-strategy {args.vision_strategy} requires --geometry-hints")
     try:
         preflight_kwargs = {}
         if args.vision_max_width is not None:
@@ -270,8 +278,6 @@ def main(argv: list[str] | None = None) -> int:
             preflight_kwargs["scan_mode"] = args.scan_mode
         if args.vision_strategy != "crop":
             preflight_kwargs["vision_strategy"] = args.vision_strategy
-            preflight_kwargs["geometry_hints"] = True
-            preflight_kwargs["scan_mode"] = args.scan_mode
         ready = preflight(args.manifest, **preflight_kwargs)
         if args.preflight:
             print(json.dumps({"ok": True, "preflight": True}, separators=(",", ":")))

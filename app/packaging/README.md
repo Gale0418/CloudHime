@@ -138,7 +138,7 @@ The gate creates a unique `cloudhime-clean-machine-*` sandbox for TEMP/TMP/APPDA
 For a real frozen directory with an external managed model, run the fail-closed
 three-stage gate:
 
-    pwsh -File packaging/test_release_smoke.ps1 -DistDir .\dist\CloudHime -ModelPath "$env:LOCALAPPDATA\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a\gemma-3-4b-it.Q4_K_M.gguf" -ProjectorPath "$env:LOCALAPPDATA\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a\mmproj-model-f16.gguf" -ImagePath ".\example\smoke.png" -RequireGpu
+    pwsh -File packaging/test_release_smoke.ps1 -DistDir .\dist\CloudHime -ModelPath "$env:LOCALAPPDATA\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a\gemma-3-4b-it.Q4_K_M.gguf" -ProjectorPath "$env:LOCALAPPDATA\CloudHime\models\gemma-3-4b-it\ggml-org-ab31416a\mmproj-model-f16.gguf" -ImagePath "..\example\smoke.png" -RequireGpu
 
 The stages are: release dist/provenance preflight, explicit model/projector/image
 validation, environment-isolated packaged launch, and functional Vision coverage.

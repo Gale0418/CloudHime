@@ -318,6 +318,56 @@ def test_parser_exposes_no_context_or_sampling_switches():
         parser.parse_args(["--manifest", "fixture.json", "--temperature", "0.7"])
 
 
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    [
+        (("--vision-strategy", "crop_batch", "--scan-mode", "fullscreen"), "requires --geometry-hints"),
+        (("--geometry-hints",), "requires --scan-mode fullscreen"),
+    ],
+)
+def test_runner_rejects_invalid_geometry_options_without_rewriting_them(
+    monkeypatch, capsys, extra_args, message
+):
+    monkeypatch.setattr(
+        benchmark,
+        "preflight",
+        lambda *_args, **_kwargs: pytest.fail("invalid CLI options must fail before preflight"),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        benchmark.main(["--manifest", "fixture.json", *extra_args])
+
+    assert exc_info.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_runner_forwards_only_explicit_geometry_controls(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(
+        benchmark,
+        "preflight",
+        lambda manifest, **kwargs: calls.append((manifest, kwargs)) or {"ok": True},
+    )
+
+    assert benchmark.main([
+        "--manifest", "fixture.json",
+        "--preflight",
+        "--scan-mode", "fullscreen",
+        "--geometry-hints",
+        "--vision-strategy", "crop_batch",
+    ]) == 0
+
+    assert calls == [(
+        "fixture.json",
+        {
+            "scan_mode": "fullscreen",
+            "geometry_hints": True,
+            "vision_strategy": "crop_batch",
+        },
+    )]
+    assert json.loads(capsys.readouterr().out) == {"ok": True, "preflight": True}
+
+
 def test_runner_stdout_and_errors_do_not_leak_raw_content_or_paths(monkeypatch, tmp_path, capsys):
     raw_path = str(tmp_path / "sensitive-image.png")
     monkeypatch.setattr(benchmark, "preflight", lambda _: {

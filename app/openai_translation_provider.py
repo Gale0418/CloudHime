@@ -36,6 +36,18 @@ DEFAULT_OPENAI_REASONING_EFFORT = "none"
 SUPPORTED_OPENAI_REASONING_EFFORTS = frozenset({"none"})
 
 
+class _NoRedirectHandler(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_responses_request(req: request.Request, *, timeout: float):
+    # Authenticated Responses requests must never forward their bearer token
+    # through an automatic redirect, even if urllib's policy changes.
+    opener = request.build_opener(_NoRedirectHandler)
+    return opener.open(req, timeout=timeout)
+
+
 class OpenAIRequestCancelled(RuntimeError):
     """A request was cancelled before dispatch or after response parsing."""
 
@@ -166,7 +178,7 @@ class OpenAITranslationProvider:
             method="POST",
         )
         try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+            with _open_responses_request(req, timeout=self.timeout_seconds) as response:
                 body = self._read_response(response, cancel_predicate=cancel_predicate)
         except error.HTTPError as exc:
             token = self._http_error_token(getattr(exc, "code", None))

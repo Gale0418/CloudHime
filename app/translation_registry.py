@@ -233,6 +233,8 @@ def build_translation_registry(config: TranslationProviderRegistryConfig) -> Tra
                 target_lang=config.target_lang,
                 enabled=True,
                 timeout_seconds=config.local_multimodal_timeout_seconds,
+                temperature=config.local_gemma_temperature,
+                repeat_penalty=config.local_gemma_repeat_penalty,
                 gemma_prompt=config.gemma_prompt,
             )
         )

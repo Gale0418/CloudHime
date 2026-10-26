@@ -2,6 +2,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from ci.corpus_paths import resolve_corpus_path
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = PROJECT_ROOT / "benchmarks" / "manga_cover_cases.json"
@@ -31,7 +33,7 @@ def test_manga_cover_manifest_is_holdout_only_and_reproducible() -> None:
         assert isinstance(case["bytes"], int) and not isinstance(case["bytes"], bool)
         assert case["bytes"] > 0
 
-        image_path = PROJECT_ROOT / case["image"]
+        image_path = resolve_corpus_path(PROJECT_ROOT, case["image"])
         if image_path.exists():
             digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
             assert digest == case["sha256"]

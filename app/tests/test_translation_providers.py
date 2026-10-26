@@ -23,6 +23,43 @@ def test_google_provider_does_not_expose_stream_translation():
     assert not hasattr(provider, "translate_stream")
 
 
+def test_provider_target_defaults_use_configured_language(monkeypatch):
+    google_targets = []
+    google = GoogleTranslationProvider(target_lang="en")
+    google._get_translator = lambda source, target: google_targets.append(target) or FakeTranslator("ok")
+    google.translate("你好")
+    google.translate_batch(["你好"])
+    assert google_targets == ["en", "en"]
+
+    gemma_prompts = []
+    gemma = GemmaTranslationProvider(
+        google_api_key="test-key", target_lang="en", gemma_model="gemma-test",
+        supported_models=("gemma-test",),
+    )
+    gemma._request = lambda _model, prompt, **_kwargs: (
+        gemma_prompts.append(prompt)
+        or {"candidates": [{"content": {"parts": [{"text": "Hello"}]}}]}
+    )
+    gemma.translate("你好")
+    assert "into natural English" in gemma_prompts[0]
+
+    local_prompts = []
+    local = LocalMultimodalProvider(
+        base_url="http://127.0.0.1:8080/v1", model_name="local-test",
+        enabled=True, target_lang="en",
+    )
+    local._request_chat_completion = lambda payload: (
+        local_prompts.append(payload["messages"][0]["content"][0]["text"]) or "Hello"
+    )
+    local.translate_multimodal(["你好"], [{"inline_data": {"data": "AA=="}}])
+    assert "English" in local_prompts[0]
+
+    explicit = []
+    google._get_translator = lambda source, target: explicit.append(target) or FakeTranslator("ok")
+    google.translate("你好", target_lang="ja")
+    assert explicit == ["ja"]
+
+
 class FakeTranslator:
     def __init__(self, response=None):
         self.calls = []

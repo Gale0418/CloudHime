@@ -17,7 +17,8 @@ param(
     [ValidateRange(5, 120)]
     [int]$LaunchWaitSeconds = 20,
 
-    [ValidateRange(5, 600)]
+    # Startup and request each receive this budget; the outer wrapper caps at 600.
+    [ValidateRange(5, 285)]
     [int]$TimeoutSeconds = 180,
 
     [switch]$RequireGpu,
@@ -146,12 +147,13 @@ try {
     }
 
     $stage = "functional vision smoke"
+    $functionalDeadlineSeconds = 2 * $TimeoutSeconds + 30
     Invoke-Checked -Label $stage -Action {
         & $cleanMachine `
             -ExecutablePath $executable `
             -LaunchWaitSeconds $LaunchWaitSeconds `
             -FunctionalSmoke `
-            -FunctionalTimeoutSeconds $TimeoutSeconds `
+            -FunctionalTimeoutSeconds $functionalDeadlineSeconds `
             -AdditionalEnvironmentVariables $packagedEnvironment
         if ($LASTEXITCODE -ne 0) {
             throw "packaged functional smoke process failed with exit code $LASTEXITCODE"

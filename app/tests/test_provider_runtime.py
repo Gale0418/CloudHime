@@ -260,3 +260,77 @@ def test_context_exit_does_not_release_a_lease_twice_after_manual_release():
         lease.release()
     replacement = pool.acquire("google", "gemini-test", key_id="key-a", wait=False)
     replacement.release()
+
+
+@pytest.mark.parametrize("operation", ["acquire", "wait_until_available"])
+def test_waiting_operation_observes_registered_replacement(operation):
+    pool = RuntimeCredentialPool(
+        [{"provider": "google", "key_id": "key-a", "secret": "old", "model": "model"}]
+    )
+    pool.acquire("google", "model", key_id="key-a").release(status_code=401)
+    matched = threading.Event()
+    original_matching = pool._matching
+
+    def signal_matching(*args):
+        result = original_matching(*args)
+        matched.set()
+        return result
+
+    pool._matching = signal_matching
+    result = []
+
+    def wait_for_key():
+        try:
+            if operation == "acquire":
+                lease = pool.acquire("google", "model", key_id="key-a", timeout=1)
+                result.append(lease.secret)
+                lease.release()
+            else:
+                result.append(pool.wait_until_available("google", "model", key_id="key-a", timeout=1))
+        except Exception as exc:  # surfaced in the main test thread
+            result.append(exc)
+
+    waiter = threading.Thread(target=wait_for_key)
+    waiter.start()
+    assert matched.wait(1)
+    pool.register("google", "key-a", "replacement", "model")
+    waiter.join(1)
+
+    assert not waiter.is_alive()
+    assert result == (["replacement"] if operation == "acquire" else [True])
+
+
+@pytest.mark.parametrize("operation", ["acquire", "wait_until_available"])
+def test_waiting_operation_observes_removed_credential(operation):
+    pool = RuntimeCredentialPool(
+        [{"provider": "google", "key_id": "key-a", "secret": "old", "model": "model"}]
+    )
+    pool.acquire("google", "model", key_id="key-a").release(status_code=401)
+    matched = threading.Event()
+    original_matching = pool._matching
+
+    def signal_matching(*args):
+        result = original_matching(*args)
+        matched.set()
+        return result
+
+    pool._matching = signal_matching
+    result = []
+
+    def wait_for_key():
+        try:
+            if operation == "acquire":
+                pool.acquire("google", "model", key_id="key-a", timeout=1)
+            else:
+                pool.wait_until_available("google", "model", key_id="key-a", timeout=1)
+        except Exception as exc:
+            result.append(exc)
+
+    waiter = threading.Thread(target=wait_for_key)
+    waiter.start()
+    assert matched.wait(1)
+    pool.remove("google", "key-a", "model")
+    waiter.join(1)
+
+    assert not waiter.is_alive()
+    assert len(result) == 1 and isinstance(result[0], CredentialUnavailable)

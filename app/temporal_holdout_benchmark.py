@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from benchmark_lock import load_lock, validate_benchmark_lock
+from ci.corpus_paths import resolve_corpus_path
 from exact_image_cache import ExactImageCache
 from frame_gate import FrameGate
 
@@ -86,6 +87,7 @@ def load_manifest(path: str | Path = MANIFEST_PATH) -> dict[str, Any]:
             relative = Path(source)
             if relative.is_absolute() or ".." in relative.parts:
                 raise ValueError("temporal holdout source path must stay relative")
+            resolve_corpus_path(PROJECT_ROOT, source)
     return payload
 
 
@@ -145,12 +147,7 @@ def _p95(values: list[float]) -> float:
 def _load_source(case: dict[str, Any]) -> np.ndarray:
     if case["category"] == "synthetic_adversarial":
         return _synthetic_source()
-    root = PROJECT_ROOT.resolve()
-    source = (root / case["source"]).resolve()
-    try:
-        source.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("temporal holdout source escapes project root") from exc
+    source = resolve_corpus_path(PROJECT_ROOT, case["source"])
     return read_image_unicode_safe(source)
 
 

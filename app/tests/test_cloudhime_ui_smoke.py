@@ -804,17 +804,23 @@ def test_failed_key_save_stays_pending_and_visible_until_retry(provider):
     assert panel.warning == ""
 
 
-def test_close_stays_open_when_key_save_fails():
+def test_close_stays_open_when_key_save_fails(monkeypatch):
+    import cloudhime_ui
+
     controller = Controller.__new__(Controller)
     controller.cancel_knowledge_research = Mock()
     controller.knowledge_build_worker = None
     controller._persist_pending_api_key = Mock(return_value=False)
     controller._persist_pending_openai_api_key = Mock(return_value=True)
     controller.save_settings = Mock()
+    controller._tr = lambda key, **_kwargs: key
+    question = Mock(return_value=cloudhime_ui.QMessageBox.No)
+    monkeypatch.setattr(cloudhime_ui.QMessageBox, "question", question)
 
     Controller.close_app(controller)
 
     assert controller._close_app_started is False
+    question.assert_called_once()
     controller.save_settings.assert_not_called()
 
 

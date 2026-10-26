@@ -26,7 +26,7 @@ class TranslationProvider(Protocol):
         text: str,
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> TranslationResult:
         ...
 
@@ -35,6 +35,6 @@ class TranslationProvider(Protocol):
         texts: Sequence[str],
         *,
         source_lang: str = "auto",
-        target_lang: str = "zh-TW",
+        target_lang: str | None = None,
     ) -> list[TranslationResult]:
         ...

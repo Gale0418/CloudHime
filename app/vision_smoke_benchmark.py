@@ -10,7 +10,7 @@ import sys
 import subprocess
 import time
 from difflib import SequenceMatcher
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from statistics import mean
 from typing import Any, Mapping, Sequence
 
@@ -19,6 +19,7 @@ import numpy as np
 
 from local_vision_assets import VisionAssets, resolve_preferred_vision_assets
 from local_vision_runtime import LocalVisionRuntime
+from ci.corpus_paths import resolve_corpus_path
 from translation_providers import LocalMultimodalProvider
 
 
@@ -252,6 +253,7 @@ def run_smoke(
         popen_factory = popen_cpu
 
     resolved_assets = assets or resolve_preferred_vision_assets(PROJECT_ROOT)
+    explicit_image_root = image_root is not None
     resolved_image_root = (
         Path(image_root).resolve() if image_root is not None else PROJECT_ROOT
     )
@@ -286,7 +288,24 @@ def run_smoke(
             ocr_hint_worker = OCRWorker()
             ocr_hint_worker.reload_ocr_backends(["windows"], log=False)
         for sample_source, image_cases in group_cases_by_image(cases).items():
-            image_path = resolved_image_root / sample_source
+            source_path = Path(sample_source)
+            if source_path.is_absolute():
+                image_path = source_path.resolve()
+            else:
+                normalized_source = sample_source.replace("\\", "/")
+                source_parts = PurePosixPath(normalized_source).parts
+                moved_example_path = (
+                    not explicit_image_root
+                    and resolved_image_root.name.casefold() == "app"
+                    and source_parts
+                    and source_parts[0] == "example"
+                    and ".." not in source_parts
+                )
+                if moved_example_path:
+                    image_path = resolve_corpus_path(resolved_image_root, sample_source)
+                else:
+                    # Keep pre-existing relative-path and explicit-root behavior.
+                    image_path = (resolved_image_root / source_path).resolve()
             request_started = time.perf_counter()
             error = ""
             actual = ""
