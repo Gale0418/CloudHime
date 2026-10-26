@@ -230,8 +230,8 @@ UI_TEXTS = {
         "en": "Text Size & Position",
     },
     "settings_relief_hint": {
-        "zh-TW": "三種顯示模式共用字級與位移～設 0 恢復自動位置，透明度只調選區框唷！( •̀ ω •́ )✧",
-        "en": "Shared across all 3 display modes! Setting offset to 0 restores auto position, and opacity only adjusts the selection frame ( •̀ ω •́ )✧",
+        "zh-TW": "截圖模式 X／Y 設 0 就覆蓋原選區；可輸入數值或拖曳調整，透明度只調選區框喔～ (・ω・)",
+        "en": "Screenshot mode covers the selection at X/Y 0. Type a value or drag to adjust; opacity affects only the selection frame. (・ω・)",
     },
     "settings_relief_offset_x": {
         "zh-TW": "X 軸位移",
@@ -493,7 +493,7 @@ JA_UI_TEXTS = {
     "settings_render_screenshot": "スクリーンショット",
     "settings_screenshot_prompt_placeholder": "スクリーンショットモード用の任意のプロンプト。空欄の場合は既定のプロンプトを使用します。 (・ω・)",
     "settings_relief_title": "文字サイズと位置",
-    "settings_relief_hint": "3つの表示モード共通です！オフセット0で自動位置に戻り、不透明度は選択枠のみ調整されます ( •̀ ω •́ )✧",
+    "settings_relief_hint": "スクリーンショットはX/Yが0で選択範囲に重なります。数値入力やドラッグで調整でき、不透明度は選択枠のみ変わります (・ω・)",
     "settings_relief_offset_x": "X 軸のオフセット",
     "settings_relief_font": "文字サイズ",
     "settings_relief_offset_y": "Y 軸のオフセット",

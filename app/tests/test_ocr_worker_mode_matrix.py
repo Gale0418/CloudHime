@@ -179,7 +179,7 @@ def test_overlay_builds_each_region_render_mode(qtbot, render_mode):
         if render_mode == REGION_RENDER_RELIEF:
             assert bubble.wordWrap() == 0
         if render_mode == REGION_RENDER_SCREENSHOT:
-            assert not bubble.geometry().intersects(QRect(*overlay.scan_region))
+            assert bubble.geometry() == QRect(*overlay.scan_region).translated(12, -8)
     finally:
         overlay.clear_all()
         overlay.close()

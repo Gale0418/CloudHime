@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import QPoint, QRect, Qt
 
 from cloudhime_ui import (
     Controller,
@@ -63,7 +64,7 @@ def test_region_render_modes_apply_offsets_and_clamp_to_overlay(qtbot, mode):
     assert moved.bottom() < moved_overlay.height()
 
 
-def test_screenshot_keeps_automatic_side_placement_before_offset(qtbot):
+def test_screenshot_zero_offset_covers_selection_before_user_offset(qtbot):
     source = [("截圖翻譯內容", 440, 300, 90, 32)]
     base_overlay = _overlay(qtbot, REGION_RENDER_SCREENSHOT)
     base_overlay.update_bubbles(source)
@@ -75,13 +76,35 @@ def test_screenshot_keeps_automatic_side_placement_before_offset(qtbot):
     moved_overlay.update_bubbles(source)
     moved = moved_overlay.bubbles[0].geometry()
 
-    # The auto-selected side stays the same; user offsets are applied afterward.
+    assert base == QRect(*base_overlay.scan_region)
     assert (moved.x() - base.x(), moved.y() - base.y()) == (18, 12)
-    assert not moved.intersects(moved_overlay.bubbles[0].region_rect)
+
+
+@pytest.mark.parametrize("region", [(0, 0, 200, 120), (800, 580, 200, 120), (80, 34, 260, 414)])
+def test_screenshot_zero_offset_uses_whole_selection_at_screen_edges(qtbot, region):
+    overlay = _overlay(qtbot, REGION_RENDER_SCREENSHOT)
+    overlay.scan_region = region
+    # A child OCR box must not replace the whole selection as the anchor.
+    overlay.update_bubbles([("譯文", region[0] + 20, region[1] + 30, 80, 30)])
+    assert overlay.bubbles[0].geometry() == QRect(*region)
+
+
+def test_screenshot_growing_stream_stays_anchored_and_matches_final(qtbot):
+    overlay = _overlay(qtbot, REGION_RENDER_SCREENSHOT, offset_x=-18, offset_y=12)
+    text = "A longer translated paragraph with many words. " * 12
+    for partial in ("Hello", text[:60], text):
+        overlay.update_translation_stream(0, partial, "test", 440, 300, 90, 32)
+    streamed = overlay.bubbles[0].geometry()
+    font_size = overlay.bubbles[0].font().pointSizeF()
+    overlay.update_bubbles([(text, 440, 300, 90, 32)])
+    bubble = overlay.bubbles[0]
+    assert bubble.geometry() == streamed
+    assert bubble.font().pointSizeF() == font_size
+    assert bubble.measure_text_height(text, bubble.width(), font_size) <= bubble.height() - bubble.text_padding * 2
 
 
 @pytest.mark.parametrize("mode", REGION_RENDER_MODES)
-@pytest.mark.parametrize("offset", [-500, 500])
+@pytest.mark.parametrize("offset", [-1000, 1000])
 def test_maximum_offsets_keep_caption_within_overlay(qtbot, mode, offset):
     overlay = _overlay(qtbot, mode, offset_x=offset, offset_y=offset, font_pt=32)
     overlay.update_bubbles([("Edge caption", 440, 300, 90, 32)])
@@ -224,11 +247,41 @@ def test_revamp_common_text_controls_remain_enabled(qtbot, monkeypatch, mode):
         controller.region_render_mode = mode
         controller.toggle_settings_window()
         settings = controller.settings_window
+        controller.set_ui_language("en", persist=False, refresh=True)
+        settings.resize(760, 520)
+        settings.settings_tabs.setCurrentIndex(1)
+        settings.activateWindow()
+        qtbot.wait(10)
         settings.update_region_render_summary()
 
         assert settings.slider_relief_offset_x.isEnabled()
         assert settings.slider_relief_offset_y.isEnabled()
         assert settings.spin_relief_font.isEnabled()
+        assert settings.spin_relief_offset_x.minimum() == -1000
+        assert settings.spin_relief_offset_x.maximum() == 1000
+        assert settings.spin_relief_offset_y.minimum() == -1000
+        assert settings.spin_relief_offset_y.maximum() == 1000
+
+        for name, typed, dragged, attribute in (
+            ("offset_x", "-875", 1000, "region_relief_offset_x"),
+            ("offset_y", "935", -1000, "region_relief_offset_y"),
+            ("opacity", "73", 0, "region_frame_opacity"),
+        ):
+            spin = getattr(settings, f"spin_relief_{name}")
+            slider = getattr(settings, f"slider_relief_{name}")
+            spin_rect = QRect(spin.mapTo(settings, QPoint()), spin.size())
+            slider_rect = QRect(slider.mapTo(settings, QPoint()), slider.size())
+            assert not spin_rect.intersects(slider_rect)
+            spin.setFocus()
+            spin.selectAll()
+            qtbot.keyClicks(spin, typed)
+            qtbot.keyClick(spin, Qt.Key_Tab)
+            assert spin.value() == slider.value() == int(typed)
+            assert getattr(controller, attribute) == int(typed)
+            slider.setValue(dragged)
+            assert spin.value() == dragged
+            assert getattr(controller, attribute) == dragged
+            assert controller.get_settings_payload()[attribute] == dragged
     finally:
         if settings is not None:
             settings.close()

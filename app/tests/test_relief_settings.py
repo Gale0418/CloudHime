@@ -20,10 +20,16 @@ class ReliefSettingsTests(unittest.TestCase):
     def test_offsets_are_clamped_to_supported_range(self):
         self.assertEqual(
             resolve_relief_offsets(
-                {"region_relief_offset_x": -900, "region_relief_offset_y": 900}
+                {"region_relief_offset_x": -1900, "region_relief_offset_y": 1900}
             ),
-            (-500, 500),
+            (-1000, 1000),
         )
+
+    def test_expanded_offsets_survive_settings_normalization(self):
+        normalized = normalize_settings_payload(
+            {"region_relief_offset_x": -875, "region_relief_offset_y": 935}, 40
+        )
+        self.assertEqual(resolve_relief_offsets(normalized), (-875, 935))
 
 
 if __name__ == "__main__":

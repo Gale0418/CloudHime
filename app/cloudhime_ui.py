@@ -126,6 +126,7 @@ from translation_registry import TranslationProviderRegistry, TranslationProvide
 from translation_providers import GemmaTranslationProvider, GoogleTranslationProvider
 from openai_translation_provider import DEFAULT_OPENAI_MODEL
 from settings_store import (
+    RELIEF_OFFSET_MAX,
     appdata_companion_path,
     model_availability_snapshot_path,
     create_settings_paths,
@@ -235,7 +236,7 @@ AUTO_THRESHOLD_REFRESH_INTERVAL_MINUTES_MAX = 60
 GEMMA_RATE_LIMIT_WINDOW_SEC = 60
 GEMMA_RATE_LIMIT_MAX_CALLS = 15
 RELIEF_BUBBLE_OPACITY = 40
-RELIEF_MAX_OFFSET_PX = 500
+RELIEF_MAX_OFFSET_PX = RELIEF_OFFSET_MAX
 
 
 def startup_log(stage, detail=""):
@@ -340,6 +341,32 @@ def _resource_path(relative_path):
     return os.path.abspath(
         os.path.join(os.path.dirname(__file__), relative_path)
     ).replace("\\", "/")
+
+
+def _linked_numeric_input(slider, label, suffix):
+    """Keep typed values and slider gestures on the same settings signal path."""
+    spin = QSpinBox()
+    spin.setRange(slider.minimum(), slider.maximum())
+    spin.setSuffix(suffix)
+    spin.setMinimumWidth(110)
+    spin.setKeyboardTracking(False)
+    spin.setValue(slider.value())
+    label.setBuddy(spin)
+    spin.valueChanged.connect(slider.setValue)
+    slider.valueChanged.connect(spin.setValue)
+    return spin
+
+
+def _sync_numeric_inputs(window):
+    for name in ("offset_x", "offset_y", "opacity"):
+        spin = getattr(window, f"spin_relief_{name}")
+        slider = getattr(window, f"slider_relief_{name}")
+        blocked = spin.blockSignals(True)
+        try:
+            spin.setValue(slider.value())
+        finally:
+            spin.blockSignals(blocked)
+        spin.setAccessibleName(getattr(window, f"lbl_relief_{name}").text())
 
 
 class TransBubble(QLabel):
@@ -547,40 +574,25 @@ class TransBubble(QLabel):
     def compute_screenshot_layout(self, text, x, y, w, h):
         parent_rect = self.parent().rect()
         anchor = self.region_rect if self.region_rect is not None else QRect(int(x), int(y), max(1, int(w)), max(1, int(h)))
-        base_rect, base_size = self.compute_bubble_layout(
-            text, x, y, w, h, fixed_font_size=self.relief_font_pt,
-        )
-        base_rect = QRect(base_rect)
-        gap = max(14, min(RELIEF_MAX_OFFSET_PX, max(14, int(min(anchor.width(), anchor.height()) * 0.1))))
-
-        candidates: list[QRect] = []
-        centered_y = int(round(anchor.center().y() - base_rect.height() / 2))
-        centered_x = int(round(anchor.center().x() - base_rect.width() / 2))
-        candidates.append(QRect(anchor.right() + gap, centered_y, base_rect.width(), base_rect.height()))
-        candidates.append(QRect(anchor.left() - gap - base_rect.width(), centered_y, base_rect.width(), base_rect.height()))
-        candidates.append(QRect(centered_x, anchor.top() - gap - base_rect.height(), base_rect.width(), base_rect.height()))
-        candidates.append(QRect(centered_x, anchor.bottom() + gap, base_rect.width(), base_rect.height()))
-
-        best_rect = QRect(base_rect)
-        best_score = None
-        for cand in candidates:
-            cand = QRect(
-                max(0, min(cand.x(), parent_rect.width() - cand.width())),
-                max(0, min(cand.y(), parent_rect.height() - cand.height())),
-                cand.width(),
-                cand.height(),
+        width = min(anchor.width(), parent_rect.width())
+        height = min(anchor.height(), parent_rect.height())
+        font_size = float(self.relief_font_pt)
+        if self.measure_text_height(text, width, font_size) + self.text_padding * 2 > height:
+            # Keep the selection as the viewport, expanding around its center
+            # only when the requested font cannot fit the translated text.
+            expanded, font_size = self.compute_bubble_layout(
+                text, *anchor.getRect(), fixed_font_size=self.relief_font_pt,
             )
-            overlap = self._rect_overlap_area(cand, anchor)
-            offscreen_penalty = 0
-            if cand.left() <= 0 or cand.top() <= 0 or cand.right() >= parent_rect.right() or cand.bottom() >= parent_rect.bottom():
-                offscreen_penalty = 2500
-            distance = abs(cand.center().x() - anchor.center().x()) + abs(cand.center().y() - anchor.center().y())
-            score = (overlap + offscreen_penalty, distance)
-            if best_score is None or score < best_score:
-                best_score = score
-                best_rect = cand
-
-        return self._offset_text_rect(best_rect), base_size
+            width = max(width, expanded.width())
+            height = max(height, expanded.height())
+        left = int(round(anchor.x() + (anchor.width() - width) / 2))
+        top = int(round(anchor.y() + (anchor.height() - height) / 2))
+        base_rect = QRect(
+            max(0, min(left, parent_rect.width() - width)),
+            max(0, min(top, parent_rect.height() - height)),
+            width, height,
+        )
+        return self._offset_text_rect(base_rect), font_size
 
     def _rect_overlap_area(self, first, second):
         ix1 = max(first.left(), second.left())
@@ -677,7 +689,7 @@ class OverlayWindow(QWidget):
         self.clear_all()
         for t, x, y, w, h in results:
             mode = self.render_mode if self.scan_mode == SCAN_MODE_REGION else REGION_RENDER_BUBBLE
-            # 框選 + 浮雕 / 截圖模式：把掃描框傳入，讓翻譯貼在框的外側
+            # 截圖以整個選區為零位移覆蓋基準，浮雕保留來源文字定位。
             region_rect = self.scan_region if (mode in (REGION_RENDER_RELIEF, REGION_RENDER_SCREENSHOT) and self.scan_mode == SCAN_MODE_REGION and self.scan_region) else None
             self.bubbles.append(
                 TransBubble(
@@ -1666,10 +1678,8 @@ class SettingsWindow(QWidget):
         self.slider_relief_offset_x.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
         self.slider_relief_offset_x.valueChanged.connect(self.on_relief_setting_changed)
         offset_x_row.addWidget(self.slider_relief_offset_x)
-        self.lbl_relief_offset_x_value = QLabel("+0 px")
-        self.lbl_relief_offset_x_value.setFixedWidth(58)
-        self.lbl_relief_offset_x_value.setAlignment(Qt.AlignCenter)
-        offset_x_row.addWidget(self.lbl_relief_offset_x_value)
+        self.spin_relief_offset_x = _linked_numeric_input(self.slider_relief_offset_x, self.lbl_relief_offset_x, " px")
+        offset_x_row.addWidget(self.spin_relief_offset_x)
         relief_layout.addLayout(offset_x_row)
 
         font_row = QHBoxLayout()
@@ -1679,6 +1689,7 @@ class SettingsWindow(QWidget):
         self.spin_relief_font = QSpinBox()
         self.spin_relief_font.setRange(8, 48)
         self.spin_relief_font.setSuffix(" pt")
+        self.spin_relief_font.setKeyboardTracking(False)
         self.spin_relief_font.valueChanged.connect(self.on_relief_setting_changed)
         font_row.addWidget(self.spin_relief_font)
         relief_layout.addLayout(font_row)
@@ -1690,10 +1701,8 @@ class SettingsWindow(QWidget):
         self.slider_relief_offset_y.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
         self.slider_relief_offset_y.valueChanged.connect(self.on_relief_setting_changed)
         offset_y_row.addWidget(self.slider_relief_offset_y)
-        self.lbl_relief_offset_y_value = QLabel("+0 px")
-        self.lbl_relief_offset_y_value.setFixedWidth(58)
-        self.lbl_relief_offset_y_value.setAlignment(Qt.AlignCenter)
-        offset_y_row.addWidget(self.lbl_relief_offset_y_value)
+        self.spin_relief_offset_y = _linked_numeric_input(self.slider_relief_offset_y, self.lbl_relief_offset_y, " px")
+        offset_y_row.addWidget(self.spin_relief_offset_y)
         relief_layout.addLayout(offset_y_row)
 
         opacity_row = QHBoxLayout()
@@ -1703,10 +1712,8 @@ class SettingsWindow(QWidget):
         self.slider_relief_opacity.setRange(0, 100)
         self.slider_relief_opacity.valueChanged.connect(self.on_relief_setting_changed)
         opacity_row.addWidget(self.slider_relief_opacity)
-        self.lbl_relief_opacity_value = QLabel("40%")
-        self.lbl_relief_opacity_value.setFixedWidth(46)
-        self.lbl_relief_opacity_value.setAlignment(Qt.AlignCenter)
-        opacity_row.addWidget(self.lbl_relief_opacity_value)
+        self.spin_relief_opacity = _linked_numeric_input(self.slider_relief_opacity, self.lbl_relief_opacity, "%")
+        opacity_row.addWidget(self.spin_relief_opacity)
         relief_layout.addLayout(opacity_row)
 
         self.lbl_relief_summary = QLabel("目前：自動 · 18 pt · 選區框透明度 40%")
@@ -1859,9 +1866,7 @@ class SettingsWindow(QWidget):
         offset_x = int(self.slider_relief_offset_x.value())
         offset_y = int(self.slider_relief_offset_y.value())
         opacity = int(self.slider_relief_opacity.value())
-        self.lbl_relief_offset_x_value.setText(f"{offset_x:+d} px")
-        self.lbl_relief_offset_y_value.setText(f"{offset_y:+d} px")
-        self.lbl_relief_opacity_value.setText(f"{opacity}%")
+        _sync_numeric_inputs(self)
         self.lbl_relief_summary.setText(translation_tools.ui_text(
             self._current_ui_language(), "settings_relief_summary",
             font_pt=font_pt, offset_x=offset_x, offset_y=offset_y, opacity=opacity,
@@ -2027,9 +2032,7 @@ class SettingsWindow(QWidget):
         self.lbl_relief_font.setStyleSheet(f"color: {theme.text};")
         self.lbl_relief_offset_y.setStyleSheet(f"color: {theme.text};")
         self.lbl_relief_opacity.setStyleSheet(f"color: {theme.text};")
-        self.lbl_relief_offset_y_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
         self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent"))
-        self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 700; background-color: {theme.accent_soft}; border: 1px solid {theme.border}; border-radius: 10px; padding: 4px 6px;")
         self.lbl_translate.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {theme.text};")
         self.lbl_advanced_translate.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {theme.accent};")
         self.lbl_advanced_hint.setStyleSheet(f"color: {theme.subtext};")
@@ -2049,6 +2052,8 @@ class SettingsWindow(QWidget):
             "QSpinBox::up-button, QSpinBox::down-button { width: 16px; border: none; background: transparent; }"
         )
         self.spin_auto_threshold_refresh_minutes.setStyleSheet(spinbox_style)
+        for spin in (self.spin_relief_offset_x, self.spin_relief_offset_y, self.spin_relief_opacity, self.spin_relief_font):
+            spin.setStyleSheet(spinbox_style)
         self.btn_close.setStyleSheet(theme.button_qss("ghost"))
 
     def mousePressEvent(self, event):
@@ -2474,14 +2479,15 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_offset_x = QLabel("X 軸位移")
         self.lbl_relief_offset_x.setStyleSheet("background: transparent; border: none; padding: 0px;")
         offset_x_row.addWidget(self.lbl_relief_offset_x)
-        self.lbl_relief_offset_x_value = QLabel("+0 px")
-        offset_x_row.addWidget(self.lbl_relief_offset_x_value)
         offset_x_row.addStretch()
         self.slider_relief_offset_x = QSlider(Qt.Horizontal)
         self.slider_relief_offset_x.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
-        self.slider_relief_offset_x.setFixedWidth(130)
+        self.slider_relief_offset_x.setMinimumWidth(72)
+        self.slider_relief_offset_x.setMaximumWidth(130)
         self.slider_relief_offset_x.valueChanged.connect(self.on_relief_setting_changed)
         offset_x_row.addWidget(self.slider_relief_offset_x)
+        self.spin_relief_offset_x = _linked_numeric_input(self.slider_relief_offset_x, self.lbl_relief_offset_x, " px")
+        offset_x_row.addWidget(self.spin_relief_offset_x)
         relief.addLayout(offset_x_row)
 
         font_row = QHBoxLayout()
@@ -2491,6 +2497,9 @@ class SettingsWindowRevamp(QWidget):
         font_row.addStretch()
         self.spin_relief_font = QSpinBox()
         self.spin_relief_font.setRange(8, 48)
+        self.spin_relief_font.setSuffix(" pt")
+        self.spin_relief_font.setMinimumWidth(110)
+        self.spin_relief_font.setKeyboardTracking(False)
         self.spin_relief_font.valueChanged.connect(self.on_relief_setting_changed)
         font_row.addWidget(self.spin_relief_font)
         relief.addLayout(font_row)
@@ -2499,28 +2508,30 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_offset_y = QLabel("Y 軸位移")
         self.lbl_relief_offset_y.setStyleSheet("background: transparent; border: none; padding: 0px;")
         offset_y_row.addWidget(self.lbl_relief_offset_y)
-        self.lbl_relief_offset_y_value = QLabel("+0 px")
-        offset_y_row.addWidget(self.lbl_relief_offset_y_value)
         offset_y_row.addStretch()
         self.slider_relief_offset_y = QSlider(Qt.Horizontal)
         self.slider_relief_offset_y.setRange(-RELIEF_MAX_OFFSET_PX, RELIEF_MAX_OFFSET_PX)
-        self.slider_relief_offset_y.setFixedWidth(130)
+        self.slider_relief_offset_y.setMinimumWidth(72)
+        self.slider_relief_offset_y.setMaximumWidth(130)
         self.slider_relief_offset_y.valueChanged.connect(self.on_relief_setting_changed)
         offset_y_row.addWidget(self.slider_relief_offset_y)
+        self.spin_relief_offset_y = _linked_numeric_input(self.slider_relief_offset_y, self.lbl_relief_offset_y, " px")
+        offset_y_row.addWidget(self.spin_relief_offset_y)
         relief.addLayout(offset_y_row)
 
         opacity_row = QHBoxLayout()
         self.lbl_relief_opacity = QLabel("邊框透明度")
         self.lbl_relief_opacity.setStyleSheet("background: transparent; border: none; padding: 0px;")
         opacity_row.addWidget(self.lbl_relief_opacity)
-        self.lbl_relief_opacity_value = QLabel("40%")
-        opacity_row.addWidget(self.lbl_relief_opacity_value)
         opacity_row.addStretch()
         self.slider_relief_opacity = QSlider(Qt.Horizontal)
         self.slider_relief_opacity.setRange(0, 100)
-        self.slider_relief_opacity.setFixedWidth(130)
+        self.slider_relief_opacity.setMinimumWidth(72)
+        self.slider_relief_opacity.setMaximumWidth(130)
         self.slider_relief_opacity.valueChanged.connect(self.on_relief_setting_changed)
         opacity_row.addWidget(self.slider_relief_opacity)
+        self.spin_relief_opacity = _linked_numeric_input(self.slider_relief_opacity, self.lbl_relief_opacity, "%")
+        opacity_row.addWidget(self.spin_relief_opacity)
         relief.addLayout(opacity_row)
         self.lbl_relief_summary = QLabel("狀態：自動 · 18 pt · 選區框透明度 40%")
         self.lbl_relief_summary.setWordWrap(False)
@@ -3031,9 +3042,7 @@ class SettingsWindowRevamp(QWidget):
         offset_x = int(self.slider_relief_offset_x.value())
         offset_y = int(self.slider_relief_offset_y.value())
         opacity = int(self.slider_relief_opacity.value())
-        self.lbl_relief_offset_x_value.setText(f"{offset_x:+d} px")
-        self.lbl_relief_offset_y_value.setText(f"{offset_y:+d} px")
-        self.lbl_relief_opacity_value.setText(f"{opacity}%")
+        _sync_numeric_inputs(self)
         self.lbl_relief_summary.setText(
             translation_tools.ui_text(lang, "settings_relief_summary").format(
                 font_pt=font_pt,
@@ -3190,8 +3199,6 @@ class SettingsWindowRevamp(QWidget):
         self.lbl_relief_font.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_relief_offset_y.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
         self.lbl_relief_opacity.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {theme.subtext}; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_offset_y_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
-        self.lbl_relief_opacity_value.setStyleSheet(f"color: {theme.accent}; font-weight: 600; background: transparent; border: none; padding: 0px;")
         spinbox_style = (
             f"QSpinBox {{ background-color: {theme.input_bg}; color: {theme.text}; border: 1px solid {theme.border}; "
             f"border-radius: 8px; padding: 3px 8px; }} "
@@ -3209,6 +3216,8 @@ class SettingsWindowRevamp(QWidget):
         self.slider_random_scan_jitter.setStyleSheet(slider_style)
         self.slider_auto_threshold_refresh.setStyleSheet(slider_style)
         self.spin_relief_font.setStyleSheet(spinbox_style)
+        for spin in (self.spin_relief_offset_x, self.spin_relief_offset_y, self.spin_relief_opacity):
+            spin.setStyleSheet(spinbox_style)
         self.slider_relief_offset_y.setStyleSheet(slider_style)
         self.slider_relief_opacity.setStyleSheet(slider_style)
         self.lbl_relief_summary.setStyleSheet(theme.pill_qss("accent"))

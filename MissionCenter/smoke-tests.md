@@ -671,3 +671,11 @@
 - 最新 EXE SHA-256 `7f2ca69385959364ca3f45c476756e5305263313498437fcb15974c2660ed310` 不變。runtime／Qt／兩模型 full preflight、import、Windows OCR 1 圖／2 行、20 秒啟動、本機 CPU Vision 1 圖／1 案例均 passed；自建程序已回收。
 - 證據：`app/output/storage-trim-20261023/` 內 cleanup-result.json、capacity-after.json、retained-after.json、source-tests.json、preview-verification.json、cpu-vision.json、validation-summary.json。冷讀取較慢，仍等完整檢查結束才判定通過。
 - 舊 offline-20260921-r8 兩層空目錄的固定路徑非遞迴刪除被執行前工具政策拒絕（blocked by policy），暫留。原始紀錄未提供具體規則；當時 approval_policy=never、sandbox_policy=danger-full-access，不直接歸因於一般 Auto-review。未重建 EXE、未改產品程式碼；不變更任務狀態或 Store 閘門，本機隔離驗證不等同乾淨 Windows 認證。
+
+## 2026-10-26｜CH-T55 截圖原位覆蓋與可輸入數值
+
+- 從使用者截圖查證零位移仍旁置；截圖以選區本身作零位移基準，位移上限改 ±1000 px。三模式共用 X／Y／字級，X／Y 與選區框透明度新增直接輸入並同步滑桿；字級輸入保留。
+- 十檔來源回歸 466 passed；英文窄視窗透明度列重疊修正後，受影響兩檔再驗 53 passed。真實 Qt 鍵盤輸入、保存 payload、邊緣／長文／串流一致性均有通過證據。
+- 三語／三主題搭配 760×520 與 1422×800 的六組真實 Qt 設定渲染，最後幾何檢查通過；另有真實 OverlayWindow 的合成選區零位移覆蓋。這不是實際遊戲、多 DPI／多螢幕或線上翻譯品質驗收。
+- CodeRabbit 七檔 completed／0 issues；首次未指定基準分支的前置失敗保留，補 main 後才成功。Luna 唯讀幾何與最後差異檢查未確認剩餘可重現缺陷。
+- 證據 `app/output/render-controls-20261026/`：regression.xml／log、affected-final.xml／log、visual-check.json、visual-confirmation.log、六張設定 PNG、screenshot-zero-offset.png、coderabbit-retry.ndjson／exit.json；完整說明 `docs/reviews/2026-10-26-screenshot-position.md`。新 EXE 建置／驗證結果待補，不以來源測試冒稱 frozen 通過；Store／任務狀態不遷移。

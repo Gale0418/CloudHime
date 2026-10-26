@@ -290,6 +290,9 @@ def localize_settings(window, language):
     relief_hint = window.lbl_relief_hint.text()
     window.slider_relief_offset_x.setToolTip(relief_hint)
     window.slider_relief_offset_y.setToolTip(relief_hint)
+    window.spin_relief_offset_x.setToolTip(relief_hint)
+    window.spin_relief_offset_y.setToolTip(relief_hint)
+    window.spin_relief_opacity.setToolTip(window.lbl_relief_opacity.text())
     window.spin_relief_font.setToolTip(relief_hint)
     window.slider_relief_opacity.setToolTip(relief_hint)
 
