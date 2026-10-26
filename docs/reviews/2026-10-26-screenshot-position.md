@@ -19,4 +19,10 @@
 
 ## 發行狀態
 
-新技術預覽 EXE 正在封裝與驗證；完成結果會補於本節。MSIX／Store 草稿不變更，CH-T55 維持 Review。使用者先前修改的背景圖片與未追蹤 Logo 保留，不列入這次 Git 提交；建置快照會如實記錄使用的背景圖片位元組。
+新技術預覽已更新於 `app/dist/CloudHime/CloudHime.exe`，SHA-256 為 `050e3b8c02165f0daf9ee5b3575207fe74820f0690b4a96c1b5c98299f604f60`。舊預覽保留於 `app/output/render-controls-20261026/rollback-preview-20261023/`。
+
+完整初次收集後，最後的窄視窗修補以相同 PyInstaller Analysis／PYZ／EXE 流程重新凍結；1,556 個已收集依賴檔案的身分／大小／時間保持不變，未再複製大型依賴。另從 EXE 直接取出六個修改模組的 PYZ 程式碼物件，僅正規化建置路徑後，與最終來源編譯逐一相同。建置快照 manifest SHA-256 為 `15fbcbb7227ddb64c2b399b7a6332fe24412b9fd79f1f3c312d8fcb9771db0b4`。
+
+新收集依賴的 runtime／Qt／provenance preflight、frozen import、真實 Windows OCR（1 圖／2 行）、20 秒啟動均通過；移回固定入口後，import 與 20 秒啟動再驗通過。自建程序已回收。兩個模型透過硬連結沿用 10/23 已完整雜湊驗證的同一檔案，檔案身分／大小／修改時間均一致；本輪不重新計算模型雜湊，也不重跑 CPU Vision 推論，不把舊推論結果歸給新 EXE。
+
+來源提交 `6e3d9f30cae7e437ab41548432d5b1a0f3667df9` 的 [GitHub CI](https://github.com/Gale0418/CloudHime/actions/runs/40285089274) 八項必要檢查全部 success，兩項手動 frozen 工作按原條件 skipped。證據包括 `exe-refresh-result.json`、`embedded-code.json`、`model-reuse.json`、`preview-verification.json`、`promotion.json` 與 `promoted-*.log`。MSIX／Store 草稿不變更，CH-T55 維持 Review。使用者先前修改的背景圖片與未追蹤 Logo 保留，不列入這次 Git 提交；建置快照如實記錄使用的背景圖片位元組。

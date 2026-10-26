@@ -678,4 +678,5 @@
 - 十檔來源回歸 466 passed；英文窄視窗透明度列重疊修正後，受影響兩檔再驗 53 passed。真實 Qt 鍵盤輸入、保存 payload、邊緣／長文／串流一致性均有通過證據。
 - 三語／三主題搭配 760×520 與 1422×800 的六組真實 Qt 設定渲染，最後幾何檢查通過；另有真實 OverlayWindow 的合成選區零位移覆蓋。這不是實際遊戲、多 DPI／多螢幕或線上翻譯品質驗收。
 - CodeRabbit 七檔 completed／0 issues；首次未指定基準分支的前置失敗保留，補 main 後才成功。Luna 唯讀幾何與最後差異檢查未確認剩餘可重現缺陷。
-- 證據 `app/output/render-controls-20261026/`：regression.xml／log、affected-final.xml／log、visual-check.json、visual-confirmation.log、六張設定 PNG、screenshot-zero-offset.png、coderabbit-retry.ndjson／exit.json；完整說明 `docs/reviews/2026-10-26-screenshot-position.md`。新 EXE 建置／驗證結果待補，不以來源測試冒稱 frozen 通過；Store／任務狀態不遷移。
+- 新 EXE 已更新到 app/dist/CloudHime/CloudHime.exe，SHA-256 `050e3b8c02165f0daf9ee5b3575207fe74820f0690b4a96c1b5c98299f604f60`；舊預覽移至同證據目錄 rollback-preview-20261023。runtime／Qt／provenance preflight、import、真實 Windows OCR 1圖／2行、20秒啟動 passed，固定入口再驗 import／20秒啟動 passed，程序已回收。最終六個 PYZ 模組與來源編譯一致；最後 EXE 更新保留 1,556 個已收集依賴的身分／大小／時間。模型沿用10/23已完整雜湊的同一硬連結檔案並核對身分；本輪不重算模型雜湊、不重跑CPU Vision。
+- 來源6e3d9f3的CI run 40285089274八項必要success、兩項手動frozen skipped。證據 `app/output/render-controls-20261026/`：regression.xml／log、affected-final.xml／log、visual-check.json、visual-confirmation.log、六張設定 PNG、screenshot-zero-offset.png、coderabbit-retry.ndjson／exit.json、embedded-code.json、preview-verification.json、promotion.json、promoted-*.log；完整說明 `docs/reviews/2026-10-26-screenshot-position.md`。Store／任務狀態不遷移。
