@@ -694,3 +694,5 @@
 - 最終預覽0ce088c0…68b7b8已原位替換app/dist/CloudHime；import／OCR1圖2行／20秒啟動通過，替換後import與20秒啟動再通過，所屬PID已回收。verify_release_dist.ps1實際ready，1563files／4831974416bytes／2模型固定hash通過；不是CPU Vision／線上API／clean Windows／Store認證。證據app/output/git-layout-20261026/，前84d4版已保留rollback。
 
 - 10/27 main對帳：來源提交e979da9c371d60adeac70d13b8721690bb571bc6已push origin/main；CI40355230310整體success，test-inventory／msix-contract／dependency-contract與core／runtime／benchmarks／ocr／ui五組全部success（八必要工作）。兩個手動frozen工作skipped，不算實跑。URL：https://github.com/Gale0418/CloudHime/actions/runs/40355230310。提交無example／模型／私密設定／生成封裝；原位EXE與來源Git分別保存。
+
+- 2026-10-29 CH-T55／Microsoft 後台實測：台灣個人稅號遭八碼欄位拒收；付款指派Edit兩次無可見面板，根因未知。去識別 HAR／合成測試圖／付款狀態已上傳客服，主人回報第三方 Cookie 原本允許，主人重啟 Chrome 後稅號仍被拒收；稅表未送出。公開依據與待辦見 MissionCenter/reviews/2026-10-29-microsoft-tax-payout-triage.md。整體 Smoke／認證未完成。

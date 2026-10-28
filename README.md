@@ -145,6 +145,8 @@ CloudHime 採雙軌發行：GitHub 免費提供完整原始碼，不提供官方
 
 目前 Microsoft Store 頁面仍是私人預覽，尚未正式公開供購買，因此尚未開始收費或首發優惠期間。售價已定案為 NT$249 一次買斷；自正式公開可購買日起的前 30 天，以 NT$199 首發。實際可購買狀態與價格以 [Microsoft Store 頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)為準。不想自行建置的使用者，可從 [Microsoft Store 官方頁面](https://apps.microsoft.com/detail/9NH4B9GQ86FL)查看並取得官方套件（目前仍為私人預覽，尚未公開供購買）；免費原始碼可從 [GitHub 專案](https://github.com/Gale0418/CloudHime)取得。
 
+2026-10-29 更新：Store 公開發行仍待微軟協助處理稅務及收款設定，並完成發行前驗收；目前尚未送出新版認證。
+
 官方包採一次性買斷，無應用程式訂閱；第三方雲端 AI 需自行提供 API Key，服務費用不包含在售價中。兩種取得方式共用原始碼與核心功能。維護者為 Gale0418；署名、品牌與第三方告知見 [NOTICE](app/NOTICE)、[AUTHORS.md](app/AUTHORS.md)、[BRANDING.md](app/BRANDING.md) 與 [THIRD_PARTY_NOTICES.md](app/THIRD_PARTY_NOTICES.md)。
 > `install.bat` / `install.ps1` 只用來建立原始碼開發用的 .venv；它們不是 Microsoft Store 安裝器，也不會要求 Ollama 或手動下載模型。
 
